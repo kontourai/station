@@ -14,6 +14,7 @@ import {
   PREBUILT_ARCHIVE_MARKER_FILENAME,
 } from '../../packages/cli/src/commands/lifecycle.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { STATION_DOCS_INPUT_PATHS } from '../generate-station-docs.mjs';
 import {
   assertBuildSourceIsCheckout,
   buildPortableServerArchive,
@@ -411,6 +412,7 @@ describe('portable archive workflow paths filter', () => {
       'pnpm-lock.yaml',
       'pnpm-workspace.yaml',
       'schemas/app.schema.json',
+      ...STATION_DOCS_INPUT_PATHS,
     ];
     expect(required.filter((file) => !covered(file))).toEqual([]);
   });

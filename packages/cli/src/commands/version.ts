@@ -1,10 +1,9 @@
 /**
  * `station --version` / `-v` / `version`.
  *
- * Prints the CLI package version plus the build provenance the lifecycle
- * commands already record (`readBuildManifest` — the sha/branch/timestamp
- * written when the instance was built), rather than inventing a second,
- * competing notion of "what is running".
+ * Bundles report immutable CLI artifact provenance from their build banner.
+ * Source invocation reports a development checkout without a revision;
+ * neither path reads a backend build manifest to identify this CLI.
  */
 
 import { readFileSync } from 'node:fs';

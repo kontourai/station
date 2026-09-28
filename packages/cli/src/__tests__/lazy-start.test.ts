@@ -86,14 +86,22 @@ describe('runLazyStart — a Station is already running', () => {
 
   test('never logs the token — only the bare address', async () => {
     const log = vi.fn();
+    const openBrowser = vi.fn(async () => true);
     const deps = baseDeps({
       findRunning: () => [instance({ uiPort: 5000 })],
       log,
+      openBrowser,
       mintToken: async () => 'super-secret-token',
     });
 
     await runLazyStart({}, deps);
 
+    // The token was minted and reached the browser...
+    expect(openBrowser).toHaveBeenCalledWith(
+      'http://localhost:5000#station-ui-bootstrap=super-secret-token',
+    );
+    // ...while the log names only the bare address.
+    expect(log).toHaveBeenCalledWith('Opened Station at http://localhost:5000');
     expect(log.mock.calls.flat().join('\n')).not.toContain(
       'super-secret-token',
     );

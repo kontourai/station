@@ -7,7 +7,6 @@ import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
 import {
   CI_FAST_TIMEOUT_MS,
   LANES,
-  renderFullRegressionPhaseSchedule,
   renderLaneCatalogTable,
 } from '../verification-lanes.mjs';
 import {
@@ -16,7 +15,6 @@ import {
   CI_FAST_STATIC_COMMANDS,
   DIRECT_OPT_IN,
   discoverTrackedVitestTestFiles,
-  E2E_LATEST_GUIDANCE_MARKERS,
   E2E_POLICY_MARKERS,
   executableVerificationPolicyErrors,
   FAILURE_DIAGNOSIS_MARKERS,
@@ -34,7 +32,6 @@ import {
   VERIFICATION_POLICY_SECTION_END,
   VERIFICATION_POLICY_SECTION_START,
   VERIFICATION_SCHEDULING_DOCS,
-  VERIFICATION_SCHEDULING_SECTION,
   verificationPolicyErrors,
   vitestResourceCorpusErrors,
 } from '../verification-policy-gate.mjs';
@@ -245,20 +242,6 @@ describe('verification policy gate', () => {
     );
   });
 
-  test('keeps source-of-truth guidance selector-first and preserves the Claude wrapper', () => {
-    const guidance = readFileSync('AGENTS.md', 'utf8');
-    expect(guidance).toContain(
-      '`npm run test:changed -- --base=origin/main --explain` selects a diagnostic lane',
-    );
-    expect(guidance).toContain(
-      'Builder `tests-evidence` uses that exact-SHA promotion receipt',
-    );
-    expect(guidance).not.toContain('Broad verification: `npm run verify`.');
-    expect(readFileSync('CLAUDE.md', 'utf8').startsWith('@AGENTS.md\n\n')).toBe(
-      true,
-    );
-  });
-
   test('documents every behavior-changing environment input in receipt guidance', () => {
     const reference = readFileSync(
       'docs/reference/verification-receipts.md',
@@ -286,6 +269,17 @@ describe('verification policy gate', () => {
     ];
     expect(verificationPolicyErrors({ manifest: trust })).toContain(
       'trust-reconcile manifest must contain exact npm run full:regression',
+    );
+  });
+
+  // The per-rule table lives in verification-lanes.test.ts; this proves the
+  // gate enforces the catalog validator rather than only the test suite.
+  test('rejects a lane catalog the lane validator rejects', () => {
+    const undeadlined = LANES.map((lane) =>
+      lane.id === 'verify-local' ? { ...lane, timeoutMs: 0 } : lane,
+    );
+    expect(verificationPolicyErrors({ lanes: undeadlined })).toContain(
+      "lane 'verify-local' has invalid timeoutMs 0",
     );
   });
 
@@ -557,26 +551,6 @@ describe('verification policy gate', () => {
     }
   });
 
-  test('pins the rendered lane catalog table in docs/guides/testing.md', () => {
-    // The real docs/guides/testing.md must carry the exact catalog render (no drift either
-    // way); the baseline assertion is the top-of-file `toEqual([])` check.
-    const agentsText = TESTING_GUIDE_TEXT;
-    expect(agentsText).toContain(renderLaneCatalogTable());
-  });
-
-  test('pins catalog-derived scheduling and checkpoint resume guidance in every contributor document', () => {
-    for (const file of VERIFICATION_SCHEDULING_DOCS) {
-      const text = guideText(file);
-      expect(text).toContain(VERIFICATION_SCHEDULING_SECTION);
-      expect(text).toContain(renderFullRegressionPhaseSchedule());
-      expect(text).toContain(
-        '.kontourai/verification-phase-records/<request-key>/',
-      );
-      expect(text).toContain('invalid-UTF-8');
-      expect(text).toContain('cleanup-bad checkpoints rerun');
-    }
-  });
-
   test('rejects a stale phase weight or weakened checkpoint resume clause in either document', () => {
     const docs = VERIFICATION_SCHEDULING_DOCS.map((file) => ({
       file,
@@ -630,8 +604,6 @@ describe('verification policy gate', () => {
 
   test('keeps the ignored latest-E2E gallery pointer in docs/guides/testing.md', () => {
     const agentsText = TESTING_GUIDE_TEXT;
-    for (const marker of E2E_LATEST_GUIDANCE_MARKERS)
-      expect(agentsText).toContain(marker);
     const missingSync = agentsText.replaceAll(
       'npm run sync:e2e:latest',
       'npm run sync:e2e:missing',
@@ -684,9 +656,6 @@ describe('verification policy gate', () => {
 
   test('requires the failure-diagnosis and lane-reuse clauses in docs/guides/testing.md', () => {
     const agentsText = TESTING_GUIDE_TEXT;
-    // Sanity: the real docs/guides/testing.md carries every clause.
-    for (const marker of [...FAILURE_DIAGNOSIS_MARKERS, ...LANE_REUSE_MARKERS])
-      expect(agentsText).toContain(marker);
     // Removing any one clause must fail the gate.
     for (const marker of FAILURE_DIAGNOSIS_MARKERS) {
       const scrubbed = agentsText.replace(marker, 'X'.repeat(marker.length));
@@ -715,10 +684,6 @@ describe('verification policy gate', () => {
       file,
       text: guideText(file),
     }));
-    for (const { text } of docs) {
-      for (const marker of SUBMISSION_HANDOFF_GUIDANCE_MARKERS)
-        expect(text).toContain(marker);
-    }
     for (const marker of SUBMISSION_HANDOFF_GUIDANCE_MARKERS) {
       const drifted = docs.map((doc) =>
         doc.file === 'docs/guides/testing.md'

@@ -755,42 +755,6 @@ function actionsEqual(
 
 export const bannerStore = new BannerStore();
 
-/**
- * TEST-ONLY (archive#3823). A Playwright spec drives the real running app
- * through a `Page`, not the module graph, so it cannot `import { bannerStore }`
- * the way every vitest suite in `__tests__/` already does. This exposes the
- * same clearing primitive as a `window` global a spec reaches with
- * `page.evaluate( => window.__stationClearPassiveChromeBannersForTestsOnly?.)`,
- * so a spec whose assertion is about ONE notice it caused itself is not at the
- * mercy of whatever chrome the instance accumulated around it.
- *
- * It clears PASSIVE banners only, and that is not a nicety — it is what makes
- * it safe to call. A blanket `reset` raced with the very thing under test:
- * a spec can only call this AFTER a navigation (the hook does not exist on
- * `about:blank`, and a full page load re-executes the bundle), and by then the
- * notice the spec is waiting for may already have been presented. Clearing on
- * the `userInitiated` field — the same field the sort order derives from —
- * means the call can land at any moment and never remove the banner the
- * reader's own action produced.
- *
- * Nothing in product code reads this property: it is written once, here, and
- * called only by a test reaching for it by this exact name.
- */
-declare global {
-  interface Window {
-    __stationClearPassiveChromeBannersForTestsOnly?: () => void;
-  }
-}
-if (typeof window !== 'undefined') {
-  window.__stationClearPassiveChromeBannersForTestsOnly = () => {
-    for (const banner of bannerStore.getSnapshot()) {
-      if (!banner.userInitiated) {
-        bannerStore.dismiss(banner.id, { reason: 'system' });
-      }
-    }
-  };
-}
-
 export function useBanners(): BannerItem[] {
   return useSyncExternalStore(bannerStore.subscribe, bannerStore.getSnapshot);
 }

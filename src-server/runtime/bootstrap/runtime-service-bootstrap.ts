@@ -305,24 +305,9 @@ export function createRuntimeServiceBundle(
       storageAdapter,
     );
 
-  // K2 store-layer seam (`AppConfig.knowledgeStores`, default off). Constructed
-  // unconditionally here — NOT gated on the flag at this call site — because
-  // `createRuntimeServiceBundle` is synchronous (called from `StationRuntime`'s
-  // constructor, which cannot await) while `configLoader.loadAppConfig()` is async
-  // and, at this exact point in cold start, has not resolved yet (`this.appConfig`
-  // is assigned later, once `initialize()`'s async flow completes — see archive#208's
-  // fix). This mirrors the file's own established precedent for the identical
-  // tension: `providerService`/`connectionService` above also take a *lazy*
-  // `() => context.configLoader.loadAppConfig()` getter rather than an
-  // eagerly-resolved config, deferring any flag-dependent decision to whichever
-  // call site actually needs it. Constructing `KnowledgeStoreProvider` itself does
-  // zero I/O (no root exists until `createRoot` is called) and registers only the
-  // two Station-owned Kit-format adapters — so its mere existence changes nothing
-  // observable, exactly like `knowledgeService` above. AC4 ("byte-identical when
-  // the flag is off") holds today because nothing in this bundle calls into
-  // `knowledgeStoreProvider` yet; the flag's enforcement point begins with
-  // whichever K3+ work adds a route/service that both checks the flag (async) and
-  // calls this provider or `projectNamespacesToRoots`.
+  // Ordinary store routes are independent of knowledgeStores. Construction
+  // registers Station-owned adapters without creating roots; the later
+  // conversation-root bootstrap owns the flag's narrower initialization policy.
   const knowledgeStoreProvider =
     factories.createKnowledgeStoreProvider?.(storageAdapter) ??
     new KnowledgeStoreProvider(

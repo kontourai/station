@@ -296,10 +296,6 @@ describe('protected release cohort verifier parsers', () => {
     expect(verifier).toMatch(
       /async function main[\s\S]*station\.release-cohort-final\/v1/,
     );
-    expect(verifier).toContain('verifyAndroidAabIdentity(');
-    expect(verifier).toContain("['-xOzf', path, '--', plists[0]]");
-    expect(verifier).not.toContain("['-xzf', path, '-C'");
-    expect(verifier).not.toContain('mkdtempSync');
   });
 
   test('parses only required string Info.plist identity fields', () => {
@@ -403,6 +399,48 @@ test('verifies archive listings beyond the child-process default buffer without 
       platform: 'darwin',
     }),
   ).toThrow(/unsafe/);
+});
+
+// Archive safety (zip-slip): the verifier lists the archive and reads the one
+// Info.plist to stdout; it never extracts to disk.
+test('reads the macOS updater archive only by listing and stdout extraction', () => {
+  const plist = 'Station.app/Contents/Info.plist';
+  const run = vi.fn((command: string, args: string[]) => {
+    if (command === '/usr/bin/plutil')
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          CFBundleIdentifier: 'io.kontourai.station.nightly',
+          CFBundleShortVersionString: identity.desktop.version,
+          CFBundleVersion: identity.desktop.bundleVersion,
+        }),
+        stderr: '',
+      };
+    const listing = `${plist}\n`;
+    return {
+      status: 0,
+      stdout:
+        args[0] === '-tvzf'
+          ? `-rw-r--r-- ${listing}`
+          : args[0] === '-tzf'
+            ? listing
+            : '<plist/>',
+      stderr: '',
+    };
+  });
+  verifyMacosArchive('/fixture.app.tar.gz', identity.desktop, {
+    run: run as unknown as typeof spawnSync,
+    platform: 'darwin',
+  });
+  expect(
+    run.mock.calls
+      .filter(([command]) => command === 'tar')
+      .map(([, args]) => args),
+  ).toEqual([
+    ['-tzf', '/fixture.app.tar.gz'],
+    ['-tvzf', '/fixture.app.tar.gz'],
+    ['-xOzf', '/fixture.app.tar.gz', '--', plist],
+  ]);
 });
 
 /**

@@ -1,7 +1,7 @@
 import type { MCPAppDisplayModeDecision } from '@kontourai/station-contracts/mcp-app-display-mode';
 import { telemetry } from '@kontourai/station-sdk';
 
-export const MCP_APP_DISPLAY_MODE_EVENT =
+const MCP_APP_DISPLAY_MODE_EVENT =
   'ui.workspace_pane.mcp_display_mode_decision';
 
 /**

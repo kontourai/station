@@ -6,6 +6,12 @@ documented SDK subpaths.
 
 The SDK wraps core app contexts and exposes them through stable React hooks, UI components, typed API functions, and extension registries. Plugins never import from internal app packages directly.
 
+The [package export map](../../packages/sdk/package.json) owns importable
+subpaths; a source file or Station's internal bundler alias is not a public
+entry point. Exports select TypeScript/TSX source and host components may also
+need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
+for source distribution and a checked authoring example.
+
 ---
 
 ## Setup
@@ -36,7 +42,9 @@ and default-Agent migration remain separately tracked by #1372.
 <SDKProvider value={sdkContextValue}>
   <YourPlugin />
 </SDKProvider>
+```
 
+```tsx
 // Compatibility wrapper for an explicitly supplied legacy context:
 <LayoutProvider sdk={sdkContextValue} layout={layoutConfig}>
   <YourWorkspacePlugin />
@@ -47,17 +55,50 @@ and default-Agent migration remain separately tracked by #1372.
 
 ## Hooks
 
-All hooks must be called inside a component tree wrapped by `SDKProvider`.
+Use hooks inside the host's React provider tree. Query hooks return a React
+Query result, with values in `data` and separate loading/error state; they do
+not return the data array itself. A hook being exported also does not prove
+that the default Station host supplies its optional context.
+
+### Default host bindings and custom hosts
+
+The [default SDK adapter](../../src-ui/src/core/SDKAdapter.tsx) is delivered
+through [the plugin Pane boundary](../../src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx).
+`SDKProvider` forwards the supplied value without filling missing slots.
+It also does not initialize the module-global API base used by legacy helpers;
+Station's adapter does that. A custom host must configure that base separately
+or use client functions that take an explicit API base and request options.
+
+| Surface | Current default Station binding |
+| --- | --- |
+| Agents, navigation, toast, auth | Bound host contexts |
+| Layout list/detail | Bound list and selected-layout projection |
+| `useApiBase` | Returns `{ apiBase }`, not a string |
+| Create/send/open chat | Bound host callbacks; see their UI identity/async distinctions below |
+| `useActiveChatActions(id)` | Forwards the host's unbound store-actions object; the supplied id is not bound to those actions |
+| `useConversations(agentSlug?)` | Forwards the adapter's captured list; the argument is not forwarded to the core query |
+| `useConfig`, `useConversation`, `useConversationMessages`, `useActiveChatState` | Corresponding methods are not supplied; calling them through this adapter fails |
+| Model, stats, workflow and keyboard contexts; slash-command/tool-approval hook slots | Not supplied by this adapter |
+
+The unbound hooks remain exported custom-host contracts, not deprecated or
+removed APIs. A custom `SDKProvider` may implement their slots. Default plugin
+examples should use an available query or bound host action instead; do not
+interpret an unavailable hook as empty data. Query alternatives still require
+the host Query Client and the server's normal access policy.
+
+The default-host gaps and their caller-level acceptance criteria are tracked
+in [#2780](https://github.com/kontourai/station/issues/2780). That recommendation
+does not require every custom host to provide every optional slot.
 
 ### Scoped coding file mention queries
 
 `@kontourai/station-sdk/coding-file-mentions-query` exports
 `useCodingFileMentionCandidatesQuery`, `fetchCodingFileMentionCandidates`,
-`CodingFileEntry`, and `CodingFileMentionCandidates`. This opt-in subpath is the
-public metadata lookup used by Station's chat composer; it does not read file
-contents.
+`CodingLocation`, `CodingFileEntry`, and `CodingFileMentionCandidates`. This
+subpath is the metadata lookup used by Station's chat composer; it returns file
+metadata rather than file contents.
 
-The hook accepts a workspace path, a search string, and an `ApiRequestScope`
+The hook accepts `{ projectSlug, workingDir }`, a search string, and an `ApiRequestScope`
 extended with `isCurrent()`. Its cache identity includes the exact API origin
 and opaque authority key. The request is cancelled or its result withheld when
 that captured authority is no longer current, so a reconnect cannot rebind an
@@ -70,13 +111,14 @@ import { useCodingFileMentionCandidatesQuery } from
   '@kontourai/station-sdk/coding-file-mentions-query';
 
 const candidates = useCodingFileMentionCandidatesQuery(
-  '/workspace/project',
+  { projectSlug: 'example', workingDir: '/workspace/project' },
   'src/chat',
   requestScope,
 );
 ```
 
-The returned `CodingFileEntry` contains `name`, project-relative `path`, and
+The returned `CodingFileEntry` contains `name`, a `path` relative to the selected
+working directory, and
 `type: 'file' | 'directory'`, with optional size, modification time, and bounded
 children. A selected path is still subject to the server's workspace
 containment and authorization checks; query metadata does not grant file
@@ -131,21 +173,25 @@ not supply an Agent prefix or a default execution binding; the former
 
 ### Layout Hooks
 
-#### `useLayouts(): LayoutConfig[]`
+#### `useLayouts()`
 
-Returns all layouts.
+Returns the host's layout list. Station's default adapter supplies the current
+bound/selected Project's layout query data, not every layout in the installation.
 
 ---
 
 ### Project Hooks
 
-#### `useProjects(): Project[]`
+#### `useProjects()`
 
-Returns all projects.
+Returns the same query result as `useProjectsQuery()`, including its authorized
+personal/member view union in `data`.
 
-#### `useProject(slug: string): Project | undefined`
+#### `useProject(slug: string)`
 
-Returns a single project by slug.
+Returns the `useProjectQuery(slug)` result, not a Project directly. This legacy
+full-configuration query does not accept member-only views; use the explicit
+Project view API described below for guests.
 
 ---
 
@@ -153,15 +199,18 @@ Returns a single project by slug.
 
 #### `useConversations(agentSlug?: string): Conversation[]`
 
-Returns conversations, optionally filtered by agent.
+Calls the host's supplied conversation-list function. The current Station
+adapter captures that list without forwarding this argument; use
+`useConversationsQuery(agentSlug)` when an explicit Agent query is required.
 
 #### `useConversation(conversationId: string): Conversation | undefined`
 
-Returns a single conversation.
+Custom-host slot for one conversation. It is not bound by the current Station
+adapter; export presence is not a working default read path.
 
 #### `useConversationMessages(conversationId: string): Message[]`
 
-Returns messages for a conversation.
+Custom-host message slot, currently unbound in Station's default adapter.
 
 ---
 
@@ -169,28 +218,39 @@ Returns messages for a conversation.
 
 #### `useCreateChatSession(): (agentSlug: string, name: string) => string`
 
-Returns a function that creates a new chat session. Returns the session ID.
+Returns a host function that creates a local Dock entry and its UI ID. It does
+not itself start provider execution or establish a durable server Session.
 
 ```tsx
 const createSession = useCreateChatSession();
 const sessionId = createSession('my-agent', 'My Agent');
 ```
 
-#### `useOpenConversation(): (conversationId: string) => string`
+#### `useOpenConversation()`
 
-Returns a function that opens an existing conversation in the chat dock. Returns the session ID.
+The default callback requires `conversationId`, `agentSlug` and `agentName`;
+it also accepts optional Project/execution/hydration context and returns
+`Promise<string | null>`. A null result means message hydration failed. Opening
+a Dock entry is not proof that continuation is authorized; use canonical
+conversation resolution and current server execution evidence, not mutable
+Agent defaults, when a host supplies that context.
 
-#### `useSendMessage(): (sessionId: string, agentSlug: string, conversationId: string | undefined, message: string) => void`
+#### `useSendMessage()`
 
-Returns a function to send a message to an active chat session.
+Returns the host's asynchronous callback. Its first four arguments are the
+local Dock entry ID, canonical Agent ID, optional conversation ID and content;
+the host also accepts attachments and other current send context. A send can
+queue or refuse work; awaiting it is not a receipt of provider completion.
 
 #### `useActiveChatActions(sessionId: string)`
 
-Returns actions for a specific chat session (stop, clear, etc.).
+Calls the host action slot. The default adapter currently forwards unbound
+store actions rather than binding the supplied ID; do not assume a stable
+per-session stop/clear interface from this compatibility wrapper.
 
 #### `useActiveChatState(sessionId: string)`
 
-Returns the current state of a specific chat session (loading, messages, etc.).
+Custom-host state slot; currently unbound in Station's default adapter.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
@@ -236,7 +296,7 @@ const { isOpen, toggle } = useDockState();
 Returns the current auth state.
 
 ```ts
-{
+type AuthStateExcerpt = {
   status: 'valid' | 'expiring' | 'expired' | 'missing' | 'not-configured' | 'loading';
   user: { alias: string; name?: string; title?: string; email?: string; profileUrl?: string } | null;
   expiresAt: Date | null;
@@ -246,67 +306,81 @@ Returns the current auth state.
 }
 ```
 
-#### `useConfig(): AppConfig`
+#### `useConfig()`
 
-Returns the full app configuration.
+Custom-host configuration slot, currently unbound in the default adapter.
+`useConfigQuery()` is the explicit server-read query surface.
 
-#### `useApiBase(): string`
+#### `useApiBase(): { apiBase: string }`
 
-Returns the current API base URL.
+Returns the current host's API-base object. `useSDK().apiBase` is the string
+projection; do not interpolate the whole object into a URL.
 
 ---
 
 ### Connection Hooks
 
-#### `usePairedDevicesQuery(apiBase?: string): PairedDevice[]`
+#### `usePairedDevicesQuery(apiBase?: string)`
 
-Reads the current inbound paired-device identity registry from
+Returns a query whose data is the current inbound paired-device registry from
 `GET /api/pairing/devices`. Device names are current read-time values; do not
 copy them into session or event records. An authorization or response failure
 is a query error, not an empty device list.
 
-#### `useConnectionsQuery(): ConnectionConfig[]`
+#### `useConnectionsQuery()`
 
 Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.
 
-#### `useModelConnectionsQuery(): ConnectionConfig[]`
+#### `useModelConnectionsQuery()`
 
 Returns model/provider-backed connections from `GET /api/connections/models`.
 
 Use this when you need provider readiness, editable provider config, or provider-scoped `config.modelOptions`.
 
-#### `useRuntimeConnectionsQuery(): ConnectionConfig[]`
+<a id="useruntimeconnectionsquery"></a>
 
-Returns runtime connection rows from `GET /api/connections/runtimes`.
+#### `useEngineConnectionsQuery()`
 
-Runtime rows can expose runtime-scoped model metadata on `runtimeCatalog`, including:
+Returns engine connection rows from `GET /api/connections/agents`, under
+`['connections', 'engines']`. The previously documented `useRuntimeConnectionsQuery` name is
+not a current export.
+
+Rows can expose model-catalog metadata on `runtimeCatalog`, including:
 
 - `source` — `live`, `cached`, `built-in`, or `none`
 - `models` — live or cached catalog entries
 - `builtInModels` — Station's bounded built-in entries when live enumeration is unavailable
 - `reason`, `fetchedAt`, and `truncated` — catalog status and completeness metadata
 
-This is the query used by runtime/model UI surfaces such as `ConnectionsHub`, `RuntimeConnectionView`, `NewChatModal`, the chat dock model selector, and `AgentEditorRuntimeTab`.
+Current callers include `ConnectionsHub`, `AgentConnectionView`, `EnginePicker`
+and `AgentEditorForm`. Built-in candidates are not proof that an engine currently
+offers a model; preserve the catalog source and availability when presenting them.
 
 ```tsx
-const { data: runtimeConnections = [] } = useRuntimeConnectionsQuery();
+const { data: engineConnections = [] } = useEngineConnectionsQuery();
 
-const codexRuntime = runtimeConnections.find((c) => c.id === 'codex');
-const visibleModels =
-  codexRuntime?.runtimeCatalog?.models.length
-    ? codexRuntime.runtimeCatalog.models
-    : (codexRuntime?.runtimeCatalog?.builtInModels ?? []);
+const codexConnection = engineConnections.find((c) => c.config.engineId === 'codex');
+const catalog = codexConnection?.runtimeCatalog;
+const observedModels = catalog?.models ?? [];
+const catalogSource = catalog?.source ?? 'none';
 ```
 
-#### `useContributedModelManifestQuery(): FleetContributionManifest`
+#### `useContributedModelManifestQuery()`
 
-Reads `GET /api/connections/model-inventory`, which since station#1398 slice 2 returns the **contributed-subset manifest** (`station.fleet-contribution/v1`) behind the `inference:invoke` pairing scope — not the full `station.model-inventory/v2` launchable inventory it used to return. Renamed from `useLaunchableModelInventoryQuery` deliberately: a silent re-type under the old name would have compiled everywhere while meaning something else. The non-React `fetchContributedModelManifest()` export returns the same body. A client paired with a `read-only`, `standard`, or `delegation` preset now receives 403; re-pair with the `inference` preset. Connection save, delete, health-test, and smoke mutations invalidate the query automatically.
+Reads the contributed model subset (`station.fleet-contribution/v1`) from
+`GET /api/connections/model-inventory`. It is not the complete launchable model
+inventory. The non-React `fetchContributedModelManifest()` returns the same body.
+The route requires `inference:invoke`; the `read-only`, `standard` and
+`delegation` pairing presets do not grant it. Use an explicitly approved
+`inference` grant. Connection save, delete, health-test and smoke mutations
+invalidate the query.
 
-#### `useAgentConnectionQuery(id: EngineConnectionId): AgentConnectionView | null`
+#### `useAgentConnectionQuery(id: EngineConnectionId)`
 
 Returns a single connection from `GET /api/connections/:id`.
 
-Agent detail views use the branded engine namespace. Model detail views can use `useConnectionQuery(id)` where a generic read is genuinely required.
+Agent detail views use the branded engine namespace. Model detail views can use
+`useConnectionQuery(id)` for a generic connection read.
 
 #### Agent connection mutations
 
@@ -322,13 +396,14 @@ The writable payload stays on the existing editable fields (`name`, `enabled`, `
 
 ### Model Hooks
 
-#### `useModels(): Model[]`
+#### `useModels()`
 
-Returns all configured models.
+Custom-host model-list slot, currently unbound by the default adapter.
 
-#### `useAvailableModels(): Model[]`
+#### `useAvailableModels()`
 
-Returns models available for the current user/layout.
+Custom-host model-availability slot, also unbound by the default adapter. The
+explicit model query surfaces below are separate from these compatibility hooks.
 
 ---
 
@@ -345,7 +420,8 @@ Returns a query whose `data` is the project's `KnowledgeNamespaceConfig[]`.
 
 #### `useKnowledgeSearch(projectSlug: string, query: string, namespace?: string)`
 
-Returns semantic search results from a project's knowledge base.
+Returns a query result whose `data` contains semantic search results from the
+selected Project/namespace.
 
 ---
 
@@ -372,10 +448,14 @@ Types: `'info' | 'success' | 'warning' | 'error'`. The object form takes one
 
 #### `useNotifications()`
 
-Higher-level wrapper over `useToast`.
+Returns immediate-toast `notify` plus server-backed `schedule` and `dismiss`
+methods. The example uses only `notify`; it does not create an inbox, push or
+scheduled notification. Server methods still require the host's transport and
+request authorization. `dismiss` currently awaits `fetch` without checking its
+HTTP status, so its resolved promise is not proof of successful deletion.
 
 ```ts
-{ notify: (message: string, options?: { type?, duration? }) => void }
+type Notifications = ReturnType<typeof useNotifications>;
 ```
 
 ```tsx
@@ -383,7 +463,7 @@ const { notify } = useNotifications();
 notify('Saved!', { type: 'success' });
 ```
 
-#### `useNotificationPreferencesQuery(apiBase?: string): NotificationPreferencesV1`
+#### `useNotificationPreferencesQuery(apiBase?: string)`
 
 Reads `GET /api/notifications/preferences`: how far notifications may
 interrupt beyond the inbox (agent notification level, quiet hours,
@@ -409,6 +489,9 @@ from `@kontourai/station-contracts/notification-preferences`.
 
 ### Slash Command Hooks
 
+These optional custom-host slots are not bound by the default Station adapter;
+calling either hook there throws.
+
 #### `useSlashCommands(): SlashCommand[]`
 
 Returns all registered slash commands.
@@ -421,6 +504,9 @@ Returns the handler function for processing slash command input.
 
 ### Tool Approval Hook
 
+The default Station adapter does not supply this optional hook slot. A custom
+host must supply it before use; exporting the hook does not grant tool approval.
+
 #### `useToolApproval()`
 
 Returns the tool approval state and actions (approve/reject pending tool calls).
@@ -428,6 +514,9 @@ Returns the tool approval state and actions (approve/reject pending tool calls).
 ---
 
 ### Stats Hooks
+
+These require an optional stats context absent from the default Station
+adapter. Use the query APIs when appropriate for that host.
 
 #### `useStats()`
 
@@ -440,6 +529,9 @@ Returns stats for a specific conversation.
 ---
 
 ### Keyboard Hooks
+
+These require optional host slots absent from the default Station adapter.
+The following registration example describes a custom host that supplies them.
 
 #### `useKeyboardShortcut(key: string, callback: () => void, deps?: any[]): void`
 
@@ -457,6 +549,10 @@ Returns all registered keyboard shortcuts.
 
 ### Workflow Hooks
 
+`useWorkflows` requires the optional workflows context, which the default
+Station adapter does not supply. `useAgentWorkflowsQuery` is a separate query
+API rather than that context hook.
+
 #### `useWorkflows(agentSlug?: string): Workflow[]`
 
 Returns workflows, optionally filtered by agent.
@@ -469,13 +565,19 @@ Returns a query whose `data` is the agent's `WorkflowMetadata[]`.
 
 ### Utility Hooks
 
-#### `useSDK(): { apiBase: string }`
+#### `useSDK()`
 
-Returns raw SDK context. Prefer specific hooks over this.
+Returns `{ apiBase, pluginName, getPluginHeaders }`, not the entire provider
+context. `pluginName` may be empty; header attribution is not an authorization
+grant. Prefer scoped client operations for protected data.
 
 #### `useUserLookup(alias: string | null): { data: any; loading: boolean; error: string | null }`
 
-Looks up a user by alias via the user directory. Returns `null` data when alias is `null`.
+Looks up a user by alias via the user directory. Returns `null` data when alias
+is `null`. This legacy hook decodes JSON without checking HTTP status, so an
+error response can appear in `data` rather than `error`. It uses the ambient
+API base and direct `fetch`; its effect discards a late result after cleanup
+but does not cancel the request or capture `ApiRequestScope`.
 
 ```tsx
 const { data, loading } = useUserLookup('jsmith');
@@ -483,12 +585,22 @@ const { data, loading } = useUserLookup('jsmith');
 
 #### `useServerFetch(): (url: string, options?) => Promise<{ status, contentType, body }>`
 
-Routes an HTTP request through the backend to avoid CORS. Requires `network.fetch` permission in `plugin.json`.
+This exported helper is not a working proxy through the current Station server.
+Its legacy plugin-name getter is empty, so it calls `/api/plugins/fetch`, which
+returns 403. The named `/:name/fetch` route also refuses after checking grants
+because plugin execution identity is not yet verifiable. Declaring
+`network.fetch` alone does not enable either route.
 
 ```tsx
 const serverFetch = useServerFetch();
-const result = await serverFetch('https://api.example.com/data');
+// This rejects against the current Station server.
+await serverFetch('https://api.example.com/data');
 ```
+
+The CLI preview server has a separate development proxy; that does not establish
+production support. See the [hook](../../packages/sdk/src/hooks/operations.ts),
+[legacy identity getter](../../packages/sdk/src/api-core.ts), and
+[server refusal](../../src-server/routes/plugins/plugin-public-routes.ts).
 
 ---
 
@@ -542,11 +654,24 @@ searched; hosted Task reads are restricted until a tenant-owned Task store is
 composed. Files, receipts, external projections and arbitrary plugin sources
 are not supported by this initial runtime composition.
 
-React Query wrappers. Use these instead of raw `useQuery` — they handle cache keys, stale times, and API base resolution automatically.
+The [SDK parser](../../packages/sdk/src/client/unified-search.ts),
+[HTTP routes](../../src-server/routes/search.ts),
+[runtime composition](../../src-server/services/search/runtime-search.ts),
+[canonical message reader](../../src-server/services/orchestration/transcript-search-queries.ts),
+and [palette](../../src-ui/src/components/search/WorkspaceSearchPalette.tsx)
+show the request-to-inspection path.
+
+These React Query wrappers define operation-specific keys and freshness policy.
+Many legacy readers resolve an ambient API base; protected readers require an
+explicit captured scope. The generic wrapper does not add authority, validate a
+response, or partition an arbitrary caller-supplied key. Follow each operation's
+scope contract rather than assuming every SDK query is interchangeable.
 
 ### `useAgentsQuery(config?)`
 
-Fetches all agents. Cache key: `['agents']`.
+Reads the Agent catalog under `['agents']`. `data` projects its Agent array;
+`catalogState` and `catalogAsOf` retain whether it is a current or older
+observation. A displayed cached row is not by itself current launch admission.
 
 ### `useAgentToolsQuery(agentSlug: string | undefined, config?)`
 
@@ -554,7 +679,9 @@ Fetches tools for an agent. Disabled when `agentSlug` is undefined.
 
 ### `useModelsQuery(config?)`
 
-Fetches available Bedrock models.
+Fetches the model catalogue from `GET /api/models` under the `model-catalog`
+cache key. Do not treat this legacy catalogue as every engine's live model list;
+connection-specific model catalogues have their own queries.
 
 ### `useModelCapabilitiesEnvelopeQuery(config?)`
 
@@ -562,17 +689,16 @@ Fetches the Bedrock model-capability catalogue with its provenance:
 `{ capabilities, source: 'bedrock', complete }`. `complete: false` means the
 catalogue could not be read, so `capabilities` is unknown rather than empty.
 
-Available for any consumer that decides whether a model supports something —
-the list-only hook below cannot express "not queryable". Nothing reads it yet:
-#3344's `useModelImageSupport` answers the per-model question from the list
-view, where an unmatched row is already `'unknown'`. This hook is what a
-consumer needs to tell an EMPTY catalogue (no AWS credentials, nothing knowable
-about any model) from a complete one that genuinely lists no match.
+Use the envelope when the distinction between a complete empty catalogue and
+unavailable enumeration matters. The list-only hook below cannot express
+"not queryable"; `complete: false` is not evidence that a model is unsupported.
 
 ### `useModelCapabilitiesQuery(config?)`
 
 List-only view over `useModelCapabilitiesEnvelopeQuery`, sharing its cache
 entry. Cannot express "not queryable".
+
+<a id="useprojectlayoutsqueryprojectslug-string-config-1"></a>
 
 ### `useProjectLayoutsQuery(projectSlug: string, config?)`
 
@@ -654,11 +780,12 @@ Fetches a single project by slug. It accepts the same scoped configuration as
 Unscoped callers retain the legacy key and ambient API-base behavior for
 compatibility. Station's main-app Project list/detail consumers capture this
 scope through `ProjectsContext`.
-The current host scope represents Connect's authenticated connection authority
-generation (and a native binding when present). It does not independently name
-an account principal or tenant. A same-origin cookie-account change that leaves
-that connection generation unchanged is therefore outside this tranche; full
-account/principal cache lifetime composition remains required.
+The host scope includes Connect's connection authority generation, plus a native
+binding or the browser relay's account-continuation scope when applicable. A
+direct browser cookie-account change that leaves the connection generation
+unchanged is not independently detected by that scope. The durable cache
+namespace below additionally uses the server's observed principal; that
+observation still has to be refreshed after an account change.
 
 ### `useProjectIdentityQuery(slug: string, config?)`
 
@@ -666,7 +793,9 @@ Reads a Project's portable identity for personal-peer placement (#480). It
 accepts the same scoped configuration as `useProjectQuery` — the cache key
 carries the API base, authority key and slug, so a late identity response
 for a previous Home or authority can never satisfy the current selection,
-and a missing scope fails closed instead of reading ambient state. Callers
+and `{ requireRequestScope: true }` disables a missing-scope read. Without that
+flag, legacy calls retain the ambient API base. Station's
+`useScopedProjectIdentityQuery` supplies the flag. Callers
 that know the local Project record they selected should also pass
 `expectedProjectId`: it joins the cache key and validates the response's
 `association.localProjectId`, so a same-slug delete/recreate (or a stale
@@ -700,10 +829,11 @@ Dispatches one delegated task. The mutation variable is backwards
 compatible with the original published shape — a plain `DelegateTaskInput`,
 which resolves against the hook's `apiBase` default and the ambient
 authority exactly as before. The recommended form is the per-invocation
-envelope — `{ input, apiBase?, requestScope? }` — which freezes the Home
-address and authority the caller captured for that dispatch: a rotation
-across the awaits refuses instead of sending the old intent under new
-credentials, and a late option change cannot redirect an in-flight call.
+envelope — `{ input, apiBase?, requestScope? }`. When the mutation function
+begins, it copies the supplied address and authority before transport awaits:
+a later authority rotation refuses instead of sending the old intent under new
+credentials. Treat mutation variables as immutable after calling `mutate` or
+`mutateAsync`; this wrapper does not snapshot the whole input at that public call.
 The public request body stays exactly the input (prompt, target, optional
 parent task) in both forms; the scope is transport-only and never sent.
 
@@ -726,20 +856,27 @@ unverified identity. Mutations are neither saved nor hydrated from these snapsho
 This does not make connection evidence a substitute for account authentication or
 qualify every legacy query, mutation, draft or queue path.
 
-`@kontourai/station-sdk/boot` exports `fetchBootPayloadAt(apiBase)` and
-`seedBootPayloadGuarded(queryClient, payload, startedAt, isCurrent)`. Capture the
-origin and request authority before fetching; the guard must verify both that
+The internal [boot module](../../packages/sdk/src/boot.ts) implements
+`fetchBootPayloadAt(apiBase)` and
+`seedBootPayloadGuarded(queryClient, payload, startedAt, isCurrent)` for Station's
+host. `/boot` is not in the package export map; external consumers must not
+infer an importable subpath from this source file. The host captures the
+origin and request authority before fetching; its guard verifies both that
 captured authority and the destination client. Seeding checks it before every
-cache write and preserves newer individual reads. The ambient legacy boot helper
-remains available for existing callers; it is not the multi-home host path.
+cache write and preserves newer individual reads.
 
-### `useProjectLayoutsQuery(projectSlug: string, config?)`
-
-Fetches layouts for a project.
+The [SDK Project queries](../../packages/sdk/src/query-domains/workspaceProjects.ts),
+[host Project context](../../src-ui/src/contexts/ProjectsContext.tsx),
+[authority namespace](../../src-ui/src/lib/authorityNamespace.ts), and
+[query-client owner](../../src-ui/src/contexts/AuthorityQueryContext.tsx)
+separate live request admission from persisted data identity.
 
 ### `useProjectConversationsQuery(projectSlug: string, limit?, config?)`
 
-Fetches recent conversations for a project. Default limit: 10.
+Fetches recent conversations for a project. Default limit: 10. This legacy
+reader can turn a non-OK response or invalid/failed envelope into `[]`; an empty
+result does not distinguish no conversations from those failures. Transport or
+JSON-decoding failures can still reject. See `fetchProjectConversations` below.
 
 ### `useRenameConversationMutation()`
 
@@ -806,7 +943,10 @@ Fetches the namespace's `KnowledgeDocumentMeta[]` matching `filters`, such as
 
 ### `useKnowledgeScanMutation(projectSlug)`
 
-Triggers a directory scan to ingest documents into the knowledge base.
+Requests the directory scan with optional extensions/include/exclude patterns
+and invalidates document/status queries. A completed file-store scan is not
+proof that every root is indexed for semantic search; indexing has separate
+owners described in the [Knowledge guide](../guides/knowledge.md).
 
 ### `useKnowledgeSaveMutation(projectSlug, namespace?)`
 
@@ -820,39 +960,32 @@ Deletes a single knowledge document.
 
 Bulk-deletes knowledge documents.
 
-### `useGitStatusQuery(workingDirectory, config?)`
+### `useGitStatusQuery(location, config?)`
 
-Fetches git status for a working directory. Disabled when `workingDirectory` is null/undefined.
+Accepts `{ projectSlug, workingDir }`, not a bare path. Disabled unless both
+fields are nonempty. The request carries both to `/api/coding/git/status`;
+the server owns Project/path admission. A response with `success: false`
+currently becomes `null`, so that value is not proof of a clean repository.
 
-### `useGitLogQuery(workingDirectory, count?, config?)`
+### `useGitLogQuery(location, count?, config?)`
 
-Fetches git log for a working directory. Default count: 5. Disabled when `workingDirectory` is null/undefined.
+Accepts the same `{ projectSlug, workingDir }` location. Default count: 5;
+disabled unless both fields are nonempty. A `success: false` envelope currently
+becomes `[]`, which does not establish an empty repository history.
 
-### `useAcpCommandsQuery(agentSlug, config?)`
+### `useProviderCommandsQuery(provider, config?)`
 
-Fetches ACP slash commands for an ACP-backed agent. Disabled when `agentSlug` is null/undefined.
-
-### `useModelCapabilitiesEnvelopeQuery(config?)`
-
-Fetches the Bedrock model-capability catalogue with its provenance:
-`{ capabilities, source: 'bedrock', complete }`. `complete: false` means the
-catalogue could not be read, so `capabilities` is unknown rather than empty.
-
-Available for any consumer that decides whether a model supports something —
-the list-only hook below cannot express "not queryable". Nothing reads it yet:
-#3344's `useModelImageSupport` answers the per-model question from the list
-view, where an unmatched row is already `'unknown'`. This hook is what a
-consumer needs to tell an EMPTY catalogue (no AWS credentials, nothing knowable
-about any model) from a complete one that genuinely lists no match.
-
-### `useModelCapabilitiesQuery(config?)`
-
-List-only view over `useModelCapabilitiesEnvelopeQuery`, sharing its cache
-entry. Cannot express "not queryable".
+Reads `/api/orchestration/providers/:provider/commands`; disabled for a missing
+provider. Station's slash-command caller selects `'acp'` after checking the
+Agent catalog's `engineConnectionType`. This is provider-level command data,
+not an Agent-specific durable catalog. The previously documented
+`useAcpCommandsQuery` is not a current SDK export.
 
 ### `useAgentInvokeMutation(agentSlug: string)`
 
-Fire-and-forget agent invocation mutation. Returns a `useMutation` result.
+Agent invocation mutation returning a `useMutation` result. Use its completion
+and error state; `mutate` being non-awaiting does not make effects fire-and-forget
+or authorize an automatic retry.
 
 ```tsx
 const { mutate } = useAgentInvokeMutation('my-agent');
@@ -861,10 +994,15 @@ mutate('Summarize this document');
 
 ### `useInvokeAgent<T>(agentSlug, content, options?, config?)`
 
-Invokes an agent and caches the result. Cache key: `['invoke', agentSlug, content, options]`.
+Invokes an agent from a query function and caches the result. Cache key:
+`['invoke', agentSlug, content, options]`. This is effectful, not an inert read;
+query lifecycle/refetch policy can invoke it again. Prefer an explicit mutation
+for a user action rather than treating this helper as an exactly-once command.
 
 ```tsx
-const { data, isLoading } = useInvokeAgent('my-agent', 'Summarize this', { schema: MySchema });
+const { data, isLoading } = useInvokeAgent('my-agent', 'Summarize this', {
+  schema: { type: 'object', properties: { summary: { type: 'string' } } },
+});
 ```
 
 ### `conversationQueries.list(agentSlug)`
@@ -873,30 +1011,44 @@ Shared query-factory entry for agent conversation lists. Use this when a feature
 
 ### `useApiQuery<T>(queryKey, queryFn, config?)`
 
-Generic query hook for custom API calls.
+Generic query hook for a caller-owned async function. It passes an AbortSignal;
+the function must use it and handle HTTP status, response validation and
+authority. The following host-supplied reader must already implement those
+checks for the captured `requestScope`:
 
 ```tsx
-const { data } = useApiQuery(['my-key'], () => fetch('/api/custom').then(r => r.json()));
+const { data } = useApiQuery(
+  ['my-data', requestScope.apiBase, requestScope.authorityKey],
+  (signal) => readCustomData(requestScope, signal),
+);
 ```
 
 ### `useApiMutation<TData, TVariables>(mutationFn, options?)`
 
 Mutation hook with optional cache invalidation on success.
 
+It does not turn a raw `fetch` callback into an authenticated, validated or
+exactly-once operation. Here `saveCustomData` is a host-owned writer that
+captures its destination and validates the response; it is not an SDK export.
+
 If the success callback throws after the request completes, the caller receives
 that error and the configured caches are still invalidated.
 
 ```tsx
 const mutation = useApiMutation(
-  (vars) => fetch('/api/save', { method: 'POST', body: JSON.stringify(vars) }).then(r => r.json()),
+  (vars: { name: string }) => saveCustomData(requestScope, vars),
   { invalidateKeys: [['agents']] }
 );
 mutation.mutate({ name: 'new-agent' });
 ```
 
-### `useInvalidateQuery(): (queryKey) => void`
+<a id="useinvalidatequery-querykey--void"></a>
 
-Returns a function to manually invalidate a query cache entry.
+### `useInvalidateQuery(): (queryKey) => Promise<void>`
+
+Returns a stable function that invalidates matching query-key prefixes. Its
+promise comes from React Query's invalidation; callers can await that operation
+instead of assuming the request completes when invalidation is scheduled.
 
 ### `useQueryClient`
 
@@ -907,6 +1059,12 @@ Re-exported from `@tanstack/react-query` for direct cache access.
 ## API Functions
 
 Imperative API calls — use in event handlers, slash commands, or anywhere hooks aren't available.
+
+`sendMessage`, `streamMessage`, `invokeAgent`, `invoke`, `callTool` and
+`fetchConfig` are legacy ambient-base helpers using direct `fetch`. They do not
+automatically use the host's native or encrypted broker transport. For those
+hosts, choose client/Session operations that cover the required workflow and
+accept an explicit API base and current request options.
 
 ### `resolveConversationOpen(conversationId, apiBase?): Promise<ConversationOpenResolution>`
 
@@ -925,7 +1083,11 @@ through the root SDK barrel.
 
 ### `sendMessage(agentSlug, content, options?): Promise<any>`
 
-Sends a message to an agent (non-streaming).
+Posts to the framework's `/agents/:id/text` route and returns its JSON response.
+This is not the canonical orchestration chat/Session API and does not dispatch
+an arbitrary external-engine Agent. Use the bound chat actions or the
+[Session API](./session-api.md) for that workflow. Request authorization,
+available runtime Agents and provider configuration still apply.
 
 ```ts
 interface SendMessageOptions {
@@ -942,7 +1104,11 @@ const result = await sendMessage('my-agent', 'Hello', { conversationId: 'abc' })
 
 ### `streamMessage(agentSlug, content, options?): Promise<void>`
 
-Streams a response from an agent.
+Posts to the framework's `/agents/:id/stream` route. `onChunk` receives decoded
+transport chunks, including SSE framing; the helper does not parse them into
+message text or canonical Session events. Transport chunk boundaries are not
+event boundaries. `onComplete` means the response body ended, not that a
+canonical turn-completion receipt was observed.
 
 ```ts
 interface StreamMessageOptions extends SendMessageOptions {
@@ -954,22 +1120,38 @@ interface StreamMessageOptions extends SendMessageOptions {
 
 ```ts
 await streamMessage('my-agent', 'Explain this', {
-  onChunk: (chunk) => setOutput(prev => prev + chunk),
-  onComplete: () => setDone(true),
+  onChunk: (chunk) => rawStreamParser.feed(chunk),
+  onComplete: () => rawStreamParser.end(),
 });
 ```
 
+`rawStreamParser` is caller-supplied and must understand the framework's event
+format. For Station's user-facing chat, prefer its canonical Session stream.
+
 ### `invokeAgent(agentSlug, content, options?): Promise<any>`
 
-Invokes an agent silently (no user confirmation). Supports structured output via `schema`.
+Invokes an Agent without creating a Dock entry. Supply a JSON Schema object,
+not a Zod instance, in `schema`. The named-Agent route adds it to the prompt and
+attempts to parse JSON from the response; it does not validate the result against
+that schema, and parsing failure leaves the response as text. Runtime
+permissions and provider/approval behavior still apply. An
+indeterminate invocation error means work may have started and is not a safe
+automatic-retry signal.
 
 ```ts
-const result = await invokeAgent('my-agent', 'Extract data', { schema: MyZodSchema });
+const result = await invokeAgent('my-agent', 'Extract the title', {
+  schema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+});
 ```
 
 ### `invoke(options: InvokeOptions): Promise<any>`
 
-Lightweight multi-turn invocation without a named agent. Supports tool calling and structured output.
+Runs an invocation without a named Agent or Dock entry, with optional tool steps.
+It selects `model`, then app `invokeModel`, then app `defaultModel`. A supplied
+JSON Schema triggers a separate structured-output pass; `structureModel` falls
+back through the app setting to the invocation model. This can involve more than
+one provider call. `invoke` returns only the response; `invokeWithRunReceipt`
+also returns available `runId`/`relatedRunIds` for the native-invocation ledger.
 
 ```ts
 interface InvokeOptions {
@@ -984,12 +1166,22 @@ interface InvokeOptions {
 ```
 
 ```ts
-const result = await invoke({ prompt: 'What is 2+2?', schema: NumberSchema });
+const result = await invoke({
+  prompt: 'What is 2+2?',
+  schema: { type: 'object', properties: { answer: { type: 'number' } }, required: ['answer'] },
+});
 ```
+
+The [SDK calls](../../packages/sdk/src/api-agent-runtime.ts),
+[named-Agent handler](../../src-server/routes/agents/invoke-agent.ts), and
+[global handler](../../src-server/routes/agents/invoke-global.ts) have different
+structured-output paths. An invocation receipt is not a chat Session.
 
 ### `callTool(agentSlug, toolName, toolArgs?): Promise<any>`
 
-Calls an MCP tool directly on an agent. No server-side transform.
+Calls the Agent tool route and unwraps its operation response. Server policy,
+tool routing and response handling still apply; this is not a policy bypass or
+a guarantee that the provider's raw wire payload is returned unchanged.
 
 ```ts
 const data = await callTool('my-agent', 'get_account', { id: '123' });
@@ -997,19 +1189,31 @@ const data = await callTool('my-agent', 'get_account', { id: '123' });
 
 ### `fetchConfig(): Promise<any>`
 
-Fetches app configuration imperatively.
+Reads `/config/app` and returns the JSON envelope, including its `success` and
+`data` fields. Unlike `useConfigQuery`, it does not unwrap `data`. This legacy
+helper uses direct `fetch` with plugin headers, not the scoped client transport.
 
-### `createChatSession(agentSlug: string, name: string): string`
+### `createChatSession(agentSlug: string, sessionId: string, title?: string): Promise<void>`
 
-Creates a new chat session and returns the session ID.
+This exported compatibility function currently rejects with
+`createChatSession must be implemented by core app`. The default shared runtime
+does not replace it. Use the bound `useCreateChatSession` or `useLaunchChat`
+host action for the Dock; do not present this export as a working imperative
+Session-creation API.
 
 ### `fetchAvailableLayouts(): Promise<any[]>`
 
-Fetches available layout sources (for adding layouts to projects).
+Reads and validates the layout-source catalog used when adding layouts to
+Projects. Entries retain their lifecycle/availability fields; catalog presence
+does not mean a layout is installed and ready to load.
 
 ### `fetchProjectConversations(projectSlug: string, limit?: number): Promise<any[]>`
 
-Fetches recent conversations for a project.
+Fetches recent conversations for a project, with a default limit of 10. The
+underlying [legacy helper](../../packages/sdk/src/api-knowledge-utils.ts) uses
+`allowFailure`, returning `[]` for HTTP refusals, false or malformed envelopes,
+or missing `data`. Network and JSON-decoding errors still reject. Consumers
+must not use this helper's empty array as proof that the Project has no history.
 
 ### `addProjectLayoutFromPlugin(projectSlug: string, plugin: string): Promise<any>`
 
@@ -1063,11 +1267,18 @@ Bulk-deletes knowledge documents.
 
 #### `fetchAcpCommands(agentSlug: string): Promise<AcpSlashCommandDescriptor[]>`
 
-Fetches ACP slash-command definitions for an ACP-backed agent.
+This previously documented API is not a current SDK export. Use
+[`useProviderCommandsQuery`](#useprovidercommandsqueryprovider-config) for the
+current provider-level command list; Station's caller selects the ACP provider
+after checking the Agent's engine connection.
 
 #### `fetchAcpCommandOptions(agentSlug: string, partial: string): Promise<AcpSlashCommandDescriptor[]>`
 
-Fetches live ACP slash-command autocomplete options.
+This previously documented API is not a current SDK export. The current external-engine
+interface has no per-keystroke command-option channel, and Station's slash
+command hook supplies only the command catalog. See
+[the caller](../../src-ui/src/hooks/useSlashCommands.ts) and
+[ACP command support](../guides/acp.md#slash-commands).
 
 ---
 
@@ -1117,8 +1328,10 @@ async function attachProjectOnStation(
 }
 ```
 
-The destination directory must already exist on that Station and satisfy the
-primary resource. Attachment does not clone, synchronize files, copy credentials
+When supplied, `workingDirectory` must already exist on that Station and satisfy
+the primary resource. The field is optional: omitting it uses the local Project
+creation default and does not verify a checkout. Attachment does not clone,
+synchronize files, copy credentials
 or move a room's authority. The server publishes the new local Project and its
 identity together; the result distinguishes `created` from an unchanged
 `existing` attachment. Its association contains the shared `portableProjectId`
@@ -1143,6 +1356,11 @@ resource and repo-relative directory, or clears the selection with `null`.
 current identity view; a concurrent Project or identity change returns a conflict. The mutation
 is idempotent and does not inspect, create, or bind a checkout. The selected
 directory is verified only when execution later resolves it on that Station.
+
+See the [client](../../packages/sdk/src/client/project-identity.ts),
+[route](../../src-server/routes/projects/project-identity-routes.ts),
+[identity service](../../src-server/services/projects/project-identity-service.ts),
+and [execution resolver](../../src-server/services/execution-target/execution-target-resolver.ts).
 
 ## Project access administration and account entry
 
@@ -1190,8 +1408,10 @@ consumes the `station.application-session-native/v1` contract and a
 **caller-supplied encrypted application-channel transport**
 (`NativeApplicationSessionTransportV1`); the client itself never opens an HTTP
 connection, never touches cookies, and never holds a broker bearer. The account
-proof key must be an **independent** non-extractable P-256 key from
-`createApplicationSessionKey()` — never the native broker route proof key. The
+proof key must be independent of the native broker route proof key. The client
+accepts `ApplicationSessionSigner`, including a host-owned signing facade;
+`createApplicationSessionKey()` supplies a non-extractable WebCrypto P-256 key.
+Signer custody is a caller responsibility, not attested by the facade. The
 caller owns the trust snapshot: exact Station ID, canonical HTTPS Station
 audience (or loopback HTTP for a local fixture), full approved native surface,
 and the approved Device ID; the
@@ -1268,8 +1488,9 @@ not imply edit, execution or administration support.
 `@kontourai/station-sdk/project-shared-tasks` exposes the first bounded shared
 Task read surface. `listProjectSharedTasks(apiBase, slug, options)` returns only
 Tasks an operator explicitly published for the caller's current Project scope.
-`readProjectSharedTaskHistory(...)` returns a closed projection of bounded human
-messages and attribution; structured tool events, attachment metadata and room
+`readProjectSharedTaskHistory(...)` returns bounded `human-message` bodies with
+human or agent attribution; this body-kind filter does not mean every author is
+human. Structured tool events, attachment metadata and room
 write authority are excluded. Human messages and shared documents are returned
 verbatim without redaction and may themselves contain paths, secrets, or other
 private text. `readProjectSharedTaskDocument(...)` returns the current text
@@ -1377,6 +1598,18 @@ revoked authority, never a guessed identity. Pass the SAME `ClientRequestOptions
 (request scope, credential, headers) as the caller's other protected requests;
 validate the closed shape before caching or comparing the public identity tuple.
 
+The account/Project boundary is implemented by the
+[application-session client](../../packages/sdk/src/client/application-session.ts)
+and [service](../../src-server/services/identity/application-session-service.ts),
+[relay enrollment helpers](../../packages/sdk/src/client/relay-enrollment.ts)
+and [service](../../src-server/services/identity/relay-enrollment-service.ts),
+[Project access client](../../packages/sdk/src/client/project-access.ts)
+and [membership service](../../src-server/services/projects/project-membership-service.ts),
+and [shared Task routes](../../src-server/routes/projects/project-shared-tasks.ts).
+The separate [account client](../../packages/sdk/src/client/account-authentication.ts)
+and [authority reader](../../packages/sdk/src/client/authority-observation.ts)
+keep account login and the current request's observed authority distinct.
+
 ## Plugin Query Hooks
 
 React Query wrappers for plugin management. Use these instead of raw `useQuery`.
@@ -1439,18 +1672,24 @@ The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
 longer matches. See [registry trust policy](../design/registry-trust-policy.md).
 
-`consent` is required (station#4288). It is the operator's decision, taken from
+`consent` is required (archive#4288). It records the operator's decision from
 the preview they read: the permission set the preview derived, the digest of
 the bytes it staged, and the dependency ids it resolved. The server re-derives
-all three from its own staged copy and refuses — before writing anything — when
-they disagree.
+the current requirements and compares the approval with its staged copy,
+refusing when they disagree.
+When an open install proposal names the source, or Station previously
+installed it without its git metadata, the preview reports
+`gitMetadata: "excluded"`; echo it in `consent`. The server refuses with HTTP
+409 (`consent.reason: "git-metadata"`) an install of such a source whose
+consent omits it, and asks for a fresh preview.
+Source acquisition and scratch staging can already have occurred; refusal is
+not a promise that no filesystem work happened.
 
-What that does and does not buy: it makes the install a decision about specific
-bytes, and it puts the question before the write. It is not an authorization
-boundary. The digest is a documented deterministic walk of the tree, so a
-caller can compute one without previewing, and every other value is readable
-from `POST /api/plugins/preview` — any client holding a Station credential can
-assemble a well-formed `consent` with nobody in the loop.
+The consent body binds reviewed bytes and revisions, but by itself does not
+prove that a person read the preview. Request authorization and trusted
+host-owned approval are separate checks; an arbitrary Station credential is
+not sufficient for every lifecycle operation. A recorded trusted grant also
+does not prove runtime activation: inspect reconciliation and current status.
 
 ```tsx
 const { mutate } = usePluginInstallMutation();
@@ -1462,6 +1701,7 @@ mutate({
     grantRevision: preview.grantRevision,
     permissions: preview.permissions.required,
     contentDigest: preview.contentDigest,
+    ...(preview.gitMetadata ? { gitMetadata: preview.gitMetadata } : {}),
     dependencies: preview.dependencies.map((entry) => entry.id),
     dependencyApprovals: preview.dependencies.flatMap((entry) =>
       entry.consent
@@ -1483,9 +1723,14 @@ mutate({
 
 Previews a plugin before installing. Returns manifest, components, conflicts,
 resolved dependencies, the derived `permissions` (`required`, `autoGranted`,
-`pendingConsent`) and the `contentDigest` of the copy it staged. Lifecycle-bearing
+`pendingConsent`), the `contentDigest` of the copy it staged and, for a source
+an open install proposal names or one Station previously installed without its
+git metadata, `gitMetadata: "excluded"`. Lifecycle-bearing
 dependencies additionally carry their own `consent` object, binding their
 permissions and bytes before installation.
+The hook returns the server's preview body; an invalid preview is a returned
+`valid: false` result, not necessarily a rejected promise. Check that result
+before accessing review fields or constructing consent.
 
 ```tsx
 const { mutate } = usePluginPreviewMutation();
@@ -1521,6 +1766,7 @@ const preview = await previewPluginRecovery(apiBase, name, requestOptions);
 const result = await recoverPlugin(apiBase, name, {
   recoveryRevision: preview.recoveryRevision,
   consent: {
+    registryTrustRevision: preview.registryTrustRevision,
     contentDigest: preview.contentDigest,
     grantRevision: preview.grantRevision,
     permissions: operatorDecision.permissions,
@@ -1544,6 +1790,11 @@ The mutation disables retries and refreshes plugin, recovery, layout, Agent, and
 Project queries after an accepted response, including pending activation. A network
 failure does not prove that the server had no effect; inspect current state before
 asking for another recovery decision.
+
+Follow the [client](../../packages/sdk/src/client/plugins.ts),
+[mutation hooks](../../packages/sdk/src/query-domains/plugin-mutations.ts),
+[install/recovery routes](../../src-server/routes/plugins/plugin-install-routes.ts),
+and [transaction owner](../../src-server/services/plugins/plugin-install-transaction.ts).
 
 ### `usePluginUpdateMutation()`
 
@@ -1578,11 +1829,13 @@ mutate({ pluginName: 'my-plugin', disabled: ['auth'] });
 
 ### `usePluginRegistryInstallMutation()`
 
-Installs or uninstalls a plugin from the registry.
+Requests installation or removal of a registry plugin. Installation of
+lifecycle-bearing code requires the reviewed preview consent and any conflict
+skip decisions; the mutation does not create approval on the caller's behalf.
 
 ```tsx
 const { mutate } = usePluginRegistryInstallMutation();
-mutate({ id: 'my-plugin', action: 'install' });
+mutate({ id: 'my-plugin', action: 'install', consent: reviewedConsent, skip: reviewedSkips });
 ```
 
 ### `useReloadPluginsMutation()`
@@ -1591,13 +1844,19 @@ Triggers `/api/plugins/reload` and invalidates plugin, layout, agent, and projec
 
 ### `waitForAgentHealth(slug, options?)`
 
-Imperative helper for polling agent readiness during post-install bootstrap flows.
+Polls the Agent health read, defaulting to 15 attempts separated by 2,000ms.
+Returns the first `healthy` response or `null` after exhausted attempts,
+swallowing individual request errors. There is no enclosing deadline or abort
+option, so the spacing alone does not establish a 30-second completion bound.
+This is a runtime health observation, not proof of a provider-backed turn.
 
 ---
 
 ## Components
 
-Unstyled (inline styles only) UI primitives that respect the app's CSS variables.
+Host-themed UI components. Styling varies by component: inline styles, CSS
+assets and host variables can all participate. Importing a component does not
+install the Station theme or prove a layout/accessibility result.
 
 ### `Button`
 
@@ -1638,6 +1897,9 @@ interface PillProps extends React.HTMLAttributes<HTMLSpanElement> {
 
 ```tsx
 <Spinner size="sm" />   // size: 'sm' | 'md' | 'lg', default: 'md'
+```
+
+```tsx
 <Spinner color="#fff" />
 ```
 
@@ -1658,10 +1920,15 @@ Full-viewport loading screen with rotating phrases.
 <FullScreenLoader
   message="Loading..."       // static message; overrides phrases if set
   phrases={['Loading...']}   // rotating phrases (default: built-in list)
-  interval={3000}            // ms between phrase changes, default: 3000
+  interval={2500}            // ms between phrase changes, default: 2500
   showLogo={true}            // show /favicon.png, default: true
 />
 ```
+
+Additional props include `tipMessages`, `label`, `action` and optional
+`progress` (a measured fraction from 0 to 1). Without `progress`, the bar is
+indeterminate. `action` is host-supplied UI, such as a recovery button; the
+component does not perform recovery itself.
 
 ### `AutoSelectModal`
 
@@ -1708,19 +1975,34 @@ Keyboard: `↑`/`↓` to navigate, `Enter` to select, `Escape` to close.
 
 ### `ActionButton`
 
-Button with icon and label for layout action bars.
+Button/link for a layout action. It reads the SDK navigation context: `external`
+opens the supplied URL, `internal` calls `navigate`, and `prompt` or
+`inline-prompt` calls the supplied `onLaunch`. Rendering it does not dispatch
+an Agent turn without that host callback.
 
 ### `AuthStatusBadge`
 
-Displays the current authentication status as a colored badge.
+Reads `useAuth()` and displays that provider's status, with a confirmation UI
+for its `renew` callback. It renders nothing while loading or when the provider
+is missing/`none`. This is the configured provider's auth status, not a Device
+grant, account session or Project-membership verdict.
 
 ### `FullScreenError`
 
-Full-viewport error display with message and optional retry action.
+Full-viewport error display with optional `description`, diagnostic `detail`
+and retry action. An explicit `actions` array replaces the `onRetry` and
+`secondaryAction` pair. The host owns those effects and must supply safe display
+text; the component does not redact diagnostics or retry on its own.
 
 ### `LayoutHeader`
 
-Standard header component for layout plugins with title, tabs, and actions.
+Header for legacy layout tabs and actions. Supply `title` and `description`,
+the relevant tab/action callbacks and the SDK navigation/auth contexts. Set
+`canLaunchPrompts={false}` when the host cannot launch prompts; it hides prompt
+actions while retaining internal/external links. Omitting that flag preserves
+the older behavior and can leave prompt controls without a useful callback.
+The retained `layoutPrompts` prop is a header input, not the current layout
+manifest's field name (`skills`).
 
 ---
 
@@ -1728,7 +2010,9 @@ Standard header component for layout plugins with title, tabs, and actions.
 
 ### `SDKProvider`
 
-Injects the SDK context into a plugin tree. Used by the runtime — plugins don't call this directly.
+Injects an explicitly supplied SDK context into a plugin tree. Station supplies
+it through its plugin boundary; custom hosts and isolated tests can mount it
+themselves. It forwards the value without populating missing optional slots.
 
 ```tsx
 <SDKProvider value={sdkContextValue}>
@@ -1749,7 +2033,11 @@ publish ambient plugin identity or infer Agent identity from a Layout slug.
 
 ### `LayoutNavigationProvider`
 
-Manages per-tab URL hash state for layout plugins with multiple tabs. Persists state to `sessionStorage` and restores it on tab switch.
+Stores per-tab strings in browser `sessionStorage` under
+`layout-<layoutSlug>-tab-<tabId>` and updates the page hash for the active tab.
+Use a stable, distinct layout identity. Stored state may be restored on mount
+when the hash is empty, and on tab switches. This is browser UI state, not
+durable Project state; storage failures are not caught here.
 
 ```tsx
 <LayoutNavigationProvider layoutSlug="my-layout" activeTabId={activeTab}>
@@ -1762,57 +2050,55 @@ Manages per-tab URL hash state for layout plugins with multiple tabs. Persists s
 Must be called inside `LayoutNavigationProvider`.
 
 ```ts
-{
+type LayoutNavigationExcerpt = {
   getTabState: (tabId: string) => string;
   setTabState: (tabId: string, state: string) => void;
   clearTabState: (tabId: string) => void;
 }
 ```
 
+`clearTabState` currently removes storage for an inactive tab, but clears only
+the URL hash for the active tab. It is not a reliable way to erase that active
+tab's saved string; a later restoration can read it again. Tracked in
+[#2806](https://github.com/kontourai/station/issues/2806).
+
 ---
 
 ## Agent Resolver
 
-Utilities for working with agent slugs.
-
-### `resolveAgentName(agentName: string, layout?: LayoutConfig): string`
-
-Resolves a short agent name to a fully-qualified `namespace:name` slug using layout context. Returns the name unchanged if it already contains `:` or no match is found.
+The current exported helper is `getAgentDisplayName(id, agents?)`. It looks up
+an exact canonical Agent ID and falls back to that ID. It does not parse a
+namespace, infer a Layout prefix or choose an execution target.
 
 ```ts
-resolveAgentName('my-agent'); // → 'sa-agent:my-agent' (if in layout context)
-resolveAgentName('sa-agent:my-agent'); // → 'sa-agent:my-agent' (unchanged)
+import { getAgentDisplayName } from '@kontourai/station-sdk';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+
+const id = agentId('my-agent');
+getAgentDisplayName(id, [{ slug: id, name: 'My Agent' }]); // 'My Agent'
+getAgentDisplayName(id, []);                            // 'my-agent'
 ```
 
-### `parseAgentSlug(slug: string): { namespace?: string; name: string }`
-
-Splits a slug into namespace and name.
-
-```ts
-parseAgentSlug('sa-agent:my-agent'); // → { namespace: 'sa-agent', name: 'my-agent' }
-parseAgentSlug('my-agent');          // → { name: 'my-agent' }
-```
-
-### `isLayoutAgent(slug: string): boolean`
-
-Returns `true` if the slug is namespace-qualified.
-
-```ts
-isLayoutAgent('sa-agent:my-agent'); // true
-isLayoutAgent('my-agent');          // false
-```
+The previously documented `resolveAgentName`, `parseAgentSlug` and
+`isLayoutAgent` functions are not current SDK exports. Plugin-qualified input
+accepted by `useSendToChat` has its own explicit parser/contract; a colon in an
+arbitrary ID is not evidence of plugin ownership.
 
 ---
 
 ## Voice
 
-Registries and interfaces for STT/TTS providers. Providers register themselves on import; the app subscribes to registry changes.
+Registries and interfaces for client-side STT/TTS provider objects. Registration
+is explicit; Station's built-in provider module calls it during import and
+`VoiceProviderContext` subscribes to registry changes. Registering a browser
+object is not server-side provider registration, credential configuration or
+proof that microphone/playback works.
 
 ### `voiceRegistry`
 
-```ts
-voiceRegistry.registerSTT(provider: STTProvider): void
-voiceRegistry.registerTTS(provider: TTSProvider): void
+```text
+voiceRegistry.registerSTT(provider: STTProvider): () => void
+voiceRegistry.registerTTS(provider: TTSProvider): () => void
 voiceRegistry.unregisterSTT(id: string): void
 voiceRegistry.unregisterTTS(id: string): void
 voiceRegistry.getAvailableSTT(): STTProvider[]
@@ -1821,6 +2107,13 @@ voiceRegistry.getSTT(id: string): STTProvider | undefined
 voiceRegistry.getTTS(id: string): TTSProvider | undefined
 voiceRegistry.subscribe(fn: () => void): () => void  // useSyncExternalStore-compatible
 ```
+
+Retain the returned disposer: it is idempotent and removes the entry only while
+that exact provider object still owns the ID. Direct `unregisterSTT/TTS(id)`
+removes the current entry by ID. Duplicate IDs replace the old provider; this
+older registry does not restore a previous provider when the replacement is
+removed. `getAvailableSTT/TTS` returns registered entries without filtering
+`isSupported`.
 
 ### `STTProvider` interface
 
@@ -1883,7 +2176,15 @@ interface ConversationalOptions {
 
 ### `ProviderCapability`
 
-Shape returned by `GET /api/system/capabilities` for each provider.
+Shape used in the voice lists returned by `GET /api/system/capabilities`.
+`configured` is the server's capability observation, not a successful live
+provider probe. Station can register configured server entries as display
+stubs whose methods warn that a plugin bundle is still needed; presence in the
+registry alone does not establish a working provider. The current capability
+hook does not retire its stubs when a later Station observation omits them, so
+a retained selection can still appear supported after changing connections.
+Lifecycle ownership for these entries is tracked in
+[#2807](https://github.com/kontourai/station/issues/2807).
 
 ```ts
 interface ProviderCapability {
@@ -1977,8 +2278,10 @@ remove the current winner. `getAll()` returns the visible adapters and
 Construct a manager with a registry, select an adapter ID, then drive its
 lifecycle with `start`, `stop`, `toggle`, `interrupt`, `reconnect`,
 `updateContext`, `sendText`, and `sendAudio`. `sendAudio` accepts
-`{ audio: Uint8Array }`; the adapter serializes it against lifecycle work and
-never projects audio bytes into snapshots, results, events, or telemetry.
+`{ audio: Uint8Array }`; the manager serializes optional operations with its
+lifecycle work. The adapter contract forbids projecting those bytes into
+snapshots/results. Custom adapters must honor that contract: the manager is
+not a sanitizer for arbitrary extra fields or telemetry emitted by adapters.
 
 ```ts
 const manager = new VoiceSessionManager(voiceSessionAdapterRegistry);
@@ -2006,8 +2309,11 @@ selection independently.
 Every lifecycle call returns `VoiceSessionOperationResult`. Successful results
 contain a snapshot. Failure results contain `VoiceSessionError` with one of
 `unavailable`, `unsupported`, `unconfigured`, `rate-limited`, or
-`operation-failed`. Provider causes are not part of the public contract. No selected live adapter
-returns `unavailable`; requesting an optional operation that the active adapter
+`operation-failed`. `VoiceSessionError` also declares an optional `cause`;
+the manager replaces thrown failures with a generic error, but it does not
+sanitize an adapter's returned error object. Adapters must keep sensitive
+provider details out of public errors. With no selected live adapter, an
+operation returns `unavailable`; requesting an optional operation that the active adapter
 did not declare and implement returns `unsupported`.
 
 `dispose()` is terminal and asynchronous. It coalesces concurrent disposal,
@@ -2071,27 +2377,40 @@ const report = await runVoiceSessionAdapterConformance({
 if (!report.ok) throw new Error(report.violations[0]?.message);
 ```
 
-The report includes the immutable snapshots observed and typed violations for
+The report includes the snapshots observed and typed violations for
 capability-method mismatches, identity preservation, required lifecycle
 states, snapshot immutability, and monotonic revisions. These helpers have no
-UI or server requirement.
+UI or server requirement when used with synthetic adapters. They invoke the
+adapter's enabled operations; passing a real adapter can therefore have real
+effects. Passing conformance establishes only the exercised contract checks,
+not microphone permission, audio quality, provider health or safe data handling.
 
 ---
 
 ## Context Registry
 
-For plugins that contribute ambient message context (e.g. timezone, location).
+For providers that contribute ambient message context, such as timezone or
+location. Station's `MessageContextContext` subscribes to registry membership
+and toggle changes; the chat send/drain callers explicitly request composed
+context. Importing the SDK does not attach context to every API call.
 
 ### `contextRegistry`
 
-```ts
+```text
 contextRegistry.register(provider: MessageContextProvider): void
 contextRegistry.unregister(id: string): void
+contextRegistry.toggle(id: string): void
 contextRegistry.getAll(): MessageContextProvider[]
 contextRegistry.get(id: string): MessageContextProvider | undefined
 contextRegistry.getComposedContext(): string | null  // all enabled providers joined by \n
 contextRegistry.subscribe(fn: () => void): () => void
 ```
+
+Registration replaces the entry for an existing ID; unregister removes the
+current entry by ID. Composition calls each enabled provider's `getContext`
+and joins nonempty strings. It does not catch a provider exception or subscribe
+to each provider's own change stream. Providers should return bounded,
+appropriate context and avoid secrets that should not enter an Agent prompt.
 
 ### `MessageContextProvider` interface
 
@@ -2119,31 +2438,46 @@ interface ContextCapability {
 
 ## Layout Providers
 
-Plugin-defined data providers scoped to a layout (e.g. a CRM data source).
+Browser data-provider factories scoped to a layout, for example a CRM data
+source. These SDK functions delegate to host-injected functions. The default
+`SDKAdapter` installs the core registry functions in an effect; a custom host
+must arrange that binding before registration/access. They do not register a
+server provider, grant permissions, or persist configuration.
 
 ### `registerProvider(id, metadata, factory)`
 
-Registers a provider. Called by layout plugins on load.
+Registers a factory under its layout/type/ID. `layout: '*'` is a global
+fallback. Registration alone does not select or instantiate it.
 
 ```ts
 registerProvider('my-crm', { layout: 'sales', type: 'crm' }, () => new MyCRMProvider());
+configureProvider('sales', 'crm', 'my-crm');
+const crm = getProvider<MyCRMProvider>('sales', 'crm');
 ```
 
 ### `getProvider<T>(layout, type): T`
 
-Returns the active provider instance for a layout/type pair.
+Resolves the configured ID, checking the named layout before `'*'`, invokes
+its factory once and caches the instance. Throws when the host binding,
+configuration or registered factory is missing.
 
 ### `hasProvider(layout, type): boolean`
 
-Returns `true` if a provider is configured for the layout/type.
+Returns `true` when a configured ID has a registered factory. It does not call
+the factory or check external service health; it returns `false` before host
+function injection.
 
 ### `getActiveProviderId(layout, type): string | null`
 
-Returns the ID of the active provider.
+Returns the instantiated cached provider's ID. It remains `null` after mere
+configuration until `getProvider` successfully creates the instance.
 
 ### `configureProvider(layout, type, providerId)`
 
-Sets the active provider for a layout/type (used by plugins to set defaults).
+Sets the in-memory configured ID and drops the cached instance for this pair.
+It neither invokes disposal on that instance nor validates the new ID eagerly.
+The registry has no persistence or ownership-scoped unregister API; host/plugin
+lifecycle code must account for those limits.
 
 ### `ProviderMetadata`
 
@@ -2160,16 +2494,27 @@ interface ProviderMetadata {
 
 ### `NotificationsAPI`
 
-Full REST client for programmatic notification access (outside React components).
+Imperative REST wrapper with `schedule`, `list`, `dismiss`, `action`, `snooze`,
+`clearAll` and `clearActivity`. There is no `create` method. It uses the supplied
+base URL and optional constructor bearer token with `fetch`; it does not
+capture Station's selected-connection/native transport authority for the caller.
+Use it only with a host-owned transport/authentication arrangement appropriate
+to that endpoint. Request admission and delivery remain server responsibilities.
 
 ```ts
 import { NotificationsAPI } from '@kontourai/station-sdk';
 
 const api = new NotificationsAPI(apiBase);
-await api.create({ category: 'build', title: 'Build complete', priority: 'normal' });
+await api.schedule({ category: 'build', title: 'Build complete', priority: 'normal' });
 await api.dismiss(notificationId);
-const notifications = await api.list({ status: 'pending' });
+const notifications = await api.list({ status: ['pending'] });
 ```
+
+Known scheduling limit: a `scheduledAt` more than about 24.9 days ahead exceeds
+Node's native timer range. The current service can then retain the notification
+as pending without a live wakeup until it is rescheduled or the service starts
+again. See [#2810](https://github.com/kontourai/station/issues/2810); successful
+creation alone does not establish future delivery.
 
 ---
 
@@ -2197,8 +2542,9 @@ are also exported from `@kontourai/station-sdk/client`.
   that authority's kept-result and Basis queries; it never implies support.
 - `useAnswerBasisQuery` and `useTaskBasisQuery` accept the same captured scope.
   Whole Task uses collection v4; portable MCP delivery uses page v3 with
-  independent 16-row answer, unassociated, kept-result, and retained Process
-  streams. Retained Flow gate evaluations are not answer associations and do
+  separate streams of up to eight answers and 16 rows each for unassociated
+  items, kept results and retained Process evaluations, within a 128 KiB page.
+  Retained Flow gate evaluations are not answer associations and do
   not establish Task standing. Unknown versions or a missing Process stream
   are unavailable.
 - `refreshAnswerAssessmentQueries(queryClient, payload, requestScope)` is the
@@ -2222,6 +2568,9 @@ An assessment producer uses the existing authenticated orchestration routes;
 the SDK intentionally provides no convenience client for this write protocol.
 All requests address one exact `StationAnswerBinding` (`sessionId`, `turnId`,
 and its answer identity), and route responses are private and non-cacheable.
+The current producer module rejects hosted authority and requires a readable
+answer bound to a Project in personal mode. Authentication alone does not make
+every answer an eligible assessment target.
 
 - `GET /api/orchestration/sessions/:sessionId/turns/:turnId/assessment/target`
   returns `{ expectedAnswer, profile, revision, active }`. The producer must
@@ -2235,13 +2584,19 @@ and its answer identity), and route responses are private and non-cacheable.
 - `DELETE /api/orchestration/sessions/:sessionId/turns/:turnId/assessment`
   sends `{ expectedRevision }` and returns the same receipt.
 
-`expectedRevision` is compare-and-swap: a `409` means the stored assessment
-changed, so read the target again and use its returned revision before deciding
-whether to retry. A `404` does not disclose whether the binding, producer access, or assessment is
+`expectedRevision` is compare-and-swap: a `409` can mean a changed revision or
+a conflicting publication/binding, so read the target again before deciding
+whether to retry. An exact repeat of the current active publication returns
+its existing receipt; reusing its publication ID with different content conflicts.
+A `404` does not disclose whether the binding, producer access, or assessment is
 absent; a `503` means assessment storage is unavailable. The exact wire types
 are `StationAnswerAssessmentReadTarget`, `StationAnswerAssessmentPublishInput`,
 and `StationAnswerAssessmentReceipt` from
-`@kontourai/station-contracts/answer-assessment`.
+`@kontourai/station-contracts/answer-assessment`. The HTTP publish schema also
+accepts an optional `reviewedSource` association, whose exact claim, revision,
+Project and principal must match the publication. See the
+[route schema](../../src-server/routes/orchestration/orchestration.ts) and
+[assessment owner](../../src-server/services/evidence/answer-assessment-module.ts).
 
 `ApiRequestScope` contains only `apiBase` and a non-secret `authorityKey`.
 The host captures it before invocation from Connect's public request-authority
@@ -2250,9 +2605,11 @@ it with the exact native authorization receipt. Never put credentials in keys.
 The host credential resolver must expose matching `requestAuthority` metadata
 and its live `isCurrent` check. Scoped operations reject mismatches before
 dispatch and after asynchronous response/body reads, including cloned bodies;
-they never adopt a replacement connection. Keep also snapshots its invocation
-before asynchronous mutation scheduling. A missing scope disables the native
-result hooks and rejects Keep rather than choosing an ambient destination.
+they never adopt a replacement connection. Keep captures its authority before
+asynchronous mutation scheduling. A missing scope disables
+`useSessionToolResultQuery` and the Flow evaluation hooks, and rejects the Keep
+mutations. Legacy answer/Task Basis and kept-tool-result list hooks still allow
+unscoped use; Station's connected Basis host supplies scope explicitly.
 
 ```ts
 import { getSessionToolResult } from '@kontourai/station-sdk/client';
@@ -2265,6 +2622,13 @@ const result = await getSessionToolResult(
 
 Ordinary unscoped SDK calls retain their existing behavior. These protections
 are an explicit host contract, not a global replacement for authentication.
+
+Follow the [connected host](../../src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx),
+[Basis pane](../../packages/basis-pane/src/StationBasisPane.tsx),
+[tool-result hooks](../../packages/sdk/src/task-tool-results.ts),
+[Flow hooks](../../packages/sdk/src/flow-gate-evaluations.ts),
+[authority guard](../../packages/sdk/src/client/http.ts), and
+[MCP page contract](../../packages/contracts/src/task-basis-mcp.ts).
 
 ### `agentQueries`
 
@@ -2286,11 +2650,15 @@ agentQueries.stats(agentSlug, conversationId)        // GET /agents/:slug/conver
 
 ### `knowledgeQueries`
 
-Query factory for knowledge operations.
+Query factory for file-store Knowledge operations. The namespace selects a
+route segment; it is not merely a client-side filter. The underlying API helper
+uses `/knowledge/ns/:namespace` when supplied and the unqualified `/knowledge`
+base otherwise. Search results remain dependent on current indexing/adapter
+availability; these factories do not perform indexing.
 
-```ts
-knowledgeQueries.list(projectSlug, namespace?)       // GET /api/projects/:slug/knowledge
-knowledgeQueries.search(projectSlug, query, ns?)     // POST /api/projects/:slug/knowledge/search
+```text
+knowledgeQueries.list(projectSlug, namespace?)       // GET /api/projects/:slug/knowledge[/ns/:namespace]
+knowledgeQueries.search(projectSlug, query, ns?, topK?) // POST to the selected base + /search
 knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/knowledge/namespaces
 ```
 
@@ -2321,7 +2689,8 @@ option for conversations without a multi-session lineage.
 `previewCheckpointRestore(apiBase, threadId, turnId, requestScope)` returns a
 short-lived, owner-bound preview for the turn's settle checkpoint. It includes
 the preview id, repository root, target and currently observed tree hashes,
-bounded changed paths, and expiry. `confirmCheckpointRestore` submits that
+up to 200 changed paths with a truncation flag, and a five-minute expiry.
+`confirmCheckpointRestore` submits that
 exact preview with `confirmed: true` and the captured current-tree hash.
 
 ```ts
@@ -2350,7 +2719,11 @@ session/turn mismatch, workspace changes after preview, or a workspace with an
 active or starting local turn. Restore changes repository files only; it does
 not rewind conversation history or external tool effects. Treat an
 indeterminate response as possible effect and inspect the workspace before
-retrying.
+retrying. Previews are held in server memory, so a restart requires a new one.
+See the [client](../../packages/sdk/src/client/checkpoint-restore.ts),
+[route](../../src-server/routes/orchestration/orchestration.ts),
+[restore service](../../src-server/services/checkpoints/checkpoint-restore.ts),
+and [confirmation UI](../../src-ui/src/components/chat/CheckpointRestoreButton.tsx).
 
 ## Feedback analysis
 
@@ -2377,6 +2750,11 @@ guideline formatter. Its response includes `isolated: true`; it does not edit
 saved ratings or the profile used in conversations. It does not establish the
 integrity of the saved feedback file.
 
+See the [SDK mutations](../../packages/sdk/src/query-domains/analytics.ts),
+[HTTP routes](../../src-server/routes/operations/feedback.ts),
+[job owner](../../src-server/services/feedback/feedback-service.ts), and
+[output parser/cache key](../../src-server/services/feedback/feedback-analysis.ts).
+
 ## Monitoring event windows
 
 `fetchMonitoringEventWindow(start, end, signal, { limit: 1000 })` returns
@@ -2390,39 +2768,69 @@ shape and no default limit for existing export callers. Both functions reject
 failed or malformed reads instead of reporting an empty history.
 
 API-base initialization wakes pending callers when configuration is published,
-with the existing 500 ms failure bound; later reads observe the latest configured
-base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
-and drops additional events in that interval. Flushes are single-flight with a
-five-second request timeout. It is not an accounting ledger.
-Events captured under a different selected Station or account authority are
-dropped rather than retargeted at flush time. Browser broker routes currently
-drop optional telemetry; they never send it by direct Station HTTP.
+with a 500 ms failure bound; later reads observe the latest configured base.
+See the [request helpers](../../packages/sdk/src/query-domains/systemRuntimeRequests.ts)
+and [API-base owner](../../packages/sdk/src/api-core.ts).
 
 ## Telemetry
 
 ### `telemetry`
 
-Client-side telemetry utilities for plugins.
+Best-effort client telemetry for plugins. `track(event, attributes?)` buffers
+up to 1,000 events at a time, drops new events while full, and schedules a flush
+after ten seconds. `flush()` also allows an explicit flush. Only one request is
+in flight at a time, with a five-second abort deadline.
 
 ```ts
 import { telemetry } from '@kontourai/station-sdk';
+
+telemetry.track('panel.opened', { panel: 'overview' });
 ```
+
+The buffer is removed before dispatch. Network failures are swallowed, HTTP
+status is not checked, and events are not retried; a resolved `flush()` is not
+proof of server receipt. The sender uses direct browser `fetch`, outside the
+SDK's authenticated transport. The legacy imperative plugin label is currently
+empty, so this helper does not establish package attribution.
+
+With the host's raw-egress policy installed, a changed connection/account
+authority drops its captured events instead of retargeting them. Browser broker
+routes drop optional telemetry. Without that policy, the helper compares only
+the configured API base. Do not put secrets in events or use this buffer as an
+accounting record. See [telemetry](../../packages/sdk/src/telemetry.ts) and the
+[identity getter](../../packages/sdk/src/api-core.ts).
 
 ---
 
 ## Layout Context
 
-### `createLayoutContext()`
+<a id="createlayoutcontext"></a>
 
-Creates a layout context for use in layout plugins. Used internally by `LayoutProvider`.
+### `createLayoutContext(config)`
+
+Creates a plugin-owned `{ Provider, useLayoutContext }` pair. Call the factory
+once for a layout, outside component rendering. Supply `layoutSlug`, optional
+`projectSlug`, and `initialState`; `persist` defaults to `true`. State updates
+shallow-merge partial values. The provider initially merges any parsed
+`sessionStorage` value into the initial state, and later writes updates under
+`layout:[projectSlug:]layoutSlug:context`.
+
+The stored JSON is not schema-validated or partitioned by Station/account
+authority. Use it for non-sensitive presentation state; a plugin that needs
+stronger identity or validation must supply that design itself. Read/parse
+failures fall back to initial state, write failures log a warning, and
+`resetState()` removes the stored key but does not catch storage-removal errors.
+This factory is independent of the SDK's `LayoutProvider`. See the
+[implementation](../../packages/sdk/src/layout/context.tsx) and
+[Enterprise example](../../examples/enterprise-layout/src/EnterpriseContext.tsx).
 
 ---
 
 ## Refused requests
 
 `StationHttpError` (exported from `@kontourai/station-sdk` and
-`@kontourai/station-sdk/client`) is the error a refused Station request
-throws. Branch on its fields, never on the message text:
+`@kontourai/station-sdk/client`) carries HTTP/envelope refusal details for the
+fetcher families listed below. Branch on its fields, never on the message text:
 
 ```ts
 class StationHttpError extends Error {
@@ -2433,45 +2841,61 @@ class StationHttpError extends Error {
 }
 ```
 
-Today every field is carried by the integration, review and workspace pane
-host action fetchers (built on `readEnvelopeOrThrow`), and by the scheduler,
-skills, knowledge, secret-binding, conversation, orchestration, plugin,
-Project (every fetcher built on `unwrapProjectResponse`), Agent, execution
-and Task output fetchers. The conversation, orchestration, Project and Agent
-fetchers used to throw a plain `Error` for a `200` carrying
-`{ success: false }`; that is now a `StationHttpError` with status `200` too. `respondToRequest`'s error still carries the failure
+The integration, review and workspace pane host-action catalog/preparation
+fetchers (built on `readEnvelopeOrThrow`), plus the scheduler, skills, knowledge,
+secret-binding, conversation, orchestration, plugin, Agent, execution and Task
+output fetchers preserve supplied refusal fields. Project fetchers use
+`unwrapProjectResponse` for the same fields. The conversation, orchestration,
+Project and Agent fetchers can report a `StationHttpError` with status `200`
+when the body carries `{ success: false }`. `respondToRequest`'s error still carries the failure
 `receipt`. `readEnvelopeOrThrow(response)`
-throws this error for a non-2xx response or for a body that is not
-`success: true`. A body that is not JSON keeps its status on a non-2xx; on a
+throws this error for a non-2xx response or a missing/false `success` value.
+It checks truthiness, not a literal-boolean schema, and does not validate the
+returned `data`; individual fetchers own any stronger success-payload checks.
+A body that is not JSON keeps its status on a non-2xx; on a
 2xx it is a protocol failure and throws a plain `Error`. Other fetchers still
 throw their own errors — some a `StationHttpError` without `details`, some a
 plain `Error` or a family-specific subclass — and move onto the same fields
 in later releases, keeping their subclasses (#2708).
 
-Family subclasses are `StationHttpError`s too. The scheduler's
+Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,
 `SchedulerRunFailedError`, `SchedulerRunRefusedError`) are built from the
 error the envelope helper made of the response, so they keep its status,
 `details` and `Retry-After`; a run error's `code` stays its own fixed value.
 `PluginCollectionHttpError` is built the same way: it keeps the envelope's
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
-and `Retry-After`. `ChatHttpError`, thrown by the execution fetchers, now
-extends `StationHttpError`; `serverMessage` still holds the route's sentence,
-`stationEnvelope` is `false` when the body was not Station's answer (a proxy's
-HTML page keeps its status but proves nothing Station decided), and `ForegroundMessageIndeterminateError` keeps its `detail` and fixed
-`code`. Both still accept their positional constructor.
-`ProjectTaskRoomProtocolError` keeps the refusal's `status`, `code`, `details`
-and `Retry-After` when Station refused the request, and none of them for a
-malformed room response.
+and `Retry-After`.
+Its constructor accepts `(failure: StationHttpError, options?: { grantsUnavailable?: boolean })`;
+the earlier `(status, envelope, options)` constructor is no longer supported.
+Host-action execution deliberately returns `indeterminate` after any failed or
+unreadable response; it does not expose the helper's exception to the caller.
 
-Some fetchers withhold what a protected route said. `getInputReplyContext`
-throws a `StationHttpError`, and the Task and Session reference reads throw
+`ChatHttpError`, thrown by execution fetchers, now extends `StationHttpError`;
+`serverMessage` retains the helper's message. Execution fetchers derive
+`stationEnvelope` from a boolean `success` field or an object `error` with a
+string `code`. An HTML proxy response keeps its HTTP status but sets this flag
+to `false`, so status alone must not be treated as a definitive Station
+refusal. This shape check is not independent proof of the responder's identity.
+`ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
+Both classes retain their positional constructors.
+
+`ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
+HTTP/envelope failure form carries `status`, `code`, `details` and
+`retryAfterMs`; its payload-validation form carries only the protocol message.
+
+Some fetchers deliberately withhold the route's words and details.
+On a non-2xx response, `getInputReplyContext` throws a `StationHttpError`
+with a fixed generic message. The Task and Session reference reads use
 `TaskToolResultRequestError`, `TaskUserInputReferenceRequestError`,
 `TaskBasisRequestError`, `SessionOutputsRequestError` and
-`SessionInventoryRequestError` (plain `Error` subclasses). Each keeps the
-observed `status`, `code` and `retryAfterMs` under a fixed generic message,
-without `details`. A status of `0` on the reference errors means no response
-was observed.
+`SessionInventoryRequestError`, which remain plain `Error` subclasses.
+These opaque errors retain the observed `status`, supplied `code` and
+`retryAfterMs`, without `details`. A status of `0` is a local failure marker,
+not an HTTP response status; callers must not interpret it as a server refusal.
+Passing an abort signal still controls the shared transport, but these
+reference fetchers can normalize a transport rejection into their generic
+status-0 error rather than preserve an `AbortError`.
 
 - `status` is the status the response actually carried. A route that answers
   `200` with `{ success: false }` produces a `StationHttpError` whose status
@@ -2479,7 +2903,7 @@ was observed.
 - `code` is the top-level `code`, else the object `error`'s own `code`
   (the runtime's `{"error":{"code":"authentication_required"}}`). A blank or
   non-string code is absent.
-- `details` is present when the body carried one. For a validation refusal it
+- `details` is present when the body carried a non-null value. For a validation refusal it
   is `{ formErrors, fieldErrors }`.
 - The message is a summary — a string `error`, the object `error`'s
   `message`, then its `code`, the top-level `message`, then the fetcher's
@@ -2497,6 +2921,20 @@ was observed.
   fallback)` return the shown form for a body a caller has already parsed:
   the reasons when there are any, else the summary. Their callers throw a
   plain `Error` that keeps only this text.
+
+The [envelope helper](../../packages/sdk/src/client/api-error-message.ts) and
+[transport](../../packages/sdk/src/client/http.ts) own these rules. A typed
+failure does not imply that every successful payload was validated or that a
+mutation is safe to retry. Read the operation's receipt and retry contract.
+On the server, Station-control failures marked as MCP `isError` are read by the
+[raw invoke route](../../src-server/routes/agents/invoke-agent.ts); the shared
+MCP `callTool` helper still returns the protocol result for its caller to interpret.
+
+MCP App rendering is a separate [host boundary](../design/mcp-ui-host.md), with
+integration pinning, resource policy and frame isolation. Resource URL-scheme
+filtering is not complete CSP source-expression validation or a guarantee of
+effective browser network containment. An ordinary SDK tool call does not
+establish that rendering qualification.
 
 ## Utilities
 
@@ -2541,7 +2979,13 @@ Core types re-exported from `@kontourai/station-contracts/*` plus SDK-specific t
 
 ### Core contract types
 
-`AgentSpec`, `AgentSummary` (SDK), `AgentMetadata`, `AgentUIConfig`, `AgentGuardrails`, `AgentTools`, `AgentQuickPrompt`, `LayoutConfig`, `LayoutDefinition`, `LayoutTab`, `LayoutAction`, `LayoutPrompt`, `PluginManifest`, `SlashCommand`, `SlashCommandParam`, `ToolDef`, `ToolMetadata`, `ToolPermissions`, `ToolCallResponse`, `ConversationStats`
+Representative SDK re-exports include `AgentSpec`, `AgentMetadata`,
+`AgentUIConfig`, `AgentGuardrails`, `AgentTools`, `AgentQuickPrompt`,
+`LayoutDefinition`, `LayoutTab`, `LayoutSkill`, `PluginManifest`,
+`SlashCommand`, `SlashCommandParam`, `ToolDef`, `ToolMetadata`, `ToolPermissions`,
+`ToolCallResponse` and `ConversationStats`. Import other domain types, such as
+`LayoutConfig` and `LayoutAction`, from their owning contract subpath rather
+than assuming the SDK re-exports them.
 
 ### SDK-specific types
 
@@ -2552,7 +2996,7 @@ interface AgentSummary {
   prompt?: string;
   model?: string;
   region?: string;
-  source?: 'local' | 'acp';
+  source?: AgentSource; // legacy compatibility label, not an engine discriminator
   guardrails?: AgentGuardrails;
   tools?: AgentTools;
   ui?: AgentUIConfig;
@@ -2600,14 +3044,8 @@ interface Conversation {
 /** @deprecated Alias of `SDKNavigation`, what `useNavigation()` returns. */
 type NavigationState = SDKNavigation;
 
-interface InvokeOptions {
-  conversationId?: string;
-  userId?: string;
-  model?: string;
-  tools?: string[];
-  maxSteps?: number;
-  signal?: AbortSignal;
-}
+// The root export selects the prompt-based invoke API type shown above.
+type InvokeOptions = import('@kontourai/station-sdk').InvokeOptions;
 
 interface InvokeResult {
   success: boolean;
@@ -2618,8 +3056,8 @@ interface InvokeResult {
 
 interface LayoutComponentProps {
   agent?: AgentSummary;
-  layout?: LayoutConfig;
-  activeTab?: WorkspaceTab;
+  layout?: LayoutDefinition;
+  activeTab?: LayoutTab;
   onLaunchPrompt?: (prompt: AgentQuickPrompt) => void;
   onLaunchWorkflow?: (workflowId: string) => void;
   onShowChat?: () => void;
@@ -2627,7 +3065,7 @@ interface LayoutComponentProps {
   onSendToChat?: (text: string, agent?: string) => void;
 }
 
-type WorkspaceComponent = (props: LayoutComponentProps) => ReactElement;
+type LayoutComponent = (props: LayoutComponentProps) => ReactElement;
 type EventHandler<T = any> = (event: T) => void;
 ```
 # Host transport binding lifetime
@@ -2673,7 +3111,8 @@ physical package paths in this API.
 The portable client exports `getWorkspacePaneHostActions`,
 `prepareWorkspacePaneHostAction`, and `executeWorkspacePaneHostAction` from
 `@kontourai/station-sdk/client`. Preparation returns a short-lived, actor- and
-Project-bound one-shot ticket. Execution consumes it before any provider work.
+Project-bound one-shot ticket, held in memory for 60 seconds. A restart loses
+unused tickets. Execution consumes it before any provider work.
 Do not store or log tickets, and never retry execution automatically. An
 `indeterminate` result means work may have started; use existing Activity and
 conversation evidence to inspect it. An accepted result carries distinct
@@ -2727,7 +3166,15 @@ preparation and execution repeat authorization against the current installation.
 Host actions require the package's current `agents.invoke` permission. They use
 captured Project and Agent authority at provider invocation and cannot substitute
 an ambient Agent, override a fixed action, or revive a retired installation.
-Host actions support native Station Agents and externally connected Agents in shared or provisioned Project worktrees. Native execution preserves the existing configured Agent and model; a private relay capability verifies its runtime generation and repeats admission immediately before the native model call. Canonical provisioning mints a private exact Session/Project/CWD binding. The native relay carries that Session directory into Project context, Bash children, and relative file operations; explicit MCP resource roots retain their configured meaning.
+Host actions currently admit `own-plugin-agent` references. Those package-owned
+Agents may use Station's engine or an external engine, in shared or provisioned
+Project worktrees; a `station-agent` reference to an arbitrary global Agent is
+not admitted. Native execution preserves the configured Agent and model. Its
+private relay verifies the runtime generation and repeats admission immediately
+before the model call. Provisioning binds the exact Session, Project and working
+directory. The native relay uses that directory for Project context, Bash
+children and relative file operations; explicit MCP resource roots keep their
+configured meaning.
 
 A host-created Session retains server-stamped `workspacePaneHostAction` metadata:
 package id, action id, and opaque installation generation. These coordinates
@@ -2736,12 +3183,21 @@ receipts. Public metadata/options cannot forge this reserved field; callers
 receive the existing client-origin and principal attribution as well.
 
 Host action reads and mutations accept the standard `ApiRequestScope`/client
-request options so the preparation and execution stay on the same Station
-and authority. The mutation refreshes canonical Session and conversation
-inventory queries before exposing its result. In Station's host UI, **Open
+request options. Pass a captured scope to keep preparation and execution on the
+same Station and authority; omitted scopes retain legacy ambient behavior.
+Before exposing a result, the mutation waits for its canonical Session and
+conversation-inventory refresh attempts to settle, including failures. In
+Station's host UI, **Open
 conversation** uses canonical resolution and hydration; **View result** stays
 anchored to the execution Session returned by this invocation. A removed Agent
 falls back to read-only evidence, never to another default Agent.
+
+The [host UI](../../src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx),
+[SDK client](../../packages/sdk/src/client/workspace-pane-host-actions.ts),
+[ticket owner](../../src-server/services/plugins/workspace-pane-host-actions.ts),
+[invocation admission](../../src-server/services/plugins/workspace-pane-host-admission.ts),
+and [runtime bridge](../../src-server/runtime/routes/workspace-pane-host-actions.ts)
+own these stages.
 
 ## Package lifecycle results
 
@@ -2844,10 +3300,19 @@ learning lifecycle intents are separate future contracts. Hosts should present
 these limits directly, without treating a source read as candidate approval,
 promotion, or effect evidence.
 
+Follow the [SDK reader](../../packages/sdk/src/client/learning-source.ts),
+[query hook](../../packages/sdk/src/query-domains/knowledgeStores.ts),
+[route](../../src-server/routes/knowledge/knowledge-source-routes.ts),
+[request policy](../../src-server/knowledge-store/knowledge-source-observation-policy.ts),
+and [record reader](../../src-server/knowledge-store/knowledge-store-provider.ts).
+The [source dialog](../../src-ui/src/views/learning-review/LearningSourceDialog.tsx)
+shows how the host withholds data after authorization changes.
+
 ### Exact attention request inspection
 
-`useAttentionRequestInspection(reference, requestScope)` reauthorizes the exact
-Session/request/opened-event tuple on every mount. Its query key includes the
+When enabled, `useAttentionRequestInspection(reference, requestScope)` reads the
+exact Session/request/opened-event tuple again on every mount. The server checks
+current authority. Its query key includes the
 host-captured authority; cached data is withheld until the fresh read finishes.
 The imperative `inspectAttentionRequest` is also exported from the React-free
 client entry. Neither API chooses a replacement request automatically.
@@ -2873,6 +3338,10 @@ request authority is a refusal to act, requiring fresh inspection rather than a
 blind mutation retry. Requests without canonical approval/permission evidence
 keep their ordinary Session or notification fallback.
 
+See the [hook](../../packages/sdk/src/request-inspection.ts),
+[response parser](../../packages/sdk/src/client/request-inspection.ts), and
+[exact-event reader](../../src-server/services/orchestration/request-inspection.ts).
+
 ## Cloud target observation
 
 `verifyCloudMoveTarget(apiBase, options?)` from
@@ -2891,6 +3360,11 @@ The shared GET transport supports opt-in `requireCredential`, `redirect: 'error'
 and `maxResponseBytes` options. The probe requires SDK-owned matching bearer
 attachment or a current authenticated native transport binding. It refuses
 redirects, limits each body to 4 KiB and uses a shared 15-second deadline. Existing callers retain their current defaults.
+
+The [client](../../packages/sdk/src/client/cloud-move.ts) reads identity,
+discovery, then identity again; it rejects a changed instance, boot or build.
+The [CLI caller](../../packages/cli/src/commands/cloud-target.ts) requires one
+explicit enrolled target selector and configures credentials before that read.
 
 ### Restored conversation execution
 
@@ -2917,6 +3391,11 @@ model name. The initial accepted Session launch plan is not presented as proof
 of the connection used by a later turn. Unknown current-provider provenance
 stays unknown rather than being reconstructed from Agent defaults.
 
+Follow the [server resolver](../../src-server/services/orchestration/conversation-open-resolver.ts),
+[wire parser](../../packages/sdk/src/conversation-open.ts),
+[chat-state update](../../src-ui/src/components/chat-dock/conversationOpenController.ts),
+and [revalidation caller](../../src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx).
+
 ## Home recovery disclosure
 
 `SystemStatus.homeRecovery` is an optional, host-scoped disclosure returned by
@@ -2928,6 +3407,11 @@ execution authority or proves a witnessed channel transfer. Do not reuse a
 cached recovery notice across API-base changes; refresh the selected Station
 before projecting it as current. The record exposes no filesystem path or
 backup manifest contents.
+
+The [recovery-record reader](../../packages/shared/src/station-home-archive.ts)
+checks the local record; [runtime composition](../../src-server/runtime/routes/runtime-route-support.ts)
+selects the public disclosure. This is not a fresh verification of every file
+in the recovered home.
 
 ## Update status diagnostics
 
@@ -2945,8 +3429,8 @@ source checkout running under a supervisor — the installed service or another
 supervising process), and
 `selfUpdateUnavailableCode` (the same refusal as a code: `'service-managed'`
 for the installed launchd/systemd service, `'supervised'` when only a
-supervisor PID is present). The parser rejects a non-boolean `updateAvailable`
-and malformed supplied counts, normalizes a malformed identity or an unknown
+supervisor PID is present). The parser requires a boolean `updateAvailable`
+and safe-integer supplied counts, normalizes a malformed identity or an unknown
 provenance or refusal code to unavailable (`null` — an unknown code never
 reads as a specific one; the refusal text still accompanies it), accepts responses from older servers that omit the new fields
 entirely, and never infers `applyMethod` from `updateAvailable`. A non-ok
@@ -2954,22 +3438,60 @@ HTTP status throws a `StationHttpError` before the body can read as success;
 a genuine `error` field still throws a plain `Error` with the server's
 message.
 
+This is field-specific parsing: `installKind` and `releaseCheck` are checked
+against their known values (an unknown value is left out), while `applyMethod`
+is still passed through without enum validation. See the
+[parser](../../packages/sdk/src/system-update-status-parser.ts) and
+[request boundary](../../packages/sdk/src/query-domains/systemRuntimeRequests.ts).
+
 `requestSystemIdentity(apiBase, signal?)` reads `GET /api/system/identity`
 through the same rules: a complete identity triple is required, optional
 `shaSource` and `devicePresentation` metadata is dropped when malformed, and
 the 503 `identity_unavailable` branch surfaces as a `StationHttpError` with
-its status preserved. Every export is re-exported from
-`@kontourai/station-sdk` and `@kontourai/station-sdk/queries`.
+its status preserved. Both functions are re-exported from
+the root `@kontourai/station-sdk` entry. `src/queries.ts` is an internal barrel;
+`@kontourai/station-sdk/queries` is not an exported package subpath.
+
+A prebuilt release archive (#2675) reports `installKind: 'archive'`, or
+`'archive-service'` when the Station service's fixed launcher runs it and can
+update it. Its status carries `currentVersion`, `latestVersion` (the newest
+version its signed release manifest names), `channel` (the release ring), and
+`releaseCheck`: `'verified'`, `'unreachable'`, `'unverified'` (the manifest
+arrived but did not verify against the pinned keys), or `'not-recorded'`. The
+parser leaves out an `installKind` or `releaseCheck` it does not know rather
+than passing it on. `applyMethod` is `'service-update'` for an
+`archive-service`, `'station-upgrade'` for an installed archive no launcher
+runs, and `'reinstall'` for any other archive copy. An `archive-service`
+status also carries `serviceUpdate`, a `ServiceUpdateProgress` from
+`@kontourai/station-contracts/system-status` (an update under way, or the
+last one's outcome). `applyCoreUpdate` returns `serviceUpdate: { requestId }`
+when it queued such an update; follow it with
+`requestServiceUpdateProgress(apiBase, signal?)` (`GET
+/api/system/core-update/service-update`) or
+`useServiceUpdateProgressQuery(apiBase, { enabled, scopeKey?, refetchInterval
+})`, correlating the outcome by `requestId`. A progress body this SDK cannot
+read parses as `{ state: 'unavailable' }`, never as a neighbouring state, and
+a non-ok status throws a `StationHttpError`.
 
 `useCoreUpdateStatusQuery(apiBase, config?, scope?)` accepts an optional third
 `CoreUpdateStatusScope` argument: `{ scopeKey?, assertCurrent? }`. When
-`scopeKey` is present it joins the query key, so a cached comparison captured
-for one connection (or one answering boot) can never be served to another.
+`scopeKey` is present it joins the query key. The caller must derive a distinct
+key for each connection/boot it wants to keep separate; the hook does not derive
+that identity.
 `assertCurrent` is checked immediately before the request is issued and again
 after it resolves — throwing rejects the fetch, so an obsolete or superseded
 scope's completion never resolves as current data. Both fields are
 secret-free: credentials and credential-evidence objects must never enter a
 query key or these callbacks. Existing two-argument callers are unaffected.
+
+The current Settings callers pass `context.isCurrent` directly, which returns
+a boolean. The hook ignores that return value, so `false` alone does not reject
+the query through this guard. Other scope keys, transport checks and UI
+availability checks still apply. Callers needing this pre/post refusal must
+supply a callback that throws when stale. See the
+[hook](../../packages/sdk/src/query-domains/systemRuntime.ts),
+[host predicate](../../src-ui/src/hooks/useConnectedServerUpdateContext.ts),
+and [Settings caller](../../src-ui/src/views/settings/CoreUpdateCheck.tsx).
 
 ## Saved answer quotations
 
@@ -2982,13 +3504,18 @@ and a SHA-256 text revision. Reads recheck current access and do not load the
 whole Session. Missing and denied answers are indistinguishable; an oversized
 answer is refused. A text revision detects changes, not evidence standing.
 
-The Station composer retains up to three selected excerpts with its existing
-local draft. Sending serializes the user's copied text and source references
+The Station composer retains up to three selected excerpts, each at most 4,096
+UTF-16 code units, with its existing local draft. Sending serializes the user's copied text and source references
 into the ordinary user message; it creates no capability or trust grant.
 Inspecting a saved reference reads its original answer under current access
 on the selected Station. No network request is made to an origin supplied by
 an untrusted quote link. The saved quotation and a changed current source
 remain visibly distinct.
+
+See the [SDK reader](../../packages/sdk/src/client/quote-source.ts),
+[turn-query owner](../../src-server/services/orchestration/session-query-module.ts),
+[quote serializer](../../src-ui/src/utils/answer-quotes.ts), and
+[source-inspection UI](../../src-ui/src/components/chat/QuoteSourceLink.tsx).
 
 ## In-app pull-request review
 
@@ -3010,11 +3537,16 @@ not a safe automatic-retry signal. Unsupported review adapters return an
 explicit unavailable result. Diff bytes and discussion are bounded and may be
 partial; the response says which content could not be supplied.
 
+See the [SDK client](../../packages/sdk/src/client/pull-request-review.ts) and
+[forge review adapter](../../src-server/services/pull-requests/pull-request-review.ts).
+
 ## Conversation pull-request links
 
 `@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
-unlinks exact pull-request identities for one Conversation. Each call requires
-the selected Station API base and captured `requestScope`. A link is persisted
+unlinks exact pull-request identities for one Conversation. Each call takes
+the selected Station API base; pass the captured `requestScope` in its optional
+request options to preserve that authority across awaits. The client permits
+unscoped calls. A link is persisted
 only after the provider resolves the exact provider, host, repository owner,
 repository name, and native ref under current authorization.
 
@@ -3023,6 +3555,11 @@ unsupported, or unavailable state. Clients should mark an old cached
 observation stale and require refresh before review or other actions. Explicit
 unlink changes only the Conversation association; it never changes the pull
 request or deletes Task-kept provenance.
+
+The [client](../../packages/sdk/src/client/conversation-pull-request-links.ts)
+and [route/store boundary](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)
+own explicit links separately from provider-derived or Task-kept references.
+
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from
@@ -3037,6 +3574,13 @@ Opaque `attachmentRefs` use the existing current-host staging path; retries
 retain the same `clientTurnId` and payload after an uncertain response. Pass the
 captured host `requestScope` to each read, staging operation and send.
 
+The [SDK parser](../../packages/sdk/src/client/input-reply.ts),
+[request route](../../src-server/routes/orchestration/orchestration.ts),
+[dispatch owner](../../src-server/services/orchestration/orchestration-service.ts),
+and [input-reply UI](../../src-ui/src/components/attention/NeedsInputReply.tsx)
+show the complete binding. The UI retains an uncertain attempt and locks its
+payload; only a provably unsent failure clears that attempt for editing.
+
 ## Mobile device inspection
 
 The opt-in `@kontourai/station-sdk/mobile-device` subpath exports
@@ -3047,6 +3591,13 @@ types, and `MobileDeviceRequestError` with an HTTP status. Both use the existing
 capture refuses mismatched targets and returns a timestamped PNG, not stream
 readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
 for host setup, access scopes, limits, and the web/desktop integration boundary.
+
+Inventory additionally accepts optional `projectSlug` and `hostId` arguments;
+the host defaults to `local`. The one-frame capture client currently accepts
+UUID-shaped iOS IDs and Android `emulator-<number>` IDs. Use
+`isCaptureableMobileDeviceTarget` before offering that action: a listed device
+is not necessarily accepted by this capture API. Capture does not boot a device
+or establish a live session. See the [SDK boundary](../../packages/sdk/src/mobile-device.ts).
 
 ## Experimental encrypted-channel transport consumer
 
@@ -3075,3 +3626,7 @@ account's request scope, bound channel counts/lifetimes, and close the transport
 when its endpoint trust retires. Transport readiness alone does not partition
 account or Project data. An
 uncertain dispatched mutation must not be retried automatically.
+
+The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
+and [credential resolver](../../packages/sdk/src/client/http.ts) show where
+framing ends and the application's authority checks begin.

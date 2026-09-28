@@ -15,6 +15,7 @@ import {
 } from '../commands/lifecycle-code-root.js';
 import type { ServiceFs } from '../commands/service.js';
 import {
+  LAUNCHER_STOP_BUDGET_MS,
   resolveServiceCodeLocation,
   SERVICE_SHUTDOWN_DEADLINE_MS,
   SYSTEMD_STOP_TIMEOUT_SECONDS,
@@ -76,8 +77,9 @@ describe('a source checkout service renders what it did before slice C', () => {
         "# service should retain systemd's normal scheduling defaults, not a background tier.",
         'Restart=always',
         'RestartSec=5',
-        // Deliberate: was 30, shorter than `service run`'s 60 s shutdown.
-        'TimeoutStopSec=75',
+        // Deliberate: was 30, shorter than `service run`'s 60 s shutdown,
+        // and now covers the fixed launcher's whole stop (#2675 D).
+        'TimeoutStopSec=165',
         'KillMode=mixed',
         'NoNewPrivileges=true',
         'PrivateTmp=true',
@@ -156,7 +158,7 @@ describe('a source checkout service renders what it did before slice C', () => {
   });
 });
 
-describe('an installer-owned archive service runs current (#2675 slice C)', () => {
+describe('an installer-owned archive service runs the fixed launcher with current (#2675 C, D)', () => {
   const archive = {
     kind: 'archive' as const,
     installRoot: '/home/u/.station/installs/stable',
@@ -165,7 +167,8 @@ describe('an installer-owned archive service runs current (#2675 slice C)', () =
   };
   const expectedArgs = [
     '/home/u/.station/installs/stable/current/runtime/bin/node',
-    '/home/u/.station/installs/stable/current/bin/station.mjs',
+    // #2675 D: the launcher outside every version, which runs the active one.
+    '/home/u/.station/installs/stable/runtime/station-launcher.mjs',
     'service',
     'run',
     '--instance=agent',
@@ -177,7 +180,7 @@ describe('an installer-owned archive service runs current (#2675 slice C)', () =
     '--allowed-origin=https://x.example',
   ];
 
-  test('systemd runs the bundled Node.js and bin/station.mjs through current', () => {
+  test('systemd runs the fixed launcher with the bundled Node.js through current', () => {
     const unit = renderSystemdUnit({
       ...archive,
       instanceId: 'agent',
@@ -210,7 +213,7 @@ describe('an installer-owned archive service runs current (#2675 slice C)', () =
     );
   });
 
-  test('Windows runs node.exe and bin\\station.mjs through current', () => {
+  test('Windows runs node.exe and bin\\station.mjs through current (no launcher before slice W)', () => {
     const command = renderWindowsServiceCommand({
       kind: 'archive',
       installRoot: 'C:\\Station\\installs\\stable',
@@ -226,11 +229,14 @@ describe('an installer-owned archive service runs current (#2675 slice C)', () =
   });
 });
 
-test('systemd waits out the supervisor shutdown deadline before it kills the unit', () => {
+test('systemd waits out the supervisor and launcher stops before it kills the unit', () => {
   // A literal beside the derived value: the unit text is what systemd reads.
-  expect(SYSTEMD_STOP_TIMEOUT_SECONDS).toBe(75);
+  expect(SYSTEMD_STOP_TIMEOUT_SECONDS).toBe(165);
   expect(SYSTEMD_STOP_TIMEOUT_SECONDS * 1_000).toBeGreaterThanOrEqual(
     SERVICE_SHUTDOWN_DEADLINE_MS + 5_000,
+  );
+  expect(SYSTEMD_STOP_TIMEOUT_SECONDS * 1_000).toBeGreaterThanOrEqual(
+    LAUNCHER_STOP_BUDGET_MS + 30_000,
   );
 });
 

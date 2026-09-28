@@ -70,6 +70,9 @@ vi.mock('@kontourai/station-sdk', async () => {
       isPending: false,
     }),
     usePairedDevicesQuery: () => ({ data: [] }),
+    // ConnectedServerUpdates reads the shared core-update answer (it never
+    // fetches it). No answer yet is the neutral case for the catalog.
+    useCoreUpdateStatusQuery: () => ({ data: undefined }),
     StationReadOnlyError: class extends Error {},
     useEngineConnectionsQuery: () => ({ data: [] }),
     useAnswerSharesQuery: () => ({ data: [] }),

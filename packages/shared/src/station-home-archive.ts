@@ -12,10 +12,14 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   readSync,
   realpathSync,
   renameSync,
   rmSync,
+  statfsSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import {
@@ -45,8 +49,22 @@ import {
   STATION_HOME_SCHEMA_FILE,
   STATION_HOME_SCHEMA_VERSION,
 } from './station-home-schema.js';
+import {
+  containsExternalStationHomePath,
+  isExternalStationHomePath,
+  isLiveStationHomeRoot,
+  STATION_HOME_SQLITE_STORES,
+} from './station-home-store-registry.js';
 
 export const STATION_HOME_BACKUP_SCHEMA = 'station.home-backup/v1' as const;
+/**
+ * A supervised update's snapshot (#2675 D): `station.home-backup/v1` minus
+ * the registry's `external` paths, plus the symbolic links under the state
+ * it covers, recorded (never followed) so a restore puts them back as links.
+ * A distinct schema, so neither restore accepts the other's backup.
+ */
+export const STATION_HOME_UPDATE_BACKUP_SCHEMA =
+  'station.home-update-backup/v1' as const;
 export const STATION_HOME_BACKUP_MANIFEST = 'station-home-backup.json';
 export const STATION_HOME_RECOVERY_RECORD = 'station-home-recovery.json';
 
@@ -137,18 +155,26 @@ export const DEFAULT_STATION_HOME_BACKUP_MAX_BYTES = 20 * 1024 * 1024 * 1024;
 export const DEFAULT_STATION_HOME_BACKUP_MAX_FILE_BYTES =
   2 * 1024 * 1024 * 1024;
 
-const TRANSIENT_ROOTS = new Set([
-  'instances.json',
-  'logs',
-  'monitoring',
-  // station#3217: a store quarantined for corruption is preserved for
-  // recovery, not carried into every future backup. `isTransient` only
-  // inspects `segments[0]`, which is why the quarantine is a top-level root
-  // rather than `data/quarantine/`.
-  'quarantine',
-  'service',
-  'tmp',
-]);
+/**
+ * An update backup's bounds. It covers only Station's own state (the user's
+ * code and the browser's bytes are `external`), and a refused backup blocks
+ * every update, so they bound resources rather than police size: the real
+ * limit is the free space the backup is checked against before it copies
+ * anything. No per-file cap below the total: one large SQLite store is
+ * ordinary. The file count keeps the manifest a size one process can parse.
+ */
+export const DEFAULT_STATION_HOME_UPDATE_BACKUP_MAX_FILES = 250_000;
+export const DEFAULT_STATION_HOME_UPDATE_BACKUP_MAX_BYTES =
+  1024 * 1024 * 1024 * 1024;
+const MAX_UPDATE_BACKUP_MANIFEST_BYTES = 256 * 1024 * 1024;
+/** Free space an update backup leaves beyond its own bytes. */
+const UPDATE_BACKUP_FREE_SPACE_MARGIN_BYTES = 256 * 1024 * 1024;
+const MAX_SYMLINK_TARGET_LENGTH = 4096;
+
+// The top-level entries a backup leaves out are the store registry's `live`
+// roots (instances.json, logs, monitoring, quarantine, service, tmp). The
+// quarantine (station#3217) is top level because `isTransient` only inspects
+// `segments[0]`.
 const SQLITE_TRANSIENT_SUFFIXES = ['-journal', '-shm', '-wal'];
 // A corruption marker describes a database AT A MOMENT, and collectFiles
 // already refuses to archive an unhealthy *.sqlite — so every archived home
@@ -167,11 +193,29 @@ export interface StationHomeBackupFile {
   mode: number;
 }
 
+/**
+ * A symbolic link under an update backup's state, as its text: never
+ * followed by the backup or the restore. `directory` records whether it
+ * resolved to a directory when recorded, which Windows needs to recreate it
+ * (a junction or a directory link); elsewhere it is informational.
+ */
+export interface StationHomeBackupSymlink {
+  path: string[];
+  target: string;
+  directory: boolean;
+}
+
+type BackupKind = 'home' | 'update';
+
 export interface StationHomeBackupManifest {
-  schemaVersion: typeof STATION_HOME_BACKUP_SCHEMA;
+  schemaVersion:
+    | typeof STATION_HOME_BACKUP_SCHEMA
+    | typeof STATION_HOME_UPDATE_BACKUP_SCHEMA;
   homeSchemaVersion: number;
   createdAt: string;
   files: StationHomeBackupFile[];
+  /** Update backups only. */
+  symlinks?: StationHomeBackupSymlink[];
   totalBytes: number;
 }
 
@@ -187,6 +231,10 @@ export interface StationHomeBackupOptions {
   afterPublish?: () => void;
   /** Private synchronization seam for lifecycle fault proofs. */
   lifecycleHooks?: StationHomeLifecycleHooks;
+  /** Private fault seam: copies one file into the staging tree. */
+  copyFile?: (source: string, target: string) => void;
+  /** Private seam: the backup volume's free space (defaults to statfs). */
+  statfs?: (directory: string) => { bavail: number; bsize: number };
 }
 
 export interface StationHomeRestoreOptions {
@@ -332,15 +380,28 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function canonicalLimits(options: {
-  maxFiles?: number;
-  maxBytes?: number;
-  maxFileBytes?: number;
-}) {
-  const maxFiles = options.maxFiles ?? DEFAULT_STATION_HOME_BACKUP_MAX_FILES;
-  const maxBytes = options.maxBytes ?? DEFAULT_STATION_HOME_BACKUP_MAX_BYTES;
+function canonicalLimits(
+  options: {
+    maxFiles?: number;
+    maxBytes?: number;
+    maxFileBytes?: number;
+  },
+  kind: BackupKind = 'home',
+) {
+  const update = kind === 'update';
+  const maxFiles =
+    options.maxFiles ??
+    (update
+      ? DEFAULT_STATION_HOME_UPDATE_BACKUP_MAX_FILES
+      : DEFAULT_STATION_HOME_BACKUP_MAX_FILES);
+  const maxBytes =
+    options.maxBytes ??
+    (update
+      ? DEFAULT_STATION_HOME_UPDATE_BACKUP_MAX_BYTES
+      : DEFAULT_STATION_HOME_BACKUP_MAX_BYTES);
   const maxFileBytes =
-    options.maxFileBytes ?? DEFAULT_STATION_HOME_BACKUP_MAX_FILE_BYTES;
+    options.maxFileBytes ??
+    (update ? maxBytes : DEFAULT_STATION_HOME_BACKUP_MAX_FILE_BYTES);
   if (
     !Number.isSafeInteger(maxFiles) ||
     maxFiles < 1 ||
@@ -356,7 +417,7 @@ function canonicalLimits(options: {
 
 function isTransient(segments: readonly string[]): boolean {
   if (segments.length === 0) return false;
-  if (TRANSIENT_ROOTS.has(segments[0])) return true;
+  if (isLiveStationHomeRoot(segments[0])) return true;
   const name = segments.at(-1) ?? '';
   return (
     name === SQLITE_CORRUPTION_MARKER_FILE ||
@@ -429,11 +490,17 @@ function hashFile(path: string): string {
   }
 }
 
-function syncDirectoryTree(root: string): void {
+function syncDirectoryTree(
+  root: string,
+  skip?: (segments: readonly string[]) => boolean,
+  parentSegments: readonly string[] = [],
+): void {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     if (entry.isSymbolicLink()) fail('archive staging contains a symlink');
-    syncDirectoryTree(join(root, entry.name));
+    const segments = [...parentSegments, entry.name];
+    if (skip?.(segments)) continue;
+    syncDirectoryTree(join(root, entry.name), skip, segments);
   }
   fsyncDirectorySync(root);
 }
@@ -461,12 +528,65 @@ function sqliteIsHealthy(path: string, checkpoint: boolean): boolean {
   return openAndCheckSqliteIntegrity(path, { checkpoint }).kind === 'ok';
 }
 
+const REGISTERED_SQLITE_STORES = new Set(
+  STATION_HOME_SQLITE_STORES.map((segments) => JSON.stringify(segments)),
+);
+
+/**
+ * Whether a home file is a SQLite database to checkpoint and verify before
+ * its bytes are recorded. A backup never copies `-wal`/`-shm` sidecars, so a
+ * WAL-mode database whose newest commits are still in its WAL would be
+ * archived without them: every `*.sqlite`, every store the registry names
+ * (the knowledge index is a `.db`), and any database that has a WAL beside it
+ * right now is checkpointed first.
+ */
+function isSqliteStoreEntry(
+  path: string,
+  segments: readonly string[],
+): boolean {
+  const name = segments.at(-1) ?? '';
+  return (
+    name.endsWith('.sqlite') ||
+    REGISTERED_SQLITE_STORES.has(JSON.stringify(segments)) ||
+    existsSync(`${path}-wal`)
+  );
+}
+
+function assertSymlinkTarget(target: unknown): asserts target is string {
+  if (
+    typeof target !== 'string' ||
+    target.length === 0 ||
+    target.length > MAX_SYMLINK_TARGET_LENGTH ||
+    target.includes('\0')
+  )
+    fail('backup contains an unusable symbolic link target');
+}
+
 function collectFiles(
   homeDir: string,
   limits: ReturnType<typeof canonicalLimits>,
   checkpointSqlite = false,
 ): StationHomeBackupFile[] {
+  return collectEntries(homeDir, limits, { checkpointSqlite, kind: 'home' })
+    .files;
+}
+
+/**
+ * Walks a home in manifest order. `home` (station home backup): refuses a
+ * symbolic link anywhere it looks. `update`: also leaves the `external`
+ * paths out, and records each symbolic link as its text without following
+ * it (#2675 D review: plugin aliases, Chromium's profile locks and
+ * `node_modules/.bin` are ordinary, so refusing one blocked every update).
+ */
+function collectEntries(
+  homeDir: string,
+  limits: ReturnType<typeof canonicalLimits>,
+  options: { checkpointSqlite?: boolean; kind: BackupKind },
+): { files: StationHomeBackupFile[]; symlinks: StationHomeBackupSymlink[] } {
+  const checkpointSqlite = options.checkpointSqlite ?? false;
+  const update = options.kind === 'update';
   const files: StationHomeBackupFile[] = [];
+  const symlinks: StationHomeBackupSymlink[] = [];
   let totalBytes = 0;
   const visit = (directory: string, parentSegments: string[]): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
@@ -474,11 +594,28 @@ function collectFiles(
     )) {
       const segments = [...parentSegments, entry.name];
       if (isTransient(segments)) continue;
+      if (update && isExternalStationHomePath(segments)) continue;
       assertSegment(entry.name);
       const path = join(directory, entry.name);
       let stats = lstatSync(path);
-      if (stats.isSymbolicLink())
-        fail(`Station home contains a symbolic link at ${segments.join('/')}`);
+      if (stats.isSymbolicLink()) {
+        if (!update)
+          fail(
+            `Station home contains a symbolic link at ${segments.join('/')}`,
+          );
+        const target = readlinkSync(path);
+        assertSymlinkTarget(target);
+        if (files.length + symlinks.length >= limits.maxFiles)
+          fail('Station home exceeds the archive file-count limit');
+        let directoryTarget = false;
+        try {
+          directoryTarget = statSync(path).isDirectory();
+        } catch {
+          // Dangling (Chromium's Singleton* links are): recorded as a link.
+        }
+        symlinks.push({ path: segments, target, directory: directoryTarget });
+        continue;
+      }
       if (stats.isDirectory()) {
         visit(path, segments);
         continue;
@@ -491,7 +628,7 @@ function collectFiles(
       // checkpoint is deliberately before the authoritative lstat/size/hash
       // snapshot: otherwise the manifest can bind pre-checkpoint metadata to
       // post-checkpoint bytes and a healthy backup becomes self-inconsistent.
-      if (entry.name.endsWith('.sqlite')) {
+      if (isSqliteStoreEntry(path, segments)) {
         if (!sqliteIsHealthy(path, checkpointSqlite))
           fail(`SQLite integrity check failed at ${segments.join('/')}`);
         stats = lstatSync(path);
@@ -507,7 +644,7 @@ function collectFiles(
       totalBytes += stats.size;
       if (totalBytes > limits.maxBytes)
         fail('Station home exceeds the archive byte limit');
-      if (files.length >= limits.maxFiles)
+      if (files.length + symlinks.length >= limits.maxFiles)
         fail('Station home exceeds the archive file-count limit');
       files.push({
         path: segments,
@@ -518,23 +655,36 @@ function collectFiles(
     }
   };
   visit(homeDir, []);
-  return files;
+  return { files, symlinks };
 }
 
 function strictManifest(
   value: unknown,
   limits: ReturnType<typeof canonicalLimits>,
+  kind: BackupKind = 'home',
 ): StationHomeBackupManifest {
   if (!isPlainRecord(value)) fail('backup manifest must be an object');
+  const update = kind === 'update';
   if (
     Object.keys(value).sort().join(',') !==
-    ['createdAt', 'files', 'homeSchemaVersion', 'schemaVersion', 'totalBytes']
+    [
+      'createdAt',
+      'files',
+      'homeSchemaVersion',
+      'schemaVersion',
+      'totalBytes',
+      ...(update ? ['symlinks'] : []),
+    ]
       .sort()
       .join(',')
   )
     fail('backup manifest contains unknown or missing fields');
   if (
-    value.schemaVersion !== STATION_HOME_BACKUP_SCHEMA ||
+    value.schemaVersion !==
+      (update
+        ? STATION_HOME_UPDATE_BACKUP_SCHEMA
+        : STATION_HOME_BACKUP_SCHEMA) ||
+    (update && !Array.isArray(value.symlinks)) ||
     !Number.isSafeInteger(value.homeSchemaVersion) ||
     (value.homeSchemaVersion as number) < 1 ||
     (value.homeSchemaVersion as number) > STATION_HOME_SCHEMA_VERSION ||
@@ -585,11 +735,57 @@ function strictManifest(
   });
   if (totalBytes !== value.totalBytes)
     fail('backup manifest total does not match its files');
+  if (!update)
+    return {
+      schemaVersion: STATION_HOME_BACKUP_SCHEMA,
+      homeSchemaVersion: value.homeSchemaVersion as number,
+      createdAt: value.createdAt,
+      files,
+      totalBytes,
+    };
+  const rawSymlinks = value.symlinks as unknown[];
+  if (files.length + rawSymlinks.length > limits.maxFiles)
+    fail('backup manifest exceeds the file-count limit');
+  const symlinks = rawSymlinks.map((entry): StationHomeBackupSymlink => {
+    if (
+      !isPlainRecord(entry) ||
+      Object.keys(entry).sort().join(',') !== 'directory,path,target' ||
+      !Array.isArray(entry.path) ||
+      typeof entry.directory !== 'boolean'
+    )
+      fail('backup manifest contains an invalid symbolic link entry');
+    assertSymlinkTarget(entry.target);
+    const segments = entry.path.map((segment) => {
+      assertSegment(segment);
+      return segment;
+    });
+    const key = JSON.stringify(segments);
+    if (seen.has(key)) fail('backup manifest contains a duplicate path');
+    seen.add(key);
+    return { path: segments, target: entry.target, directory: entry.directory };
+  });
+  // A restore recreates links before or after the files; either way nothing
+  // may be written THROUGH a recorded link. A tampered manifest that put a
+  // file or another link below one would have the restore place it wherever
+  // that link points, outside the home.
+  // Compared case-folded and NFC-normalized on every platform: on a
+  // case-insensitive or normalizing volume (APFS, NTFS) `STATION-SHARED`
+  // names the same directory entry as a recorded `station-shared` link.
+  const fold = (segment: string) => segment.normalize('NFC').toLowerCase();
+  const linkKeys = symlinks.map((link) => link.path.map(fold));
+  const below = (path: string[], link: string[]) =>
+    path.length > link.length &&
+    link.every((segment, index) => fold(path[index] ?? '') === segment);
+  for (const entry of [...files, ...symlinks]) {
+    if (linkKeys.some((link) => below(entry.path, link)))
+      fail('backup manifest places a path below a symbolic link');
+  }
   return {
-    schemaVersion: STATION_HOME_BACKUP_SCHEMA,
+    schemaVersion: STATION_HOME_UPDATE_BACKUP_SCHEMA,
     homeSchemaVersion: value.homeSchemaVersion as number,
     createdAt: value.createdAt,
     files,
+    symlinks,
     totalBytes,
   };
 }
@@ -597,6 +793,7 @@ function strictManifest(
 function validateBackupDirectory(
   backupDir: string,
   limits: ReturnType<typeof canonicalLimits>,
+  kind: BackupKind = 'home',
 ): StationHomeBackupManifest {
   const root = resolve(backupDir);
   const rootStats = lstatSync(root);
@@ -607,7 +804,10 @@ function validateBackupDirectory(
   if (
     !manifestStats.isFile() ||
     manifestStats.isSymbolicLink() ||
-    manifestStats.size > MAX_BACKUP_MANIFEST_BYTES
+    manifestStats.size >
+      (kind === 'update'
+        ? MAX_UPDATE_BACKUP_MANIFEST_BYTES
+        : MAX_BACKUP_MANIFEST_BYTES)
   )
     fail('backup manifest must be a regular file');
   let manifest: StationHomeBackupManifest;
@@ -615,12 +815,14 @@ function validateBackupDirectory(
     manifest = strictManifest(
       JSON.parse(readFileSync(manifestPath, 'utf8')),
       limits,
+      kind,
     );
   } catch (error) {
     if (error instanceof StationHomeArchiveError) throw error;
     fail('backup manifest is not valid JSON', error);
   }
   const contentRoot = join(root, 'home');
+  // A backup's copy holds regular files only (links live in its manifest).
   const actual = collectFiles(contentRoot, limits, false);
   if (actual.length !== manifest.files.length)
     fail('backup contents do not match the manifest');
@@ -670,7 +872,46 @@ function assertInactive(
 export function createStationHomeBackup(
   options: StationHomeBackupOptions,
 ): StationHomeBackupResult {
-  const limits = canonicalLimits(options);
+  return createBackup(options, 'home');
+}
+
+/**
+ * Fails before any copy when the backup's volume cannot hold it. Each file
+ * occupies whole blocks, so its size is rounded up to the block size: a home
+ * of many small files needs far more than the sum of their bytes.
+ */
+function assertFreeSpace(
+  directory: string,
+  sizes: readonly number[],
+  statfs: (directory: string) => { bavail: number; bsize: number } = (path) =>
+    statfsSync(path),
+): void {
+  let available: number;
+  let block: number;
+  try {
+    const stats = statfs(directory);
+    available = stats.bavail * stats.bsize;
+    block = stats.bsize > 0 ? stats.bsize : 1;
+  } catch {
+    // No statfs here: the copy's own ENOSPC is the check.
+    return;
+  }
+  const bytes = sizes.reduce(
+    (total, size) => total + Math.ceil(size / block) * block,
+    0,
+  );
+  const needed = bytes + UPDATE_BACKUP_FREE_SPACE_MARGIN_BYTES;
+  if (available < needed)
+    fail(
+      `not enough free space for the update backup: it needs ${needed} bytes and ${available} are free`,
+    );
+}
+
+function createBackup(
+  options: StationHomeBackupOptions,
+  kind: BackupKind,
+): StationHomeBackupResult {
+  const limits = canonicalLimits(options, kind);
   const homeDir = canonicalStationHome(options.homeDir);
   if (!existsSync(homeDir)) fail('Station home does not exist');
   const outputDir = resolve(options.outputDir);
@@ -701,8 +942,17 @@ export function createStationHomeBackup(
     const homeSchemaVersion = readStationHomeSchemaVersion(homeDir);
     if (homeSchemaVersion > STATION_HOME_SCHEMA_VERSION)
       fail('Station home schema is newer than this Station');
-    const files = collectFiles(homeDir, limits, true);
+    const { files, symlinks } = collectEntries(homeDir, limits, {
+      checkpointSqlite: true,
+      kind,
+    });
     assertInactive('backup', options.assertInactive);
+    if (kind === 'update')
+      assertFreeSpace(
+        outputParent,
+        files.map((file) => file.size),
+        options.statfs,
+      );
     mkdirSync(staging, { mode: 0o700 });
     const stagingStats = lstatSync(staging);
     if (!stagingStats.isDirectory() || stagingStats.isSymbolicLink())
@@ -713,7 +963,10 @@ export function createStationHomeBackup(
       const source = pathFor(homeDir, file.path);
       const target = pathFor(contentRoot, file.path);
       mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
-      copyFileSync(source, target, constants.COPYFILE_EXCL);
+      (
+        options.copyFile ??
+        ((from, to) => copyFileSync(from, to, constants.COPYFILE_EXCL))
+      )(source, target);
       if (process.platform !== 'win32') chmodSync(target, file.mode);
       const copied = lstatSync(target);
       if (
@@ -727,13 +980,24 @@ export function createStationHomeBackup(
     }
     const createdAt = (options.now ?? (() => new Date().toISOString()))();
     if (Number.isNaN(Date.parse(createdAt))) fail('backup clock is invalid');
-    const manifest: StationHomeBackupManifest = {
-      schemaVersion: STATION_HOME_BACKUP_SCHEMA,
-      homeSchemaVersion,
-      createdAt,
-      files,
-      totalBytes: files.reduce((total, file) => total + file.size, 0),
-    };
+    const totalBytes = files.reduce((total, file) => total + file.size, 0);
+    const manifest: StationHomeBackupManifest =
+      kind === 'update'
+        ? {
+            schemaVersion: STATION_HOME_UPDATE_BACKUP_SCHEMA,
+            homeSchemaVersion,
+            createdAt,
+            files,
+            symlinks,
+            totalBytes,
+          }
+        : {
+            schemaVersion: STATION_HOME_BACKUP_SCHEMA,
+            homeSchemaVersion,
+            createdAt,
+            files,
+            totalBytes,
+          };
     const manifestPath = join(staging, STATION_HOME_BACKUP_MANIFEST);
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
       encoding: 'utf8',
@@ -913,5 +1177,215 @@ export function readStationHomeBackupManifest(
   } catch (error) {
     if (error instanceof StationHomeArchiveError) throw error;
     fail('backup manifest could not be validated', error);
+  }
+}
+
+export interface StationHomeUpdateBackupOptions
+  extends Pick<
+    StationHomeBackupOptions,
+    | 'maxFiles'
+    | 'maxBytes'
+    | 'maxFileBytes'
+    | 'lifecycleHooks'
+    | 'copyFile'
+    | 'statfs'
+  > {
+  homeDir: string;
+  /** Outside the home; one per update (install root's runtime/update-backups/<id>). */
+  backupDir: string;
+}
+
+/**
+ * The snapshot a supervised update takes of a stopped home before its trial
+ * (#2675 slice D): every `state` entry of the store registry, which includes
+ * `.station-home-schema.json`, and none of the `live` or `external` ones.
+ * Symbolic links under that state are recorded as links (see
+ * `StationHomeBackupSymlink`). Published by one rename.
+ *
+ * Taken ONCE per update. An existing backup is validated and kept, never
+ * replaced: a launcher that restarts after a trial began is looking at a home
+ * the trial may already have written, and a second snapshot would make that
+ * the state a rollback restores. Reusing it still takes the home's
+ * maintenance lease, so a Station that started on the home while the
+ * launcher was down (a desktop sidecar) stops the update here, exactly as it
+ * would stop a first backup.
+ */
+export function createStationHomeUpdateBackup(
+  options: StationHomeUpdateBackupOptions,
+): StationHomeBackupResult & { reused: boolean } {
+  const backupDir = resolve(options.backupDir);
+  if (existsSync(backupDir)) {
+    const homeDir = canonicalStationHome(options.homeDir);
+    let release: () => void;
+    try {
+      release = acquireStationHomeMaintenanceLease(
+        homeDir,
+        options.lifecycleHooks,
+      ).release;
+    } catch (error) {
+      fail(
+        'Station home must be inactive before backup; stop every instance and retry',
+        error,
+      );
+    }
+    try {
+      return {
+        backupDir,
+        manifest: validateBackupDirectory(
+          backupDir,
+          canonicalLimits(options, 'update'),
+          'update',
+        ),
+        reused: true,
+      };
+    } catch (error) {
+      if (error instanceof StationHomeArchiveError) throw error;
+      fail('update backup could not be validated', error);
+    } finally {
+      release();
+    }
+  }
+  return {
+    ...createBackup({ ...options, outputDir: backupDir }, 'update'),
+    reused: false,
+  };
+}
+
+export interface StationHomeUpdateRestoreOptions
+  extends Pick<
+    StationHomeRestoreOptions,
+    'maxFiles' | 'maxBytes' | 'maxFileBytes' | 'lifecycleHooks'
+  > {
+  homeDir: string;
+  backupDir: string;
+  /** Private fault seam: runs after the state entries are removed. */
+  afterRemove?: () => void;
+}
+
+/** Whether an update leaves this home path to its owner (live or external). */
+function outsideUpdate(segments: readonly string[]): boolean {
+  return isTransient(segments) || isExternalStationHomePath(segments);
+}
+
+/**
+ * Removes every `state` entry below `directory`, descending only into a
+ * real directory that holds an `external` path (so `browser/` loses its
+ * Station files but keeps `browser/profiles`). rmSync never follows a link.
+ */
+function removeUpdateState(directory: string, parentSegments: string[]): void {
+  for (const name of readdirSync(directory)) {
+    const segments = [...parentSegments, name];
+    if (parentSegments.length === 0 && isLiveStationHomeRoot(name)) continue;
+    if (isExternalStationHomePath(segments)) continue;
+    const path = join(directory, name);
+    if (containsExternalStationHomePath(segments)) {
+      const stats = lstatSync(path);
+      if (stats.isDirectory() && !stats.isSymbolicLink()) {
+        removeUpdateState(path, segments);
+        continue;
+      }
+    }
+    rmSync(path, { recursive: true, force: true });
+  }
+}
+
+function symlinkType(link: StationHomeBackupSymlink) {
+  if (process.platform !== 'win32') return undefined;
+  if (!link.directory) return 'file' as const;
+  // A junction needs an absolute target; a relative one is a directory link.
+  return isAbsolute(link.target) ? ('junction' as const) : ('dir' as const);
+}
+
+/**
+ * Puts a home back to an update backup IN PLACE (#2675 slice D): every
+ * `state` entry is removed, then every file the backup holds is copied back
+ * and verified against its hash, and every symbolic link it recorded is
+ * created again with its recorded text. `live` entries (the service
+ * manifests, the process registry, logs) and `external` ones (users'
+ * repositories, the browser's bytes) are never touched, which is why this is
+ * not `restoreStationHomeBackup`: that one swaps the whole home directory for
+ * the backup and would drop them.
+ *
+ * Links are created last, after every file and directory: no copy can ever
+ * write through one, whatever its target. Their targets are restored as
+ * recorded, not checked for containment: they are the home's own links from
+ * before the trial (a plugin draft's `node_modules` links into the version
+ * that built it, outside the home, by design), and nothing here follows them.
+ *
+ * Idempotent, so a rollback interrupted at any point is finished by running
+ * it again: the backup is only read, and each run starts by removing whatever
+ * a previous run (or the trial) left in the state entries.
+ */
+export function restoreStationHomeUpdateBackup(
+  options: StationHomeUpdateRestoreOptions,
+): { manifest: StationHomeBackupManifest } {
+  const limits = canonicalLimits(options, 'update');
+  const homeDir = canonicalStationHome(options.homeDir);
+  const backupDir = realpathSync(resolve(options.backupDir));
+  assertExternalPath(homeDir, backupDir);
+  const manifest = validateBackupDirectory(backupDir, limits, 'update');
+  // A backup written under another registry may hold an entry that is live
+  // or external now; those are this home's, so they are left as they are.
+  const restorable = manifest.files.filter((file) => !outsideUpdate(file.path));
+  const links = (manifest.symlinks ?? []).filter(
+    (link) => !outsideUpdate(link.path),
+  );
+  let release: () => void;
+  try {
+    release = acquireStationHomeMaintenanceLease(
+      homeDir,
+      options.lifecycleHooks,
+    ).release;
+  } catch (error) {
+    fail(
+      'Station home must be inactive before restore; stop every instance and retry',
+      error,
+    );
+  }
+  try {
+    const homeStats = lstatSync(homeDir);
+    if (!homeStats.isDirectory() || homeStats.isSymbolicLink())
+      fail('Station home must be a regular directory');
+    removeUpdateState(homeDir, []);
+    fsyncDirectorySync(homeDir);
+    options.afterRemove?.();
+    const contentRoot = join(backupDir, 'home');
+    for (const file of restorable) {
+      const source = pathFor(contentRoot, file.path);
+      const target = pathFor(homeDir, file.path);
+      mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+      copyFileSync(source, target, constants.COPYFILE_EXCL);
+      if (process.platform !== 'win32') chmodSync(target, file.mode);
+      syncFile(target);
+    }
+    for (const link of links) {
+      const path = pathFor(homeDir, link.path);
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      symlinkSync(link.target, path, symlinkType(link));
+    }
+    const restored = collectEntries(homeDir, limits, { kind: 'update' });
+    if (
+      restored.files.length !== restorable.length ||
+      restored.files.some((file, index) => {
+        const expected = restorable[index];
+        return (
+          !expected ||
+          JSON.stringify(file.path) !== JSON.stringify(expected.path) ||
+          file.sha256 !== expected.sha256
+        );
+      }) ||
+      JSON.stringify(
+        restored.symlinks.map((link) => [link.path, link.target]),
+      ) !== JSON.stringify(links.map((link) => [link.path, link.target]))
+    )
+      fail('restored home does not match the validated backup');
+    // Only what this restore wrote: never the user's repositories.
+    syncDirectoryTree(homeDir, outsideUpdate);
+    return { manifest };
+  } catch (error) {
+    if (error instanceof StationHomeArchiveError) throw error;
+    fail('update backup could not be restored', error);
+  } finally {
+    release();
   }
 }

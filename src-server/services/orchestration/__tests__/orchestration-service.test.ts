@@ -22615,8 +22615,8 @@ describe('OrchestrationService', () => {
   // BEHAVIOURALLY bit-identical to folding the full log — dropping
   // `turn.completed`, `runtime.error`, or `session.exited` from the literal
   // would still pass a spy assertion built the same way. This is the
-  // differential proof: append one event of EVERY canonical method (all 27
-  // — `packages/contracts/src/runtime-events.ts`'s `CanonicalRuntimeEvent`
+  // differential proof: append one event of EVERY canonical method (the whole
+  // `packages/contracts/src/runtime-events.ts`'s `CanonicalRuntimeEvent`
   // union), fold `listEvents` (the full log) and `listEventsByMethods`
   // narrowed to `ACTIVE_TURN_FOLD_METHODS` through the SAME
   // `activeTurnIdForEvents`, and assert the results agree — CHECKED AFTER
@@ -22639,15 +22639,15 @@ describe('OrchestrationService', () => {
   //
   // Independent review, delta round: everything above proves the 5 methods
   // in `ACTIVE_TURN_FOLD_METHODS` are NECESSARY — it does not prove the
-  // other 22 are SAFE TO OMIT while a turn is actually open, because the
+  // others are SAFE TO OMIT while a turn is actually open, because the
   // first pass only ever fired them before any `turn.started`, where
   // `activeTurnId` is already `undefined` on both sides and any divergence
   // is unobservable. Proven live by injection: adding a 6th method to
   // `nextActiveTurnId`'s branches (`session.stop-settled` closing the turn)
   // WITHOUT adding it to `ACTIVE_TURN_FOLD_METHODS` — exactly the future
   // change these comments warn about — passed every test in this file,
-  // including this one, at 332/332 green. The remedy below replays all 22
-  // no-ops a SECOND time, this time while `turn-open` is live, so a 6th
+  // including this one, at 332/332 green. The remedy below replays every
+  // no-op a SECOND time, this time while `turn-open` is live, so a 6th
   // fold-relevant method the narrowed query excludes now diverges from the
   // full log observably (`fromNarrowed` keeps reporting the turn open,
   // `fromFullLog` does not) instead of firing into a state neither side is
@@ -22691,6 +22691,7 @@ describe('OrchestrationService', () => {
       'tool.completed': 'non-fold',
       'request.opened': 'non-fold',
       'request.resolved': 'non-fold',
+      'request.delivery': 'non-fold',
       'runtime.warning': 'non-fold',
       'token-usage.updated': 'non-fold',
       'flow.run-attached': 'non-fold',
@@ -22784,7 +22785,7 @@ describe('OrchestrationService', () => {
     assertFoldsAgree('turn-open');
 
     // Replay every non-fold-relevant method a SECOND time, now while
-    // `turn-open` is genuinely live — this is what proves the 22 are safe
+    // `turn-open` is genuinely live — this is what proves the rest are safe
     // to OMIT, not just that the 5 are necessary (the first pass above only
     // fired them before any turn existed, where excluding one is
     // unobservable on either side). If `nextActiveTurnId` ever gains a 6th

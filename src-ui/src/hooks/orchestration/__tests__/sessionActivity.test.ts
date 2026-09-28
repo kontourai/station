@@ -321,6 +321,30 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     expect(chat?.orchestrationStatus).toBe('exited');
   });
 
+  test('session.exited clears the unacknowledged-decision note (#2880)', () => {
+    activeChatsStore.updateChat(threadId, {
+      unacknowledgedDecisions: [
+        { requestId: 'req-1', reason: 'no-acknowledgement' },
+      ],
+    });
+
+    handleSessionExitedEvent(
+      {
+        eventId: 'evt-1',
+        provider: 'codex',
+        threadId,
+        createdAt: '2026-09-28T00:00:00.000Z',
+        method: 'session.exited',
+        sessionId: 'session-1',
+      } as any,
+      activeChatsStore,
+    );
+
+    expect(
+      activeChatsStore.getSnapshot()[threadId]?.unacknowledgedDecisions,
+    ).toEqual([]);
+  });
+
   test('session.exited commits buffered streaming text instead of dropping it', () => {
     activeChatsStore.updateChat(threadId, {
       orchestrationSessionStarted: true,

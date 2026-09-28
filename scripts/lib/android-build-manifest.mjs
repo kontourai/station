@@ -46,8 +46,8 @@ import {
  * `app/src/main/assets/` is the Android asset source set: everything in it is
  * packaged into the APK under `assets/`.
  */
-export const ANDROID_PROJECT_DIR = join('src-desktop', 'gen', 'android');
-export const ANDROID_ASSETS_DIR = join(
+const ANDROID_PROJECT_DIR = join('src-desktop', 'gen', 'android');
+const ANDROID_ASSETS_DIR = join(
   ANDROID_PROJECT_DIR,
   'app',
   'src',

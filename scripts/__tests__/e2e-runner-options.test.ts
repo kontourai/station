@@ -59,16 +59,9 @@ describe('resolveE2ERunnerSelection', () => {
     ).toThrow(/--screens may be provided only once/);
   });
 
-  it('never reads STATION_E2E_SCREENS from the environment — argv is the only source, so the spawned env is always cleared when no flag is passed', () => {
+  it('never reads STATION_E2E_SCREENS from the environment — argv is the only source', () => {
     process.env.STATION_E2E_SCREENS = 'zzz-ambient-leak';
     const { screens } = resolveE2ERunnerSelection([], suite, suiteSpecs);
     expect(screens).toBeUndefined();
-    // Mirrors the exact expression run-e2e-suite.mjs uses to build the
-    // spawned Playwright process's env — pinned here so a future refactor
-    // of that one-liner can't quietly start reading the ambient var again
-    // and silently re-widen an unflagged run to a targeted one (or vice
-    // versa).
-    const spawnedStationE2EScreens = screens ? screens.join(',') : undefined;
-    expect(spawnedStationE2EScreens).toBeUndefined();
   });
 });

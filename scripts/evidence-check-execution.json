@@ -18,5 +18,6 @@
   "sdk-builds": "enforced",
   "app-builds": "enforced",
   "fallow-advisory": "advisory",
-  "style-standard": "enforced"
+  "style-standard": "enforced",
+  "documentation-truth": "enforced"
 }

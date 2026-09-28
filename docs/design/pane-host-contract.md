@@ -1,5 +1,15 @@
 # The pane-host contract: one interface, two transports
 
+> **Reading status: design record with implemented contract owners.** The problem
+> and sequencing below describe the extraction stages, not today's absence of a
+> shared host. The [published contract](../../packages/contracts/src/workspace-pane-host-contract.ts)
+> has both an [in-process adapter](../../src-ui/src/workspace-panes/inProcessPaneHost.tsx)
+> and a [frame adapter](../../src-ui/src/components/plugins/framePaneHost.tsx),
+> consumed by [PluginFrameHost](../../src-ui/src/components/plugins/PluginFrameHost.tsx).
+> Use [pane authoring](../guides/workspace-pane-authoring.md) for current usage.
+> This owner map does not certify every payload's clone safety, both-runtime
+> artifact compatibility, or the proposed install-time trust flow.
+
 Status: design for station#4201, feeding #4220 and #4190. Follows
 `docs/design/pane-or-shell.md` (criterion, runtime tiers, and the iframe
 threat model).

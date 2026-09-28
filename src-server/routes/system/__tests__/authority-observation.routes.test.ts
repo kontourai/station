@@ -175,6 +175,8 @@ async function createHarness(options?: {
         request
           ? security.authorizeCredential(credential, request)
           : security.verifyCredential(credential),
+      recognizeCredential: (credential) =>
+        security.verifyCredential(credential),
       resolveGrantedScope: (credential) =>
         security.resolveGrantedScope(credential),
       resolveCredentialAuthority: (credential) =>

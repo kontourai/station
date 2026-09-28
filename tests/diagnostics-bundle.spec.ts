@@ -71,21 +71,24 @@ async function seedSettingsRoutes(page: import('@playwright/test').Page) {
 }
 
 test.describe('Diagnostics bundle', () => {
-  test('downloads the redacted JSON bundle with a dated filename', async ({
+  // Redaction is the server's (diagnostics-service.test.ts owns it); the
+  // browser's job is to save exactly what the server served.
+  test("downloads the server's bundle unchanged with a dated filename", async ({
     page,
   }) => {
     await seedSettingsRoutes(page);
+    const servedBody = JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: '2026-07-20T12:34:56.000Z',
+      doctor: { checks: [] },
+      app: { version: '0.1.0', nodeVersion: 'v24.0.0', platform: 'darwin' },
+      config: { apiKey: '[REDACTED]' },
+    });
     await page.route('**/api/diagnostics/bundle', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          schemaVersion: 1,
-          generatedAt: '2026-07-20T12:34:56.000Z',
-          doctor: { checks: [] },
-          app: { version: '0.1.0', nodeVersion: 'v24.0.0', platform: 'darwin' },
-          config: { apiKey: '[REDACTED]' },
-        }),
+        body: servedBody,
       }),
     );
 
@@ -99,6 +102,10 @@ test.describe('Diagnostics bundle', () => {
     expect(download.suggestedFilename()).toMatch(
       /^station-diagnostics-\d{4}-\d{2}-\d{2}\.json$/,
     );
+    const saved = await download.createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of saved) chunks.push(Buffer.from(chunk));
+    expect(Buffer.concat(chunks).toString('utf8')).toBe(servedBody);
     await expect(
       page.locator('a[download^="station-diagnostics-"]'),
     ).toHaveCount(0);

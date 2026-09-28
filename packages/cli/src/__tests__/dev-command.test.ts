@@ -141,16 +141,20 @@ describe('runDevCommand — wiring to the start path', () => {
     expect(ensureDir).toHaveBeenCalledWith(opts.baseDir);
     // Host defaults to 0.0.0.0 (owned by start()): not passed unless overridden.
     expect(opts.host).toBeUndefined();
-  });
 
-  test('same worktree resolves to identical ports across invocations', async () => {
-    const first = baseDeps();
-    const second = baseDeps();
-    await runDevCommand([], first.deps);
-    await runDevCommand([], second.deps);
-    expect(first.start.mock.calls[0]![0].serverPort).toBe(
-      second.start.mock.calls[0]![0].serverPort,
-    );
+    // A second invocation from the same worktree lands on the same instance.
+    const again = baseDeps();
+    await runDevCommand([], again.deps);
+    const second = again.start.mock.calls[0]![0];
+    expect({
+      serverPort: second.serverPort,
+      uiPort: second.uiPort,
+      instanceName: second.instanceName,
+    }).toEqual({
+      serverPort: opts.serverPort,
+      uiPort: opts.uiPort,
+      instanceName: opts.instanceName,
+    });
   });
 
   test('--port-offset pins the exact ports', async () => {

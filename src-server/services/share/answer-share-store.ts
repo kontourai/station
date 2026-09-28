@@ -522,9 +522,9 @@ export class AnswerShareStore {
   /**
    * Resolves a presented token to its record, or `undefined`.
    *
-   * A single hash-keyed lookup: an unknown token, a mistyped one, and a
-   * malformed one all take the same path and cost the same work, so nothing
-   * here distinguishes "no such share" from "wrong token for a real share".
+   * Malformed tokens return before the store read; shaped tokens use one
+   * digest lookup. Both return undefined when no record resolves. The public
+   * handler maps these outcomes to the same refusal, not constant-time work.
    * Revoked and expired records ARE returned — deciding what to say about
    * them is the caller's job, and it can only say it to someone who proved
    * possession by getting here at all.

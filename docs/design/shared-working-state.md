@@ -1,16 +1,24 @@
 # Shared working-state protocol
 
-Issue #2889 defines the pre-UI contract for a shared **text document**. This
-is not the channel conversation log: `docs/design/conversation-state.md`
-remains the authority for conversation messages, moderation, and their
-single-home sequencing.
+> **Reading status: current domain protocol and recorded harness scope.**
+> [SharedWorkingState](../../src-server/domain/shared-working-state.ts) owns
+> convergence and revision facts; persistence is composed through the
+> [room working-state adapter](../../src-server/services/orchestration/project-task-room-working-state.ts)
+> and its worker. The harness descriptions below are not newly executed
+> convergence, authorization, performance, or recovery results.
+
+The protocol introduced in [archive#2889](https://github.com/kontourai/station-archive/issues/2889)
+defines the pre-UI contract for a shared **text document**. This
+is not the conversation log. [Project/Task room history](project-task-room-history.md)
+describes the current durable room owner; [conversation state](conversation-state.md)
+retains the broader channel-home design and its historical survey.
 
 ## Contract boundary
 
 `SharedWorkingState` is a Station-owned, provider-neutral domain Module. Its
 Interface accepts and returns versioned Station operations, snapshots, bounded
 deltas, typed outcomes, and a provable revision. It has no transport, database,
-editor, identity-directory, or permission-store dependency. A later Adapter
+editor, identity-directory, or permission-store dependency. Composition Adapters
 may persist snapshots, send operations, resolve human/agent principals, and
 obtain the current Project/Task grant; none of those choices change the
 convergence Interface.
@@ -65,7 +73,10 @@ This is an explicit replay-checkpoint barrier, not an array-index cleanup: it
 remains correct when a bounded history ring has just shifted an older entry.
 Only operations recorded after the new checkpoint may form a delta chain.
 The live port is ECMAScript-private/closure-backed: it exposes neither a
-recovery method nor the private convergence core at runtime.
+recovery method nor the private convergence core at runtime. No production
+caller composes this split yet: the room runtime and working-state worker
+construct the live-only `SharedWorkingState` class directly, so the recovery
+ports are exercised only by the domain tests.
 
 Before all of those outcomes, the Module validates schema and shape, including
 well-formed Unicode (lone surrogates fail closed) and self/future-self atom

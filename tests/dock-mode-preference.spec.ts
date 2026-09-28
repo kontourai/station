@@ -228,45 +228,15 @@ test.describe('Dock Mode Preference', () => {
       .nth(1);
     const maximizeButton = page.locator('.chat-dock__maximize-btn');
 
-    const [openStyles, newStyles, maximizeStyles] = await Promise.all([
-      openButton.evaluate((el) => {
-        const styles = getComputedStyle(el);
-        return {
-          display: styles.display,
-          fontSize: styles.fontSize,
-          fontWeight: styles.fontWeight,
-          height: parseFloat(styles.height),
-        };
-      }),
-      newButton.evaluate((el) => {
-        const styles = getComputedStyle(el);
-        return {
-          display: styles.display,
-          fontSize: styles.fontSize,
-          fontWeight: styles.fontWeight,
-          height: parseFloat(styles.height),
-        };
-      }),
-      maximizeButton.evaluate((el) => {
-        const styles = getComputedStyle(el);
-        return {
-          display: styles.display,
-          fontSize: styles.fontSize,
-          fontWeight: styles.fontWeight,
-          height: parseFloat(styles.height),
-        };
-      }),
-    ]);
-
-    expect(openStyles.display).toBe('flex');
-    expect(newStyles.display).toBe('flex');
-    expect(maximizeStyles.display).toContain('flex');
-    expect(openStyles.fontSize).toBe(newStyles.fontSize);
-    expect(openStyles.fontSize).toBe(maximizeStyles.fontSize);
-    expect(openStyles.fontWeight).toBe(newStyles.fontWeight);
-    expect(openStyles.height).toBeGreaterThan(28);
-    expect(newStyles.height).toBeGreaterThan(28);
-    expect(maximizeStyles.height).toBeGreaterThan(28);
+    // Consistent sizing is the rendered box, not the CSS that produces it:
+    // the three controls share one row height and none drops below 28px.
+    const heights = await Promise.all(
+      [openButton, newButton, maximizeButton].map(
+        async (button) => (await button.boundingBox())!.height,
+      ),
+    );
+    for (const height of heights) expect(height).toBeGreaterThan(28);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1);
   });
 
   // The current inbox toggle contract unmounts the panel when closed and
@@ -743,6 +713,9 @@ test.describe('Dock Mode — Mobile', () => {
   }) => {
     await page.goto('/');
     await dismissSetupLauncher(page);
+    // The dock is mounted, so the absences below are the phone's policy and
+    // not a shell that has not rendered yet.
+    await expect(page.getByTestId('chat-dock-mobile-header')).toBeVisible();
 
     await expect(
       page.getByRole('button', { name: 'Move the dock' }),

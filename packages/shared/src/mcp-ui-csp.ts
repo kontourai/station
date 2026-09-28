@@ -15,8 +15,8 @@ export interface MCPToolUICsp {
 }
 
 /**
- * Only explicitly permitted secure protocols may be added from a resource's
- * declared domains — never `*`, `data:`, `blob:`, or `'unsafe-*'`.
+ * Filters declarations by their parsed URL protocol, returning original text.
+ * This is not a complete validator for CSP source-expression syntax.
  */
 export function safeCspDomains(
   domains?: string[],
@@ -33,10 +33,9 @@ export function safeCspDomains(
 }
 
 /**
- * Build the MCP-UI sandbox CSP: deny by default, then add ONLY the app's
- * declared, validated secure domains to the relevant directives. Network
- * connections additionally permit declared `wss:` origins, as required for
- * WebSocket clients. With nothing declared this is a strict deny-all.
+ * Builds the base policy and appends protocol-filtered declarations. Connect
+ * sources also accept wss. With no declarations, network connections are
+ * blocked; inline scripts/styles and data images/fonts remain available.
  */
 export function buildMcpUiCsp(csp?: MCPToolUICsp): string {
   const connect = safeCspDomains(csp?.connectDomains, ['https:', 'wss:']);

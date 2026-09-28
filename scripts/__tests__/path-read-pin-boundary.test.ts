@@ -104,7 +104,6 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts',
   'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts',
-  'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
   'packages/shared/src/__tests__/plugin-build.test.ts',
   'packages/shared/src/__tests__/plugin-dependency-install.test.ts',
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
@@ -490,6 +489,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture directory',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  'packages/cli/src/__tests__/profile.test.ts':
+    'lists the saved Station store directory under its temporary STATION_HOME',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts':
     'walks packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
@@ -513,6 +514,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     "this file: the detector's own strings name the calls it looks for; the prepush floor runs it (#1913)",
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/prepush-typecheck.test.ts':
+    'Git reads run only in disposable linked-worktree and foreign-repository fixtures; the real hook and helper are copied as exact files',
   'scripts/__tests__/release-workflow.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/verification-policy-gate.test.ts':
@@ -556,6 +559,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/runtime/bootstrap/__tests__/station-runtime-store-quarantine.test.ts':
     TEMP_VIA_FIXTURE,
+  'src-server/routes/knowledge/__tests__/knowledge-create-identity.routes.test.ts':
+    'walks only Knowledge store roots under the tracked temporary Station home to compare bytes before and after route refusals',
   'src-server/services/agents/__tests__/playbook-skill-migration.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/services/browser/__tests__/chromium-acquisition.test.ts':
@@ -810,26 +815,23 @@ describe('derived pin edges only add to selection', () => {
   });
 
   it('selects the pinning test and this gate for a pinned path', () => {
-    // Touching the hook #1785 moved the call into must schedule the pin that
-    // reads it (#1808 repointed that pin), and must not have done so before.
-    const hook =
-      'src-ui/src/components/chat-dock/useConversationBoundaryDialogs.ts';
-    const after = selectedTests([hook], built);
-    expect(after).toContain(
-      'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
-    );
+    // Touching a file a test reads only as text must schedule the pin that
+    // reads it, and must not have done so before. (The #1785 pin this gate
+    // was built for is now a mounted-hook test with a real import edge.)
+    const pinned = 'src-ui/src/components/chat/OutboundQueuedMessages.tsx';
+    const pinning = 'src-ui/src/__tests__/outbound-queue-css-boundary.test.ts';
+    const after = selectedTests([pinned], built);
+    expect(after).toContain(pinning);
     expect(after).toContain(PATH_READ_PIN_BOUNDARY_TEST);
-    expect(selectedTests([hook])).not.toContain(
-      'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
-    );
+    expect(selectedTests([pinned])).not.toContain(pinning);
   });
 
   it('keeps a supplemental edge from cancelling an escalation', () => {
-    // `vitest.global-setup.ts` escalates (it matches `isEscalationPath` and
+    // `.githooks/commit-msg` escalates (it matches `isEscalationPath` and
     // no committed edge names it) and a test also pins it. Without the
     // supplemental exclusion its pin edge would set `hasExplicitBoundary` and
     // trade `ci-fast` for one focused test.
-    const path = 'vitest.global-setup.ts';
+    const path = '.githooks/commit-msg';
     expect(pins.map(({ pin }) => pin)).toContain(path);
     expect(selectChangedVerification([path]).escalated).toBe(true);
     const selection = selectChangedVerification([path], built as never);
@@ -840,7 +842,7 @@ describe('derived pin edges only add to selection', () => {
     // ...and the pin is still named, on top of the escalation.
     expect(
       selection.tests.map(({ path: test }: { path: string }) => test),
-    ).toContain('scripts/__tests__/vitest-teardown-race.test.ts');
+    ).toContain('scripts/__tests__/commit-message-gate.test.ts');
   });
 });
 

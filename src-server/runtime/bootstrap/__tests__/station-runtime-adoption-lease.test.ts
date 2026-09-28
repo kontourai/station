@@ -83,22 +83,36 @@ function supervisorGraceMs(): Record<string, number> {
       /const deadline = Date\.now\(\) \+ (\d+);/,
       platform,
     ),
-    // The unit renders TimeoutStopSec from SYSTEMD_STOP_TIMEOUT_SECONDS,
-    // which derives from `service run`'s own shutdown deadline plus a margin.
-    systemd:
-      (Math.ceil(
-        read(
-          'systemd shutdown deadline',
-          /SERVICE_SHUTDOWN_DEADLINE_MS = ([\d_]+);/,
-          serviceCommand,
-        ) / 1000,
-      ) +
-        read(
-          'systemd stop margin',
-          /SYSTEMD_STOP_TIMEOUT_SECONDS =\s*Math\.ceil\(SERVICE_SHUTDOWN_DEADLINE_MS \/ 1_000\) \+ (\d+);/,
-          serviceCommand,
-        )) *
-      1000,
+    // The unit renders TimeoutStopSec from SYSTEMD_STOP_TIMEOUT_SECONDS: the
+    // longer of `service run`'s own shutdown deadline and the fixed
+    // launcher's stop budget (#2675 D), plus a margin. All three are read.
+    systemd: (() => {
+      const deadlineMs = read(
+        'systemd shutdown deadline',
+        /SERVICE_SHUTDOWN_DEADLINE_MS = ([\d_]+);/,
+        serviceCommand,
+      );
+      const budget = /LAUNCHER_STOP_BUDGET_MS = ([\d_]+(?: \+ [\d_]+)*);/.exec(
+        serviceCommand,
+      )?.[1];
+      if (!budget) {
+        throw new Error(
+          'systemd launcher stop budget: LAUNCHER_STOP_BUDGET_MS no longer matches its source.',
+        );
+      }
+      const launcherMs = budget
+        .split(' + ')
+        .reduce((total, term) => total + Number(term.replaceAll('_', '')), 0);
+      const marginSeconds = read(
+        'systemd stop margin',
+        /SYSTEMD_STOP_TIMEOUT_SECONDS =\s*Math\.ceil\(\s*Math\.max\(SERVICE_SHUTDOWN_DEADLINE_MS, LAUNCHER_STOP_BUDGET_MS\) \/ 1_000,?\s*\) \+ (\d+);/,
+        serviceCommand,
+      );
+      return (
+        (Math.ceil(Math.max(deadlineMs, launcherMs) / 1000) + marginSeconds) *
+        1000
+      );
+    })(),
     launchd:
       read(
         'launchd',
@@ -394,6 +408,9 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
     // The literal, beside the computed case for the reason my own notes give:
     // a test written only against the constant follows the constant anywhere.
     expect(NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS).toBe(5_000);
+    // systemd's grace as the unit renders it (#2675 D): 135 s of launcher
+    // stop budget plus a 30 s margin.
+    expect(graces.systemd).toBe(165_000);
   });
 
   test('a window that already settled costs shutdown nothing', async () => {

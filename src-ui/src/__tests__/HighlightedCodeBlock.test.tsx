@@ -102,14 +102,20 @@ describe('HighlightedCodeBlock copy (station#3339)', () => {
   test('the copy reset timer is cleared on unmount', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
     const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
     const { unmount } = renderBlock();
 
     const button = copyButton();
     fireEvent.click(button);
     await waitFor(() => expect(button.textContent).toContain('Copied'));
-    clearTimeoutSpy.mockClear();
+    const resetCall = setTimeoutSpy.mock.calls.findIndex(
+      ([, delay]) => delay === 1500,
+    );
+    expect(resetCall).toBeGreaterThanOrEqual(0);
+    const resetTimer = setTimeoutSpy.mock.results[resetCall]!.value;
+    expect(clearTimeoutSpy).not.toHaveBeenCalledWith(resetTimer);
     unmount();
-    expect(clearTimeoutSpy).toHaveBeenCalled();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(resetTimer);
   });
 });

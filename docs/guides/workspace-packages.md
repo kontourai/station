@@ -132,8 +132,9 @@ station cloud import-project --archive=/private/import/acme.workspace.enc \
 An explicit `--api-base` may replace `--station` for an already authenticated
 operator CLI; use its existing credential environment/store. Credentials are
 never command output or package content. The first cloud release uses normal
-owner-approved Station pairing; company SSO is a later integration. Cloud IAM
-access never implicitly enrolls a Station browser.
+owner-approved Station pairing or the target's configured authentication contract.
+Package commands do not provision SSO or convert Cloud IAM into Station
+authority; see [deployment authentication](deployment-authentication.md).
 
 This command requires the package to be present on the machine running the CLI.
 It does not upload to the cloud or discover a Docker mount mapping. Set
@@ -282,5 +283,7 @@ Project route, checks unauthorized and duplicate creation refusals, reads the
 restored files and Git state, and repeats reads after container recreation.
 The source checkout is removed before the server starts; the synthetic key is
 removed after the combined registration command finishes.
-This qualifies the single-host operator path; it does not qualify multi-tenant
-membership or a real agent continuation.
+That is the fixture's intended single-host operator coverage. Source inspection
+or a separate unit pass does not establish that the container journey ran at
+this revision. It does not qualify multi-tenant membership or real agent
+continuation; retain the exact container-run receipt separately.

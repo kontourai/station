@@ -9,12 +9,19 @@ For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
 
 ---
 
+See the [application walkthrough](../learn/walkthroughs.md#connections) for a captured example and its evidence limits.
+
 ## Read the connection list
 
-Each Model connection or Engine shows exactly one state:
+Each row shows one readiness state and a next action. Model connections distinguish
+saved settings from a check that actually reached the provider:
 
-- **Ready** — usable now.
-- **Sign in required** — authenticate to finish connecting.
+- **Ready** — the current readiness evidence permits selection; it does not prove every model or tool capability.
+- **Sign in required**, **API key required**, or **Credentials required** — complete the named authentication step.
+- **Saved — not verified** — settings exist, but no qualifying provider check or chat result is recorded.
+- **Check failed** — the provider refused the last applicable check; fix the settings and test again.
+- **Reachable — no model catalog** — the endpoint answered, but its model list did not establish a usable selection.
+- **Unreachable — retrying** or **Cannot reach provider** — the latest reachability check failed; the former retains a recent pass within the retry grace period.
 - **Found, not connected** — Station observed a service-specific setup signal; connect it to Station.
 - **Setup required** — finish the remaining setup.
 - **Limited** — usable with reduced capabilities; review the details.
@@ -23,6 +30,13 @@ Each Model connection or Engine shows exactly one state:
 
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
+
+**Test Connection** first requests the model catalog. If no usable catalog is
+available, it can send one minimal chat request using the connection's default
+model; that request may be billable. A successful catalog check alone does not
+prove chat, tool calling, images, or other model features. See the
+[readiness projection](../../src-ui/src/views/provider-settings/providerCatalog.tsx)
+and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectionForm.tsx).
 
 ---
 
@@ -52,6 +66,21 @@ sign in, pair a Device or grant Project access. Until the broker transport is
 wired into the ordinary client, these records remain unconnected and cannot be
 selected as direct Station connections or CLI defaults. The CLI also refuses
 `--station` and `STATION_TARGET` when they name one of these inert routes.
+
+Desktop now registers [host signaling commands](../design/native-capabilities.md#desktop-application-signaling-commands)
+for an existing routing grant, but the ordinary native client does not call
+them yet. They add no Connect or account-sign-in action to these saved routes.
+
+Already redeemed native routing grants have a separate Desktop maintenance
+path. While the Desktop renderer is visible, it observes every saved broker
+route and renews an existing unambiguous grant when at most 12 hours remain.
+It rechecks host status before renewal and after wake/online events, with
+bounded retries. More than 64 saved routes pauses maintenance for all routes
+and displays a limit notice. Saving a route or approving a Station key does
+not redeem a grant. This maintenance does not select an application route,
+sign in, pair a Device, or grant Project access; mobile shells do not run it.
+The [host renewal and supervisor](self-hosted-broker.md#native-routing-grant-foundation-v2)
+keep credentials and durable retry identity out of the renderer.
 
 For a native signing-key approval, select the saved broker route and choose
 **Prepare native Station identity**. Station creates or reopens this install's
@@ -84,7 +113,7 @@ replacement must advance the generation and use a different key; cancelling
 the review keeps the existing approval. A revoked key likewise needs a newer
 generation and different key before trust can be restored.
 
-In the browser, **Manage Stations → Broker routes** first has a **Station
+In the browser, **Connections → Computers → Broker routes** first has a **Station
 signing key** step. A fresh browser with no Device cookie can reach the same
 setup from **Connect to a Station → Use a broker invitation**. The operator can run
 `npm run --silent connection:key -- inspect --home=<absolute-home-path>` and
@@ -193,7 +222,11 @@ ollama pull llama3.1
 ollama pull qwen2.5
 ```
 
-Any chat-capable model Ollama supports works. Smaller models start faster; larger ones are more capable.
+Choose a model that fits the host's resources and the work you intend to run.
+Station uses Ollama's OpenAI-compatible chat endpoint. A model appearing in the
+catalog does not prove tool support: Station separately asks Ollama for that
+capability when building its model inventory, and leaves it unknown if the
+lookup fails or times out.
 
 ### 3. Let Station suggest it
 
@@ -224,16 +257,22 @@ Codex, Claude Code, OpenCode, Kiro, and similar agent apps are Engines. Use
 2. For custom setup, enter a name and command. Command arguments, working directory, and other
    raw setup details stay under **Advanced**.
 3. Keep the same dialog or sheet open while Station shows **Checking**.
-4. Read the single result: **Ready**, **Setup needed**, **Unavailable**, or **Off**. If it is
+4. Read the readiness result and its detail. If it is
    not Ready, use the offered retry, edit, or choose-another-engine action before closing.
 
-Detection only says that Station observed a possible local engine; it does not configure it,
-read its secrets, or guarantee that it is ready. The UI names the concrete engine, such as
+Discovery reports a possible local engine; it does not guarantee readiness.
+Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
+persist their default Agents. Automatic adoption respects an engine's recorded
+removal and refuses an identity already bound to another connection. It does
+not sign the engine in. See
+[startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
+and the [Agent registry](../../src-server/domain/agent-registry.ts).
+The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.
 
 The first-run Engines chapter shows the detected, not-yet-connected local Engine subset. Selecting
-one there explicitly connects the Engine and creates its External agent together; detection itself
-remains read-only until that action.
+one there explicitly connects the Engine and creates its default Agent binding.
+That discovery action is separate from the automatic startup adoption above.
 
 For the built-in Claude Code Engine, Station chooses between the `claude` executable it finds
 installed on your machine and the Claude Code bundled with the Claude Agent SDK:
@@ -252,9 +291,10 @@ was able to read.
 
 ## Route an engine through a model proxy
 
-A Claude Code or Codex Engine connection can send its traffic through a local
-model proxy (CLIProxyAPI, VibeProxy, or any Anthropic/OpenAI-compatible
-router) instead of logging in directly. Set this in the connection's runtime
+A Claude Code or Codex Engine connection can be configured to use a local
+model proxy. The proxy must support the chosen engine's requests; an
+Anthropic/OpenAI-compatible endpoint label alone does not establish that.
+Set this in the connection's runtime
 config (`agentConnections.<engine>.config` in `config/app.json`):
 
 - `env` — environment variables merged into every engine subprocess the
@@ -266,8 +306,7 @@ config (`agentConnections.<engine>.config` in `config/app.json`):
   station-managed app-home opt-in (`useAppHome`); a selected credential
   profile still wins over both.
 
-For example, to route the Claude Code connection through a keyless local
-proxy that pools your subscriptions:
+For example, if your local proxy expects a placeholder token:
 
 ```json
 {
@@ -295,12 +334,16 @@ empty-string value masks the inherited key, and Codex's login probe reads the
 configured `CODEX_HOME`. Readiness does not apply the app-home opt-in or a
 selected credential profile.
 
-Two boundaries to know: credential login/enrolment children do not receive
-`env` (they always run against the engine's normal config root), and changing
-`configHome` after sessions exist does not migrate their history — a resumed
-thread looks for its transcripts under the home that was active when it last
-ran. Malformed or oversized `env` entries (more than 64 entries or a value
-over 32 KiB) are dropped silently at save time.
+Two boundaries to know: credential-profile login/enrolment children do not
+receive the connection's `env`; they use the selected profile's config home
+over the process environment. Changing `configHome` does not migrate existing
+history. Ordinary resumes resolve the current connection/profile environment,
+so changing it can make an older transcript unavailable. Adopted sessions with
+a recorded source-home binding follow that binding instead. Saving silently
+drops invalid `env` entries, including values containing
+NUL or longer than 32,768 JavaScript string code units. It retains at most the
+first 64 valid entries. These rules are also applied when spawning from
+hand-edited configuration.
 
 One failure mode to expect: most proxies re-identify requests to the provider
 with their own client identity and capability flags, not your engine's. A
@@ -326,28 +369,48 @@ Many hosted and self-hosted inference servers expose an OpenAI-compatible API (`
 
 ## AWS Bedrock (optional)
 
-Bedrock is one Model connection option among several — it is **not required** to run Station. It needs valid **AWS credentials** in your environment (see [docs/reference/env-vars.md](../reference/env-vars.md) for the AWS variables and the minimum IAM policy).
+Bedrock is optional. Choose a default AWS credential chain, a named AWS profile,
+or a Bedrock API key; ambient access-key variables are not required for every
+mode. See [environment variables](../reference/env-vars.md) for AWS settings and
+the minimum IAM policy.
 
-1. Make AWS credentials and a region available to Station (e.g. via `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or a configured AWS profile).
-2. If Station observes the required AWS environment, it can show Bedrock as a suggestion. That
-   observation does not read credential material or create a connection.
+1. Choose a region and authentication mode. For the default credential chain,
+   make credentials available to the Station server through its environment,
+   configured AWS profile, or another supported AWS credential source.
+2. Station can suggest Bedrock when its bounded AWS credential-chain check
+   succeeds. The suggestion exposes readiness information rather than credential
+   values; the check can consult the configured credential sources.
 3. Select **Add model connection**, choose **Amazon Bedrock**, then choose the region and one of the supported authentication modes: default AWS credentials, a named AWS profile, or a Bedrock API key.
 4. Pick a Bedrock model when editing a Station agent.
 
 Bedrock-specific configuration (the AWS `region` and a Bedrock `defaultModel`) is documented in [docs/reference/config.md](../reference/config.md). These fields apply only when you run Bedrock.
 
+Startup has a separate legacy seeding path: if there is no saved LLM connection
+and the default AWS credential chain resolves within its bounded check, Station
+creates an enabled Bedrock connection. That check resolves credentials; it does
+not prove access to a Bedrock model. Ollama detection does not create a connection.
+See [startup seeding](../../src-server/runtime/bootstrap/runtime-startup.ts) and
+the [credential check](../../src-server/providers/llm/bedrock.ts).
+
 ---
 
 ## Current configuration defaults
 
-`config/app.json` can set which Model connection new projects default to:
+`config/app.json` supplies Station-wide inference defaults:
 
 - `defaultLLMProvider` — the connection ID used for inference by default.
 - `defaultModel` — the default model ID (a Bedrock model ID when using Bedrock; a local model name such as `llama3.1` when using Ollama).
 
 See [docs/reference/config.md](../reference/config.md) for the full `app.json` reference and an Ollama-first example.
 
-The chat composer always names the active connection and model. Open it to
+A Project can override them with `defaultProviderId` and `defaultModel`; an
+Agent can bind its own Model connection through `execution.modelConnectionId`.
+For Station-engine Agents, connection selection uses that explicit binding,
+then `defaultLLMProvider`, then the sole enabled LLM connection. Several enabled
+connections without a default are ambiguous; readiness does not silently choose
+one. See [Agent configuration](agents.md#agent-configuration).
+
+The chat model picker shows the resolved connection and model. Open it to
 search across ready Model connections and Engines, filter by connection or
 Favorites, and choose the exact model for this chat. Connections that still
 need setup remain visible with their status, but cannot create an invalid
@@ -364,13 +427,13 @@ restores both the default connection and model.
 
 Connections has one clear home for each relationship:
 
-- **Computers** shows Stations this device can reach. **Remote work** shows
-  computers where this Station can run delegated tasks. **Add computer** asks
-  the goal once and opens the right pairing or SSH setup.
-- **Developer services** shows Git, GitHub, GitLab, and MCP tool servers.
-  Station reports the host's actual install and sign-in state. Each service
-  offers one next action; installation and authentication guidance stays with
-  that service instead of appearing as a separate CLI checklist.
+- **Computers** combines saved Station and SSH relationships. Its rows distinguish
+  authorization from observed reachability. **Add computer** asks whether to
+  pair a device, reach another Station, or run work over SSH.
+- **Tools** manages MCP tool-server integrations and their prerequisites.
+  Installing a CLI or saving an integration does not by itself prove its login
+  or tool availability.
+- **Knowledge** manages Knowledge sources; see the [Knowledge guide](knowledge.md).
 - When an agent tool depends on a disconnected tool server, **Repair
   connection** opens that exact server. Station does not label the tool
   available or ask the user to add it first.
@@ -382,31 +445,30 @@ Connections has one clear home for each relationship:
 
 ## Pairing scopes on this computer
 
-Device-pairing scopes apply even when a desktop app or CLI talks to Station on
-the same computer. A device paired as **Read-only** can view and stream state,
-but cannot create, change, or delete resources and cannot open a terminal. If
-you expected to operate the local Station, revoke that device entry and pair it
-again as **Standard**. Standard can read, operate, and open a terminal.
+Device-pairing scopes apply to protected HTTP requests even when a desktop app
+or CLI talks to Station on the same computer. A **Read-only** Device can view
+and stream permitted state, but cannot mutate resources. Remote terminal
+WebSockets additionally require `terminal:operate`; **Standard** includes that
+scope along with read and operate. The operator changes an existing Device's
+scope in place with **Paired devices** → the Device → **Change access**, or on
+the Station host with `station environment access scope`; `access:manage` is
+never granted this way.
 
-This tightening makes the permission shown during pairing effective for
-loopback connections as well as remote ones. See the rationale in
+The current terminal and voice listeners retain a separate direct-loopback
+path without credential verification. Browser-shaped upgrades on that path
+must use an allowed Station Origin; this check is not a Device-scope check.
+A read-only pairing is therefore not a sandbox against a local process. See
+the [current transport matrix](../security/remote-access-threat-model.md#surface-matrix)
+and the HTTP-scope rationale in
 [the peer-pairing design decision](../design/station-peer-pairing.md#loopback-scopes-are-not-an-exception-station1198).
 
 ## Simplified setup program
 
-The unified Providers home, guided setup, chat model picker, prerequisite
-guidance, shortcut editor, and final Settings integration now share one
-vocabulary. Settings explains where values live and sends provider, developer
-service, and computer setup to Connections instead of duplicating those controls.
-
-| Follow-on slice | Issue |
-|---|---|
-| Unified Providers home and readiness language | #1349 — shipped |
-| Provider detail and guided credential setup | #1350 — shipped |
-| Default-chat Model picker | #1351 — shipped |
-| Connection and tool prerequisite guidance | #1352 — shipped |
-| Keyboard shortcut editor | #1353 — shipped |
-| Settings integration and final interface polish | #1354 — shipped |
+Connections owns Models, Engines, Tools, Knowledge, and Computers. Settings
+explains where settings live and routes setup to those owners. The
+[shortcut editor](keyboard-shortcuts.md) remains a separate Settings task.
+The original setup work was tracked in #1349–#1354; this historical sequence
+does not define today's navigation or establish live provider compatibility.
 
 ---
 
@@ -416,11 +478,13 @@ The Connections, Guidance and Tool-server URLs have a single canonical route per
 
 | Concept | Canonical route | Aliases (still work) |
 |---|---|---|
-| Model providers | `/connections/providers` | `/connections/models`, `/manage/providers` |
-| Engines | `/connections/engines` | `/connections/agent-apps`, `/connections/agents` |
-| Local-command provider setup | `/connections/acp` | — |
+| Model connections | `/connections/models` | `/connections/providers`, `/manage/providers` |
+| Engines, including custom local commands | `/connections/engines` | `/connections/acp`, `/connections/agent-apps`, `/connections/agents` |
 | Skills | `/guidance?tab=skills` | `/skills`, and the retired `/playbooks`, `/prompts`, `/manage/prompts` |
 | Tool servers | `/connections/tools` | `/integrations`, `/tools`, `/manage/integrations` |
 | Registry | `/registry` (optionally `/registry/:tab` for `agents`\|`skills`\|`integrations`\|`plugins`\|`layouts`\|`kits`) | — |
 
-In-app navigation (sidebar links, `navigate()`/`onNavigate()` call sites) always emits the canonical route via `getPathForView`. Aliases are resolved for incoming/deep-link paths only — they are never generated by the app itself, so the address bar will show the canonical URL after any in-app navigation even if you arrived via an old bookmark.
+The connection section registry and `getPathForView` emit canonical routes.
+Navigation ingestion also normalizes the listed aliases, including old deep
+links. See the [section registry](../../src-ui/src/views/connections-hub/connection-sections.ts)
+and [routing owner](../../src-ui/src/app-shell/routing.ts).

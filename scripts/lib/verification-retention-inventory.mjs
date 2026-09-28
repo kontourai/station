@@ -14,9 +14,8 @@ const COMPLETION_FENCE_DIRECTORIES = [
 export const TERMINAL_HANDOFF_GC_STATUS_FILE = 'terminal-handoff-gc.json';
 
 /**
- * Intended limits for a future, separately-authorized verifier-artifact GC.
- * This module is inventory-only: it never removes, renames, or otherwise
- * mutates a record.
+ * Shared limits for terminal-handoff inventory and the submission owner's GC.
+ * Inventory itself does not mutate records.
  */
 export const DEFAULT_VERIFICATION_RETENTION_POLICY = Object.freeze({
   terminalTtlMs: 7 * 24 * 60 * 60_000,
@@ -279,8 +278,7 @@ export function readTerminalHandoffGCSummary(root) {
 }
 
 /**
- * Returns only bounded aggregate counts. This is intentionally a side-effect
- * free planning signal; a future GC must have an explicit mutation contract.
+ * Returns aggregate counts without running the submission owner's GC.
  */
 export function verificationRetentionInventory({
   root,

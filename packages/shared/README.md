@@ -1,15 +1,13 @@
 # @kontourai/station-shared
 
-Station is Kontour's local-first agent workspace: you direct agent work, and the
-gate verdicts, evidence, and trust state stay in the same context as the work.
-Plugins are how the workspace is extended — a plugin contributes layouts,
-agents, MCP integrations, providers, and knowledge namespaces to the Station
-shell.
+Runtime helpers shared by Station and its extensions: manifest parsing, plugin
+builds, filesystem/process owners, redaction and event projections. Stable domain
+contracts belong to [`station-contracts`](../contracts/README.md).
 
-This package holds the runtime helpers Station and its plugins share: plugin
-manifest parsing, the esbuild-based plugin build (`buildPlugin`), config and
-path helpers, redaction, and runtime-event projection. If you are building a
-plugin, this is the package that builds it.
+Use an explicit subpath for the helper you need. The root is a compatibility
+barrel with selected helpers and contract re-exports, not a browser-safe catalog
+of every export. [package.json](./package.json) is the entry-point inventory;
+Node/filesystem helpers and browser-safe projections have different requirements.
 
 ## Installation
 
@@ -17,23 +15,14 @@ plugin, this is the package that builds it.
 npm install @kontourai/station-shared
 ```
 
-## Requires a bundler (ships TypeScript source)
+## Source entry points and runtime requirements
 
-This package publishes **raw TypeScript**. Every entry in `exports` points at a
-`.ts` file under `src/`; there is no compiled `dist/`. That is deliberate — the
-supported consumer is a Station plugin, whose `npm run build` calls
-`buildPlugin()` from `@kontourai/station-shared/build` and bundles the plugin
-with esbuild, which reads `.ts` from `node_modules` directly.
-
-- **Supported:** esbuild, Vite, webpack, Rollup, or any TS-aware loader/runtime
-  (`tsx`, `ts-node`, Bun, Deno). The plugin build entry point
-  (`@kontourai/station-shared/build`) runs under Node via a TS-aware loader such
-  as `tsx`.
-- **Not supported today:** plain-Node `require()` / `import` of this package
-  without a TS-aware step.
-
-This is a disclosed constraint, not an accident. If you need a precompiled
-build for a non-bundled runtime, open an issue.
+The manifest exports source: mostly `.ts`, with `.mjs` Node compatibility leaves
+such as `/node-http-compat` and `/process-identity`. It declares Node **24.x**.
+For the build helper, use Node 24 with a source-aware loader such as `tsx`;
+browser consumers need a bundler and a browser-compatible subpath. These are
+not interchangeable environments, and this README does not certify every
+alternate runtime or loader. The package does not select a compiled `dist/` tree.
 
 ## Usage
 
@@ -42,13 +31,22 @@ import { buildPlugin } from '@kontourai/station-shared/build';
 import { readPluginManifest } from '@kontourai/station-shared/parsers';
 
 const result = await buildPlugin(process.cwd(), 'production');
-console.log(result.bundlePath);
+if (result.built) console.log(result.bundlePath);
 ```
 
-`buildPlugin` reads `plugin.json`, installs the plugin's own npm dependencies,
-and bundles the manifest `entrypoint` with esbuild into `dist/bundle.js`,
-externalizing the modules the Station host provides at runtime (React,
-`@tanstack/react-query`, `@kontourai/station-sdk`, …).
+`readPluginManifest` reads and parses `plugin.json`; it is not an installation
+approval. `buildPlugin` selects the manifest entrypoint, prepares dependencies,
+and emits `dist/bundle.js` (`dist/bundle-dev.js` in dev mode), plus CSS when
+present. It can mutate the authoring directory and install dependencies. A
+manifest without an entrypoint produces a no-bundle result; manifest-controlled
+shell build commands are refused.
+
+The [build implementation](./src/build.ts) owns input/output containment,
+dependency preparation and the exact shared-module allowlist. Root SDK,
+SDK `/client` and `/voice`, React and React Query are among the externalized
+modules; other SDK leaves are not automatically external. Bundles register with
+Station's host runtime. Successful bundling does not install a plugin, approve
+permissions or activate its server contributions.
 
 Run that file with a TS-aware loader — the scaffolded plugin `package.json`
 uses `tsx`:
@@ -62,15 +60,11 @@ uses `tsx`:
 }
 ```
 
-The full plugin walkthrough — manifest, entrypoint, build script, and how to
-load the bundle into a running Station — is in the
-[`@kontourai/station-sdk`](https://www.npmjs.com/package/@kontourai/station-sdk)
-README.
-
-## License
-
-Apache-2.0 — see [LICENSE](./LICENSE).
-
+These scripts must use the mode-selection build file in the
+[SDK walkthrough](../sdk/README.md#start-from-npm); `--dev` produces one dev
+bundle, not a watcher. Use that guide for manifest, entrypoint and installation
+steps. Package availability on npm and live plugin activation are separate from
+source/build verification.
 
 ## Registry authoring Node leaves
 
@@ -88,3 +82,7 @@ checkout. A source change is not evidence that the exports are already on npm.
 The [signing example](../../examples/registry/signed-package/README.md) uses a
 TS-aware loader, keeps private keys outside the signed package, and leaves host
 trust configuration to the host operator.
+
+## License
+
+Apache-2.0 — see [LICENSE](./LICENSE).

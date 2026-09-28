@@ -28,15 +28,19 @@ your system requests reduced motion.
 ## Name, clean up, and restore
 
 Edit the Board title and choose **Save title**. **Undo** restores the prior
-Board snapshot. **Remove missing** appears only for references Station has
-confirmed are missing; it never removes work merely because a read was stale,
-ambiguous, unavailable, or unconfirmed.
+Board snapshot. **Remove missing** appears for references reported missing by
+the last loaded owner resolution. It removes pins, not the work they refer to.
+Stale, ambiguous, unavailable, and unconfirmed results are not selected for
+cleanup. Refresh before cleanup if the linked work may have changed: the
+cleanup request checks the Board revision and pin identities, but does not
+query each owner again.
 
-The title, camera, pin geometry, pin order, and current resolution state are
-re-read when you leave and return or reload. **Refresh Board** refreshes both
-the Board and those resolutions. A save uses the Board revision shown on
-screen. If somebody else changes the Board first, Station shows the new
-observation instead of silently overwriting it. If a response is lost, the
+The title, camera, pin geometry, and pin order are saved on the Station.
+Returning to the Pane can reuse cached Board and resolution data; it does not
+guarantee a new read. **Refresh Board** requests both again. A save uses the
+Board revision shown on screen. If somebody else changes the Board first,
+Station refuses the conflicting write and asks you to refresh. It does not
+automatically show the other writer's changes. If a response is lost, the
 result is unconfirmed until you inspect the Board again; Station does not guess
 whether the mutation happened or retry it automatically.
 
@@ -44,8 +48,13 @@ whether the mutation happened or retry it automatically.
 
 **Linked** means the owner could resolve the exact reference. **Not found**,
 **Moved**, **Can’t load**, **Multiple matches**, and **Unconfirmed** describe
-what the owner read now. **Unconfirmed** means an individual reference has not
+the last loaded owner resolution. **Unconfirmed** means an individual reference has not
 yet produced a resolution; it is different from the visible resolver loading
 or error notice. Use **Retry resolution** when that lookup fails. These states
 are not copied status stored on the Board, and a linked item is not evidence
 that a gate passed or work is complete.
+
+For architecture and implementation evidence, follow the
+[Work Board module](https://github.com/kontourai/station/blob/main/docs/architecture/module-map.md#personal-work-board).
+The refresh and cleanup recommendations are tracked in
+[#2736](https://github.com/kontourai/station/issues/2736).

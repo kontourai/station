@@ -60,7 +60,7 @@ const LINE_STATUS_PATTERNS: Array<{
 const PLAN_MARKER_CHARACTERS =
   /[-*\d\u2705\u2611\u2714\u23f3\u2b1c\u25a1]|\u{1f504}/u;
 
-export function hasPlanMarker(text: string): boolean {
+function hasPlanMarker(text: string): boolean {
   return PLAN_MARKER_CHARACTERS.test(text);
 }
 

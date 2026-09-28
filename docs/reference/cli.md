@@ -1,10 +1,16 @@
 # CLI Reference
 
-The Station CLI manages the application lifecycle, plugin system, and plugin development workflow.
+The Station CLI controls running Stations and supports selected local and
+checkout operations. Availability depends on how it was launched.
 
 ## Invocation
 
 There are three entry points, and they are not the same program surface.
+
+Examples use `station` as the command name. Use `./station` in a checkout or
+the full `npx @kontourai/station-cli@<version-or-published-tag>` prefix when
+you have not installed a global command. The package does not add itself to
+your PATH merely because an earlier `npx` command ran.
 
 ### The operator entry point: `npx @kontourai/station-cli@<version-or-published-tag>`
 
@@ -37,9 +43,14 @@ From the repo root, use the `./station` shell script:
 ./station <command> [args]
 ```
 
-On first run, `./station` bootstraps by running `npm install` if `node_modules` is missing, installs the repo-local Playwright Chromium bundle, then delegates to `scripts/station-cli.ts` (which imports `packages/cli/src/cli.ts`) via `tsx`. It additionally injects `EnvironmentSecurityService` from `src-server/`, which is why the host-local `station environment` subcommands answer here and nowhere else.
+If `node_modules` is missing, `./station` runs `npm run dependencies:ci` using
+the pinned package manager, then installs the repo-local Playwright browser
+bundle. It executes `scripts/station-cli.ts` through `tsx`; that wrapper loads
+the CLI sources and supplies source-only server capabilities. Selected local
+operations also work in the packaged client, as listed below.
 
-**Every command in this reference works from `./station`.** This is also the
+`./station` admits the checkout command surface, subject to each command's
+platform, configuration, and authorization requirements. This is also the
 *local invocation way* when the registry isn't the point — developing the CLI
 itself, or deliberately not depending on a published channel tag.
 
@@ -51,9 +62,10 @@ fixed pointer into one checkout: every invocation walks up from the current
 working directory to find the enclosing Station checkout and runs *that
 tree's* built bundle (`packages/cli/dist/station.mjs`, the same artifact `npx`
 runs), so it behaves correctly across many worktrees on the same machine. It
-refuses to run against a stale `packages/cli/dist` rather than silently
-executing old code, naming `npm run build:cli` as the remedy. Outside any
-checkout it names the `npx` form above instead of failing silently.
+refuses a missing bundle or one older than the source timestamps it inspects,
+naming `npm run build:cli` as the remedy. This is an approximate mtime check,
+not the content-based dist-freshness gate; preserved or skewed timestamps can
+miss drift. Outside a checkout it names the `npx` form instead.
 
 ```bash
 npm run station-dev:install   # once, from any Station checkout
@@ -62,9 +74,8 @@ station-dev agents list       # runs THAT worktree's build, not the one installe
 ```
 
 Because it runs the *bundle*, not `scripts/station-cli.ts`, `station-dev`
-follows the bundle's own tier support below (Client tier only) — the
-host-local and contributor tiers still need `./station` directly, from the
-checkout that has them.
+follows the bundle's Client and selected host-local support below. Building,
+installing a backend, and other checkout-only operations still need `./station`.
 
 ### The published entry point: the bundled `station` binary
 
@@ -75,7 +86,16 @@ npm run build:cli          # from the repo root
 node packages/cli/dist/station.mjs --help
 ```
 
-The bundle inlines every `@kontourai/station-*` workspace package, so it needs no `tsx`, no repo checkout, and no raw-TypeScript resolution at runtime. Its one declared runtime dependency is `esbuild`, which `station plugin build` and `station plugin dev` drive through its native binary. `packages/cli`'s `prepack` hook rebuilds the bundle on `npm pack`/`publish` — EXCEPT when run from inside this checkout, where the repo-root `.npmrc`'s `ignore-scripts=true` silently suppresses it, so a bare `npm publish` from `packages/cli` here would pack whatever `dist/station.mjs` already exists (stale or missing) at exit 0. CI never depends on the hook — `publish-packages.yml` builds this package as its own explicit workflow step — and a human publishing from this checkout must run `npm run build:cli` first (see `publish-packages.yml`'s bootstrap note).
+The bundle inlines the Station workspace packages, so it needs neither `tsx`
+nor a checkout at runtime. The package declares `@napi-rs/keyring` and `qrcode`
+dependencies. `esbuild` is an optional peer loaded for plugin-authoring builds;
+client-only use does not require it. See the [package manifest](../../packages/cli/package.json)
+and [bundle externals](../../packages/cli/bundle-externals.mjs).
+
+The `prepack` hook builds the bundle, but this checkout's `ignore-scripts=true`
+suppresses lifecycle scripts. Build explicitly with `npm run build:cli` before
+packing here. The publication workflow builds explicitly too; neither an
+existing `dist/` directory nor a successful package command proves freshness.
 
 The bundle is the *published* path; `./station` is the *contributor* path. Both stay supported. There is deliberately no `npm link`-based way to develop the CLI itself: a machine-global symlink into one checkout would silently run whatever branch that tree happens to be on, with no staleness gate in front of it — `station-dev` above gives the same on-`PATH` ergonomics without either failure mode.
 
@@ -96,8 +116,9 @@ node scripts/generate-release-sboms.mjs \
   --container-fragment release-sbom-fragments/container.fragment.json
 ```
 
-It accepts only regular fragment files below `--fragments-dir`, separate from
-the publishable `--assets-dir`; source and predicate are fixed to npm/runtime,
+It accepts only regular fragment files below `--fragments-dir`. Keep that
+directory separate from the publishable `--assets-dir`, as the workflow does;
+source and predicate are fixed to npm/runtime,
 Rust/native, and container/image. The container fragment is derived only from
 `scripts/release-container-sbom-source.mjs`: a pinned Syft CycloneDX scan of
 the immutable `image@sha256:digest`, bound to the exact descriptor/source SHA
@@ -111,7 +132,7 @@ provenance verification and image promotion.
 
 ### Which verbs answer from which entry point
 
-Three tiers, per [the CLI product design](../design/cli-product.md):
+Current command availability, with background in the [CLI product design](../design/cli-product.md):
 
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
@@ -130,7 +151,11 @@ Run it from the root of a Station checkout with the bundled launcher:
 The published CLI drives Stations that are already running — see `station stations`, `station setup hosted`, and `--api-base`.
 ```
 
-`station --help` from the bundle names the same set in a closing note, so the printed reference never claims a verb it cannot run. `station <verb> --help` still answers for those verbs from either entry point.
+`station --help` from the bundle includes a checkout-command note. It currently
+lists `service` as a whole even though packaged `service status|start|stop` are
+admitted. Per-command help describes the combined surface; admission remains
+owned by [distribution.ts](../../packages/cli/src/distribution.ts).
+`station <verb> --help` answers before that admission check.
 
 `stop` is contributor-only. Its instance state is checkout-local, so a global
 client could silently target the wrong instance; use `./station stop` from the
@@ -150,9 +175,9 @@ prints the `agents` help rather than being read as an argument. The top-level
 summary is deliberately short; per-command help carries the flag detail, and
 this reference carries the prose.
 
-Unknown input is a failure, never a help request: the process exits non-zero,
-names the nearest real command or action, and points at the relevant help
-instead of reprinting the whole manual.
+Unknown commands and actions fail and point at relevant help. Flag validation
+is command-specific; not every unknown or malformed flag is rejected. Use the
+documented `--key=value` spelling for core commands.
 
 ```console
 $ station agnts
@@ -227,7 +252,7 @@ of `STATION_CHANNEL`.
 
 ## Interactive `station service` menu
 
-`station service` with no action, in a terminal, presents a menu of the service
+From a checkout, `./station service` with no action, in a terminal, presents a menu of the service
 actions (status, install, start, stop, uninstall) and dispatches your choice
 through the ordinary `station service <action>` path — so the setup receipt and
 rollback behaviour are identical to naming the action outright. With no TTY it
@@ -236,16 +261,18 @@ error and does nothing, so scripts see the same deterministic failure as before.
 
 ## Native installation
 
-When #818 publishes a required signed ring manifest, this no-clone macOS/Linux
-path can install that exact portable GitHub release and start Station. Until
-then it is protocol documentation, not a currently available installer claim:
+For an available signed portable release ring, this macOS/Linux path installs
+that exact release and starts Station without a manual clone. Check the
+[release list](https://github.com/kontourai/station/releases) and
+[release-ring guide](../guides/release-rings.md) for availability; desktop
+channel tags and npm package tags are separate distribution surfaces:
 
 ```bash
 sh -c 'set -eu; file=$(mktemp "${TMPDIR:-/tmp}/station-install.XXXXXX"); trap '\''rm -f "$file"'\'' EXIT HUP INT TERM; token=$(gh auth token); GH_TOKEN="$token" gh api repos/kontourai/station/contents/install.sh -H "Accept: application/vnd.github.raw+json" >"$file"; chmod 600 "$file"; GH_TOKEN="$token" sh "$file"'
 ```
 
-When a signed stable ring manifest is published, this authenticated one-liner
-uses the existing GitHub CLI login while the Station repository is private. It verifies its
+The authenticated one-liner uses an existing GitHub CLI login for release
+verification. It verifies the
 stable-ring manifest,
 checksum, and archive attestations before parsing or using them; there is no
 anonymous or unsigned fallback. Set `STATION_CHANNEL=beta` for the beta runtime
@@ -256,6 +283,14 @@ The checksum-addressed releases live under `~/.station/installs/stable/releases`
 `current` points atomically to the active release, and `~/.local/bin/station`
 is the stable launcher. Runtime data remains isolated under
 `~/.station/instances/stable` and survives an ordinary uninstall.
+
+The separate `STATION_INSTALL_PUBLIC_MANIFEST_URL` path also accepts
+platform-v2 archives on macOS/Linux. Those install under
+`installs/<channel>/versions/<version>` and use bundled Node.js without a host
+build. Verification can download a pinned Node.js when neither the host nor
+an installed archive supplies one. See the
+[archive install contract](../guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
+for prerequisites, retention and service limits.
 
 ```bash
 # Pin a release; rerun the ordinary command later to upgrade.
@@ -295,7 +330,7 @@ resolves in this order — first match wins:
 Saved Stations live in the versioned, secret-free
 `~/.station/config/profiles.json` store shared with native Desktop. The file
 name is a persisted internal detail, not the user-facing noun.
-`--api-base` accepts only a full HTTP(S) origin and deliberately bypasses
+`--api-base` accepts a full HTTP(S) URL and deliberately bypasses
 saved Station persistence for bootstrap and diagnostics; it never changes the
 default. A named override or merely viewing a Station also never changes the
 default.
@@ -341,7 +376,7 @@ that segment is stripped.
 
 ### Scripted / non-interactive use
 
-Every client-tier command requires a bearer credential — even against a
+Protected API requests require a bearer credential — even against a
 `--temp-home` instance you just started yourself on loopback. TCP loopback is
 a **transport position, not an authority**: an SSH local forward or a
 container port-map is indistinguishable from a direct same-host process at
@@ -442,23 +477,29 @@ convenience verb wrapping steps 2–4; that remains an open follow-up decision
 
 ### Request deadlines and unreachable Stations
 
-Every Station request the CLI makes has a **30 second deadline**. Without one, a
+SDK-backed Station requests default to a **30 second deadline**. Without one, a
 Station that accepts the connection but never answers left commands printing
 nothing at all, indefinitely — the worst failure mode for a command inside a
 script. Set `STATION_REQUEST_TIMEOUT_MS=<ms>` to change it, or `0` to disable
-the deadline entirely.
+that default deadline. Helpers with explicit budgets retain them: independent
+review uses 30 seconds per request, triage diagnostics use 5 seconds, and cloud
+target verification has a 15-second overall observation budget.
 
 Deliberately exempt, because their responses are open-ended by design and a
 deadline would abandon healthy work:
 
 | Exempt | Why |
 |--------|-----|
-| `chat` / `sessions` streaming turns | The POST response *is* the token stream; it lasts as long as the agent takes. |
+| Chat observation SSE | Chat POST returns a JSON acceptance handle under the ordinary request deadline. A separate SSE connection observes the accepted turn without an overall turn deadline. |
 | Orchestration and approval SSE streams (`operate`, `approvals`, `sessions`) | Long-lived event streams; they carry their own `AbortSignal`. |
 | `monitoring events` (live form) | Same — a live stream, ended by interrupting it. |
 | `knowledge reindex` / `knowledge migrate` | Duration scales with your corpus, not with Station's health. |
 | `flow attach-command` | Runs a gate command server-side; bounded by its own `--timeout-ms`. |
 | `start`/`build` readiness probes | Already enforce their own startup deadlines. |
+
+This is the shared SDK client contract, not a guarantee for every raw network
+call in the CLI. The current `checkpoints restore` and `operate` stream paths
+bypass that client; their limitations are described in those sections.
 
 Transport failures name the Station that was targeted *and where that address
 came from*, so a wrong-target mistake is visible without re-deriving the
@@ -568,16 +609,17 @@ It is deliberate about refusing rather than guessing: no live instance in the
 home names it and points at `--home`; several live instances require
 `--instance=<name>`; an instance with no recorded browser address points at
 its owning app; and a host with no browser opener says so instead of hanging.
-On success it prints the bare address — the bootstrap token never appears in
-any log line.
+Without `--print`, success prints only the bare address.
 
 ### `triage`
 
 `station triage` creates an opaque owner-only run under
 `$STATION_ROOT/cache/triage/<uuid>`. Each run has schema-v1 `context.json`,
 readable `summary.md`, the versioned Station-owned `playbook.md`, bounded
-`problem.md`, and `related-issues.json`. Successful agent runs also retain a
-redacted `diagnosis.md` and complete local `issue-draft.md`. The
+`problem.md`, and `related-issues.json`. Runs with nonempty agent output also
+retain a redacted `diagnosis.md` and local `issue-draft.md`, including when the
+agent exits unsuccessfully. These files retain at most the first 64 KiB of
+stdout, so they are not a guarantee of a complete diagnosis. The
 context contains only bounded, redacted CLI provenance, selected Station facts,
 and source-doctor facts when the checkout launcher injects that callback. When
 an existing credential is available, it uses the authenticated raw
@@ -601,26 +643,39 @@ run. Without an explicit agent,
 Station selects the only detected supported agent. When both are detected in a
 TTY it asks the owner to choose; in a non-interactive shell it preserves
 artifacts and tells the caller to choose `--agent=codex` or `--agent=claude`.
-No installed agent is a successful portable-artifacts result.
+When no supported agent is installed and none was explicitly requested, the
+command succeeds with artifacts only. Explicitly requesting an unavailable
+agent fails after preserving those artifacts.
 
-`--problem` stores a bounded, redacted symptom. Triage never transmits it by
-default. `--search-issues` is explicit non-interactive consent to send that
-text only to `gh issue list --repo kontourai/station`; an interactive run asks
-the same yes/no question immediately before searching. Results retain only
+`--problem` stores a bounded, redacted symptom. `--search-issues` explicitly
+allows sending it to `gh issue list --repo kontourai/station`; an interactive run asks
+the same yes/no question before searching unless that flag already supplied
+consent. `--context-only` skips prompting but still performs a search explicitly
+requested by `--search-issues`. Results retain only
 bounded issue number/title/state fields. No GitHub write command exists here.
 
-Codex is launched only with approval disabled, its read-only sandbox, an
-ephemeral session, and user config ignored; Claude is launched in safe plan
-mode with session persistence, Chrome, and slash commands disabled and only
-Read/Glob/Grep tools available. Both receive a short argument pointing at the run-local playbook,
+An agent launch separately makes the run files available to that agent and its
+configured model service; issue-search consent is not a promise of offline
+model processing. Use `--context-only` to collect without launching an agent.
+
+The launcher requests Codex's read-only sandbox, no approval prompts, an
+ephemeral session, and ignored user config. For Claude it requests safe plan
+mode, disabled session persistence/Chrome/slash commands, and a Read/Glob/Grep
+tool set. Both receive a short argument pointing at the run-local playbook,
 not a multiline prompt argument; processes use argv arrays with no shell. The
 playbook consumes only Station's consented related-issue artifact. Station
-captures the agent's bounded final stdout, redacts it, and writes
+captures a bounded stdout prefix, redacts it, and writes
 `diagnosis.md` plus `issue-draft.md` with model/agent and harness attribution;
-it forbids repairs, service commands, state/database writes,
+the playbook forbids repairs, service commands, state/database writes,
 source patches, and every GitHub write. Posting or repair remains an explicit later
 Station action. The packaged client states that local host filesystem and the
 source doctor are unavailable.
+
+Live stdout is forwarded to the terminal before that redaction, and child
+stderr is inherited directly. The stored-artifact redaction is not a guarantee
+about terminal output. The [triage owner](../../packages/cli/src/commands/triage.ts)
+passes mode flags and instructions; fixture tests do not establish enforcement
+by every installed agent version.
 
 ---
 
@@ -642,7 +697,7 @@ station config set <key> <value> [--offline]
 | Argument | Description |
 |----------|-------------|
 | `<key>` | A top-level configuration field, e.g. `registryUrl`. |
-| `<value>` | The new value. `true`/`false` are stored as booleans, all-digit values as numbers, the literal `null` unsets the key, and everything else is stored as a string. |
+| `<value>` | `true`/`false` become booleans, all-digit values become numbers, and other values stay strings. `null` is retained for registry-nullable fields and clears other accepted fields. |
 | `--offline` | Skip the live Station route and write `config/app.json` directly. |
 
 `config get <key>` prints `(not set)` for an absent key.
@@ -665,9 +720,10 @@ Station is reachable, the command errors and names both ways forward: retry
 once Station is reachable, or pass `--offline` to write `config/app.json`
 directly — that offline path still runs the same registry validation
 locally, it just cannot apply a running Station's live reload/event-emit
-side effects. `config get` has no such divergence risk: it reads through the
-live route when reachable (showing an env-override provenance note where one
-applies) and falls back to the file quietly when it isn't.
+side effects. `config get` reads through the live route when reachable
+(showing an env-override provenance note where one applies). On a transport
+failure it prints a notice and shows the local home's file instead; that is
+not a reading of the unavailable target Station's configuration.
 
 A mistyped action is a failure, not a listing: `station config sett` exits
 non-zero and names the valid actions.
@@ -676,6 +732,8 @@ non-zero and names the valid actions.
 
 Export Station's configured agents and tool servers into another tool's format.
 Writes to stdout unless `--output=<path>` is given.
+This reads the CLI host's selected Station home, not a remote Station API.
+An output file must be new; existing files are refused.
 
 ```
 station export --format=<agents-md|claude-desktop> [--output=<path>]
@@ -722,12 +780,19 @@ station secret-bindings migrate-stored-env github --data='{"bindings":{"GITHUB_T
 Import a previously exported configuration file back into this Station home.
 The file extension selects the parser: `.json` is read as a Claude Desktop MCP
 configuration (importing tool servers), anything else is read as an
-`AGENTS.md`-style document (importing agents, and writing app-config guidance
-rather than silently overwriting settings).
+`AGENTS.md`-style document. Station's embedded export block carries its structured
+Agent, integration and workspace-guidance data. Recognized workspace guidance
+is merged into local `config/app.json`, replacing the same keys when present;
+this is a real configuration write. Matching Agent and integration IDs can also
+be replaced. The command does not ask the remote API to activate these files.
 
-Every import writes a ledger under the Station home recording the source path,
+Each completed import writes a ledger under the Station home recording the source path,
 format, what was applied, and any fields that could not be represented, so a
-lossy import is visible after the fact rather than assumed.
+lossy import is visible after the fact rather than assumed. These writes are
+sequential, not one transaction: a later failure can leave earlier changes
+without a completed import ledger. See the
+[import caller](../../packages/cli/src/commands/import.ts) and
+[local storage owner](../../packages/cli/src/commands/portability-io.ts).
 
 ```
 station import <file>
@@ -778,16 +843,27 @@ station agents workflows list planner
 station agents chat planner "Summarize the open work"
 ```
 
-`--project=<project-slug>` on both `agents chat` and `chat` (below) binds a
-**new** orchestration session's `cwd`/`metadata.projectSlug` to that
-project's configured `workingDirectory` when the target agent is
-bound to an external engine — this is a no-op for Station-engine Agents, which
-are already project-scoped server-side. If the project has no `workingDirectory`
-configured, the command fails with an actionable error instead of silently
-starting an unscoped session. If `--project` is passed while continuing an
-already-loaded session (`--conversation=<id>` on an active thread), the CLI
-prints a stderr warning that the flag has no effect rather than silently
-dropping it.
+For a new chat, `--project=<slug>` selects Project context for either engine
+kind. The current CLI also sends `process.cwd()` as that target's workspace
+directory; it does not simply request the Project's configured directory. The
+server requires this directory to resolve inside the selected Project's
+configured directory, following symlinks and comparing whole path segments.
+Run the CLI from that Project or a contained subdirectory; an outside or
+unresolvable directory refuses before execution. Separately verified remote
+workspace paths retain their remote-path admission. Use `--project` or `--cwd`,
+not both.
+
+The checkout launcher changes directory to the Station checkout before running
+the CLI. Chat currently uses that process directory rather than the preserved
+`STATION_INVOKED_CWD`; an invocation from another repository can therefore use
+the Station checkout. For directory-based work, pass an explicit target-visible
+`--cwd`. This is a current caller limitation, not a Project authorization grant.
+
+On continuation, the current caller omits workspace selection: `--project`
+and `--cwd` have no effect and are not warned about. The Conversation keeps its
+persisted workspace. Omit those flags when continuing; start a new chat to
+choose another workspace. [#2733](https://github.com/kontourai/station/issues/2733)
+tracks these caller limitations.
 
 ### `chat`
 
@@ -800,7 +876,7 @@ does not silently discard it. Conversation naming will return when it is part
 of the shared execution contract.
 
 ```
-station chat <agent> <message> [--on=<environment>] [--project=<project-slug>|--cwd=<path>] [--conversation=<id>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option key=value]... [--on-request=<wait|fail>] [--api-base=<url>]
+station chat <agent> <message> [--on=<environment>] [--project=<project-slug>|--cwd=<path>] [--conversation=<id>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--api-base=<url>]
 ```
 
 Examples:
@@ -808,11 +884,12 @@ Examples:
 ```bash
 station chat station "What changed in this repo?"
 printf 'Review the latest project state' | station chat planner
-station chat ollama "Reply with exactly: OK" --conversation=runtime-demo --model=llama3.2:latest
+station chat ollama "Reply with exactly: OK" --model=llama3.2:latest
 station chat codex "Summarize the open work" --project=launchpad
 station chat codex "Probe the media host" --on=env-media-host --project=my-project
 station chat codex "Fix the failing test" --cwd=/repos/launchpad --approval-mode=auto --effort=high
-station chat codex "Continue" --conversation=runtime-demo --approval-mode=never
+# Use the Conversation ID returned by an earlier chat:
+station chat codex "Continue" --conversation="$CONVERSATION_ID" --approval-mode=auto
 ```
 
 `--on=<environment>` selects a saved Environment; omitting it means the current
@@ -821,31 +898,35 @@ target to that Environment for resolution. The CLI never selects an engine,
 connection, provider, tunnel, or remote API URL for execution.
 
 `--approval-mode`/`--effort`/`--thinking`/`--model-option` (station#978) set
-per-invocation settings on an Agent whose resolved engine supports them. A Station-engine Agent has no
-per-invocation engine settings surface and the CLI rejects these flags for
-one rather than silently dropping them. `--approval-mode` accepts exactly
+per-invocation settings on an Agent whose resolved engine supports them. The
+server validates option keys after resolving the target; Station's engine does
+not support this engine-options bag. `--approval-mode` accepts exactly
 `ask`, `auto`, `never`, or `connection-default` (an invalid value is a usage
 error, exit 1, before any request); `--effort` and `--thinking` are
-otherwise engine-specific. `--model-option key=value` is a repeatable
+otherwise engine-specific. `--model-option=key=value` is a repeatable
 escape hatch for any `modelOptions` key not covered by a named flag — named
-flags always win a key collision. An option key the target engine's adapter
+flags always win a key collision. The equals form is required by the current
+parser: a space-separated `--model-option key=value` is not supported and may
+become prompt text instead of an option. [#2732](https://github.com/kontourai/station/issues/2732)
+tracks rejection or support for that spelling. An option key the target engine's adapter
 doesn't actually read is rejected with an explicit 400 naming the option
 and target (nothing is silently dropped); see
 `packages/contracts/src/provider.ts`'s `PROVIDER_MODEL_OPTION_SUPPORT` for
-the authoritative per-engine list. Resuming with `--session=<id>` retains the
-original model and workspace binding. Model/workspace flags on a resume are
-rejected; start a new Agent-targeted chat to request different launch controls.
+the authoritative per-engine list. `--session=<id>` (or `--conversation=<id>`)
+continues the durable Conversation. Supported model overrides/options are
+forwarded for that turn; omission retains the current choice. Workspace flags
+are currently omitted as described above, not rejected.
 
 `--model` is capability-gated at the same shared orchestration dispatch seam as
 the API. Omission may deliberately be engine-selected (Codex does not receive a
 fabricated default id); Bedrock and Ollama require a catalog-backed selector at
 session start, then retain the accepted selector for an omitted resume or turn.
 An explicit replacement is catalog-validated before execution.
-Claude and Codex accept only lifecycle points their adapters declare. ACP model
-overrides are rejected before readiness, model discovery, or the engine process
-is invoked with the stable
-`model-override-unsupported` error; Station does not claim an effective model
-for that rejected request.
+Claude and Codex accept only lifecycle points their adapters declare. ACP can
+apply a start-time selection only when the new session's option catalog offers
+it and the engine confirms the exact selected value. ACP resume and per-turn
+model changes remain unsupported. Requested, applied and reported model facts
+remain separate; see [model launch behavior](api.md#orchestration-model-launch-behavior).
 
 `--cwd=<path>` binds a **new** runtime session's `cwd` to an explicit
 directory, independent of any registered project (unlike `--project`, no
@@ -856,12 +937,12 @@ canonical execution request rather than silently spawning the adapter somewhere 
 
 `--on-request=<wait|fail>` (station#979, default `wait`) governs what
 happens when the target opens a pending request (approval/permission/
-confirmation/input) mid-turn — on both the orchestration (runtime) and
-managed (Station-agent) dispatch paths. Previously this hung the CLI
+confirmation/input) mid-turn through the canonical orchestration path for
+either engine kind. Previously this hung the CLI
 silently until the request was resolved out-of-band or a ~60s auto-deny
 elapsed, with no indication. Now a notice always prints to stderr naming
-the `requestType`, `title`, `requestId`, `threadId`, and (on the runtime
-path) the ready-to-run command to answer it:
+the `requestType`, `title`, `requestId`, `threadId`, and a responder command
+for approval/permission decisions:
 
 ```bash
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel>
@@ -872,12 +953,15 @@ out-of-band (the notice just makes the wait legible). `--on-request=fail`
 stops waiting and exits **4** instead, leaving the session alive and
 resumable — it is never torn down (no `stopSession`) just because a
 request opened. `--json` carries a typed `pendingRequest` field
-(`requestId`/`requestType`/`title`/`respondCommand` on the runtime path;
-the managed path's `tool-approval-request` chunk has no CLI responder yet,
-so its `pendingRequest` omits `respondCommand` rather than naming a command
-that doesn't exist) plus `lifecycleState` (the session's
+(`requestId`/`requestType`/`title`/`respondCommand`) plus `lifecycleState` (the session's
 `SessionLifecycleState`, e.g. `needs_input`/`review_pending`) whenever
-either is present — distinguishing a stalled turn from a merely slow one.
+either was observed. `pendingRequest` retains the last request-opened notice;
+the CLI does not clear it on resolution. With `--on-request=fail`, it explains
+why waiting stopped. With `wait`, even completed final JSON can retain that
+notice. Read the current Session/request before deciding that it still needs
+an answer; the field's presence alone is not current pending-state evidence.
+The response-contract correction is tracked in
+[#2741](https://github.com/kontourai/station/issues/2741).
 
 **Managed-chat orchestration — landed, and not behind a flag.** A managed
 Station-agent `station chat <slug>` starts a private `station-agent`
@@ -944,11 +1028,11 @@ delegation uses, over `station-control-delegation.ts`'s service functions
 the already-wired `POST /delegations` and `POST /delegations/options`).
 
 ```
-station delegate --agent=<slug> [--on=<environment>] [--model=<id>] [--project=<slug>|--project-path=<path>|--cwd=<path>] [--parent-task=<task-id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option key=value]... [--on-request=<wait|fail>] [--json] <prompt|--data=<text>|--file=<path>|stdin>
-station delegate --session=<conversation-id> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option key=value]... [--on-request=<wait|fail>] [--json] <message>
+station delegate --agent=<slug> [--on=<environment>] [--model=<id>] [--project=<slug>|--project-path=<path>|--cwd=<path>] [--parent-task=<task-id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <prompt|--data=<text>|--file=<path>|stdin>
+station delegate --session=<conversation-id> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <message>
 station delegate status <task-id> [--on=<environment>] [--json]
 station delegate events <task-id> [--after=<cursor>] [--on=<environment>] [--json]
-station delegate continue <legacy-id> <message> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option key=value]... [--on-request=<wait|fail>] [--json] # deprecated compatibility alias
+station delegate continue <legacy-id> <message> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] # deprecated compatibility alias
 station delegate respond <task-id> <request-id> <accept|acceptForSession|decline|cancel> [--on=<environment>] [--json]
 station delegate interrupt <task-id> [--on=<environment>] [--json]
 station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>] [--interval=<seconds>] [--json]
@@ -995,6 +1079,40 @@ station delegate --agent=codex --on=env-media-host --model=gpt-5.6-sol "Review t
 station delegate respond task:0f3c... req-1 accept --json
 ```
 
+#### Recorded versus acknowledged decisions
+
+`station delegate respond` records a decision; it does not wait for the
+engine. Its `resolved` result, and the `request.resolved` event, mean
+"Station recorded this decision", never "the engine applied it". What the
+engine reports afterwards is shown separately as `lastDecision` on
+`station delegate status`, with one of these `delivery` values:
+
+| `delivery` | Meaning |
+| --- | --- |
+| `awaiting-acknowledgement` | The engine acknowledges decisions and has not yet. Codex normally does within a second. |
+| `acknowledged` | The engine closed the request after Station's well-formed reply. This is not proof it applied the decision as given; `engineStatus` carries the engine's own outcome when it reports one (Muse). |
+| `unacknowledged` | `reason: no-acknowledgement`: nothing arrived within the adapter's window (30 s for Codex), or the session ended first. Station has not re-sent the decision. A late acknowledgement replaces this with `acknowledged`. `reason: invalid-reply`: Station refused to send a reply the engine would not accept, so the engine is still waiting. |
+| `in-process` | Station's own engine consumed the decision. |
+| `closed-by-engine` | Codex closed the request on its own (for example when a turn is interrupted) before Station answered. Station made no decision (`status` is `cancelled`), and a decision sent afterwards is refused, since Codex would never read it. Printed as `Request req-1: closed by the engine before Station answered`. |
+| `not-reported` | The engine's protocol reports no delivery (Claude Code, ACP connections), or the decision predates delivery reporting. This is a capability, not a warning. |
+
+One race stays open: if Codex closes a request while Station's reply is
+already on its way, the close reads as `acknowledged` even though Codex
+discarded the reply, because Codex's close does not say which came first.
+
+The default output prints it as one line, for example
+`Decision on req-1: approved (recorded), acknowledged by the engine after 42 ms`.
+An earlier decision on the same task that is still `unacknowledged` is listed
+as `earlierUnacknowledgedDecisions` and printed on its own line above it, so
+a later acknowledged decision never hides it.
+Codex acknowledges even a reply it cannot parse, so Station checks every
+reply against the engine's decision vocabulary before sending it; that check,
+not the acknowledgement, is what keeps a malformed reply from reading as
+acknowledged. An unacknowledged decision also raises a `runtime.warning`
+(`engine-decision-unacknowledged` or `engine-decision-not-sent`), and
+`station delegate events` lists each observation as a `request` event with
+status `acknowledged` or `unacknowledged`.
+
 Discovering ready targets before delegating:
 
 ```bash
@@ -1013,7 +1131,7 @@ station delegate --agent=codex --model-option=fastMode=true "Quick check" --json
 
 `--approval-mode` accepts exactly `ask`, `auto`, `never`, or
 `connection-default` (an invalid value is a usage error, exit 1, before any
-request). `--model-option key=value` is a repeatable escape hatch for any
+request). `--model-option=key=value` is a repeatable escape hatch for any
 `modelOptions` key not covered by a named flag; named flags always win a
 key collision. An option key the target's adapter doesn't actually read is
 rejected with an explicit exit-3 error naming the option and target —
@@ -1236,19 +1354,30 @@ station approvals respond runtime-thread req-1 accept
 
 ### `operate`
 
-One-screen terminal operator view for supervising a hosted run — a session
+The terminal operator view is intended to show a session
 board, a live transcript for one focused session, that session's pending
 approvals (tool name **and** input, answerable by a single keypress), and its
-Flow gate verdicts — with no `curl` and no browser. The whole screen is
+Flow gate verdicts.
+
+**Current authentication limitation:** its
+[stream caller](../../packages/cli/src/commands/operate/shell.ts) uses raw `fetch`
+for `/api/orchestration/events`, so the credential configured for SDK requests
+does not accompany that stream. A protected Station can return 401 even when
+the same target's SDK reads succeed. The synthetic HTTP check reproduced that
+caller behavior; use `sessions`, `approvals` and `chat` while this path remains
+unrepaired.
+
+When a stream is admitted, the screen is
 reduced from one global `GET /api/orchestration/events` connection (the same
 route `approvals --watch` uses, opened once and unfiltered — board,
 transcript, approvals, and gates all derive from this single stream) plus
-three on-demand, non-continuous pulls when focus changes or on manual
+on-demand, non-continuous pulls when focus changes or on manual
 refresh: `GET /api/orchestration/sessions/:threadId` (seeds a session's full
 history), `GET /api/orchestration/sessions/:threadId/flow-run`
 (`getSessionFlowRun`), and `GET
 /api/orchestration/sessions/:threadId/builder-run` (`getSessionBuilderRun`,
-archive#189 S4).
+archive#189 S4), plus a separate fleet-routing receipt read. This does not
+continuously refresh every owner projection.
 
 The GATES pane renders the Builder run as its own row, never merged into the
 Flow-run lines above it: they are two different runs with independent
@@ -1305,19 +1434,12 @@ station operate --session=runtime-thread
 station operate --api-base=http://127.0.0.1:3242
 ```
 
-**Verification-lane decision:** the pure reducer/render/keypress-intent core
-(`reduce()`, `render()`, `classifyKey()`) is fully unit-tested (table-driven,
-TTY-free, part of `npm test`), and the SSE-lifecycle/keypress-wiring shell is
-covered by an integration test using a real `node:http` mock server plus a
-non-TTY `PassThrough`-fed keypress stream (`operate-shell.test.ts`) — no PTY
-is required for either lane. What is **not** covered by an automated lane in
-this delivery is the actual raw-mode terminal repaint loop end-to-end (real
-terminal, real cursor movement, real visual output); building a PTY-driven
-harness for a terminal screen was judged out of scope for this delivery.
-Instead, run the **manual verification protocol** below once per delivery
-that touches `operate`, and record the results (a post-merge dogfood run,
-`run-004` or successor, closes this loop with a real self-hosted delivery
-session as evidence):
+Existing tests cover reducer/render/keypress behavior and the shell with a
+controlled `node:http` server and `PassThrough` keypress input
+([shell tests](../../packages/cli/src/__tests__/operate-shell.test.ts)). They do
+not establish authenticated production streaming or a real terminal's cursor
+and raw-mode behavior. After the authentication limitation is repaired, use
+the following manual protocol to check a real terminal and retain its results:
 
 1. Start an instance, run `station operate`, and confirm the session board
    renders and updates live as a session starts (`station sessions list`
@@ -1333,16 +1455,13 @@ session as evidence):
 4. Quit with `q`; confirm the terminal returns to normal — cursor visible,
    not stuck in raw mode, shell prompt usable. Repeat, quitting with
    `Ctrl+C` instead.
-5. Note any friction (the same way `run-003`'s operator log did) and feed it
-   forward into the next dogfood run's operator log.
+5. Record the Station revision, terminal/platform, observed outcomes, and any
+   failures separately from fixture-test results.
 
-**Windows caveat:** `operate`'s repaint uses raw ANSI escape sequences
-(cursor-home + clear-to-end) and Node core `readline` keypress events, both
-of which work cross-platform with no new dependency. Windows Terminal,
-PowerShell 7+, VS Code's integrated terminal, and mintty/Git Bash all process
-these escapes correctly by default. Legacy `cmd.exe`/old `conhost` without
-VT100 processing enabled may display raw escape bytes instead of a clean
-repaint — a documented, accepted risk, not a blocker.
+`operate` uses ANSI cursor-home/clear sequences and Node `readline` keypress
+events. The terminal must support that input and display behavior; a Windows
+console without VT processing can display raw escape bytes. Source and fixture
+checks are not a terminal-specific compatibility result.
 
 ### `projects`
 
@@ -1487,8 +1606,9 @@ intentionally API-only.
 
 ### `runs`
 
-Read global run history through the neutral runs API (`/api/runs`) — every run
-Station has recorded, regardless of which agent or engine produced it.
+Read the run history currently projected by the neutral runs API (`/api/runs`)
+from its supported owners and the caller's readable scope. It is not an
+unrestricted inventory of every engine's history.
 
 ```
 station runs list [--api-base=<url>]
@@ -1498,7 +1618,7 @@ station runs output --data=<json> [--api-base=<url>]
 
 | Argument/Flag | Description |
 |---------------|-------------|
-| `list` | Every recorded run. Takes no filter flags today; filter the JSON downstream. |
+| `list` | The current server projection for this caller. Takes no filter flags today; filter the JSON downstream. |
 | `read <run-id>` | One run's full record. `404` becomes `Run not found`. |
 | `output` | Reads one output artifact. Takes a `RunOutputRef` JSON body via `--data=<json>`, `--file=<path>`, or piped stdin — not a positional run id. |
 
@@ -1685,10 +1805,12 @@ installs (no `.git`) are not checked.
 What the unit runs depends on where `service install` runs from. A source
 checkout's unit runs its `scripts/station-cli.ts` through `tsx` with the
 installing Node.js, from the checkout's physical path. A prebuilt archive's
-unit runs `bin/station.mjs` with the archive's bundled Node.js; for the
-version `install.sh` made active, it runs them through
-`<install root>/current` (and puts `current/runtime/bin` on its `PATH`), so an
-upgrade switches `current` and restarts the unit without rewriting it. The
+unit runs `bin/station.mjs` with the archive's bundled Node.js. For the
+version `install.sh` made active (on Linux and macOS), the unit runs the
+archive's bundled Node.js through `<install root>/current` (and puts
+`current/runtime/bin` on its `PATH`) with the fixed service launcher that
+`service install` copies to `<install root>/runtime/station-launcher.mjs`; the
+launcher runs the active version. The
 service manifest records which (`kind`: `source` or `archive`) and, for such
 an archive, its `installRoot`; the installer and `station upgrade` recognize
 the service by that root. Installing a service from another version under
@@ -1698,10 +1820,71 @@ another port explicitly refuses rather than ignoring it. A registered unit
 that is not running (stopped, or waiting to be restarted after a crash) is
 stopped for the switch and left stopped, and the installer starts no separate
 Station beside it; `service start` starts it on the new version. Every unit
-sets `STATION_SERVICE_MANAGED=1`, and systemd waits 75 seconds
-(`TimeoutStopSec`) for `service run`'s 60-second shutdown before it kills the
-unit. A unit installed by an earlier version keeps `TimeoutStopSec=30` until
+sets `STATION_SERVICE_MANAGED=1`, and systemd waits 165 seconds
+(`TimeoutStopSec`) before it kills the unit: the launcher gives `service run`
+65 seconds to stop, then kills it and runs that version's own `station stop`.
+A unit installed by an earlier version keeps its shorter timeout until
 `station service install` is run again.
+
+A launcher-run service updates itself (#2675). `runtime/service-state.json`
+records which version it runs. An update request
+(`runtime/update-request.json`) is staged by the running version with its own
+`install.sh` (`STATION_INSTALL_STAGE_ONLY=1`: downloaded, verified and sealed
+into `versions/<version>`, nothing else changed). The launcher then stops the
+running version, backs up the home once, and starts the new version as a
+trial. The backup holds Station's own state: every entry but the service
+manifests, `instances.json`, logs, monitoring, quarantine and `tmp` (which the
+service owns), and but the default project directories under `workspaces/`
+and the browser's `browser/chromium` and `browser/profiles`: an update neither
+copies nor rolls them back. For `workspaces/` this is an accepted gap, not a
+claim that it holds no Station data: Station writes `.station/` stores into
+each project (diff comments, trust bundles, review-evidence receipts,
+survey-review sessions, flow-review evidence), and a rolled-back update leaves
+them as the trial left them, as it always has for projects outside the home.
+Symbolic links in the backup are kept as links; a link at the top of a state
+root (for example `browser` pointing at another volume) is kept as that link,
+and what it points to is neither snapshotted nor rolled back. The trial has 240 seconds to prove its
+identity; if it does, the update commits and `current` follows it. If it does
+not, the launcher restores the backup, including `.station-home-schema.json`,
+and restarts the previous version. A trial gets at most two attempts, and a
+launcher that is killed at any point finishes the same update when it starts
+again. A restore that fails is retried up to three times (each failure
+restarts the unit); after that the update needs an operator: the launcher
+keeps the backup, starts no Station, and logs the error. Fix its cause, then
+run `station service stop --instance=<name>` and
+`station service start --instance=<name>`: each start tries the restore once
+more. That includes any restart of the launcher, a reboot among them: every
+launcher start in this state runs one restore attempt on its own.
+`station service status` shows the update (`update` in `--json`), and in this
+state names the recovery; it is the place to see it, since no Station runs
+for a client to ask. While the launcher that accepted the update runs, the service's
+registry entry names it, so the desktop app keeps treating the home as owned
+by a live service; a launcher that restarted mid-update does not claim the
+entry again, so from then until a version publishes itself the entry names a
+process that has exited.
+`install.sh` (and so `station upgrade`) does not switch `current` under a
+running launcher service: it stages the version, asks the service to switch,
+and reports the outcome. It refuses to touch an install whose update is
+unfinished until the service has been started to finish it, or one that needs
+an operator until the restore has succeeded.
+
+A client connected to such a server can start the same update: Settings →
+Connected Station server → **Check for server updates** fetches the signed
+public manifest the install records (`manifestUrl` in
+`.station-release-state.json`) and verifies it against the pinned signing
+keys for the install's ring before it offers a newer version. Applying it
+writes the update request (owner-only, published atomically, refused while
+another update is queued or under way); progress and the outcome, including a
+rollback and its reason, are read back from `runtime/service-state.json` and
+`runtime/update-request-result.json`. Only the server the launcher's own child
+supervises may queue a request: the launcher's context
+(`STATION_SERVICE_LAUNCHER`) reaches that server and no other process, and it
+must name the server's install and version. An archive that no launcher runs
+reports its newest release and says to update with `station upgrade` on the
+host; an install that records no public manifest cannot be checked from a
+client. An update that needs an operator is not visible from a client: in that
+state the service runs no Station to answer, so the card keeps waiting and
+names `station service status --instance=<name>` on the host.
 
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse
@@ -1914,7 +2097,6 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force]
 | `--build` | — | Force a rebuild before starting |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
-| `--allow-shared-home` | — | Start even though another live instance owns this home. Default: refuse — the stores are not multi-writer safe, so concurrent writers silently lose conversation data (station#2904) |
 | `--features=<flags>` | — | Comma-separated feature flags |
 | `--dry-run` | — | Print the resolved ports/instance/home and exit without starting |
 
@@ -1938,17 +2120,20 @@ If the derived pair is already busy (a rare hash collision between two
 worktrees), the allocator scans forward to the next free pair and reports the
 move.
 
-**Isolated home.** Each instance runs against `~/.station/instances/dev/<instance>`,
-where `<instance>` is `dev-<worktree-basename>` (or `dev-<STATION_DEV_INSTANCE>`
-when the seed is set). The home is EXTERNAL to the worktree, so it survives a
-worktree cleanup and a recreated worktree at the same path reuses it.
+**Isolated home.** Each instance runs against
+`<STATION_ROOT>/instances/dev/<instance>`. Automatic names are
+`dev-<sanitized-basename>-<hash8(resolved-path)>`; an explicit
+`STATION_DEV_INSTANCE` uses `dev-<sanitized-seed>` instead. Recreating a worktree
+at the same path reuses its home. Reusing an explicit seed across worktrees
+deliberately selects the same home. Use the actual identity printed by `dev`;
+this command does not accept `--allow-shared-home`.
 
 ```bash
 station dev                       # deterministic ports from this worktree's path
 station dev --dry-run             # inspect the resolved ports/home, start nothing
 station dev --port-offset=7       # pin server 39147 / ui 40147
 STATION_DEV_INSTANCE=alpha station dev
-station stop --instance=dev-<worktree-basename>
+station stop --instance=<instance-printed-by-dev>
 ```
 
 `station start` resolves its channel ports through the shared runtime context.
@@ -1988,12 +2173,14 @@ station environment peers remove <environment-id>
 
 - `environment show` prints the schema version, stable environment ID, and the
   non-secret marker `"credential":"configured"`.
-- `environment credential show` is the only reveal command. It prints the raw
+- `environment credential show` prints the raw
   credential so it can be entered in Station Connect's masked field. Do not
   redirect, log, screenshot, or paste this output into a URL.
-- `environment credential rotate` preserves the environment ID, invalidates all
-  saved remote credentials immediately, and prints the replacement after
-  confirmation.
+- `environment credential rotate` preserves the environment ID and replaces
+  only the operator bootstrap credential after confirmation. Independently
+  issued Device credentials remain valid until separately revoked or the
+  environment is reset. Rotation also prints the replacement bootstrap
+  credential; protect its output in the same way as `credential show`.
 - `environment reset` rotates both the environment ID and credential. It prints
   only non-secret reset metadata; run the explicit credential show command to
   bootstrap a client afterward.
@@ -2097,8 +2284,8 @@ Rotation and reset require interactive confirmation, or `--force` when stdin
 is non-interactive. Before either operation, retain local shell access. After
 rotation, update and test at least one client before ending maintenance. After
 reset, reconcile the public handshake and treat the Station as a new saved
-environment. Rotation invalidates every credential paired through
-`environment access request`, so re-pair each device afterwards.
+environment. Operator-credential rotation preserves the paired-device registry;
+environment reset clears it, requiring those devices to pair again.
 
 ### `stop`
 
@@ -2121,17 +2308,26 @@ station stop --home=/tmp/station-a
 In a source checkout, pull the latest code, reinstall dependencies, and rebuild.
 In a signed portable install, reuse the persisted release ring and delegate to
 the installer without a Git checkout or pre-stop action. Installed plugins are preserved.
-From a prebuilt server archive that `install.sh` installed (the version
-`<install root>/current` names), `upgrade` re-runs that version's installer
-with the recorded release manifest. A Station user service installed from
-that archive does not block it: the installer stops the service, switches
-`current`, and starts the service again, and if the service does not come back
-answering as the new release it restores the previous version and restarts
-the service on it. Any other installed service still blocks the upgrade, as
-in a source checkout. From any other copy of a prebuilt archive, `upgrade`
-refuses and changes nothing: stop Station, extract the newer archive into its
-own directory, and start it from there; it finds the instances the old
-version started (see [Instance State Mechanism](#instance-state-mechanism)).
+From a prebuilt server archive (`station-server-<os>-<arch>`) that `install.sh`
+installed (the version `<install root>/current` names), `upgrade` validates the
+install state, provenance, ownership marker and active link, then re-runs that
+version's installer with the recorded release manifest. Public-manifest
+installs record the URL in schema-4 state; an explicit
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. A Station user service
+installed from that archive does not block it. When that service runs through
+the fixed service launcher and is running, the installer only stages the new
+version and asks the service to switch; the launcher trials it and keeps the
+previous version if the trial fails (see [`service`](#service)). Otherwise
+the installer stops the service, switches `current`, and starts the service
+again, and if the service does not come back answering as the new release it
+restores the previous version and restarts the service on it. Any other installed service still
+blocks the upgrade, as in a source checkout.
+
+A loose extracted archive has no installer-owned layout and still refuses
+`upgrade` without changing anything. Install through `install.sh`, or stop
+Station, extract the newer archive into its own directory and start it there;
+it finds the old version's instance records (see
+[Instance State Mechanism](#instance-state-mechanism)).
 
 ```
 station upgrade
@@ -2202,9 +2398,13 @@ is covered by this command, not by that schedule.
 
 Create an offline, content-hashed backup of one Station home. Every Station
 using that home must be stopped. SQLite stores are checkpointed and integrity
-checked before copy; symlinks, corrupt databases, active instances, and
+checked before copy for selected `*.sqlite` files; symlinks in included content,
+corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
-service state, temporary files, and live instance records are excluded.
+service state, temporary files, live instance records, and the top-level
+quarantine directory are excluded. Defaults are 100,000 files, 20 GiB total,
+and 2 GiB per file. This is a private local copy, not an encrypted export or a
+transfer of execution authority.
 
 ```
 station home backup [--output=<directory>] [--home=<dir>] [--base=<dir>] [--json]
@@ -2215,9 +2415,12 @@ The destination must not already exist or be inside the home.
 
 ### `home restore`
 
-Validate every manifest entry and content hash, then atomically restore a
-Station home while retaining the replaced home as a timestamped sibling.
-Restore never runs while a matching Station instance is live.
+Validate manifest entries and content hashes, stage the copied home, then
+rename the previous home aside and publish the staged directory. The
+[archive owner](../../packages/shared/src/station-home-archive.ts) holds the
+maintenance lease, checks recorded live instances and attempts rollback on
+publication failure. The two renames are not a single crash-atomic exchange:
+the retained previous home is the recovery copy if publication is interrupted.
 
 The CLI identifies the result as **recovered from a copy**, prints the backup's
 snapshot time, and notes that work after that snapshot may be missing. Its JSON
@@ -2242,7 +2445,7 @@ station home restore --from=<backup-directory> --confirm [--home=<dir>] [--base=
 
 ### `home reset`
 
-Archive (never delete) an incompatible Station home so a fresh one is
+Archive the selected Station home so a fresh one is
 scaffolded on next start. The command the `STATION_HOME_RESET_REQUIRED`
 error names (station#1913) -- the supported bridge for a home an older
 Station release wrote before the current schema marker existed.
@@ -2256,11 +2459,15 @@ station home reset --confirm [--if-incompatible] [--home=<dir>] [--base=<dir>] [
 | `--confirm` | Required to actually archive the home (data is kept, never deleted). Not required on an `--if-incompatible` run where the home already satisfies the schema gate -- that path returns a no-op before the confirmation check |
 | `--if-incompatible` | No-op instead of archiving when the home already satisfies the current schema gate |
 | `--home=<dir>` | Target a specific home directory (`--base=<dir>` is the same setting under its original name) |
-| `--instance=<name>` / `--port=<n>` / `--ui-port=<n>` | Match the instance identity used for the running-instance refusal |
+| `--instance=<name>` / `--port=<n>` / `--ui-port=<n>` | Accepted lifecycle inputs; the reset refusal checks the selected home, not only one port or instance |
 | `--json` | Print the result (`{"archived":..., "archivePath"?:..., "projectHome":...}`) as JSON |
 
-Refuses while a Station instance for the target home is running, naming it;
-stop it first with `station stop`.
+Without `--if-incompatible`, this can archive a compatible home too. It checks
+the lifecycle instance records for that home before renaming it. Unlike backup
+and restore, this path does not acquire the home maintenance lease or separately
+consult the home-scoped service registry. Stop every process using the home
+first; use `station service stop` for a supervised service. A successful reset
+preserves the old directory but does not itself start or scaffold the new home.
 
 ```bash
 station home reset --confirm --home=/tmp/station-a
@@ -2282,6 +2489,14 @@ Station required, and they act on the machine the command runs on, not
 necessarily wherever `--api-base` points. `restore` is the one subcommand
 that calls a running Station instead.
 
+**Current restore limitation ([#2734](https://github.com/kontourai/station/issues/2734)).**
+The restore caller uses raw `fetch`, sends no authorization, and defaults to
+`http://127.0.0.1:3141` unless `--api-base` is supplied. It does not use saved
+Station selection, `STATION_API_CREDENTIAL`, or the shared request deadline.
+A protected Station therefore refuses its preview; supplying a credential flag
+does not repair this caller. Use the authenticated workspace checkpoint UI or
+API described in [workspace checkpoints](../user/workspace-checkpoints.md).
+
 ```
 station checkpoints [status] [--json]
 station checkpoints prune (--thread=<threadId> | --all) [--gc] [--json]
@@ -2296,7 +2511,7 @@ station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baselin
 | `prune` | Removes a thread's checkpoint refs and reflogs (and the index/archive records naming it). Requires `--thread=<id>` or `--all`. `--gc` additionally runs `git gc --prune=now --quiet` in each affected repo so the space is actually freed, not just eligible for the next `gc.reflogExpire` window. |
 | `history` | Lists recorded checkpoint-restore events for one thread from `checkpoint-restores.json`. |
 | `retention` | Lists recorded checkpoint-retention sweep events for one thread from `checkpoint-retention.json`. |
-| `restore` | Destructive — requires `--confirm`. The CLI first creates a short-lived restore preview, displays the exact changed paths, target tree, and current tree, then confirms that exact preview against the same running Station. The server refuses expired, reused, owner-mismatched, session/turn-mismatched, or current-tree-mismatched previews. It restores the earlier turn's `baseline` (pre-turn) or `settle` (post-turn, the default) checkpoint only while the workspace has no active or starting local turn. |
+| `restore` | Currently cannot authenticate to a protected Station (see above). The caller requires `--confirm`, requests a preview, then immediately submits its `previewId` and `currentTreeSha`; it does not display the changed paths/tree before confirming. The server owns preview identity, expiry, current-tree, and active-turn checks. |
 
 `--json` on every action prints one JSON document instead of the
 human-readable form.
@@ -2305,7 +2520,7 @@ human-readable form.
 station checkpoints
 station checkpoints prune --thread=abc123 --gc
 station checkpoints prune --all --gc
-station checkpoints restore --thread=abc123 --turn=turn-7 --confirm
+# Restore is currently unavailable through this CLI; use the authenticated UI/API.
 ```
 
 Restore changes workspace files only. It does not rewind conversation history
@@ -2606,6 +2821,12 @@ station registry
 station registry install demo-layout
 ```
 
+The install command currently submits the ID without a preview decision.
+Executable or lifecycle-bearing entries are refused by the canonical installer;
+[#2809](https://github.com/kontourai/station/issues/2809) tracks the missing CLI
+consent flow. Use the Registry UI or `station plugin install <source>` to review
+and submit consent. A successful catalog read does not prove installation.
+
 `examples/registry/manifest.json` is the reproducible local fixture used by
 `npm run proof:registry-manifest`. It is not a hosted registry proof by itself:
 Phase 2 was closed on local-fixture scope, while any hosted registry remains
@@ -2617,18 +2838,28 @@ separate publication/distribution work requiring its own stable-URL evidence.
 
 ### `plugin install <source>`
 
-Install a plugin from a git URL or local path through the configured, running Station server. The server owns the filesystem transaction, registry identities, runtime activation, and rollback. A local path is resolved from the directory where the CLI was invoked and therefore applies only when the CLI and Station server share that filesystem; use a git URL for a remote Station.
+Install a plugin from a git URL or local path through the running Station server.
+The server owns the filesystem transaction, registry identities, runtime activation,
+and rollback. A local path resolves from the CLI's invocation directory and is
+accepted only for an automatically resolved active-local target or the default
+loopback fallback. An explicit `--api-base` or saved-Station selection is refused
+for directory input even when its URL is localhost; use a git URL for those targets.
 
-Dependencies declared in `plugin.json` are resolved and installed automatically.
+The CLI previews first and requests consent for the captured package and
+dependencies. Interactive use asks for confirmation; a noninteractive call
+requires explicit `--yes`. The server rechecks that preview and owns dependency
+installation. Installation and activation are separate outcomes; inspect a
+pending or failed result before assuming the plugin is usable.
 
 ```
-station plugin install <source> [--skip=<components>]
+station plugin install <source> [--skip=<components>] [--yes]
 ```
 
 | Argument/Flag | Description |
 |---------------|-------------|
 | `<source>` | Git URL (https or ssh) or local path. Append `#<branch>` to target a specific branch. |
 | `--skip=<components>` | Comma-separated list of components to skip, e.g. `agent:myplugin:chat,layout:main` |
+| `--yes` | Approve the disclosed installation without a terminal prompt |
 
 ```bash
 station plugin install https://github.com/org/my-plugin.git
@@ -2655,7 +2886,9 @@ Output includes suggested `--skip` flags if conflicts are detected.
 
 ### `plugin list`
 
-List all installed plugins with their agents, layouts, providers, and dependencies.
+List the installed-plugin projection visible to this caller, including rejected
+rows when the server exposes them. Records can include contributions,
+dependencies and readiness; presence alone does not prove activation.
 The CLI, SDK hook, and station-control MCP tool share the canonical authenticated
 `GET /api/plugins` collection operation; no trailing-slash compatibility route
 is required.
@@ -2670,7 +2903,9 @@ station plugin list
 
 ### `plugin remove <name>`
 
-Remove an installed plugin by its manifest name. Also removes its registered agents and layout.
+Request removal by manifest name through the server's lifecycle owner. Managed
+contributions are retired there; retained data and pending cleanup are separate
+dispositions. The CLI prints completion only after an accepted success response.
 
 ```
 station plugin remove <name>
@@ -2706,7 +2941,10 @@ station plugin update my-plugin
 
 ### `plugin init [name]`
 
-Scaffold a new plugin project in the current directory (or a named subdirectory).
+Scaffold the full template in a new named subdirectory (`my-plugin` by default).
+This legacy alias uses the CLI process directory; through `./station`, that is
+the Station checkout. Prefer `plugin create` to use the preserved invocation
+directory when launching from another project.
 
 ```
 station plugin init [name]
@@ -2721,7 +2959,9 @@ station plugin init my-plugin
 
 ### `plugin create [name]`
 
-Scaffold a new plugin project using a specific template.
+Scaffold a new named subdirectory in the invocation directory using a specific
+template. The default directory name is `my-plugin`; an existing directory is
+refused.
 
 ```
 station plugin create [name] [--template=<pane|full|provider>]
@@ -2774,12 +3014,13 @@ station plugin dev [--port=<n>] [port] [--no-mcp] [--mcp] [--tools-dir=<path>]
 | Argument/Flag | Default | Description |
 |---------------|---------|-------------|
 | `--port=<n>` | `4200` | Port for the dev server — the same flag shape every other Station command uses |
-| `[port]` | `4200` | Bare positional port. Still supported; `--port=` is preferred. Naming the port twice is an error |
+| `[port]` | `4200` | Bare positional port. A second positional port is refused; repeated `--port=` flags currently use the last value. Supply one port selector. |
 | `--no-mcp` | — | Disable MCP tool server connections |
 | `--mcp` | — | Explicitly enable MCP (default when agents are present) |
-| `--tools-dir=<path>` | `./tools` | Directory containing tool config files |
+| `--tools-dir=<path>` | `<invocation-directory>/integrations` | Directory containing integration config files |
 
 The dev server exposes:
+
 - `GET /` — plugin UI preview
 - `GET /agents/:slug/tools` — list available tools
 - `POST /agents/:slug/tools/:toolName` — call a tool via MCP
@@ -2802,7 +3043,8 @@ The file, MCP, fetch, and reload routes require the exact live loopback Host and
 
 ### `review`
 
-Run an exact initial or delta review from the same canonical request used by the API, SDK, Review Queue, and station-control MCP:
+Run an exact initial or delta review using the canonical request shared by the
+API, SDK, Project Review layout, and station-control MCP:
 
 ```bash
 station review run <project-slug> --file=review-request.json
@@ -2812,7 +3054,11 @@ station review list <project-slug>
 station review read <project-slug> <receipt-id>
 ```
 
-`review run` requires a caller-generated `requestId` and implementing Agent slug. Explicit mode carries distinct reviewer Agent slugs; Repo Map mode carries `"reviewers":[]` plus `"selection":{"kind":"repo-map"}` and Station resolves trusted policy, eligible read-only reviewers, and pins the exact resolved Git SHAs. Unavailable routing or reviewers becomes durable `not-verified` with a server-owned reason; no reviewer is invoked and no clean receipt is fabricated. Station resolves actor identities; clients cannot declare attribution. Each HTTP operation retains the ordinary 30-second transport bound. The SDK safely recovers ambiguous submission by request ID, polls durable status, and prints the attributable completed result; `review status` performs the same exact recovery directly. Findings are evidence input only and do not approve, reject, satisfy a gate, or replace the completion gate. The station-control MCP exposes the same shared operations as `run_independent_review`, `get_review_request`, `list_review_receipts`, and `get_review_receipt`.
+`review run` requires a caller-generated `requestId` and implementing Agent slug. Explicit mode carries distinct reviewer Agent slugs; Repo Map mode carries `"reviewers":[]` plus `"selection":{"kind":"repo-map"}` and Station resolves trusted policy, eligible read-only reviewers, and pins the exact resolved Git SHAs. Unavailable routing or reviewers becomes durable `not-verified` with a server-owned reason; no reviewer is invoked and no clean receipt is fabricated. Station resolves actor identities; clients cannot declare attribution.
+
+The SDK gives each HTTP operation a 30-second bound, reads status after a submission failure, and retries the same request ID once if that read also fails. It then polls a running request every 500 ms; there is no CLI-wide review deadline. Completed results are printed, while terminal refused or indeterminate outcomes fail. `review status` reads the exact durable status directly.
+
+Findings are evidence input only and do not approve, reject, satisfy a gate, or replace the completion gate. The station-control MCP exposes the same shared operations as `run_independent_review`, `get_review_request`, `list_review_receipts`, and `get_review_receipt`.
 
 ## Instance State Mechanism
 
@@ -2846,7 +3092,8 @@ recorded in the pre-registry `<home>/service/*.json` manifest on first install.
 
 | Variable | Used by | Description |
 |----------|---------|-------------|
-| `PORT` | `start` | Overridden by `--port=<n>`. Sets the API server listen port. |
+| `STATION_SERVER_PORT` | lifecycle | Server port override read by the lifecycle parser; `--port=<n>` takes precedence. |
+| `STATION_UI_PORT` | lifecycle | UI port override read by the lifecycle parser; `--ui-port=<n>` takes precedence. |
 | `STATION_ROOT` | shared app data | App-owned root for saved-Station metadata, cache, channel installs, and runtime containers. Defaults to `~/.station`; never a runtime cleanup target. |
 | `STATION_HOME` | lifecycle + server runtime | One runtime home. Defaults to `<STATION_ROOT>/instances/<channel>`. Lifecycle commands also accept `--home=<dir>` (which wins over this variable), its original name `--base=<dir>`, and `--temp-home`. |
 | `STATION_INSTANCE_ID` | server runtime | Stable instance identity injected by the CLI for targeted restart/update flows. |
@@ -2859,7 +3106,8 @@ recorded in the pre-registry `<home>/service/*.json` manifest on first install.
 | `STATION_PORT` | loopback override | Overrides the selected channel runtime context's server port for the loopback default target. |
 | `STATION_REQUEST_TIMEOUT_MS` | commands that talk to a Station | Request deadline in milliseconds (default `30000`). `0` disables it. See [request deadlines](#request-deadlines-and-unreachable-stations). |
 
-Environment variables are station-only (`STATION_*`). Shared app data resolves
+Station-owned identity and path variables use the `STATION_*` prefix; the
+table also includes telemetry and UI-build settings. Shared app data resolves
 from `STATION_ROOT` → `~/.station`; runtime state resolves independently from
 `STATION_HOME` → `<STATION_ROOT>/instances/<channel>`. The source launcher is
 `./station`.
@@ -2933,7 +3181,9 @@ printing the key. `--source-paused` is required and is the operator's assertion,
 not an automatic process stop. All output paths must be new. Import creates the
 checkout at `<destination>/workspace`. See [Workspace packages](../guides/workspace-packages.md)
 for prerequisites, encryption/key handling, exact preserved content, resource
-limits, and recovery. They copy workspace data, not credentials or running agents.
+limits, and recovery. They do not enroll credentials or transfer running agents.
+The package includes Git history and eligible tracked/unignored working files;
+secrets already present in those bytes are not removed by a secret scanner.
 
 
 ### Import and register a target Project
@@ -2969,7 +3219,7 @@ without attempting creation when verification fails.
 
 ### Open an authorized local browser session
 
-`station open [--home=<directory>] [--instance=<name>]` opens an already-running local instance through its one-time browser authorization. Multiple live instances require an explicit selection. A failed authorization does not silently open an unpaired page, and the capability is not printed to stdout. `station doctor` in the packaged client reuses the target diagnostic report; source-checkout doctor retains its development checks.
+`station open [--home=<directory>] [--instance=<name>]` opens an already-running local instance through its one-time browser authorization. Multiple live instances require an explicit selection. A failed authorization does not silently open an unpaired page. The default form keeps the capability out of stdout; the explicit `--print` form prints the one-time sign-in link. `station doctor` in the packaged client reuses the target diagnostic report; source-checkout doctor retains its development checks.
 
 `station environment access approve <request-id> --api-base=http://127.0.0.1:<port>` requires the selected Station home (`STATION_HOME` or its saved local binding). The packaged client uses the same read-only record validation and listener challenge proof as the host. Non-interactive approval still requires `--force`; ordinary interactive use asks for confirmation.
 

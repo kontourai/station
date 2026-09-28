@@ -1460,7 +1460,8 @@ describe('verification receipt JSON schema (Ajv)', () => {
   // standard JSON Schema cannot express cross-property integer equality, it
   // does NOT enforce passed === executed. That count-completeness equality is
   // an explicit runtime semantic guard (isPassingCounts / classifyTerminal /
-  // assertReceiptSemantics), proven below and in the guard suites.
+  // assertReceiptSemantics), proven in the guard suites: a schema-valid
+  // { executed: 2, passed: 1 } pass is rejected by assertReceiptSemantics.
   const validate = new Ajv2020({ allErrors: true }).compile(schema);
   const passing = buildPassingReceipt();
 
@@ -1805,27 +1806,6 @@ describe('verification receipt JSON schema (Ajv)', () => {
     expect(bounded.codePointAt(bounded.length - 2)).toBe(0x1f600);
     expect(validate(astral), JSON.stringify(validate.errors, null, 2)).toBe(
       true,
-    );
-  });
-
-  it('does NOT enforce passed === executed — that equality is a runtime guard only', () => {
-    // Standard JSON Schema cannot express cross-property integer equality, so
-    // the portable schema enforces only structural passing positivity
-    // (executed >= 1, passed >= 1, failed === 0, infrastructureErrors === 0).
-    // A forged receipt claiming passed=true with partial counts
-    // { executed: 2, passed: 1, ... } is therefore SCHEMA-VALID. The exact
-    // count-completeness equality is enforced only by the runtime semantic
-    // guard (isPassingCounts / classifyTerminal / assertReceiptSemantics), so
-    // a true pass requires acceptance by both the schema and the guard.
-    const partialCounts = {
-      ...passing,
-      counts: { executed: 2, passed: 1, failed: 0, infrastructureErrors: 0 },
-    };
-    expect(validate(partialCounts), JSON.stringify(validate.errors)).toBe(true);
-    const receipt = buildPassingReceipt();
-    receipt.counts = partialCounts.counts;
-    expect(() => assertReceiptSemantics(receipt)).toThrow(
-      /cannot pass without complete passing counts/,
     );
   });
 

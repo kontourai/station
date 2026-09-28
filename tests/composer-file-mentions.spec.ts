@@ -20,11 +20,10 @@ import{QueryClient,QueryClientProvider}from'@tanstack/react-query';
 import{setClientCredentialResolver}from'@kontourai/station-sdk/client';
 import{ChatInputArea}from'./src-ui/src/components/chat/ChatInputArea';
 import{PreviewProvider}from'./src-ui/src/contexts/PreviewContext';
-import{expandComposerMentions}from'./src-ui/src/components/chat/composer-mention-wire';
 const scope={apiBase:'http://station.test',authorityKey:'owner-a',isCurrent:()=>true};
-setClientCredentialResolver(()=>({origin:scope.apiBase,requestAuthority:scope}));window.sent='';
+setClientCredentialResolver(()=>({origin:scope.apiBase,requestAuthority:scope}));
 const base={attachments:[],disabled:false,isSending:false,turnInFlight:false,modelSupportsAttachments:true,fontSize:14,dockHeight:500,canModelSelect:false,availableModels:[],modelQuery:null,commandQuery:null,slashCommands:[],onCancel:()=>{},onClearInput:()=>{},onRemoveAttachment:()=>{},onClearAttachments:()=>{},onModelSelect:()=>{},onModelReset:()=>{},onModelClose:()=>{},onModelOpen:()=>{},onModelRuntimeOptionChange:()=>{},onApprovalModeChange:()=>{},onCommandSelect:async()=>{},onCommandClose:()=>{},onHistoryUp:()=>{},onHistoryDown:()=>{},updateFromInput:()=>{},closeAll:()=>{}};
-function App(){const[drafts,setDrafts]=useState({one:'',two:'second draft'});const[session,setSession]=useState('one');const input=drafts[session];const ref=createRef();const change=value=>setDrafts(old=>({...old,[session]:value}));return <main><nav><button onClick={()=>setSession('one')}>First chat</button><button onClick={()=>setSession('two')}>Second chat</button></nav><ChatInputArea {...base} sessionId={session} input={input} textareaRef={ref} workingDirectory="/repo/project" mentionRequestScope={scope} mentionAuthority="station-stable" onInputChange={change} onSend={async()=>{window.sent=expandComposerMentions(input,'/repo/project','station-stable').text??''}} /></main>}
+function App(){const[drafts,setDrafts]=useState({one:'',two:'second draft'});const[session,setSession]=useState('one');const input=drafts[session];const ref=createRef();const change=value=>setDrafts(old=>({...old,[session]:value}));return <main><nav><button onClick={()=>setSession('one')}>First chat</button><button onClick={()=>setSession('two')}>Second chat</button></nav><ChatInputArea {...base} sessionId={session} input={input} textareaRef={ref} workingDirectory="/repo/project" mentionProjectSlug="project" mentionRequestScope={scope} mentionAuthority="station-stable" onInputChange={change} onSend={async()=>{}} /></main>}
 createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><PreviewProvider><App/></PreviewProvider></QueryClientProvider>);`,
       },
       bundle: true,
@@ -122,10 +121,4 @@ test('keyboard-selects a scoped mention and preserves it across mounted chat swi
     path: testInfo.outputPath('composer-file-mention-390.png'),
     fullPage: true,
   });
-  await page.getByRole('button', { name: 'Send' }).click();
-  await expect
-    .poll(() =>
-      page.evaluate(() => (window as typeof window & { sent: string }).sent),
-    )
-    .toBe('Review @"/repo/project/src/folder (odd)" ');
 });

@@ -1,5 +1,13 @@
 # Move a Station setup to the cloud
 
+> **Reading status: preparation tools plus a proposed complete move.**
+> The [shared preparation owner](../../packages/shared/src/cloud-move.ts) and
+> [SDK target verifier](../../packages/sdk/src/client/cloud-move.ts) expose the
+> implemented boundary. A successful preview or target observation does not
+> copy credentials, grant execution authority, or continue a provider session.
+> No cloud account, instance, billing, or deployment qualification was run in
+> this documentation review.
+
 > Status: staged implementation under [#495](https://github.com/kontourai/station/issues/495)
 > and [#580](https://github.com/kontourai/station/issues/580). The initial slice
 > implements a read-only setup preview, AWS template preparation, and encrypted
@@ -69,7 +77,7 @@ The template uses Amazon Linux 2023 from the regional SSM AMI parameter, one EC2
 instance, and an encrypted gp3 root/data volume. It gives the instance only the
 AWS-managed SSM instance role and permits no inbound security-group traffic.
 The host downloads Docker and the selected image over outbound networking.
-IMDSv2 is required with hop limit one; the container receives no AWS credentials,
+IMDSv2 is required with hop limit one; the template passes the container no AWS credentials,
 Docker socket, or host home directory. Access uses authenticated SSM forwarding
 to host-loopback port 3000. Set `LocalUiPort` to an available client port and
 open `http://127.0.0.1` on that port; the template configures this exact allowed
@@ -88,7 +96,9 @@ the environment; template validation does not prove boot or runtime readiness.
 The first cloud release uses the existing owner-approved Station pairing flow.
 The operator approves a browser through Station; cloud IAM membership, matching
 email addresses, or a shared signing key do not create application membership.
-Company SSO is deferred to an explicit identity-provider integration. This choice
+The target may use the existing [deployment authentication contract](../guides/deployment-authentication.md),
+including configured local accounts or OIDC. Package commands do not configure
+that provider or translate Cloud IAM into Station identity. This choice
 does not authorize automatic operator-token injection into browsers or settle
 multi-human membership. The existing pairing lifecycle owns credential custody,
 expiry, replay refusal and revocation. Automatic bootstrap remains outside this
@@ -113,8 +123,10 @@ The server-side SSH worker currently sends no Station application credential.
 A 401 or 403 therefore reports `station-authentication-required` and does not
 trigger managed launch. SSH access alone does not enroll that worker. Use an
 enrolled Station API connection for authenticated preparation; the
-[native SSH launcher](ssh-launched-environments.md) separately starts or reuses
-a process and completes the normal pairing exchange. Its remote install uses
+[retained native SSH launcher](ssh-launched-environments.md) can separately
+start or reuse a process and return a pairing offer. Its former creation/pairing
+UI is no longer mounted; that retained module is not the current Add computer
+journey. Its remote install uses
 `dependencies:ci`, including the pinned pnpm lifecycle. Automatic credential
 enrollment for the server-side worker remains unimplemented.
 

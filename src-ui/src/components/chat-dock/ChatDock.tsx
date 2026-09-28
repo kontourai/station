@@ -154,7 +154,7 @@ import { useFirstRunDockNudge } from './useFirstRunDockNudge';
  * session can vouch only for its agent identity, and resolveAgentExecution
  * already degrades an identity-only agent to honest unknown execution data.
  */
-export function agentIdentityFromSession(
+function agentIdentityFromSession(
   session: Pick<ChatSession, 'agentSlug' | 'agentName'>,
 ): Pick<AgentData, 'slug' | 'name'> | null {
   if (!session.agentSlug || !session.agentName?.trim()) return null;

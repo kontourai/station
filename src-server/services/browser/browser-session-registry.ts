@@ -1,25 +1,11 @@
 /**
- * Server-owned Browser sessions (#90, design brief "Server-owned session").
- *
- * - One browser process per Project profile
- *   (`<home>/projects/<slug>/browser/profile`), holding any number of targets.
- * - Each launch of a Project's browser gets the next GENERATION number. The
- *   counter is persisted and only ever grows, across crashes and restarts, so
- *   a reference carrying an older generation is detectably stale.
- * - When the browser exits underneath its sessions they become
- *   `needs-reopen`; they are never silently re-attached to a new process.
- * - When a Project's last live session closes, its browser is shut down after
- *   an idle delay.
- * - Server stop shuts every browser down. Records persist, but a restart
- *   loads live sessions as `needs-reopen`: nothing comes back "live" without a
- *   browser behind it.
- * - Every session carries an append-only, bounded action history (D6): an
- *   agent may drive a session nobody is watching, so what happened in it must
- *   always be discoverable. Truncation is counted, never silent.
- * - Profiles are per (canonical Project ID, principal), never per slug (D7):
- *   the operator's logins are never visible to a Project admin's session, a
- *   slug rename keeps the profile, and a reused slug inherits nothing. The
- *   profile also fixes the network reach its browser's egress proxy enforces.
+ * Server-owned Browser sessions (#90): one process per canonical Project/principal
+ * profile under browser/profiles, never keyed by a reusable slug (D7).
+ * Profiles separate cookies and network reach. Persisted generations invalidate
+ * old references; exited/restarted sessions require explicit reopening.
+ * The last live target closing starts idle shutdown; zero viewers only stop
+ * capture. Bounded action history counts truncation even when nobody watches (D6).
+ * See docs/guides/browser-workspace.md for lifecycle and authority boundaries.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import {

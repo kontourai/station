@@ -40,6 +40,7 @@ import {
   runE2EExecutionPhases,
   seedE2EEngineChoice,
   settleE2EExecution,
+  settleStartedE2ERun,
   startWithPortRetry,
   suiteStationE2EEnv,
   sweepInterruptedBuildDirs,
@@ -180,20 +181,71 @@ describe('runE2EExecutionPhases', () => {
 });
 
 describe('full-run failure evidence retention', () => {
-  test('routes both post-start test and cleanup failures through retention before rethrow', () => {
+  test('retains evidence for a failed run before cleanup and again when cleanup fails', async () => {
+    const settle = async (
+      runFailure: Error | null,
+      cleanupErrors: string[],
+    ) => {
+      const events: string[] = [];
+      const failure = await settleStartedE2ERun({
+        runFailure,
+        suite: 'product',
+        retainEvidence: () => {
+          events.push('retain');
+          // Retention is best-effort: its own failure must not mask the run.
+          throw new Error('evidence disk full');
+        },
+        cleanUp: async () => {
+          events.push('cleanup');
+          return cleanupErrors;
+        },
+      });
+      return { events, failure };
+    };
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(await settle(new Error('red'), [])).toEqual({
+        events: ['retain', 'cleanup'],
+        failure: null,
+      });
+      const cleanupRed = await settle(null, ['lease stuck']);
+      expect(cleanupRed.events).toEqual(['cleanup', 'retain']);
+      expect(cleanupRed.failure?.message).toBe(
+        'E2E cleanup failed; retained lease and outputs: lease stuck',
+      );
+      expect((await settle(new Error('red'), ['lease stuck'])).events).toEqual([
+        'retain',
+        'cleanup',
+        'retain',
+      ]);
+      expect(await settle(null, [])).toEqual({
+        events: ['cleanup'],
+        failure: null,
+      });
+      expect(errorLog).toHaveBeenCalledWith(
+        '[e2e] could not retain product failure evidence: evidence disk full',
+      );
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  // The helper above is proven directly; this is the only proof main()'s
+  // finally-block still hands it the real retainer. Running main() needs a
+  // live Station and Playwright, so the wiring is read from source, loosely.
+  test('main hands the real bucket retainer to the settle step', () => {
     const source = readFileSync(
       resolve(import.meta.dirname, '../run-e2e-suite.mjs'),
       'utf8',
     );
-    const finalizer = source.slice(
-      source.indexOf('  } finally {', source.indexOf('await run(')),
+    const settleCall = source.indexOf('await settleStartedE2ERun({');
+    expect(settleCall).toBeGreaterThanOrEqual(0);
+    const retainer = source.slice(
+      source.indexOf('retainEvidence:', settleCall),
+      source.indexOf('cleanUp:', settleCall),
     );
-    expect(finalizer).toContain(
-      'if (runFailure && process.env.STATION_E2E_EVIDENCE_ROOT)',
-    );
-    expect(finalizer).toContain('if (cleanup.errors.length > 0)');
-    expect(finalizer.match(/retainE2EBucketFailureEvidence\(/g)).toHaveLength(
-      2,
+    expect(retainer).toMatch(
+      /^retainEvidence: \(\) =>\s+retainE2EBucketFailureEvidence\(\{[^}]*evidenceRoot: process\.env\.STATION_E2E_EVIDENCE_ROOT/,
     );
   });
 

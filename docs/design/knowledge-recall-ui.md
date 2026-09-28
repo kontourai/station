@@ -1,5 +1,13 @@
 # Knowledge recall UI boundary
 
+> **Reading status: current SDK recall boundary.**
+> [KnowledgeRecall](../../packages/sdk/src/components/KnowledgeRecall.tsx) and
+> the [root metadata key](../../packages/shared/src/knowledge-root-identity.ts)
+> own shared selection and presentation. [Knowledge Library](../../examples/knowledge-library/src/KnowledgeLibrary.tsx)
+> and [Meeting Notes](../../examples/meeting-notes/src/GraphPane.tsx) are callers.
+> The extraction's original behavior/packaging claims do not replace current
+> provider, live plugin, or real Knowledge-store verification.
+
 Status: accepted for the Station #528 extraction, 2026-07-19.
 
 This decision follows the generic Knowledge Library pilot with a supported
@@ -25,7 +33,8 @@ The SDK owns:
   geometry.
 
 The shared browser accepts a graph-renderer boundary. Knowledge Library uses
-the default accessible record list. Meeting Notes supplies its existing radial
+the SDK's accessible record list inside its own scroll and focus shell. Meeting
+Notes supplies its existing radial
 SVG renderer so K5's geometry, keyboard behavior, Files/Neo4j switch, and sync
 controls remain product-owned while selection and record detail converge.
 
@@ -81,11 +90,13 @@ is disclosed rather than fetched under an invented authority.
 
 ## Lifecycle and cache integrity
 
-Root authority is more than a root id. The incarnation key includes scope,
-adapter, store root, display name, and creation time so a reconfigured root that
-reuses an id cannot inherit a prior graph or canonical-record presentation.
-Canonical record queries are explicitly revalidated when that authority key or
-the selected record changes.
+A root id alone is not enough to detect changed registration metadata. The
+metadata key includes id, scope, adapter, store root, display name, and creation
+time; changes trigger graph and canonical-record revalidation. It is not an
+immutable incarnation, owner revision, or authorization grant: identically
+restored metadata can produce the same key. Canonical record queries also
+revalidate when the selected record changes; server read authority remains
+separate from this UI cache key.
 
 The shared detail renders status and freshness from the canonical record, not
 from graph-node metadata. A missing canonical record is an explicit error even
@@ -109,8 +120,12 @@ remain the owning signals.
 
 - SDK unit tests cover root scoping, incarnation identity, navigation, canonical
   detail, provenance, lifecycle, and outside-graph links.
-- Knowledge Library focused unit and Playwright tests prove the pilot behavior
-  now travels through the shared boundary.
+- Knowledge Library focused unit and Playwright cases exercise the pilot through
+  the shared boundary; fixture results retain their fixture scope.
 - Meeting Notes focused unit and Playwright tests remain the K5 regression
   floor, including SVG keyboard navigation and Neo4j honest states.
 - A source gate rejects cross-example imports in the final change.
+
+The [repository-graph dogfood](../guides/repository-knowledge-graph.md) adds a
+specific installed-browser journey with real file records. It does not extend
+the UI tests into a claim about live embeddings, models, Neo4j or native devices.

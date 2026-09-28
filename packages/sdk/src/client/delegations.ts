@@ -318,6 +318,29 @@ export interface DelegatedTaskPendingRequest {
   type?: string;
 }
 
+/**
+ * #2880: the latest decision recorded on a delegated task and what its
+ * engine has reported since (mirrors the server's `DelegatedTaskDecision`;
+ * this SDK is a typed carrier, not a deriver). `acknowledged` means the
+ * engine closed the request after Station's well-formed reply, never that it
+ * applied the decision; `not-reported` means the engine's protocol reports no
+ * delivery.
+ */
+export interface DelegatedTaskDecision {
+  requestId: string;
+  status: string;
+  delivery:
+    | 'awaiting-acknowledgement'
+    | 'acknowledged'
+    | 'unacknowledged'
+    | 'in-process'
+    | 'closed-by-engine'
+    | 'not-reported';
+  reason?: 'no-acknowledgement' | 'invalid-reply';
+  engineStatus?: string;
+  waitedMs?: number;
+}
+
 export interface DelegatedTaskSnapshot {
   /** Durable identity accepted by `station delegate --session=<id>`. */
   conversationId: string;
@@ -346,6 +369,13 @@ export interface DelegatedTaskSnapshot {
   capabilityDelivery?: DelegatedCapabilityDelivery;
   eventCount: number;
   lastEvent?: { method: string; createdAt?: string };
+  /** #2880: the latest recorded decision and its delivery, if any. */
+  lastDecision?: DelegatedTaskDecision;
+  /**
+   * #2880: earlier decisions the engine reported unacknowledged, oldest
+   * first; `lastDecision` is never repeated here.
+   */
+  earlierUnacknowledgedDecisions?: DelegatedTaskDecision[];
   pendingRequest?: DelegatedTaskPendingRequest;
   canInterrupt: boolean;
   resumable: boolean;

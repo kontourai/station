@@ -1,6 +1,10 @@
 # Mobile-device hosting experiment
 
-**Status: feasibility experiment, not a shipped Station feature.**
+**Historical feasibility experiment, recorded 2026-09-12.** The executable in
+this directory remains separate from Station. Current product integration is
+owned by the [Device workspace guide](../../docs/guides/mobile-device-workspace.md)
+and its linked service, routes, and React pane. The observations and proposal
+below describe the experiment at that date, not today's product inventory.
 
 This isolated Tauri executable tests whether a local device hub can display
 and control real iOS Simulator and Android Emulator apps in the same desktop
@@ -90,7 +94,7 @@ The hub ran with its MJPEG transport preference. Android reported
 decoder path or its performance. No latency, frame-rate, bandwidth, or resource
 benchmark was performed.
 
-## Product integration proposal
+## Product integration proposal at the time of the experiment
 
 1. Add a device-host service with explicit host/device identities, bounded
    lifecycle operations, owned helper processes, and separate view/control
@@ -113,7 +117,7 @@ SSE for state where appropriate and use a bounded binary/control transport
 for frames and low-latency input. The pane should expose missing-host and
 missing-toolchain reasons independently from its client platform.
 
-Owning Station seams are
+The experiment originally pointed to these Station seams:
 [`BrowserPreviewWorkspacePane`](../../src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx),
 the [Workspace Pane registry](../../src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx),
 [native host policy](../../src-desktop/src/lib.rs), and

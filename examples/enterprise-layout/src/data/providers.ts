@@ -1,9 +1,6 @@
 /**
- * Provider Interfaces — Contracts for data fetching.
- *
- * Each interface maps to a provider type that the layout declares in
- * `requiredProviders`. Implementations live in `./providers/` and call
- * MCP tools via `callTool` from the SDK.
+ * Interfaces consumed by the enterprise data hooks. Calendar, CRM and email
+ * implementations call MCP tools; the directory implementation is a stub.
  */
 
 import type {

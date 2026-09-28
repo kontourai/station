@@ -1349,27 +1349,64 @@ export function renderChangedVerificationSummary(result) {
   ].join('\n');
 }
 
+/**
+ * #2887: a product-law path ADDS its law's evidence; it does not defer the
+ * diff. Laws used to be routed to a `ci-fast` lane, and any lane defers the
+ * whole affected selection, so a diff touching `queueDrain.ts` ran none of
+ * its ~600 related suites in fast-checks. But ci:fast already runs every
+ * law's observation and fault injection on every change: product-law-gate
+ * (inside the verification:policy:gate static, bounded by
+ * MAX_PRODUCT_LAW_RUNTIME_MS). So the law is named, its observation suites
+ * are selected beside the diff's own, and only genuinely unknown paths and
+ * escalations still defer.
+ */
+/**
+ * The suites that hold each named law's evidence: its behaviour observation
+ * and its fault injection. Only a `vitest-file` evidence with a test file can
+ * be selected; any other shape is refused naming the law and the kind (the
+ * product-law gate rejects such a manifest too), rather than surfacing later
+ * as an anonymous unsafe path.
+ */
+export function productLawEvidenceTests(manifest, productLaws) {
+  const selected = [];
+  for (const law of (manifest.laws ?? []).filter((entry) =>
+    productLaws.includes(entry.id),
+  ))
+    for (const [role, evidence] of [
+      ['observation', law.observation],
+      ['fault-injection', law.faultInjection],
+    ]) {
+      if (
+        evidence?.kind !== 'vitest-file' ||
+        typeof evidence.testFile !== 'string' ||
+        evidence.testFile.length === 0
+      )
+        throw new Error(
+          `product law ${law.id} has ${role} evidence of kind '${String(evidence?.kind)}' without a Vitest test file; only vitest-file evidence can be selected`,
+        );
+      selected.push({
+        path: evidence.testFile,
+        reason: `product law ${law.id}: its ${role} suite (product-law-gate also runs it in the ci:fast statics)`,
+      });
+    }
+  return selected;
+}
+
 function withProductLawDispositions(selection, root, changed) {
   const manifest = loadProductLawManifest({ rootDir: root });
   const productLaws = productLawDispositions(manifest, changed);
   if (productLaws.length === 0) return { selection, productLaws };
-  const laneReasons = new Map(
-    selection.lanes.map(({ id, reasons }) => [id, new Set(reasons)]),
+  const tests = new Map(
+    selection.tests.map(({ path, reasons }) => [path, new Set(reasons)]),
   );
-  laneReasons.set(
-    'ci-fast',
-    new Set([
-      ...(laneReasons.get('ci-fast') ?? []),
-      ...productLaws.map((id) => `product-law disposition: ${id}`),
-    ]),
-  );
+  for (const { path, reason } of productLawEvidenceTests(manifest, productLaws))
+    addReason(tests, path, reason);
   return {
     selection: {
       ...selection,
-      lanes: [...laneReasons.keys()]
+      tests: [...tests.keys()]
         .sort()
-        .map((id) => ({ id, reasons: [...laneReasons.get(id)].sort() })),
-      escalated: true,
+        .map((path) => ({ path, reasons: [...tests.get(path)].sort() })),
     },
     productLaws,
   };

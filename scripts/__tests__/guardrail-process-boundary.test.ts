@@ -378,6 +378,21 @@ function linkNodeModules(dir: string): void {
 
 describe('check-markdown-links rejects a broken relative link', () => {
   const SCRIPT = 'check-markdown-links.mjs';
+  // The gate renders each document through the learning reader, so the
+  // scratch tree needs that module graph and its Markdown toolchain.
+  const linkRepo = (files: Record<string, string>) => {
+    const dir = scratchRepo({
+      script: SCRIPT,
+      libs: [
+        'documentation-model.mjs',
+        'learning-markdown.mjs',
+        'learning-source-reader.mjs',
+      ],
+      files,
+    });
+    linkNodeModules(dir);
+    return dir;
+  };
 
   const clean = {
     'README.md': '[Guide](docs/guide.md)\n',
@@ -387,41 +402,35 @@ describe('check-markdown-links rejects a broken relative link', () => {
   it('accepts the clean tree — the negative control', {
     timeout: CASE_TIMEOUT,
   }, () => {
-    const result = runGuardrail(
-      scratchRepo({ script: SCRIPT, files: clean }),
-      SCRIPT,
-    );
+    const result = runGuardrail(linkRepo(clean), SCRIPT);
     expect(result.status, result.output).toBe(0);
     expect(result.stdout).toContain(
-      'Validated relative links in 2 Markdown files.',
+      'Validated local paths and rendered anchors in 2 Markdown files.',
     );
   });
 
   it('rejects a link whose target does not exist', {
     timeout: CASE_TIMEOUT,
   }, () => {
-    const dir = scratchRepo({
-      script: SCRIPT,
-      files: { ...clean, 'README.md': '[Guide](docs/missing.md)\n' },
+    const dir = linkRepo({
+      ...clean,
+      'README.md': '[Guide](docs/missing.md)\n',
     });
     const result = runGuardrail(dir, SCRIPT);
     // `check-markdown-links.mjs` sets `process.exitCode = 1` and returns
     // rather than calling `process.exit(1)`. Nothing had ever proved that
     // still leaves a non-zero status.
     expect(result.status, result.output).toBe(1);
-    expect(result.stderr).toContain('Broken relative Markdown links:');
+    expect(result.stderr).toContain('Broken local Markdown links:');
     expect(result.stderr).toContain(
-      '- README.md: [Guide](docs/missing.md) — missing target',
+      '- README.md:1: [Guide](docs/missing.md) — missing target',
     );
   });
 
   it('rejects a link that escapes the repository', {
     timeout: CASE_TIMEOUT,
   }, () => {
-    const dir = scratchRepo({
-      script: SCRIPT,
-      files: { ...clean, 'README.md': '[Up](../escape.md)\n' },
-    });
+    const dir = linkRepo({ ...clean, 'README.md': '[Up](../escape.md)\n' });
     const result = runGuardrail(dir, SCRIPT);
     expect(result.status, result.output).toBe(1);
     expect(result.stderr).toContain('— outside repository');
@@ -1457,6 +1466,7 @@ describe('docs:reference:gate rejects a doc naming a path that does not exist', 
   // so the clean tree is the scope, not a convenience.
   const scope: Record<string, string> = {};
   for (const dir of [
+    'docs/user',
     'docs/guides',
     'docs/reference',
     'docs/architecture',
@@ -1476,6 +1486,7 @@ describe('docs:reference:gate rejects a doc naming a path that does not exist', 
     'CONTEXT.md',
     'CONTEXT-MAP.md',
     'SECURITY.md',
+    'CONTRIBUTING.md',
   ]) {
     scope[file] = '# x\n';
   }

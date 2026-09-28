@@ -14,6 +14,7 @@ import {
   WORKSPACE_READINESS_PANE_DESCRIPTOR,
   WORKSPACE_TRUST_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
+import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import {
   WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR,
@@ -21,7 +22,6 @@ import {
 } from '@kontourai/station-contracts/workspace-task-room';
 import { expect, test } from 'vitest';
 import {
-  getBuiltinWorkspacePaneRenderer,
   isCanonicalBuiltinBoardDescriptor,
   isCanonicalBuiltinBrowserPreviewDescriptor,
   isCanonicalBuiltinChatDescriptor,
@@ -34,8 +34,21 @@ import {
   isCanonicalBuiltinTaskRoomChatDescriptor,
   isCanonicalBuiltinTaskRoomEditorDescriptor,
   isCanonicalBuiltinTrustDescriptor,
-} from '../builtinWorkspacePaneRegistry';
+} from '../builtinWorkspacePaneCanonical';
+import { getBuiltinWorkspacePaneRenderer } from '../builtinWorkspacePaneRegistry';
 import { FILE_PREVIEW_PANE_DESCRIPTOR } from '../filePreviewPaneInstance';
+
+/**
+ * A lookalike must fail the predicate AND the registry boundary: a registry
+ * entry that stopped consulting its predicate would still hand it a renderer.
+ */
+function expectRefused(
+  isCanonical: (descriptor: WorkspacePaneDescriptor) => boolean,
+  lookalike: WorkspacePaneDescriptor,
+) {
+  expect(isCanonical(lookalike)).toBe(false);
+  expect(getBuiltinWorkspacePaneRenderer(lookalike)).toBeNull();
+}
 
 test('admits only the adapter-minted builtin coding descriptor, never a plugin/decoy tuple', () => {
   const canonical = paneAdaptationFromLayoutTab(
@@ -69,27 +82,23 @@ test('registers only the code-owned File Preview descriptor', () => {
   expect(
     getBuiltinWorkspacePaneRenderer(FILE_PREVIEW_PANE_DESCRIPTOR),
   ).toBeTypeOf('function');
-  expect(
-    isCanonicalBuiltinFilePreviewDescriptor({
-      ...FILE_PREVIEW_PANE_DESCRIPTOR,
-      rendererId:
-        'plugin:file-preview' as typeof FILE_PREVIEW_PANE_DESCRIPTOR.rendererId,
-    }),
-  ).toBe(false);
-  expect(
-    isCanonicalBuiltinFilePreviewDescriptor({
-      ...FILE_PREVIEW_PANE_DESCRIPTOR,
-      modes: [
-        {
-          id: 'default',
-          contextRequirement: {
-            ...FILE_PREVIEW_PANE_DESCRIPTOR.modes[0].contextRequirement,
-            workspace: true,
-          },
+  expectRefused(isCanonicalBuiltinFilePreviewDescriptor, {
+    ...FILE_PREVIEW_PANE_DESCRIPTOR,
+    rendererId:
+      'plugin:file-preview' as typeof FILE_PREVIEW_PANE_DESCRIPTOR.rendererId,
+  });
+  expectRefused(isCanonicalBuiltinFilePreviewDescriptor, {
+    ...FILE_PREVIEW_PANE_DESCRIPTOR,
+    modes: [
+      {
+        id: 'default',
+        contextRequirement: {
+          ...FILE_PREVIEW_PANE_DESCRIPTOR.modes[0].contextRequirement,
+          workspace: true,
         },
-      ],
-    }),
-  ).toBe(false);
+      },
+    ],
+  });
 });
 
 test('registers only the code-owned Browser Preview descriptor', () => {
@@ -101,12 +110,10 @@ test('registers only the code-owned Browser Preview descriptor', () => {
   expect(
     getBuiltinWorkspacePaneRenderer(WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR),
   ).toBeTypeOf('function');
-  expect(
-    isCanonicalBuiltinBrowserPreviewDescriptor({
-      ...WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
-      modes: [{ id: 'default', contextRequirement: { project: true } }],
-    }),
-  ).toBe(false);
+  expectRefused(isCanonicalBuiltinBrowserPreviewDescriptor, {
+    ...WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
+    modes: [{ id: 'default', contextRequirement: { project: true } }],
+  });
 });
 
 test('registers only the code-owned Chat descriptor', () => {
@@ -116,15 +123,13 @@ test('registers only the code-owned Chat descriptor', () => {
   expect(
     getBuiltinWorkspacePaneRenderer(WORKSPACE_CHAT_PANE_DESCRIPTOR),
   ).toBeTypeOf('function');
-  expect(
-    isCanonicalBuiltinChatDescriptor({
-      ...WORKSPACE_CHAT_PANE_DESCRIPTOR,
-      placement: {
-        ...WORKSPACE_CHAT_PANE_DESCRIPTOR.placement,
-        preferredRegion: 'standalone',
-      },
-    }),
-  ).toBe(false);
+  expectRefused(isCanonicalBuiltinChatDescriptor, {
+    ...WORKSPACE_CHAT_PANE_DESCRIPTOR,
+    placement: {
+      ...WORKSPACE_CHAT_PANE_DESCRIPTOR.placement,
+      preferredRegion: 'standalone',
+    },
+  });
 });
 
 test('admits the exact task-room pane declarations and no lookalikes', () => {
@@ -141,12 +146,10 @@ test('admits the exact task-room pane declarations and no lookalikes', () => {
   expect(
     getBuiltinWorkspacePaneRenderer(WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR),
   ).toBeTypeOf('function');
-  expect(
-    isCanonicalBuiltinTaskRoomEditorDescriptor({
-      ...WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR,
-      provenance: { origin: 'plugin', pluginId: 'lookalike' },
-    }),
-  ).toBe(false);
+  expectRefused(isCanonicalBuiltinTaskRoomEditorDescriptor, {
+    ...WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR,
+    provenance: { origin: 'plugin', pluginId: 'lookalike' },
+  });
 });
 
 test('registers only the code-owned Files, Diff, and Terminal descriptors', () => {
@@ -176,27 +179,21 @@ test('registers only the code-owned Files, Diff, and Terminal descriptors', () =
   expect(
     getBuiltinWorkspacePaneRenderer(WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR),
   ).toBeTypeOf('function');
-  expect(
-    isCanonicalBuiltinCodingFileBrowserDescriptor({
-      ...WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
-      provenance: { origin: 'plugin', pluginId: 'decoy' },
-    }),
-  ).toBe(false);
-  expect(
-    isCanonicalBuiltinCodingDiffDescriptor({
-      ...WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
-      modes: [{ id: 'default', contextRequirement: { project: true } }],
-    }),
-  ).toBe(false);
-  expect(
-    isCanonicalBuiltinCodingTerminalDescriptor({
-      ...WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
-      placement: {
-        ...WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR.placement,
-        preferredRegion: 'primary',
-      },
-    }),
-  ).toBe(false);
+  expectRefused(isCanonicalBuiltinCodingFileBrowserDescriptor, {
+    ...WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+    provenance: { origin: 'plugin', pluginId: 'decoy' },
+  });
+  expectRefused(isCanonicalBuiltinCodingDiffDescriptor, {
+    ...WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+    modes: [{ id: 'default', contextRequirement: { project: true } }],
+  });
+  expectRefused(isCanonicalBuiltinCodingTerminalDescriptor, {
+    ...WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+    placement: {
+      ...WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR.placement,
+      preferredRegion: 'primary',
+    },
+  });
 });
 
 test('registers only the code-owned Plan, Readiness, and Trust descriptors', () => {
@@ -210,12 +207,10 @@ test('registers only the code-owned Plan, Readiness, and Trust descriptors', () 
   ] as const) {
     expect(isCanonical(descriptor)).toBe(true);
     expect(getBuiltinWorkspacePaneRenderer(descriptor)).toBeTypeOf('function');
-    expect(
-      isCanonical({
-        ...descriptor,
-        provenance: { origin: 'plugin', pluginId: 'decoy' },
-      }),
-    ).toBe(false);
+    expectRefused(isCanonical, {
+      ...descriptor,
+      provenance: { origin: 'plugin', pluginId: 'decoy' },
+    });
   }
 });
 

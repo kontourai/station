@@ -113,7 +113,7 @@ const ComposerMentionChips = React.lazy(() =>
   })),
 );
 
-export function isPortableDraftShortcut(event: {
+function isPortableDraftShortcut(event: {
   key: string;
   metaKey: boolean;
   ctrlKey: boolean;

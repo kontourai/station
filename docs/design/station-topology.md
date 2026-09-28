@@ -8,6 +8,13 @@
 > grant, deployment configuration, CLI, or API. Follow-on implementation must
 > make its own compatibility and migration decision.
 
+The current/target distinction below is a product and authority map, not an
+availability report for a particular installation. Owner inspection confirms
+the named identity and composition boundaries; it does not certify every
+remote-execution, inference, shared-room, broker, or tenant-isolation journey.
+Use the linked implementations and each feature's operating guide when
+evaluating a concrete deployment.
+
 ## Decision
 
 Station is not a physical machine. A physical machine can run zero, one, or

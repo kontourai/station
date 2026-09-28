@@ -7,6 +7,14 @@ PostgreSQL adapter, cloud deployment recipe, or service-level commitment.**
 The [deployment guide](deployment.md) owns supported deployment behavior;
 [source and tests](../architecture/module-map.md) own implementation truth.
 
+Read this page in two parts: the first table routes to existing public
+interfaces; the hosted architecture, AWS sizing, and managed-offering sections
+record design direction and delivery requirements. They are not an inventory
+of shipped adapters or a current price quote. The
+[hosted persistence boundary](../../src-server/runtime/bootstrap/hosted-persistence-boundary.ts)
+checks private local home/database ownership and filesystem permissions; it
+does not turn the default local stores into tenant-safe PostgreSQL repositories.
+
 ## Start with one useful integration
 
 Choose a concrete outcome, such as presenting a project's agent work in your
@@ -153,10 +161,12 @@ Marketplace approval and commercial integration remain separate work.
 
 ## Cost target and sizing assumptions
 
-Planning estimate, checked 2026-09-05: use US East (N. Virginia), USD, 730 hours
+Historical planning assumptions, recorded 2026-09-05: US East (N. Virginia), USD, 730 hours
 per month, on-demand pricing, modest traffic, and no promotional credits or
 long-term commitments. These are budgeting envelopes, not a measured Station
 capacity result, AWS quote, or customer subscription price.
+Reprice the selected resources using the linked provider pages before making a
+deployment decision. These figures were not revalidated by the code audit.
 
 For the first private development profile, a Linux `t3.micro` at $0.0104/hour
 is about $7.59 per 730-hour month. Illustrative 30-GB gp3 storage at $0.08/GB-month
@@ -192,7 +202,7 @@ resource list in the AWS calculator before provisioning. Sources:
 [VPC pricing](https://aws.amazon.com/vpc/pricing/), and
 [S3 pricing](https://aws.amazon.com/s3/pricing/).
 
-Execution is a separate usage budget. At the published Linux/x86 Fargate
+Execution is a separate usage budget. At the historical Linux/x86 Fargate
 N. Virginia example rates, a 2-vCPU/4-GiB task is approximately $0.099 per
 running hour: about $2 for 20 hours or $72 for 730 hours, before persistent
 workspace storage, network, logs, and model calls. Startup and idle time count.

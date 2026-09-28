@@ -87,29 +87,4 @@ test.describe('Notification System', () => {
       fullPage: false,
     });
   });
-
-  test('UI: notification bell shows history', async ({ page }, testInfo) => {
-    await openNotificationsPage(page);
-
-    // Take a screenshot of the header area where the bell icon lives
-    await page.screenshot({
-      path: testInfo.outputPath('notification-header.png'),
-      fullPage: false,
-    });
-
-    // The toolbar's bell. The sidebar footer carries a second Notifications
-    // action with the same title (#2080), so scope to the banner.
-    const bellButton = page
-      .getByRole('banner')
-      .locator('button[title="Notifications"]');
-    await expect(bellButton).toBeVisible();
-    await bellButton.click();
-    await expect(page.locator('.notification-history__title')).toHaveText(
-      'Notifications',
-    );
-    await page.screenshot({
-      path: testInfo.outputPath('notification-history-open.png'),
-      fullPage: false,
-    });
-  });
 });

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -306,13 +305,5 @@ describe('ownership loss on a full disk (#3287)', () => {
     expect(
       JSON.parse(readFileSync(join(directory, 'lease.json'), 'utf8')),
     ).toMatchObject({ state: 'ownership_lost' });
-  });
-});
-
-describe('fault seam self-check', () => {
-  test('the delegate mock stays inert with no fault armed', () => {
-    const path = join(root, `inert-${randomUUID()}.json`);
-    writeJsonAtomic(path, { ok: true });
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ ok: true });
   });
 });

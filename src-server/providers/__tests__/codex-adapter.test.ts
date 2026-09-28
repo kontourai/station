@@ -3593,7 +3593,7 @@ describe('CodexAdapter', () => {
           opened.requestId,
           'acceptForSession',
         ),
-      ).rejects.toThrow('Unknown Codex approval request');
+      ).rejects.toThrow('This Codex approval request is not open.');
       expect([...record.approvedTools]).toEqual([]);
       await adapter.stopAll();
     },
@@ -4505,7 +4505,7 @@ describe('CodexAdapter', () => {
 
     await expect(
       adapter.respondToRequest('thread-4', 'missing-request', 'accept'),
-    ).rejects.toThrow(/unknown codex approval request/i);
+    ).rejects.toThrow('This Codex approval request is not open.');
   });
 
   test('maps a session-level approvalMode to Codex approvalPolicy/sandbox on thread/start, and re-resolves it fresh on each turn/start (#727)', async () => {
