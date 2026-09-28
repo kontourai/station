@@ -12,11 +12,13 @@ import {
   upsertFreshnessIssue,
 } from '../docs-freshness-sweep.mjs';
 import {
+  DOCS_FRESHNESS_ENV_KEYS,
   documentationFreshnessMode,
   freshnessBlocks,
 } from '../lib/documentation-freshness.mjs';
 import {
   forbidAmbientFreshnessMode,
+  LEAKED_FRESHNESS_MODE,
   pinnedFreshnessEnv,
 } from './helpers/freshness-env.js';
 
@@ -411,6 +413,24 @@ describe('scoped documentation freshness (#2923)', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain('Still stale');
     expect(check(f.root, { STATION_DOCS_FRESHNESS: 'strict' }).status).toBe(0);
+  });
+
+  it('runs with the ambient mode forbidden, and spawned checks scrub every mode variable', () => {
+    // The guard is live: an unpinned read of the job's mode throws here.
+    expect(process.env.STATION_DOCS_FRESHNESS).toBe(LEAKED_FRESHNESS_MODE);
+    expect(() => documentationFreshnessMode()).toThrow(
+      'must be scoped, advisory or strict',
+    );
+    const child = pinnedFreshnessEnv();
+    for (const key of DOCS_FRESHNESS_ENV_KEYS)
+      expect(child).not.toHaveProperty(key);
+    expect(DOCS_FRESHNESS_ENV_KEYS).toEqual([
+      'STATION_DOCS_FRESHNESS',
+      'STATION_DOCS_FRESHNESS_BASE',
+      'STATION_CI_FAST_BASE',
+      'GITHUB_ACTIONS',
+      'GITHUB_EVENT_NAME',
+    ]);
   });
 
   it('decides blocking from one function for every mode', () => {
