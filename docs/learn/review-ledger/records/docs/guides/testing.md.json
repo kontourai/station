@@ -100,7 +100,7 @@
 
     {"path":".github/workflows/portable-server-archives.yml","digest":"bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/run-changed-verification.mjs","digest":"2b8be667f2da430df0f58ebd4d475a665ab037bcc471073bebbeca0c8f6ccfae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/run-changed-verification.mjs","digest":"e20b9fda50aefc0e588a73fb3bcd05795b477c5cfce76ac95eba7d5e58a4036c","revision":"3cf61a7b21800fa0a472c99799c9ddbb15167d66"},
 
     {"path":"scripts/__tests__/changed-verification.test.ts","digest":"3cbddd65d8e3d23de2bc72565ccdf0d5f5226319a2f4d182f20d1c66b5bdf2bd","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
 

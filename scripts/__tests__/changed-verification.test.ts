@@ -2735,6 +2735,7 @@ setInterval(() => {}, 1000);`,
   test('runs the representative narrow diff through non-explain selection and reports timing/counts', async () => {
     const worktreeCommand = vi.fn();
     const runChanged = vi.fn(() => ({
+      paths: ['src-server/routes/chat/__tests__/chat-context.test.ts'],
       selection: {
         relatedPaths: ['src-server/routes/chat/__tests__/chat-context.test.ts'],
       },
@@ -2785,6 +2786,7 @@ setInterval(() => {}, 1000);`,
       }),
     ).toEqual({
       fixture: 'src-server/routes/chat/__tests__/chat-context.test.ts',
+      paths: ['src-server/routes/chat/__tests__/chat-context.test.ts'],
       elapsedMs: 45,
       counts: { executed: 12, passed: 12, failed: 0 },
       selection: {
@@ -2815,7 +2817,14 @@ setInterval(() => {}, 1000);`,
       {
         cwd: process.cwd(),
         encoding: 'utf8',
-        // This includes creating and removing the full fixture checkout.
+        // This includes creating and removing the full fixture checkout, which
+        // is the load-sensitive part. Measured on a 15-core macOS dev host
+        // (2026-09-28): 4-9s at load 10-25, 11-15s at load 36-70 (CPU-bound
+        // stress), 22-26s with eight concurrent fixtures at load ~70, where
+        // the checkout add/remove was ~2/3 of the run. The former 30s budget
+        // failed under sibling-lane load; 120s is ~4.5x the contended worst.
+        // spawnSync's timeout is not a hard bound: after SIGTERM it still
+        // waits for the CLI's cleanup, so a timeout can report well past it.
         timeout: 120_000,
         windowsHide: true,
       },
@@ -2826,7 +2835,7 @@ setInterval(() => {}, 1000);`,
     expect(result.stderr).not.toContain(
       'workspace dependency provenance rejected',
     );
-    expect(result.stdout).toContain('[test:changed] 0 changed path(s)');
+    expect(result.stdout).toContain('[test:changed] 1 changed path(s)');
     expect(result.stdout).toContain(
       'src-server/routes/chat/__tests__/chat-context.test.ts',
     );
