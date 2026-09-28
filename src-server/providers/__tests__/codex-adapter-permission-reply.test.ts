@@ -437,7 +437,7 @@ describe('#2911 round 2: a tool grant never covers an escalation riding a tool r
     // One line, no bidi or zero-width characters, bounded from the left
     // (the END of a name is its registrable domain), and quoted: after
     // sanitizing it holds a space, so it is not a hostname.
-    expect(shownHost).toBe(`an unrecognised host "\u2026${'a'.repeat(59)}"`);
+    expect(shownHost).toBe(`an unrecognised host "\u2026${'a'.repeat(49)}"`);
     expect(opened.title).not.toMatch(/[\p{Cc}\p{Cf}]/u);
     await adapter.stopAll();
   });
@@ -831,5 +831,61 @@ describe('#2911 round 6: only an ASCII host is shown bare, and a quoted host sta
   test('a bracketed IPv6 address with a non-ASCII zone is quoted', async () => {
     const title = await titleFor('[fe80::1%\u00E9th0]');
     expect(quotedBody(title)).toBe('[fe80::1%\u00E9th0]');
+  });
+});
+
+describe('#2911 round 7: no delimiter reaches domainToASCII, and no quote lookalike escapes the quotes', () => {
+  async function titleFor(
+    host: string,
+    protocol = 'https',
+    text = 'curl x',
+  ): Promise<string> {
+    const { adapter, process, events } = await startedAdapter();
+    await emit(
+      process,
+      command(161, 'cmd-1', text, {
+        networkApprovalContext: { host, protocol },
+      }),
+    );
+    const opened = await waitFor(
+      () => openedEvents(events)[0],
+      'request.opened',
+    );
+    await adapter.stopAll();
+    return opened.title as string;
+  }
+
+  test.each([
+    'bank.example/\u00E9.evil.example',
+    'bank.example?\u00E9',
+    'bank.example#\u00E9',
+    'bank.example\\\u00E9evil',
+    'bank.example/../\u00E9',
+    '[::1]/\u00E9',
+    '0x7f.0.0.1/\u00E9',
+  ])('%s is quoted in full, never cut at a URL delimiter', async (host) => {
+    expect(await titleFor(host)).toBe(
+      `network access to an unrecognised host "${host.replace(/\\/g, '\\\\')}" (https) for: curl x`,
+    );
+  });
+
+  test('a quote lookalike inside a quoted host is escaped like a quote', async () => {
+    const title = await titleFor(
+      'evil.example\u201D (https) for: git status \u201C\u2019',
+    );
+    expect(title).toBe(
+      'network access to an unrecognised host "evil.example\\" (https) for: git status \\"\\\'" (https) for: curl x',
+    );
+    expect(title).not.toMatch(/[\u201C\u201D\u2019]/u);
+  });
+
+  test('the worst-case lead still leaves the command 30 code points', async () => {
+    // Every host character escapes to two, and the protocol is unrecognised.
+    const title = await titleFor('"'.repeat(200), 'x) y', 'c'.repeat(300));
+    const points = Array.from(title);
+    expect(points).toHaveLength(200);
+    const lead = `network access to an unrecognised host "\u2026${'\\"'.repeat(49)}" (unrecognised protocol) for: `;
+    expect(Array.from(lead)).toHaveLength(170);
+    expect(title).toBe(`${lead}${'c'.repeat(29)}\u2026`);
   });
 });

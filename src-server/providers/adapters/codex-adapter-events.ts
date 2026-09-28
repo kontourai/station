@@ -449,36 +449,66 @@ const BARE_HOST_SYNTAX =
   /^(?:\[[0-9A-Fa-f:.]+(?:%[A-Za-z0-9_.-]+)?\]|[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.?)$/;
 const PROTOCOL_SYNTAX = /^[A-Za-z0-9]+$/;
 /**
- * Code points kept of an unrecognised host before escaping, "…" included.
- * Escaping at most doubles each kept code point, so the quoted text ("…"
- * plus at most 59 escaped code points, 119) stays within
- * `MAX_TITLE_HOST_LENGTH`.
+ * A Unicode host name as `domainToASCII` is given it: labels of letters,
+ * marks, digits, hyphen and underscore, separated by `.` or an IDNA dot
+ * (`。．｡`), with an optional trailing dot, and nothing else. Node's
+ * `domainToASCII` parses like a URL hostname setter and silently stops at a
+ * URL delimiter (`/ ? # \\ @ :`), so it must never see one.
  */
-const MAX_QUOTED_HOST_RAW_LENGTH = Math.floor(MAX_TITLE_HOST_LENGTH / 2);
+const UNICODE_HOST_SYNTAX =
+  /^[\p{L}\p{M}\p{N}_-]+(?:[.\u3002\uFF0E\uFF61][\p{L}\p{M}\p{N}_-]+)*[.\u3002\uFF0E\uFF61]?$/u;
+/** Printable ASCII outside a host label's `[A-Za-z0-9_.-]`. */
+const ASCII_NON_LABEL = /[ -,/:-@[-^`{-~]/;
+/**
+ * Code points kept of an unrecognised host before escaping, "…" included.
+ * Escaping at most doubles each kept code point, so the quoted text is at
+ * most 1 + 49 × 2 = 99 code points, and even beside an unrecognised
+ * protocol the command keeps 30 of the title's 200.
+ */
+const MAX_QUOTED_HOST_RAW_LENGTH = 50;
+/**
+ * Quote marks and their lookalikes, each escaped with a backslash in a
+ * quoted host (as a double or single quote) so none can pass for the
+ * closing delimiter.
+ */
+const DOUBLE_QUOTE_LIKE =
+  '"\u201C\u201D\u201E\u201F\u2033\u2036\uFF02\u05F4\u02BA\u02DD\u02EE\u3003\u301D\u301E\u301F';
+const SINGLE_QUOTE_LIKE =
+  '\u2018\u2019\u201A\u201B\u2032\u2035\uFF07\u02B9\u02BB\u02BC\u02BD';
+const QUOTED_HOST_ESCAPES = new RegExp(
+  `[\\\\${DOUBLE_QUOTE_LIKE}${SINGLE_QUOTE_LIKE}]`,
+  'gu',
+);
+
+function escapeQuotedHostChar(char: string): string {
+  if (char === '\\') return '\\\\';
+  return DOUBLE_QUOTE_LIKE.includes(char) ? '\\"' : "\\'";
+}
 
 /**
  * The host as the title shows it.
  * - An ASCII host matching `BARE_HOST_SYNTAX` is shown bare, cut from the
  *   left so its registrable domain stays.
- * - A non-ASCII host is shown as `domainToASCII` gives it (punycode, with
- *   invisible code points mapped away) when that result is itself a bare
- *   host.
+ * - A host in `UNICODE_HOST_SYNTAX` (with no ASCII outside label characters)
+ *   is shown as `domainToASCII` gives it (punycode, with invisible code
+ *   points mapped away) when that result is itself a bare host.
  * - Anything else is quoted as "an unrecognised host": cut from the left
- *   FIRST, then its quotes and backslashes escaped, so no cut can split an
- *   escape and leave a bare quote.
+ *   FIRST, then backslashes, quotes and quote lookalikes escaped in one
+ *   pass, so no cut can split an escape and nothing inside can pass for the
+ *   closing quote.
  */
 function hostLabel(host: string | undefined): string {
   if (!host) return 'an unnamed host';
   if (BARE_HOST_SYNTAX.test(host)) return keepEnd(host, MAX_TITLE_HOST_LENGTH);
-  // `host` is sanitized, so it holds no control characters: anything
-  // outside printable ASCII is non-ASCII.
-  if (/[^ -~]/.test(host)) {
+  if (UNICODE_HOST_SYNTAX.test(host) && !ASCII_NON_LABEL.test(host)) {
     const ascii = domainToASCII(host);
     if (ascii && BARE_HOST_SYNTAX.test(ascii))
       return keepEnd(ascii, MAX_TITLE_HOST_LENGTH);
   }
-  const kept = keepEnd(host, MAX_QUOTED_HOST_RAW_LENGTH);
-  const escaped = kept.replace(/[\\"]/g, (char) => `\\${char}`);
+  const escaped = keepEnd(host, MAX_QUOTED_HOST_RAW_LENGTH).replace(
+    QUOTED_HOST_ESCAPES,
+    escapeQuotedHostChar,
+  );
   return `an unrecognised host "${escaped}"`;
 }
 
