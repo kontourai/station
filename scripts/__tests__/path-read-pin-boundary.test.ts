@@ -821,11 +821,11 @@ describe('derived pin edges only add to selection', () => {
   });
 
   it('keeps a supplemental edge from cancelling an escalation', () => {
-    // `vitest.global-setup.ts` escalates (it matches `isEscalationPath` and
+    // `.githooks/commit-msg` escalates (it matches `isEscalationPath` and
     // no committed edge names it) and a test also pins it. Without the
     // supplemental exclusion its pin edge would set `hasExplicitBoundary` and
     // trade `ci-fast` for one focused test.
-    const path = 'vitest.global-setup.ts';
+    const path = '.githooks/commit-msg';
     expect(pins.map(({ pin }) => pin)).toContain(path);
     expect(selectChangedVerification([path]).escalated).toBe(true);
     const selection = selectChangedVerification([path], built as never);
@@ -836,7 +836,7 @@ describe('derived pin edges only add to selection', () => {
     // ...and the pin is still named, on top of the escalation.
     expect(
       selection.tests.map(({ path: test }: { path: string }) => test),
-    ).toContain('scripts/__tests__/vitest-teardown-race.test.ts');
+    ).toContain('scripts/__tests__/commit-message-gate.test.ts');
   });
 });
 
