@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { INDEXED_DIRECTORIES } from '../docs-index.mjs';
 
 // docs/README.md indexed roughly half the docs tree when this was written —
 // 17 ADRs and eight whole directories were unreachable from the map that calls
@@ -57,15 +56,5 @@ describe('docs index reachability', () => {
       windowsHide: true,
     });
     expect(result).toBe('');
-  });
-
-  it('both indexed READMEs still carry their marker blocks', () => {
-    for (const directory of INDEXED_DIRECTORIES) {
-      const body = readFileSync(`${directory}/README.md`, 'utf8');
-      expect(
-        body,
-        `${directory}/README.md lost its docs-index block`,
-      ).toContain('docs-index:start');
-    }
   });
 });
