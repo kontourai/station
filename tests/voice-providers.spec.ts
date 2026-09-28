@@ -226,7 +226,7 @@ test.describe('Voice Providers — Settings UI', () => {
   test('context provider toggle changes enabled state', async ({ page }) => {
     await openSettings(page);
     await expect(page.locator('text=Message Context')).toBeVisible();
-    // Timezone is visibleOn 'all', so it renders on desktop too.
+    // Timezone is registered unconditionally, so it renders on desktop too.
     const toggle = page.getByRole('switch', { name: 'Timezone' });
     const before = await toggle.getAttribute('aria-checked');
     expect(before === 'true' || before === 'false').toBe(true);

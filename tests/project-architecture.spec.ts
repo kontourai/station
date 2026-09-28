@@ -578,10 +578,10 @@ test.describe('Project Navigation', () => {
   });
 
   test('clicking a layout chip navigates to that layout', async ({ page }) => {
-    // `seedRoutes`' catch-all `**/layouts` answers after the Alpha layouts
-    // route and would leave the chip row empty; re-declare it, and reload so
-    // Home's first-project read is not already cached empty, so the chip the
-    // reader clicks is backed by Alpha's real catalogue.
+    // `seedRoutes` registers its catch-all `**/layouts` after the Alpha
+    // layouts route, and the last-registered route wins, so the chip row
+    // would be empty. Re-declare Alpha's route, then reload so Home's
+    // first-project read is not already cached empty.
     await page.route('**/api/projects/alpha/layouts', (r) =>
       r.fulfill({
         status: 200,

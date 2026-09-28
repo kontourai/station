@@ -36,7 +36,8 @@ async function chooseStationEngine(page: import('@playwright/test').Page) {
 }
 
 test.describe('UI CRUD Smoke', () => {
-  // Authentication ENFORCEMENT on these routes is owned server-side
+  // Authentication enforcement is the runtime auth boundary's job, tested
+  // server-side against `/api/projects`
   // (src-server/runtime/__tests__/runtime-auth-boundary.test.ts); this proves
   // the live update and delete round trip itself.
   test('project update and delete round-trip through the live server', async ({

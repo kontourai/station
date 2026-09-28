@@ -936,8 +936,7 @@ test.describe('station#1254 — recovered surfaces and the fill ramps', () => {
    * The binding from `getProgressColor()` to these tokens is JSX with no class
    * to mount, so it is pinned by
    * `src-ui/src/__tests__/undefined-css-custom-properties.test.ts` at source
-   * level — the same gate that pins `ToolCallDisplay`'s inline
-   * `--success-text` foregrounds, which carry no class either.
+   * level.
    */
   for (const token of [
     '--success-text',

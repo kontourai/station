@@ -338,8 +338,7 @@ test.describe('neutral text ramp contrast', () => {
    * on the surfaces those rules land on.
    *
    * The "is this name real?" half is gated at source level instead, by
-   * `src-ui/src/__tests__/undefined-css-custom-properties.test.ts`, which also
-   * pins `ToolCallDisplay`'s inline `--success-text` foregrounds.
+   * `src-ui/src/__tests__/undefined-css-custom-properties.test.ts`.
    * It has to be: a foreground whose token does not resolve inherits body copy
    * and measures beautifully, so no ratio assertion can see it.
    */
