@@ -13,7 +13,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { loadProductLawManifest } from '../lib/product-laws.mjs';
 import { attachCiFastDiagnostics } from '../lib/verification-ci-fast-diagnostics.mjs';
+import { runProductLawGate } from '../product-law-gate.mjs';
 import {
   changedDeadlineFromEnv,
   changedPaths,
@@ -22,6 +24,7 @@ import {
   parseRelatedTestDiscovery,
   planChangedVerificationShards,
   planChangedVitestExecutions,
+  productLawEvidenceTests,
   RELATED_DISCOVERY_FLOOR_MS,
   RELATED_DISCOVERY_RESERVE_MS,
   relatedDiscoveryTimeoutMs,
@@ -1937,6 +1940,7 @@ setInterval(() => {}, 1000);`,
       path: 'src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts',
       reasons: expect.arrayContaining([
         'product law station.queue-dispatch.ordered-drain: its observation suite (product-law-gate also runs it in the ci:fast statics)',
+        'product law station.queue-dispatch.ordered-drain: its fault-injection suite (product-law-gate also runs it in the ci:fast statics)',
       ]),
     });
     expect(renderChangedVerificationSummary(result)).toContain(
@@ -1968,6 +1972,80 @@ setInterval(() => {}, 1000);`,
     expect(result.receipt.terminal.status).toBe('completed');
     expect(result.exitCode).toBe(0);
   });
+  test('product-law-gate observes every law in both phases with no changed-path input', async () => {
+    const manifest = loadProductLawManifest({ rootDir: process.cwd() });
+    expect(manifest.laws.length).toBeGreaterThan(0);
+    const observed: Array<Record<string, unknown>> = [];
+    // The gate is given no changed paths at all: nothing about a diff can
+    // narrow which laws it observes.
+    const result = await runProductLawGate({
+      rootDir: process.cwd(),
+      observe: async (observation: Record<string, unknown>) => {
+        observed.push(observation);
+        return { status: 'PASS' };
+      },
+    });
+    expect(result.errors).toEqual([]);
+    // Every law, in both phases: no path filter decides which laws run.
+    expect(
+      observed.map(({ lawId, phase }) => `${lawId}:${phase}`).sort(),
+    ).toEqual(
+      manifest.laws
+        .flatMap((law: { id: string }) => [
+          `${law.id}:behavior`,
+          `${law.id}:fault-injection`,
+        ])
+        .sort(),
+    );
+  });
+
+  test('law evidence is selected only as a vitest-file with a test file', () => {
+    const law = (evidence: Record<string, unknown>) => ({
+      laws: [
+        {
+          id: 'station.example.law',
+          observation: {
+            kind: 'vitest-file',
+            testFile: 'scripts/__tests__/observed.test.ts',
+            selector: 'x',
+          },
+          faultInjection: evidence,
+        },
+      ],
+    });
+    expect(
+      productLawEvidenceTests(
+        law({
+          kind: 'vitest-file',
+          testFile: 'scripts/__tests__/injected.test.ts',
+          selector: 'y',
+        }),
+        ['station.example.law'],
+      ).map(({ path }) => path),
+    ).toEqual([
+      'scripts/__tests__/observed.test.ts',
+      'scripts/__tests__/injected.test.ts',
+    ]);
+    expect(() =>
+      productLawEvidenceTests(law({ kind: 'playwright', spec: 'x' }), [
+        'station.example.law',
+      ]),
+    ).toThrow(
+      "product law station.example.law has fault-injection evidence of kind 'playwright' without a Vitest test file",
+    );
+    expect(() =>
+      productLawEvidenceTests(law({ kind: 'vitest-file' }), [
+        'station.example.law',
+      ]),
+    ).toThrow(
+      "product law station.example.law has fault-injection evidence of kind 'vitest-file' without a Vitest test file",
+    );
+    // A law the diff does not name is never inspected.
+    expect(productLawEvidenceTests(law({ kind: 'playwright' }), [])).toEqual(
+      [],
+    );
+  });
+
   test('every product law is observed by the ci:fast statics, which is why a law path need not defer', () => {
     // product-law-gate runs inside verification:policy:gate, a ci:fast
     // static, and evaluates every law in the manifest.

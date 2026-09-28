@@ -1360,6 +1360,38 @@ export function renderChangedVerificationSummary(result) {
  * are selected beside the diff's own, and only genuinely unknown paths and
  * escalations still defer.
  */
+/**
+ * The suites that hold each named law's evidence: its behaviour observation
+ * and its fault injection. Only a `vitest-file` evidence with a test file can
+ * be selected; any other shape is refused naming the law and the kind (the
+ * product-law gate rejects such a manifest too), rather than surfacing later
+ * as an anonymous unsafe path.
+ */
+export function productLawEvidenceTests(manifest, productLaws) {
+  const selected = [];
+  for (const law of (manifest.laws ?? []).filter((entry) =>
+    productLaws.includes(entry.id),
+  ))
+    for (const [role, evidence] of [
+      ['observation', law.observation],
+      ['fault-injection', law.faultInjection],
+    ]) {
+      if (
+        evidence?.kind !== 'vitest-file' ||
+        typeof evidence.testFile !== 'string' ||
+        evidence.testFile.length === 0
+      )
+        throw new Error(
+          `product law ${law.id} has ${role} evidence of kind '${String(evidence?.kind)}' without a Vitest test file; only vitest-file evidence can be selected`,
+        );
+      selected.push({
+        path: evidence.testFile,
+        reason: `product law ${law.id}: its ${role} suite (product-law-gate also runs it in the ci:fast statics)`,
+      });
+    }
+  return selected;
+}
+
 function withProductLawDispositions(selection, root, changed) {
   const manifest = loadProductLawManifest({ rootDir: root });
   const productLaws = productLawDispositions(manifest, changed);
@@ -1367,15 +1399,8 @@ function withProductLawDispositions(selection, root, changed) {
   const tests = new Map(
     selection.tests.map(({ path, reasons }) => [path, new Set(reasons)]),
   );
-  for (const law of manifest.laws.filter((entry) =>
-    productLaws.includes(entry.id),
-  ))
-    for (const evidence of [law.observation, law.faultInjection])
-      addReason(
-        tests,
-        evidence.testFile,
-        `product law ${law.id}: its observation suite (product-law-gate also runs it in the ci:fast statics)`,
-      );
+  for (const { path, reason } of productLawEvidenceTests(manifest, productLaws))
+    addReason(tests, path, reason);
   return {
     selection: {
       ...selection,
