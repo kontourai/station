@@ -98,9 +98,10 @@ export type PullRequestClientContext =
        */
       branch?: string;
       /**
-       * Where that branch is pushed, as the forge names it, when it differs
-       * from `branch` on this repository: an upstream of another name, or a
-       * fork's owner. Absent: `branch`, on `repository`.
+       * Where that branch is pushed, as the forge names it, when its
+       * upstream is recorded: the upstream branch, and a fork's owner when
+       * the upstream remote is another repository. An absent owner is not a
+       * claim that the push target is `repository` (a `pushurl` can differ).
        */
       head?: { branch: string; owner?: string };
     }

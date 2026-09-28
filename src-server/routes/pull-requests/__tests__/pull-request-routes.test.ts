@@ -93,7 +93,13 @@ describe('pull request operator gate', () => {
           ...resolved,
           context: {
             ...resolved.context,
-            head: { branch: 'b-upstream', owner: 'fork-owner' },
+            // The resolver's head also names the fork repository; the
+            // client context carries only branch and owner.
+            head: {
+              branch: 'b-upstream',
+              owner: 'fork-owner',
+              repository: 'r-fork',
+            },
           },
         };
       },
@@ -101,8 +107,13 @@ describe('pull request operator gate', () => {
     );
     await expect(
       (await forked.request('/context?project=station')).json(),
-    ).resolves.toMatchObject({
+    ).resolves.toEqual({
+      success: true,
       data: {
+        available: true,
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'o', name: 'r' },
         branch: 'b',
         head: { branch: 'b-upstream', owner: 'fork-owner' },
       },

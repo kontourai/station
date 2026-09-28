@@ -81,15 +81,16 @@ describe('SessionPullRequestConflictChip', () => {
     expect(mergeabilityOptions?.enabled).toBe(false);
     expect(screen.queryByText('PR conflict')).toBeNull();
   });
-  test("a fork pull request sharing the branch name is not this session's", () => {
+  test("with an explicit head owner, a fork pull request of the same branch name is not this session's", () => {
     const identity = {
       available: true,
       provider: 'github',
       host: 'github.com',
       repository: { owner: 'kontourai', name: 'station' },
       branch: 'feat/produced-by-session',
+      head: { branch: 'feat/upstream', owner: 'my-fork' },
     };
-    const conflict = (sourceOwner: string, sourceBranch = identity.branch) => ({
+    const conflict = (sourceOwner: string, sourceBranch = 'feat/upstream') => ({
       data: {
         available: true,
         data: [
@@ -104,24 +105,41 @@ describe('SessionPullRequestConflictChip', () => {
     );
     expect(screen.queryByText('PR conflict')).toBeNull();
 
-    // Owners compare as the forge does, case-insensitively.
-    mergeabilityQuery = conflict('KontourAI');
+    // Owners compare as the forge does, case-insensitively, and the head's
+    // branch name is the one the forge sees.
+    mergeabilityQuery = conflict('My-Fork');
     rendered.rerender(<SessionPullRequestConflictChip session={session} />);
     expect(screen.getByText('PR conflict')).toBeTruthy();
-
-    // A session pushed to its own fork under another branch name matches
-    // that fork's pull request, and no longer this repository's.
-    contextQuery = {
-      data: {
-        ...identity,
-        head: { branch: 'feat/upstream', owner: 'my-fork' },
-      },
-    };
-    mergeabilityQuery = conflict('my-fork', 'feat/upstream');
-    rendered.rerender(<SessionPullRequestConflictChip session={session} />);
-    expect(screen.getByText('PR conflict')).toBeTruthy();
-    mergeabilityQuery = conflict('kontourai');
+    mergeabilityQuery = conflict('my-fork', 'feat/produced-by-session');
     rendered.rerender(<SessionPullRequestConflictChip session={session} />);
     expect(screen.queryByText('PR conflict')).toBeNull();
+  });
+
+  test('without a head owner the match is by branch only', () => {
+    contextQuery = {
+      data: {
+        available: true,
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'kontourai', name: 'station' },
+        branch: 'feat/produced-by-session',
+        head: { branch: 'feat/produced-by-session' },
+      },
+    };
+    mergeabilityQuery = {
+      data: {
+        available: true,
+        data: [
+          {
+            ref: '9',
+            sourceBranch: 'feat/produced-by-session',
+            sourceOwner: 'the-push-target',
+            mergeability: 'conflicting',
+          },
+        ],
+      },
+    };
+    render(<SessionPullRequestConflictChip session={session} />);
+    expect(screen.getByText('PR conflict')).toBeTruthy();
   });
 });
