@@ -29,6 +29,89 @@ const LIST_STYLE = { listStyle: 'disc', paddingLeft: '20px', margin: '4px 0' };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
+type Report = FullAccessRevocationReport;
+const RESET_KINDS: readonly Report['reset'][number]['was'][] = [
+  'never',
+  'default-reaching-full-access',
+  'host-start',
+];
+const STILL_KINDS: readonly Report['stillFullAccess'][number]['reason'][] = [
+  'operator-decision',
+  'another-device-decision',
+  'unattributed-decision',
+  'agent-default',
+  'station-default',
+];
+const text = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length > 0 && value.length <= 256
+    ? value
+    : undefined;
+function oneOf<T extends string>(
+  values: readonly T[],
+  value: unknown,
+): T | undefined {
+  return values.find((candidate) => candidate === value);
+}
+
+/**
+ * The report, read field by field from the Station's answer: entries that
+ * do not match the contract are dropped, not cast through.
+ */
+function parseReport(value: unknown): Report | null {
+  if (!isRecord(value)) return null;
+  const cause =
+    value.cause === 'device-revoked' || value.cause === 'scope-removed'
+      ? value.cause
+      : null;
+  if (
+    !cause ||
+    !Array.isArray(value.reset) ||
+    !Array.isArray(value.stillFullAccess)
+  )
+    return null;
+  const reset: Array<Report['reset'][number]> = [];
+  for (const entry of value.reset) {
+    if (!isRecord(entry)) continue;
+    const conversationId = text(entry.conversationId);
+    const was = oneOf(RESET_KINDS, entry.was);
+    if (conversationId && was) reset.push({ conversationId, was });
+  }
+  const stillFullAccess: Array<Report['stillFullAccess'][number]> = [];
+  for (const entry of value.stillFullAccess) {
+    if (!isRecord(entry)) continue;
+    const conversationId = text(entry.conversationId);
+    const reason = oneOf(STILL_KINDS, entry.reason);
+    if (conversationId && reason)
+      stillFullAccess.push({ conversationId, reason });
+  }
+  const sessions: Array<Report['unattributedHostStarts']['sessions'][number]> =
+    [];
+  const unattributed = isRecord(value.unattributedHostStarts)
+    ? value.unattributedHostStarts
+    : undefined;
+  for (const entry of Array.isArray(unattributed?.sessions)
+    ? unattributed.sessions
+    : []) {
+    if (!isRecord(entry)) continue;
+    const conversationId = text(entry.conversationId);
+    const startedAt = text(entry.startedAt);
+    if (conversationId && startedAt)
+      sessions.push({ conversationId, startedAt });
+  }
+  const total =
+    typeof unattributed?.total === 'number' &&
+    Number.isInteger(unattributed.total) &&
+    unattributed.total >= sessions.length
+      ? unattributed.total
+      : sessions.length;
+  return {
+    cause,
+    reset,
+    stillFullAccess,
+    unattributedHostStarts: { sessions, total },
+  };
+}
+
 /** The revocation part of a scope-change or revoke answer, if it has one. */
 export function readFullAccessRevocation(
   body: unknown,
@@ -37,30 +120,18 @@ export function readFullAccessRevocation(
   if (!isRecord(body)) return null;
   if (body.fullAccessRevocationError !== undefined)
     return { kind: 'failed', deviceName };
-  const report = body.fullAccessRevocation;
-  if (
-    !isRecord(report) ||
-    !Array.isArray(report.reset) ||
-    !Array.isArray(report.stillFullAccess)
-  )
-    return null;
-  const unattributed = isRecord(report.unattributedHostStarts)
-    ? report.unattributedHostStarts.sessions
-    : undefined;
+  const report = parseReport(body.fullAccessRevocation);
+  if (!report) return null;
   // Revoking a device that had put nothing at full access says nothing
   // here: the revoke itself is the whole story.
   if (
     report.cause === 'device-revoked' &&
     report.reset.length === 0 &&
     report.stillFullAccess.length === 0 &&
-    (!Array.isArray(unattributed) || unattributed.length === 0)
+    report.unattributedHostStarts.sessions.length === 0
   )
     return null;
-  return {
-    kind: 'report',
-    deviceName,
-    report: report as unknown as FullAccessRevocationReport,
-  };
+  return { kind: 'report', deviceName, report };
 }
 
 export function FullAccessRevocationNotice({
@@ -88,10 +159,7 @@ export function FullAccessRevocationNotice({
       </div>
     );
   const { reset, stillFullAccess } = outcome.report;
-  const unattributed = outcome.report.unattributedHostStarts ?? {
-    sessions: [],
-    total: 0,
-  };
+  const unattributed = outcome.report.unattributedHostStarts;
   const nothing =
     reset.length === 0 &&
     stillFullAccess.length === 0 &&
