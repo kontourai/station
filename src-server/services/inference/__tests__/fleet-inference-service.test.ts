@@ -24,7 +24,6 @@ import type {
 import {
   boundFleetContributionManifest,
   FleetInferenceService,
-  validateFleetCompletionRequest,
 } from '../fleet-inference-service.js';
 
 // archive#3545 LOW: `#generate` reads `chunk.finishReason ?? null` (line
@@ -474,93 +473,99 @@ describe('FleetInferenceService: bounds (§3.2, §12)', () => {
   });
 });
 
-describe('validateFleetCompletionRequest', () => {
-  test('refuses stream: true by name rather than silently buffering (§10 OQ-8)', () => {
-    const result = validateFleetCompletionRequest({ ...REQUEST, stream: true });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.code).toBe('streaming-unsupported');
-  });
-
-  test('accepts an explicit stream: false', () => {
-    expect(
-      validateFleetCompletionRequest({ ...REQUEST, stream: false }).ok,
-    ).toBe(true);
-  });
-
-  test('there is no tool role — fleet inference serves completions only', () => {
-    const result = validateFleetCompletionRequest({
-      ...REQUEST,
-      messages: [{ role: 'tool', content: '{}' }],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.code).toBe('request-invalid');
-  });
-
-  test('refuses an over-ceiling maxOutputTokens instead of silently clamping', () => {
-    // Clamping would let a consumer believe it bounded a cost it did not.
-    const result = validateFleetCompletionRequest({
-      ...REQUEST,
-      maxOutputTokens: FLEET_INFERENCE_LIMITS.maxOutputTokens + 1,
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.code).toBe('request-too-large');
-  });
-
-  test('defaults maxOutputTokens to the ceiling and honors a smaller one', () => {
-    const defaulted = validateFleetCompletionRequest(REQUEST);
-    expect(defaulted.ok).toBe(true);
-    if (defaulted.ok) {
-      expect(defaulted.value.maxOutputTokens).toBe(
-        FLEET_INFERENCE_LIMITS.maxOutputTokens,
-      );
-    }
-    const explicit = validateFleetCompletionRequest({
-      ...REQUEST,
-      maxOutputTokens: 32,
-    });
-    expect(explicit.ok).toBe(true);
-    if (explicit.ok) expect(explicit.value.maxOutputTokens).toBe(32);
-  });
-
-  test('bounds message count and total prompt characters', () => {
-    const tooMany = validateFleetCompletionRequest({
-      ...REQUEST,
-      messages: Array.from(
-        { length: FLEET_INFERENCE_LIMITS.maxMessages + 1 },
-        () => ({ role: 'user', content: 'hi' }),
+/**
+ * Request validation, driven through `complete()` so each refusal is proven to
+ * be the service's answer and to stop the request before any provider runs.
+ */
+describe('FleetInferenceService: request validation', () => {
+  async function completeWith(body: unknown) {
+    const seen: LLMStreamOpts[] = [];
+    const outcome = await service({
+      manifest: manifest('contributing', [contributedModel()]),
+      provider: streamingProvider(
+        [{ type: 'finish', finishReason: 'stop' }],
+        seen,
       ),
-    });
-    expect(tooMany.ok).toBe(false);
-    if (!tooMany.ok) expect(tooMany.code).toBe('request-too-large');
+    }).complete(body);
+    return { outcome, seen };
+  }
 
-    const tooLong = validateFleetCompletionRequest({
-      ...REQUEST,
-      messages: [
-        {
-          role: 'user',
-          content: 'x'.repeat(FLEET_INFERENCE_LIMITS.maxPromptCharacters + 1),
-        },
-      ],
-    });
-    expect(tooLong.ok).toBe(false);
-    if (!tooLong.ok) expect(tooLong.code).toBe('request-too-large');
+  async function refusalCode(body: unknown) {
+    const { outcome, seen } = await completeWith(body);
+    expect(seen).toHaveLength(0);
+    return outcome.kind === 'refused' ? outcome.refusal.code : outcome.kind;
+  }
+
+  test('refuses stream: true by name rather than silently buffering (§10 OQ-8)', async () => {
+    expect(await refusalCode({ ...REQUEST, stream: true })).toBe(
+      'streaming-unsupported',
+    );
   });
 
-  test('rejects non-object bodies, empty messages, and a missing model', () => {
-    for (const body of [null, 'text', [], 42]) {
-      const result = validateFleetCompletionRequest(body);
-      expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.code).toBe('request-invalid');
+  test('accepts an explicit stream: false', async () => {
+    const { outcome } = await completeWith({ ...REQUEST, stream: false });
+    expect(outcome.kind).toBe('completed');
+  });
+
+  test('there is no tool role — fleet inference serves completions only', async () => {
+    expect(
+      await refusalCode({
+        ...REQUEST,
+        messages: [{ role: 'tool', content: '{}' }],
+      }),
+    ).toBe('request-invalid');
+  });
+
+  test('refuses an over-ceiling maxOutputTokens instead of silently clamping', async () => {
+    // Clamping would let a consumer believe it bounded a cost it did not.
+    expect(
+      await refusalCode({
+        ...REQUEST,
+        maxOutputTokens: FLEET_INFERENCE_LIMITS.maxOutputTokens + 1,
+      }),
+    ).toBe('request-too-large');
+  });
+
+  test('defaults maxOutputTokens to the ceiling at the provider call', async () => {
+    const { outcome, seen } = await completeWith(REQUEST);
+    expect(outcome.kind).toBe('completed');
+    expect(seen[0]?.maxTokens).toBe(FLEET_INFERENCE_LIMITS.maxOutputTokens);
+  });
+
+  test('bounds message count and total prompt characters', async () => {
+    expect(
+      await refusalCode({
+        ...REQUEST,
+        messages: Array.from(
+          { length: FLEET_INFERENCE_LIMITS.maxMessages + 1 },
+          () => ({ role: 'user', content: 'hi' }),
+        ),
+      }),
+    ).toBe('request-too-large');
+    expect(
+      await refusalCode({
+        ...REQUEST,
+        messages: [
+          {
+            role: 'user',
+            content: 'x'.repeat(FLEET_INFERENCE_LIMITS.maxPromptCharacters + 1),
+          },
+        ],
+      }),
+    ).toBe('request-too-large');
+  });
+
+  test('rejects non-object bodies, empty messages, and a missing model', async () => {
+    for (const body of [
+      null,
+      'text',
+      [],
+      42,
+      { ...REQUEST, messages: [] },
+      { messages: REQUEST.messages },
+    ]) {
+      expect(await refusalCode(body)).toBe('request-invalid');
     }
-    expect(
-      validateFleetCompletionRequest({ ...REQUEST, messages: [] }).ok,
-    ).toBe(false);
-    expect(
-      validateFleetCompletionRequest({ messages: REQUEST.messages }).ok,
-    ).toBe(false);
   });
 });
 

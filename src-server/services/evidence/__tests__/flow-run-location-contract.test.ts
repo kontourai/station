@@ -6,7 +6,6 @@ import {
   flowRunDir,
   flowRunsRoot,
   STATION_ARTIFACT_ROOTS,
-  STATION_LEGACY_ROOTS,
 } from '../local-artifact-paths.js';
 
 /**
@@ -61,22 +60,5 @@ describe('Flow run location contract (#290)', () => {
       expect(() => flowRunDir(cwd, unsafe)).toThrow();
     }
     expect(flowRunDir(cwd, 'safe-run.1_x')).toBe(runDir('safe-run.1_x', cwd));
-  });
-
-  /*
-   * Narrow by design, and titled for what it actually enforces. This checks
-   * ONE constant; it is not the guard against a reintroduced legacy read,
-   * because nothing in the flow-run resolution path consults
-   * `STATION_LEGACY_ROOTS` — a fallback would be written in
-   * `flow-run-service.ts` and would sail past this. That regression is owned
-   * by "a run present only under the legacy .flow/runs is not discovered" in
-   * `src-server/services/flow/__tests__/flow-run-service.test.ts`, whose
-   * fixture is a real Flow-resolvable run precisely so it can catch one.
-   */
-  test('STATION_LEGACY_ROOTS does not name .flow/runs', () => {
-    const legacy = Object.values(STATION_LEGACY_ROOTS) as string[];
-    expect(
-      legacy.some((root) => root.replace(/\\/g, '/') === '.flow/runs'),
-    ).toBe(false);
   });
 });
