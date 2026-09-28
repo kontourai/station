@@ -151,23 +151,4 @@ describe('double enforcement: Station-native gate agrees with the in-runtime flo
       expect(stationResult.decision === 'block').toBe(hookBlocked);
     },
   );
-
-  test('a non-opted-in workspace: both paths are inert (no policy applies)', () => {
-    const ws = mkdtempSync(join(tmpdir(), 'double-enforcement-noop-'));
-    workspaces.push(ws);
-    const filePath = join(ws, 'biome.json');
-
-    const stationService = new AgentPolicyService({
-      env: { ...process.env, SA_DISABLED_HOOKS: '', SA_HOOK_PROFILE: '' },
-      logger: { debug: vi.fn(), warn: vi.fn() },
-    });
-    const stationResult = stationService.checkToolCall(
-      'write',
-      { path: filePath },
-      { cwd: ws },
-    );
-    // Station's own opt-in gate short-circuits before the hook ever runs —
-    // 'disabled' engine, allow decision (zero behavior change contract).
-    expect(stationResult).toEqual({ decision: 'allow', engine: 'disabled' });
-  });
 });

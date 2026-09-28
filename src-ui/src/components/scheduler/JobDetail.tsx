@@ -31,7 +31,7 @@ import { Empty, SkeletonBlock } from '../state';
  * on *this user*, not on the system, so it reads differently from "still
  * running" at a glance.
  */
-export function runStatusVisual(status: RunStatus): {
+function runStatusVisual(status: RunStatus): {
   tone: 'ok' | 'fail' | 'pending' | 'attention';
   label: string;
 } {

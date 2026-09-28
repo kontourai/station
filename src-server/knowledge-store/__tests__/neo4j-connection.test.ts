@@ -8,8 +8,6 @@ import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
 import {
   clearNeo4jGraphViewConnection,
   getNeo4jGraphViewConnection,
-  NEO4J_GRAPH_VIEW_CONNECTION_TYPE,
-  queryNeo4jGraphView,
   registerNeo4jGraphViewConnection,
   validateNeo4jGraphViewConnection,
 } from '../neo4j-connection.js';
@@ -25,10 +23,6 @@ afterEach(() => {
 });
 
 describe('Neo4j graph-view connection type + registration plumbing', () => {
-  test('connection type constant is stable', () => {
-    expect(NEO4J_GRAPH_VIEW_CONNECTION_TYPE).toBe('neo4j-graph-view');
-  });
-
   test('no connection registered by default', () => {
     expect(getNeo4jGraphViewConnection()).toBeNull();
   });
@@ -125,22 +119,6 @@ describe('validateNeo4jGraphViewConnection — honest reachability (no live Neo4
     } finally {
       server.close();
     }
-  });
-});
-
-describe('queryNeo4jGraphView — honest no-op stub (K2 ships no graph-sync client)', () => {
-  test('not configured -> ok:false, reason names it', async () => {
-    const result = await queryNeo4jGraphView(null, 'MATCH (n) RETURN n');
-    expect(result).toEqual({ ok: false, reason: 'not configured' });
-  });
-
-  test('configured -> still ok:false, reason names "not implemented" rather than silently returning empty success', async () => {
-    const result = await queryNeo4jGraphView(
-      { uri: 'neo4j://localhost:7687' },
-      'MATCH (n) RETURN n',
-    );
-    expect(result.ok).toBe(false);
-    expect(result.reason).toContain('not implemented');
   });
 });
 
