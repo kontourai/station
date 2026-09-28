@@ -259,7 +259,7 @@ not that a person opted in or a provider delivered a message. The public Setting
 control and host publisher are the owning callers; see
 [`remote_push_capability`](../../src-desktop/src/lib.rs) and
 [`agent-activity-publisher.ts`](../../src-server/services/notifications/agent-activity-publisher.ts).
-A local notification or Rust watcher alone still cannot establish terminated-app
+A local notification alone still cannot establish terminated-app
 provider delivery; retain exact build, permission, registration and device proof.
 
 The historical archive#2013 keyboard dependency search was repeated against crates.io, npm, the

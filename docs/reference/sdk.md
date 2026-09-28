@@ -1678,6 +1678,10 @@ the preview they read: the permission set the preview derived, the digest of
 the bytes it staged, and the dependency ids it resolved. The server re-derives
 the current requirements and compares the approval with its staged copy,
 refusing when they disagree.
+When an open install proposal names the source, the preview reports
+`gitMetadata: "excluded"`; echo it in `consent`. The server refuses with HTTP
+409 (`consent.reason: "git-metadata"`) an install of a proposed source whose
+consent omits it, and asks for a fresh preview.
 Source acquisition and scratch staging can already have occurred; refusal is
 not a promise that no filesystem work happened.
 
@@ -1697,6 +1701,7 @@ mutate({
     grantRevision: preview.grantRevision,
     permissions: preview.permissions.required,
     contentDigest: preview.contentDigest,
+    ...(preview.gitMetadata ? { gitMetadata: preview.gitMetadata } : {}),
     dependencies: preview.dependencies.map((entry) => entry.id),
     dependencyApprovals: preview.dependencies.flatMap((entry) =>
       entry.consent
@@ -1718,7 +1723,8 @@ mutate({
 
 Previews a plugin before installing. Returns manifest, components, conflicts,
 resolved dependencies, the derived `permissions` (`required`, `autoGranted`,
-`pendingConsent`) and the `contentDigest` of the copy it staged. Lifecycle-bearing
+`pendingConsent`), the `contentDigest` of the copy it staged and, for a source
+an open install proposal names, `gitMetadata: "excluded"`. Lifecycle-bearing
 dependencies additionally carry their own `consent` object, binding their
 permissions and bytes before installation.
 The hook returns the server's preview body; an invalid preview is a returned

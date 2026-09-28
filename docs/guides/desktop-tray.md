@@ -110,6 +110,10 @@ is absent because their native reconstruction path is not implemented.
 Open Station UI uses the owned runtime manifest's UI port. Start and Stop run the
 installed checkout's absolute Node, `tsx`, and `scripts/station-cli.ts` paths
 with an explicit PATH; the desktop process never trusts a GUI-launcher PATH.
+The tray resolves only those source-checkout paths. A service installed from a
+prebuilt archive (manifest `kind: "archive"`) runs `bin/station.mjs` instead, so
+the tray finds no command paths, reports it Unhealthy, and refuses its Start
+and Stop actions; use that install's `station service` command.
 For terminal diagnosis, carry the same manifest identity rather than allowing
 the CLI to select a different default. For example, fill these values from
 the admitted service manifest:

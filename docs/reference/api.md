@@ -1738,7 +1738,9 @@ stages source, validates it, reports components/conflicts/dependencies, and
 cleans the staged directory without installing it. `valid: true` also carries
 `contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
 observed `installationRevision`, `existingDataScope`, and permission/dependency
-consent information.
+consent information. When an open install proposal names the source, preview
+copies a local folder without its `.git` entries, refuses a local Git repository
+URL, and reports `gitMetadata: "excluded"`.
 
 A source-fetch refusal can be HTTP 200 with `valid: false`; inspect the body.
 Invalid manifests/context or unsupported dependencies return 400; a missing
@@ -1773,6 +1775,9 @@ it, which means unknown. A persisted install awaiting activation returns 202
 with `success: false` and `configurationActivation`, or a pending lifecycle
 receipt. It is not complete solely because the HTTP request was accepted.
 
+Consent echoes the preview's `gitMetadata`. When an open install proposal names
+the source and the approving preview kept git metadata, install returns 409 with
+`consent.reason: "git-metadata"`; preview again and install from that preview.
 Missing/mismatched consent returns 400, registry trust or diagnosed content-lock
 conflicts return 409, and unexpected/compensation failure can return 500.
 A dependency refusal is not a promise that no earlier staged/dependency effect

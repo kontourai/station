@@ -802,17 +802,17 @@ wake-from-cold can be verified without a sender — see
 
 ## Rules this area has earned
 
-- **The generic watch receives an SDK-built URL.** Its route paths and status
+- **The retired generic watch received an SDK-built URL.** Its route paths and status
   vocabulary live in the SDK (`notificationsUrl`, `LIVE_NOTIFICATION_STATUSES`)
-  and are handed to the host as a finished URL. The first cut of the poller
+  and were handed to the host as a finished URL. The first cut of the poller
   kept its own copy of both, and the copy was already wrong — it polled
   `/api/notifications` when the route is `/notifications`. The later host-owned
   desktop delivery consumer has its own fixed typed endpoint contract below;
   this watch rule is not a claim that no Rust module knows a Station route.
 - **A poll loop must not swallow its first error.** The watch failed 100% of
   its polls for three build cycles (no TLS backend compiled in) and looked
-  exactly like a working one. The first poll is synchronous and reports
-  failure; only after it proves the endpoint may errors be treated as blips.
+  exactly like a working one. Its fix made the first poll synchronous and
+  report failure; only after it proves the endpoint may errors be treated as blips.
 - **`eprintln!` does not reach logcat.** Tauri pipes Chromium's output, not
   Rust's. Diagnostics have to come back through the command's return value.
 - **Test guards against the real failure, not the happy path.** The TLS guard's

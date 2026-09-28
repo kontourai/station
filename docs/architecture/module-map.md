@@ -1141,9 +1141,10 @@ Unknown tuples have no application semantics, though bounded diagnostics and
 the [replay observer](../../src-ui/src/hooks/orchestration/replay/observe.ts)
 can report their absence.
 
-The `_kiro` v3 spelling remains an explicit evidence gap; it does not inherit
-`_kiro.dev` behavior. Promotion metadata names desired canonical events and
-still-open work; its presence does not mean the adapter emits that event.
+The `_kiro` v3 spelling remains unbound because it has not been observed (a
+source comment names the gap; no exported record does); it does not inherit
+`_kiro.dev` behavior. The table carries no promotion metadata: a tuple's
+binding says nothing about which canonical event, if any, should replace it.
 
 [Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
 ACP mapper tests and UI handler tests check lookup and current handling.
@@ -1561,7 +1562,8 @@ explains mechanism choices and historical constraints.
 
 **Current composition.** [ProjectTaskRoomWorkingState](../../src-server/services/orchestration/project-task-room-working-state.ts)
 and its worker own private SQLite settlement and snapshots. They instantiate
-this document mechanism; [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
+the live-only `SharedWorkingState`; no production caller composes the
+`createSharedWorkingState()` recovery ports yet. [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 supplies current authority and projects text/revision through the closed browser
 contract. This persistence adapter exists today. The browser neither owns an
 operation factory nor receives the atom graph.
@@ -3273,7 +3275,7 @@ calls, staleness, bounded stuck calls, late handles, and retraction. The
 and [delivery tests](../../src-ui/src/__tests__/deliveryFeed.test.ts) cover its
 consumer selection and cursor behavior. These are source and fixture owners;
 packaged OS permission, visible delivery, background operation and clicks need
-separate platform evidence. Do not revive `notification_watch.rs` as a second
-reader: it would bypass the delivery router's envelope and privacy decisions.
+separate platform evidence. Do not revive the deleted `notification_watch.rs`
+as a second reader: it would bypass the delivery router's envelope and privacy decisions.
 See [desktop alerts](../guides/desktop-tray.md#desktop-alerts-while-the-window-is-hidden)
 for the user-facing lifecycle.

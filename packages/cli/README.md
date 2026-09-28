@@ -191,7 +191,9 @@ Station; see the reference.
 **It does not build or install a backend.** Source-oriented commands such as
 `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, and
 `upgrade`, plus `setup local` and service installation, require a Station
-repository checkout. Use its own launcher:
+repository checkout, not this published CLI. (A prebuilt server archive that
+`install.sh` installed carries its own lifecycle CLI, which can also install a
+service and run `upgrade`; see the reference.) Use the checkout's launcher:
 
 ```console
 $ station start

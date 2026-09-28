@@ -3,6 +3,9 @@
 > **Status: not shipped.** The pure controller this design describes was
 > deleted because nothing composed it. The shipped Task workspace collaboration
 > path is [ProjectTaskRoom](../architecture/module-map.md#projecttaskroom).
+> The sections below record the deleted controller's design; apart from the
+> server-owned [editing capability](../../src-server/domain/shared-working-state-editing.ts),
+> they do not describe current code.
 
 The [original design](https://github.com/kontourai/station-archive/issues/2890)
 describes a Workspace Pane projection for shared text/code work. It is
@@ -106,9 +109,9 @@ Read/room revocation masks every remote identity and resets watch to `off`.
 The former React projection rendered remote selections in a synchronized
 textarea-layout `<pre>` copy with `<mark>` ranges. It merged coincident carets
 and exposed a bounded screen-reader count; those are historical renderer
-details, not a mounted UI in this build. The retained editing capability transforms
-authorized ranges through private pending atom operations into `displayText`
-coordinates and suppresses stale ranges.
+details, not a mounted UI in this build. The retained editing capability's
+`transformSelection` maps a selection through private pending atom operations
+into the projected text, and reports `unavailable` for a stale revision.
 
 Every runtime collection and string has a hard examined-entry, count, UTF-8,
 text, TTL, or cursor/document bound. Duplicate or invalid arrays fail closed;

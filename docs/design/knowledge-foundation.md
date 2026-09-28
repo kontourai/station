@@ -151,7 +151,10 @@ Notes for K2's planner:
   stub per this framing: `src-server/knowledge-store/neo4j-connection.ts` — a standalone
   connection-type registry (config shape, TCP-only reachability check, honest `{ok: false, reason}`
   query stub), never touching `KnowledgeStoreAdapter`/`KnowledgeStoreProvider`/the adapter registry.
-  A real bolt-driver graph-sync client remains K5's dual-adapter dogfood scope.
+  A real bolt-driver graph-sync client remains K5's dual-adapter dogfood scope. (Current source,
+  2026-09: the query stub has since been deleted; `neo4j-connection.ts` keeps registration and the
+  TCP reachability check, and fixed-query reads/sync live in `neo4j-graph-provider.ts` and
+  `neo4j-graph-sync.ts`.)
 - Root persistence rides Station's existing storage adapter (`~/.station`), not the store itself —
   the store directory must remain valid for non-Station consumers (Obsidian, the Kit CLI).
 - Existing per-project namespaces re-expressed as project roots is K2's compat path
@@ -486,7 +489,7 @@ explicit validation AC.
 > guarded MERGE of a root's records+links into Neo4j; never mutates the file store) and
 > `src-server/knowledge-store/neo4j-graph-provider.ts` (`readGraph(rootId)`, `shortestPath(rootId,
 > fromId, toId)`, plus `createNeo4jDriver`'s lazy-guarded real-driver loader). `neo4j-connection.ts`'s
-> K2 registration/reachability/query-stub surface is unchanged; the new modules consume
+> K2 registration/reachability/query-stub surface is unchanged (the query stub was later deleted); the new modules consume
 > `getNeo4jGraphViewConnection()` for config and a driver-injectable `Neo4jDriverLike` (real
 > `neo4j-driver` or `__tests__/fake-neo4j-driver.ts`'s in-memory double) for execution. `neo4j-driver`
 > is now an explicit direct dependency (`package.json`, pinned `^5.28.0`; previously present in

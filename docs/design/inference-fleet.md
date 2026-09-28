@@ -320,8 +320,9 @@ slice 3 for what that means when the same evidence crosses a machine boundary.
 
 This is the section most likely to be skimmed and most likely to invalidate a
 plan. The authority boundary in #1398's first comment describes six owners;
-**Datum and Bearing are not direct Station dependencies; Conduit remains on its
-older host-hook contract; Dispatch and Relay are pinned at the versions used by
+**Bearing is not a direct Station dependency and Datum is declared only by the
+contracts package for secret references; Conduit is used only for the
+agent-host hook seam; Dispatch and Relay are pinned at the versions used by
 the implemented fleet path.**
 
 **Historical declared/resolved/installed snapshot:** the table below records
@@ -345,10 +346,12 @@ Datum/Bearing composition.
 Version drift between a pin and the install is guarded by
 `packages/cli/src/__tests__/kontour-dependency-drift.test.ts`.
 
-- **Datum and Bearing are present but unused.** They arrive transitively
-  (Bearing is a hard dependency of Datum; both are optional peers of Dispatch)
-  and **no Station source file imports either** — repo-wide, the only
-  non-`node_modules` mentions are in `package-lock.json`. #423's Datum routing
+- **Datum and Bearing are not part of the fleet path.** Bearing arrives only
+  transitively (a hard dependency of Datum and an optional peer of Dispatch) and no
+  Station source imports it. Datum's only Station consumer is the
+  secret-reference seam
+  ([datum-secret-reference.ts](../../packages/contracts/src/datum-secret-reference.ts))
+  that secret bindings use; nothing in fleet routing imports it. #423's Datum routing
   is unimplemented; Station's own `resolveManagedModelBinding`
   (`src-server/runtime/plugins/runtime-provider-resolution.ts`) is a separate,
   Station-owned resolution path, not Datum's. "Datum resolves configured
@@ -456,12 +459,13 @@ by default; nothing is routed to unverified; nothing degrades silently.
 |---|---|---|
 | `KnownEnvironment` | Host execution authority, environment identity | shipped (§2.2) |
 | Bearing | Evidence-backed capability observations | installed transitively, **zero imports** (§2.6) |
-| Datum | Resolving configured candidates | installed transitively, **zero imports** (§2.6) |
+| Datum | Resolving configured candidates | secret-reference seam only; **no fleet imports** (§2.6) |
 | Dispatch | Ordered routing/fallback receipts | wired at 0.5.0 with fleet routing receipts (§2.5/§2.6) |
 | Relay | Invocation without credential leakage | pinned at 0.6.0; direct error-vocabulary imports in `fleet-inference-model.ts` and fake-runtime imports in routing tests; no native streaming (§2.6/§2.7) |
 | Station | Availability, consent, mobile control, presentation | shipped |
 
-Datum and Bearing remain transitive-only; the implemented fleet path directly
+Bearing remains transitive-only and Datum serves only secret references; the
+implemented fleet path directly
 uses current pinned Dispatch and Relay contracts.
 **This doc does not pretend otherwise, and the slice plan in §11 sequences the
 composition rather than assuming it.** In particular, slices 1–4 deliberately

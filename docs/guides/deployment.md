@@ -464,8 +464,10 @@ launchd and systemd adapters. Its
 [Windows adapter](../../packages/cli/src/commands/service-windows.ts) owns Task
 Scheduler registration, the command wrapper, process identity and trusted paths.
 The published CLI can control an existing installed service with
-`service status|start|stop`; installing/removing a checkout service remains a
-checkout operation. Follow [CLI availability](../reference/cli.md#invocation)
+`service status|start|stop`; installing or removing a service needs the
+lifecycle CLI of a checkout or a prebuilt server archive, and the
+[`service` reference](../reference/cli.md#service) records what each kind of
+unit runs. Follow [CLI availability](../reference/cli.md#invocation)
 and inspect the intended instance/home before changing a service.
 
 Earlier manual SSH notes used `node dist-server/command-station.js` from an

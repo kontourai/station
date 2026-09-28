@@ -39,6 +39,8 @@ home/install paths. Its
 are explicit local overrides. They are useful for a disposable test instance,
 but callers must set both values and keep a matching `STATION_HOME` and
 `STATION_INSTALL_ROOT`; an override does not change the channel's provenance.
+The install state records the ports Station was installed with, and a later
+installer run or upgrade that names no port reuses them.
 The owned launcher exports the exact channel, home, and install root on every
 later command and upgrade. Do not use the retired `STATION_CHANNEL=preview`:
 run `STATION_CHANNEL=beta` instead.
@@ -107,8 +109,20 @@ the manifest URL when the install came from a public manifest. The
 authenticated GitHub-release path records no URL and keeps writing schema 3,
 which released installers and CLIs read. A packaged `station upgrade` re-runs the installed version's
 `install.sh` with that URL, so it needs no environment variable. An explicit
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins. Under an installed service,
-`station upgrade` refuses, as it does for every packaged install.
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins.
+
+A service installed from an archive's active version (`station service
+install` run through the launcher) runs `<install root>/current`, and its
+service manifest records `kind: "archive"` and that install root. Such a
+service does not block `station upgrade`: the installer stops it, switches
+`current`, and starts it again, restoring the previous version if the service
+does not come back as the new release. A registered unit that is not running
+is left stopped, and no separate Station is started beside it. The unit keeps
+its installed ports; an explicitly named different port refuses the upgrade.
+Installing a service from an inactive `versions/<version>` directory is
+refused. Any other installed service, including one on a source release, still
+blocks `station upgrade`. See the [CLI reference](../reference/cli.md) for
+the service details.
 
 Source releases are still supported and are built on the host. They come from
 the authenticated GitHub-release path, which is how stable and beta install
@@ -138,8 +152,8 @@ Known limits until later #2675 slices:
 - An `install.sh` from before prebuilt archives (for example the copy inside
   an old source release) cannot remove a read-only version directory left in
   the install root. Uninstall with a current `install.sh`.
-- Installed services (`station service install`) still run the source-release
-  layout. Service units that run an archive arrive with slice C.
+- Uninstall refuses while a service runs the archive install; remove the
+  service first. A source release cannot replace an archive a service runs.
 
 ## Platform identity matrix
 

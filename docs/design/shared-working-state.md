@@ -73,7 +73,10 @@ This is an explicit replay-checkpoint barrier, not an array-index cleanup: it
 remains correct when a bounded history ring has just shifted an older entry.
 Only operations recorded after the new checkpoint may form a delta chain.
 The live port is ECMAScript-private/closure-backed: it exposes neither a
-recovery method nor the private convergence core at runtime.
+recovery method nor the private convergence core at runtime. No production
+caller composes this split yet: the room runtime and working-state worker
+construct the live-only `SharedWorkingState` class directly, so the recovery
+ports are exercised only by the domain tests.
 
 Before all of those outcomes, the Module validates schema and shape, including
 well-formed Unicode (lone surrogates fail closed) and self/future-self atom

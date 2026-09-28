@@ -152,7 +152,10 @@ scope does not become authority for an enterprise-managed installation.
 Git-based update discovery uses the package's own repository metadata; an
 enclosing Station checkout is not its update source. Local registry-directory
 sources refuse Git metadata, using the shared metadata-name rule during source
-inspection/copying. These source checks do not grant execution or deletion
+inspection/copying. A local folder named by an open install proposal is also
+copied without Git metadata, and a local Git repository URL is refused as a
+proposed source; install refuses an approval whose preview staged it
+differently. These source checks do not grant execution or deletion
 authority. See the current [plugin guide](../guides/plugins.md).
 
 ## Bounded live state and durable retention

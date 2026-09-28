@@ -217,9 +217,10 @@ unavailable). Whether v3 emits `_kiro/`-spelled notifications is
 NOT_VERIFIED (v3 turns are blocked on the auth callback); the table's
 entries carry the handshake variant they were observed against. The single
 authority is `src-shared/extension-notification-bindings.ts`, consumed by both
-the ACP command-state Adapter and the UI renderer. It also records the `_kiro`
-v3 notification spelling as an explicit evidence gap, so absence cannot be
-mistaken for a negative observation or inherited through fuzzy matching.
+the ACP command-state Adapter and the UI renderer. The `_kiro` v3
+notification spelling stays unbound (the 2026-09 source names it in a comment,
+not an exported gap record), so absence cannot be inherited through fuzzy
+matching.
 
 **Trip-wires, filed at binding time.** Kiro states these extensions are
 experimental; a declared method disappearing is *expected*. Every Layer 3

@@ -60,7 +60,9 @@ uses v1 through a disposable local endpoint. The separate
 [prebuilt installer smoke](../../scripts/smoke-install-prebuilt-archive.sh)
 uses two locally built preview archives and fixture signing keys to exercise
 install, start, upgrade and uninstall without Node.js on the installer's PATH.
-Its workflow covers Linux x64 and macOS arm64; these source definitions are
+Its workflow covers Linux x64 and macOS arm64; only the Linux leg also installs
+a systemd user service and checks that it restarts on the upgraded archive.
+These source definitions are
 not executed receipts or public-release proof. See the
 [archive install contract](../../docs/guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
 for layout, runtime, upgrade and service boundaries.
