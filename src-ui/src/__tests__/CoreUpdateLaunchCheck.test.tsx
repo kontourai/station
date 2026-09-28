@@ -1,5 +1,11 @@
 /** @vitest-environment jsdom */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let isMobile = false;
@@ -57,8 +63,9 @@ vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
 
-const { CoreUpdateLaunchCheck, compareVersions, validateNativeUpdateFeed } =
-  await import('../components/CoreUpdateLaunchCheck');
+const { CoreUpdateLaunchCheck } = await import(
+  '../components/CoreUpdateLaunchCheck'
+);
 const { BannerHost } = await import('../components/notifications/BannerHost');
 const { BANNER_PRIORITY, bannerStore } = await import(
   '../contexts/banner-store'
@@ -397,35 +404,51 @@ describe('CoreUpdateLaunchCheck', () => {
     );
   });
 
-  test('rejects non-HTTPS release actions', () => {
-    expect(() =>
-      validateNativeUpdateFeed(
-        {
-          channel: 'stable',
-          version: '1.2.3',
-          releaseUrl: 'http://downloads.example/app.apk',
-        },
-        'https://updates.example.test',
-      ),
-    ).toThrow(/must use HTTPS/);
+  test('refuses a feed whose release action is not HTTPS', async () => {
+    isMobile = true;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      url: 'https://updates.example.test/feed',
+      json: async () => ({
+        channel: 'stable',
+        version: '2.0.0',
+        releaseUrl: 'http://downloads.example/app.apk',
+      }),
+    } as Response);
+    renderWithChrome(
+      <CoreUpdateLaunchCheck
+        feedUrl="https://updates.example.test/feed"
+        providerOrigin="https://updates.example.test"
+        installedVersion="1.0.0"
+      />,
+    );
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'must use HTTPS',
+    );
+    expect(screen.queryByRole('link', { name: 'Update Station' })).toBeNull();
   });
 
   test.each([
     ['1.2.3', '1.2.3', false],
     ['1.2.3', '1.2.4', true],
     ['1.2.3', '1.2.2', false],
+    // SemVer, not lexical or numeric-prefix, ordering.
+    ['1.2.3-preview.2', '1.2.3-preview.10', true],
+    ['1.2.3-preview.10', '1.2.3', true],
+    ['1.2.3', '1.2.4-preview.1', true],
+    ['1.2.3', '1.2.3-preview.1', false],
   ])(
     'compares installed %s with latest %s',
     async (installedVersion, version, available) => {
       isMobile = true;
+      let answerFeed: ((feed: unknown) => void) | undefined;
       vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
         url: 'https://updates.example.test/mobile/stable.json',
-        json: async () => ({
-          channel: 'stable',
-          version,
-          releaseUrl: 'https://updates.example.test/releases/app',
-        }),
+        json: () =>
+          new Promise((resolve) => {
+            answerFeed = resolve;
+          }),
       } as Response);
       renderWithChrome(
         <CoreUpdateLaunchCheck
@@ -434,16 +457,20 @@ describe('CoreUpdateLaunchCheck', () => {
           installedVersion={installedVersion}
         />,
       );
-      if (available)
-        expect(
-          await screen.findByRole('link', { name: 'Update Station' }),
-        ).toBeTruthy();
-      else
-        await waitFor(() =>
-          expect(
-            screen.queryByRole('link', { name: 'Update Station' }),
-          ).toBeNull(),
-        );
+      // Settle the whole fetch → json → compare path before judging, so a
+      // "no offer" row cannot pass merely because the answer has not landed.
+      await waitFor(() => expect(answerFeed).toBeDefined());
+      await act(async () => {
+        answerFeed?.({
+          channel: 'stable',
+          version,
+          releaseUrl: 'https://updates.example.test/releases/app',
+        });
+      });
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(
+        screen.queryByRole('link', { name: 'Update Station' }) !== null,
+      ).toBe(available);
     },
   );
 
@@ -523,15 +550,6 @@ describe('CoreUpdateLaunchCheck', () => {
     expect((await screen.findByRole('alert')).textContent).toContain(
       'not trusted',
     );
-  });
-
-  test.each([
-    ['1.2.3-preview.2', '1.2.3-preview.10', -1],
-    ['1.2.3-preview.10', '1.2.3', -1],
-    ['1.2.3', '1.2.4-preview.1', -1],
-    ['1.2.3', '1.2.3-preview.1', 1],
-  ])('uses SemVer ordering for %s vs %s', (installed, latest, expected) => {
-    expect(compareVersions(installed, latest)).toBe(expected);
   });
 
   test('does not probe in web or desktop shells', () => {

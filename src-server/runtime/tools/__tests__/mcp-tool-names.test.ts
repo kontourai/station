@@ -126,6 +126,12 @@ describe('mcp-tool-names', () => {
         { debug: vi.fn() },
       ),
     ).not.toThrow();
+    // The replacement map records the replacement's own loader identity,
+    // not one carried over from the earlier map.
+    expect(replacement.get('github_createIssue')?.provenance).toMatchObject({
+      serverId: 'replacement',
+      integrationId: 'replacement-integration',
+    });
   });
 
   test('fails closed when different reviewed loader identities collide', () => {

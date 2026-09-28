@@ -1,5 +1,9 @@
 # Collaborative editor pane
 
+> **Status: not shipped.** The pure controller this design describes was
+> deleted because nothing composed it. The shipped Task workspace collaboration
+> path is [ProjectTaskRoom](../architecture/module-map.md#projecttaskroom).
+
 Issue #2890 is the Workspace Pane projection for shared text/code work. It is
 not the durable Project Chat discussion surface and it is not a new event or
 message store.

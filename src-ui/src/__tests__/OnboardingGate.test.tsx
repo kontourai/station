@@ -1943,7 +1943,7 @@ describe('OnboardingGate', () => {
   describe('notification priming on first connection', () => {
     // The boot-time prime skips fresh devices (see PlatformProfileContext),
     // so the first usable connection has to prime instead — otherwise the
-    // permission dialog never appears before the first backgroundable watch,
+    // permission dialog never appears before the first notification,
     // or it appears as a side effect of an incoming pairing approval, which
     // `notifier.ts` forbids.
     test('primes native notifications when pairing succeeds through the modal', async () => {

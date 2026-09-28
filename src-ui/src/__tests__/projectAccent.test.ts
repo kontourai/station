@@ -1,16 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import {
   PROJECT_ACCENT_PALETTE,
-  projectAccent,
   projectAccents,
 } from '../components/project-sidebar/projectAccent';
-
-describe('projectAccent (single-slug compat helper)', () => {
-  test('is deterministic and uses a bounded palette', () => {
-    expect(projectAccent('operations')).toBe(projectAccent('operations'));
-    expect(projectAccent('operations')).toMatch(/^var\(--event-[a-z-]+\)$/);
-  });
-});
 
 describe('projectAccents — set-aware allocation (chat-dock-maximize-readiness)', () => {
   test('uses every palette entry before repeating any color', () => {

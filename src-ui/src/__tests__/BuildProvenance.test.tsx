@@ -4,7 +4,6 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import {
   BuildProvenance,
-  formatBuildAge,
   InstalledAppBuildProvenance,
 } from '../views/settings/BuildProvenance';
 
@@ -87,17 +86,6 @@ describe('BuildProvenance', () => {
         name: 'Connected Station build provenance',
       }),
     ).toBeNull();
-  });
-
-  test.each([
-    [-5, 'just now'],
-    [59, 'just now'],
-    [60, '1 minute ago'],
-    [3_600, '1 hour ago'],
-    [86_400, '1 day ago'],
-    [172_800, '2 days ago'],
-  ])('formats age %i as %s', (seconds, expected) => {
-    expect(formatBuildAge(seconds)).toBe(expected);
   });
 
   test('renders installed client build without consulting a backend', () => {

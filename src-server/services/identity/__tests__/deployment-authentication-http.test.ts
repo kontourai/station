@@ -1,6 +1,11 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+} from '@kontourai/station-contracts/application-session';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
@@ -14,6 +19,7 @@ import {
   loadDeploymentAuthentication,
   readDeploymentAuthenticationConfiguration,
 } from '../deployment-authentication-loader.js';
+import { deploymentAccountPrincipal } from '../deployment-authentication-service.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -94,6 +100,72 @@ export async function createStationAuthenticationProvider(host) {
 }
 
 describe('operator authentication module through production HTTP composition', () => {
+  test('routes native continuation to its own resolver and rejects mixed or unsupported proof headers', async () => {
+    const unsupported = await harness();
+    const native = {
+      [APPLICATION_SESSION_NATIVE_HEADER]: 'native-credential',
+      [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: 'native-proof',
+      Authorization: 'Bearer fixture-operator',
+    };
+    expect(
+      (
+        await unsupported.app.request(`${origin}/api/projects`, {
+          headers: native,
+        })
+      ).status,
+    ).toBe(401);
+    const { app, authentication } = await harness();
+    const principal = deploymentAccountPrincipal(
+      'urn:station:fixture-station',
+      'person-opaque',
+      'Fixture Person',
+    );
+    let nativeCalls = 0;
+    authentication!.service.installContinuationResolver({
+      authenticate: async () => ({
+        kind: 'invalid',
+        reason: 'invalid-credential',
+      }),
+      authenticateNative: async () => {
+        nativeCalls++;
+        return {
+          kind: 'authenticated',
+          issuer: 'urn:station:fixture-station',
+          principal,
+          session: {
+            subject: 'person-opaque',
+            displayName: 'Fixture Person',
+            sessionId: 'server-owned-session-record',
+            authenticatedAt: new Date(Date.now() - 1000).toISOString(),
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            contacts: [],
+          },
+        };
+      },
+      transferRequest: () => {},
+      revoke: async () => {},
+    });
+    expect(
+      (await app.request(`${origin}/api/projects`, { headers: native })).status,
+    ).toBe(200);
+    expect(nativeCalls).toBe(2);
+    expect(
+      (
+        await app.request(`${origin}/api/projects`, {
+          headers: {
+            ...native,
+            [APPLICATION_SESSION_HEADER]: 'browser-credential',
+          },
+        })
+      ).status,
+    ).toBe(401);
+    expect(nativeCalls).toBe(2);
+    const solo = await harness(false);
+    expect(
+      (await solo.app.request(`${origin}/api/projects`, { headers: native }))
+        .status,
+    ).toBe(401);
+  });
   test('bounds invalid account attempts before provider verification on protected routes', async () => {
     const { app, authentication } = await harness();
     const responses = await Promise.all(

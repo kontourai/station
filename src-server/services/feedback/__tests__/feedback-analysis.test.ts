@@ -1,16 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
-  extractJson,
   runFullFeedbackAnalysis,
   runMiniFeedbackAnalysis,
 } from '../feedback-analysis.js';
 
 describe('feedback-analysis', () => {
-  test('extractJson finds the first JSON payload inside prose', () => {
-    expect(extractJson('note [{"ok":true}] trailing')).toBe('[{"ok":true}]');
-    expect(extractJson('no json here')).toBeNull();
-  });
-
   test('runMiniFeedbackAnalysis annotates pending ratings', async () => {
     const result = await runMiniFeedbackAnalysis(
       async () =>

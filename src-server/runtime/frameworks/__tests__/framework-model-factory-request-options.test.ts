@@ -33,7 +33,6 @@ vi.mock('../../../providers/llm/bedrock.js', () => ({
 import {
   buildAiSdkLanguageModel,
   createAiSdkManagedModel,
-  requestBodyDefaultsFetch,
   resolveModelRequestOptions,
 } from '../framework-model-factory.js';
 
@@ -59,8 +58,30 @@ describe('resolveModelRequestOptions', () => {
   });
 });
 
-describe('requestBodyDefaultsFetch', () => {
+describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
   const upstream = vi.fn(async () => new Response('{}', { status: 200 }));
+  const providers = {
+    'openai-compat': createOpenAICompatible,
+    anthropic: createAnthropic,
+    google: createGoogleGenerativeAI,
+  };
+
+  /** Builds a model and returns the `fetch` option its provider received. */
+  function providerFetch(
+    requestBodyDefaults: Record<string, unknown> | undefined,
+    type: keyof typeof providers = 'openai-compat',
+  ): typeof fetch | undefined {
+    buildAiSdkLanguageModel({
+      type,
+      modelId: 'm',
+      baseUrl: 'http://127.0.0.1:9/v1',
+      requestBodyDefaults,
+    });
+    const [options] = providers[type].mock.calls.at(-1) as unknown as [
+      { fetch?: typeof fetch },
+    ];
+    return options.fetch;
+  }
 
   beforeEach(() => {
     upstream.mockClear();
@@ -79,13 +100,16 @@ describe('requestBodyDefaultsFetch', () => {
     return JSON.parse(String(init.body));
   }
 
-  test('returns undefined for empty or missing defaults (no wrapper installed)', () => {
-    expect(requestBodyDefaultsFetch(undefined)).toBeUndefined();
-    expect(requestBodyDefaultsFetch({})).toBeUndefined();
-  });
+  test.each(Object.keys(providers) as Array<keyof typeof providers>)(
+    '%s: installs no wrapper for empty or missing defaults',
+    (type) => {
+      expect(providerFetch(undefined, type)).toBeUndefined();
+      expect(providerFetch({}, type)).toBeUndefined();
+    },
+  );
 
   test('injects an absent key into an OpenAI-wire completion body', async () => {
-    const wrapped = requestBodyDefaultsFetch({ reasoning_effort: 'low' })!;
+    const wrapped = providerFetch({ reasoning_effort: 'low' })!;
     await wrapped('http://127.0.0.1:8317/v1/chat/completions', {
       method: 'POST',
       body: JSON.stringify({ model: 'claude-haiku', messages: [] }),
@@ -101,7 +125,7 @@ describe('requestBodyDefaultsFetch', () => {
   // prototype-member-named defaults stay injectable — pin it, or a revert
   // to `key in merged` silently loses this property.
   test('injects a default named after a prototype member', async () => {
-    const wrapped = requestBodyDefaultsFetch({ toString: 'x-marker' })!;
+    const wrapped = providerFetch({ toString: 'x-marker' })!;
     await wrapped('http://host/v1/chat/completions', {
       method: 'POST',
       body: JSON.stringify({ model: 'm' }),
@@ -110,7 +134,7 @@ describe('requestBodyDefaultsFetch', () => {
   });
 
   test('never overrides a key the request already carries', async () => {
-    const wrapped = requestBodyDefaultsFetch({ reasoning_effort: 'low' })!;
+    const wrapped = providerFetch({ reasoning_effort: 'low' })!;
     const body = JSON.stringify({ model: 'm', reasoning_effort: 'high' });
     await wrapped('http://host/v1/chat/completions', {
       method: 'POST',
@@ -125,17 +149,18 @@ describe('requestBodyDefaultsFetch', () => {
   });
 
   test('applies to the Anthropic and Google completion wires', async () => {
-    const wrapped = requestBodyDefaultsFetch({
-      thinking: { type: 'enabled', budget_tokens: 2000 },
-    })!;
-    await wrapped('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      body: JSON.stringify({ model: 'm' }),
-    });
+    const thinking = { thinking: { type: 'enabled', budget_tokens: 2000 } };
+    await providerFetch(thinking, 'anthropic')!(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        body: JSON.stringify({ model: 'm' }),
+      },
+    );
     expect(sentBody()).toMatchObject({
       thinking: { type: 'enabled', budget_tokens: 2000 },
     });
-    await wrapped(
+    await providerFetch(thinking, 'google')!(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini:streamGenerateContent?alt=sse',
       { method: 'POST', body: JSON.stringify({}) },
     );
@@ -149,7 +174,7 @@ describe('requestBodyDefaultsFetch', () => {
   // the wrapper doesn't own). If an SDK bump makes this fail, extend the
   // wrapper for Request inputs instead of loosening the test.
   test('Request-object inputs pass through unmodified (calling-convention pin)', async () => {
-    const wrapped = requestBodyDefaultsFetch({ reasoning_effort: 'low' })!;
+    const wrapped = providerFetch({ reasoning_effort: 'low' })!;
     const request = new Request('http://host/v1/chat/completions', {
       method: 'POST',
       body: JSON.stringify({ model: 'm' }),
@@ -177,7 +202,7 @@ describe('requestBodyDefaultsFetch', () => {
       'not-json',
     ],
   ])('passes %s through unmodified', async (_label, url, method, body) => {
-    const wrapped = requestBodyDefaultsFetch({ reasoning_effort: 'low' })!;
+    const wrapped = providerFetch({ reasoning_effort: 'low' })!;
     const init: RequestInit = { method, ...(body ? { body } : {}) };
     await wrapped(url, init);
     const [, forwardedInit] = upstream.mock.calls.at(-1) as unknown as [
@@ -239,31 +264,5 @@ describe('buildAiSdkLanguageModel — requestBodyDefaults wiring (station#1994)'
       Record<string, unknown>,
     ];
     expect(plainCall[0].fetch).toBeUndefined();
-  });
-
-  test.each([
-    ['openai-compat', createOpenAICompatible],
-    ['anthropic', createAnthropic],
-    ['google', createGoogleGenerativeAI],
-  ])('%s: passes a fetch override only when defaults exist', (type, create) => {
-    buildAiSdkLanguageModel({
-      type,
-      modelId: 'm',
-      baseUrl: 'http://127.0.0.1:9/v1',
-      requestBodyDefaults: { reasoning_effort: 'low' },
-    });
-    expect(create.mock.calls.at(-1)?.[0]).toMatchObject({
-      fetch: expect.any(Function),
-    });
-
-    buildAiSdkLanguageModel({
-      type,
-      modelId: 'm',
-      baseUrl: 'http://127.0.0.1:9/v1',
-    });
-    const lastCall = create.mock.calls.at(-1) as unknown as [
-      Record<string, unknown>,
-    ];
-    expect(lastCall[0].fetch).toBeUndefined();
   });
 });

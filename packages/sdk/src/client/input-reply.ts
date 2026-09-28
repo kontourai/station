@@ -2,7 +2,8 @@ import type {
   AttentionInputReplyContext,
   AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
-import { type ClientRequestOptions, getJson, StationHttpError } from './http';
+import { envelopeError } from './api-error-message';
+import { type ClientRequestOptions, getJson, readJsonBody } from './http';
 
 export async function getInputReplyContext(
   apiBase: string,
@@ -13,8 +14,14 @@ export async function getInputReplyContext(
     `${apiBase}/api/orchestration/sessions/${encodeURIComponent(reference.threadId)}/input-requests/${encodeURIComponent(reference.requestId)}?eventId=${encodeURIComponent(reference.requestEventId)}`,
     opts,
   );
+  // Deliberately opaque: status, code and Retry-After, never the route's text.
   if (!response.ok)
-    throw new StationHttpError(response.status, 'Input request unavailable');
+    throw envelopeError(
+      response,
+      await readJsonBody(response),
+      'Input request unavailable',
+      { message: 'Input request unavailable' },
+    );
   const body = (await response.json()) as {
     success?: boolean;
     data?:

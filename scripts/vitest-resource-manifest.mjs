@@ -216,12 +216,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds two tiny real repositories to prove CLI artifact provenance ignores
   // hostile inherited Git routing and sees a staged dirty index.
   'packages/cli/src/__tests__/build-metadata.test.ts',
-  // Builds throwaway Git repositories and runs the gate as a child process, so
-  // the real exit status is what the assertions read; process ownership is the
-  // behavior under test, not a helper.
-  'scripts/__tests__/literal-swap-gate.test.ts',
-  // Same shape: throwaway Git repositories, and the real-time wait gate run
-  // as a child process so its exit status (0/1/2) is what is asserted.
+  // Builds throwaway Git repositories and runs the real-time wait gate as a
+  // child process, so its exit status (0/1/2) is what the assertions read.
   'scripts/__tests__/test-realtime-wait-gate.test.ts',
   // station#1648: runs the Playwright install script as a child process behind
   // a fake `npx` on PATH, because the exit status and the argv it really
@@ -961,6 +957,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
   // #2260: owns Chromium for actual mobile close-target geometry and hit testing.
   'src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx',
+  // archive#3331: owns Chromium touch emulation for the sidebar reorder
+  // handle's coarse-pointer visibility, size and hit testing.
+  'src-ui/src/__tests__/ProjectSidebarReorder.coarseGeometry.test.tsx',
   // #2062: owns Chromium touch emulation for the Boards row menu trigger's
   // visibility, size, hit testing and clearance from the open menu.
   'src-ui/src/__tests__/ProjectSidebarBoards.coarseGeometry.test.tsx',
@@ -1043,6 +1042,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // is right that nothing here can see a `playwright-core` spawn, so an
   // omission is silent until the run is slow or flaky.
   'src-ui/src/__tests__/SplitPaneLayout.railName.overflow.test.tsx',
+  // Chromium hit-testing of the framed mobile detail sheet between a fixed
+  // toolbar and dock.
+  'src-ui/src/__tests__/SplitPaneLayout.mobileSheet-geometry.test.tsx',
   // #1536 F (round 3): same shape again — launches a real Chromium to read the
   // Layout menu's RESOLVED row/group borders. A text scan could not: the first
   // fix tied on specificity with a rule 90 lines below it and lost on source

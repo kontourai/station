@@ -64,6 +64,7 @@ on:
       - 'pnpm-workspace.yaml'
       - 'patches/**'
       - 'esbuild.config.mjs'
+      - 'install.sh'
       - 'schemas/**'
       - 'config/portable-server-node-runtime.json'
       # The release ring table and grammar that stamp .station-release.json.
@@ -98,6 +99,7 @@ on:
       - 'pnpm-workspace.yaml'
       - 'patches/**'
       - 'esbuild.config.mjs'
+      - 'install.sh'
       - 'schemas/**'
       - 'config/portable-server-node-runtime.json'
       # The release ring table and grammar that stamp .station-release.json.
