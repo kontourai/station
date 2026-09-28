@@ -88,7 +88,7 @@
     {
       "path": ".changeset/README.md",
       "documentDigest": "381524670e36ead2172f0bda86d439055458085dcb6401544c863056efbe2ab7",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checked the managed Changesets command, package discovery, retained-note validation, and ci:fast ordering.",
@@ -108,7 +108,7 @@
         },
         {
           "path": "scripts/run-ci-fast.mjs",
-          "digest": "9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d"
+          "digest": "eb8fbe81fbd90e279711f64b1cb40ad28a49625b14dc619a68b12d338271ac54"
         }
       ],
       "checks": [
@@ -116,8 +116,7 @@
         "Reviewed source changes: Reviewed the hosted statics scope addition: local default still runs selector plus statics; hosted plan/shards own the selection and statics omits only that duplicated selector. Changeset validation remains in the static command list.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope.",
         "Reviewed landing deltas through 111744681: Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
-        "Reviewed the run-ci-fast.mjs delta (five added static gates after gate:workflows); the changeset status check this README describes still runs in ci:fast.",
-        "#2922/#2927 lane: ci:fast still runs the changeset status check before builds and type checks; the new per-step marker changes no claim here."
+        "Reviewed the run-ci-fast.mjs delta (five added static gates after gate:workflows); the changeset status check this README describes still runs in ci:fast."
       ]
     },
     {
@@ -1112,7 +1111,7 @@
     {
       "path": ".veritas/README.md",
       "documentDigest": "f7ccb945343f28964f21df514e0005e861b1bdd122e7808cbe06277818a2180c",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "998b7be07c2298ead61e8cffa39dab7583d8b6f3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current repository Veritas integration and protected-policy/evidence boundaries. Full 87-line baseline read. Actual repository configuration, installed Veritas 1.7.4 public docs/schema, hook wiring and generated-path contracts inspected. Reviewed the approved documentation evidence activation and policy-change attestation; authority settings remain unchanged.",
@@ -1188,7 +1187,7 @@
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
-          "digest": "3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35"
+          "digest": "2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d"
         },
         {
           "path": "scripts/cli-agent-e2e.mjs",
@@ -1228,7 +1227,7 @@
         },
         {
           "path": "scripts/run-ci-fast.mjs",
-          "digest": "9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d"
+          "digest": "eb8fbe81fbd90e279711f64b1cb40ad28a49625b14dc619a68b12d338271ac54"
         },
         {
           "path": "scripts/run-focused-tests.mjs",
@@ -1316,8 +1315,7 @@
         "Rewrote the documentation-truth freshness description: scoped in ci:fast readiness and pre-push, advisory in the merge queue, on main and in Nightly static verification, reported by the repo-scan job; checked against documentation-freshness.mjs mode selection and run-repo-scan-suites.mjs. The run-ci-fast/verification-policy delta adds five verify:static gates to ci:fast and does not change the readiness call described here.",
         "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
         "Reviewed the fix-round delta: freshness checks now report untracked sources as stale inputs (reportMissing) so the queue stays advisory for removed files, and the guide says the mode follows the event. The scoped/advisory description here still matches documentation-freshness.mjs.",
-        "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide; documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The described per-event behavior is unchanged.",
-        "#2922 lane: ci:fast's invariant list, readiness call and statics scope are unchanged; only a per-step marker line was added to its output."
+        "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide; documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The described per-event behavior is unchanged."
       ]
     },
     {
@@ -1356,12 +1354,12 @@
     },
     {
       "path": "AGENTS.md",
-      "sourceRevision": "21b628e6ec05579c789715dd6c0aa71ac03dbc6c",
+      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
       "kind": "policy",
       "state": "classified",
       "summary": "Worktree isolation, managed dependencies, bounded gates, merge-queue procedure, evidence discipline, archival issue interpretation, scope routes, and protected Veritas block. All named npm scripts and local routes resolve. Live main rules match the six named required checks, non-strict updates, ALLGREEN 3/3 SQUASH queue, and unattributed-change approval rule.",
       "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No merge, push, queue mutation, release, full regression, or behavioral conformance audit was performed. GitHub rules are a time-specific observation.",
-      "documentDigest": "f5409d83bf1c7772c37b3738209f5f8a4602d8f29ead5fb9f7f8918bc9929c8c",
+      "documentDigest": "f36e98bb2ed75610e96f64267428f1e0e05edf017a91e51e8ac9a509125d3df0",
       "sources": [
         {
           "path": ".agents/skills/documentation-audit/SKILL.md",
@@ -1385,7 +1383,7 @@
         },
         {
           "path": "scripts/gate-for.mjs",
-          "digest": "6cb1fa0145dee1a979cf8d31c47bfd71f78313437a86d85ba29437605183f68f"
+          "digest": "e414b95418770c138509db2b192e64baed53e9c493f6824be2b0cda2a5261821"
         },
         {
           "path": "scripts/lib/typecheck-host-slots.mjs",
@@ -1393,7 +1391,7 @@
         },
         {
           "path": "scripts/orchestration-transfer-gate.mjs",
-          "digest": "717c7650d88da22c743c77f16735428aebc6a2521c6d0a0c1547f6a02fadeb9a"
+          "digest": "f0809c17d88b7abbdbf1e88ab04f98bddebabd8c426db9891763cd76474ac7d5"
         },
         {
           "path": "scripts/run-focused-tests.mjs",
@@ -1408,14 +1406,12 @@
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged.",
         "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
         "Integration source review through e0314c727: package.json only removed the @kontourai/bearing and @kontourai/forage dependencies. Every npm script and route AGENTS.md names is unchanged. GitHub rules were not re-observed. Source review is separate from executed test evidence.",
-        "Reviewed deltas: the audit skill gained freshness and slice guidance and package.json gained documentation scripts; the routing table and landing rules here are unchanged.",
-        "Added the app-token/REST bullet under Landing a pull request (#2926); STATION_TRANSFER_BASELINE_ROOT is still read, now as an override of merge-base discovery (#2925); gate:for routing claims unchanged.",
-        "Re-read after JSDoc-only types were added to scripts/orchestration-transfer-gate.mjs; no behavior or claim changed."
+        "Reviewed deltas: the audit skill gained freshness and slice guidance and package.json gained documentation scripts; the routing table and landing rules here are unchanged."
       ]
     },
     {
       "path": "CLAUDE.md",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
       "kind": "policy",
       "state": "classified",
       "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md. The root also carries the canonical protected Veritas governance block.",
@@ -1428,14 +1424,13 @@
         },
         {
           "path": "AGENTS.md",
-          "digest": "f5409d83bf1c7772c37b3738209f5f8a4602d8f29ead5fb9f7f8918bc9929c8c"
+          "digest": "f36e98bb2ed75610e96f64267428f1e0e05edf017a91e51e8ac9a509125d3df0"
         }
       ],
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
-        "Reviewed source changes: Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged.",
-        "Still imports AGENTS.md; the AGENTS.md change is one Landing bullet."
+        "Reviewed source changes: Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged."
       ]
     },
     {
@@ -11453,8 +11448,8 @@
     },
     {
       "path": "docs/guides/code-quality.md",
-      "documentDigest": "96a55448c92106cb87224425635a37fa97882c1c52da11aa3a1fe31a7e56cbba",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "documentDigest": "c1561e1356529f776d9a4ee0728f3a15780417a527d9e8ea1931c5227e777564",
+      "sourceRevision": "998b7be07c2298ead61e8cffa39dab7583d8b6f3",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Contributor quality and publication requirements with current hook composition. Full 316-line baseline read. Hook ordering, readiness selection, lane composition, route-helper adoption and actual raw-parameter route inspected. Requirements distinguished from execution proof; historical cost observations not remeasured. Follow-up: Push & Monitor delta only: separates merge-queue arm/confirm/stop from following task-required CI evidence to its outcome.",
@@ -11510,7 +11505,7 @@
         },
         {
           "path": "AGENTS.md",
-          "digest": "f5409d83bf1c7772c37b3738209f5f8a4602d8f29ead5fb9f7f8918bc9929c8c"
+          "digest": "f36e98bb2ed75610e96f64267428f1e0e05edf017a91e51e8ac9a509125d3df0"
         },
         {
           "path": "docs/guides/documentation.md",
@@ -11518,7 +11513,7 @@
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "98eea5a77a16fcc0e256c11d1f5dbf92710df700a5cbd046e2c1e2451c64d663"
+          "digest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2"
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
@@ -11538,7 +11533,7 @@
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
-          "digest": "3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35"
+          "digest": "2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d"
         },
         {
           "path": "scripts/cli-agent-e2e.mjs",
@@ -11578,7 +11573,7 @@
         },
         {
           "path": "scripts/run-ci-fast.mjs",
-          "digest": "9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d"
+          "digest": "eb8fbe81fbd90e279711f64b1cb40ad28a49625b14dc619a68b12d338271ac54"
         },
         {
           "path": "scripts/run-focused-tests.mjs",
@@ -11665,8 +11660,7 @@
         "Updated the documentation-checks paragraph for scoped freshness (touched stale records block; repo scans and the merge queue report). Reviewed deltas: ci:fast gains five cheap verify:static gates; the code-health section is unchanged; documentation.md and the audit skill gained freshness and slice guidance.",
         "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
         "Reviewed the fix-round delta (reportMissing in the freshness check; mode follows the event). This guide's scoped/advisory paragraph remains accurate.",
-        "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide; documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The documentation-checks paragraph remains accurate.",
-        "Transfer section now describes merge-base baseline discovery and the single prepare command (#2925); ci:fast and hook composition otherwise unchanged."
+        "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide; documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The documentation-checks paragraph remains accurate."
       ]
     },
     {
@@ -13566,8 +13560,8 @@
     },
     {
       "path": "docs/guides/development.md",
-      "documentDigest": "a6302414b30ed9a9c590aed0584674f60c34201b86b167a51d06cadace8159ac",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "documentDigest": "ec666bebf846549080f52a23b5d13a1f3fc7a87be01a72c78a1ce8cdf13a7a25",
+      "sourceRevision": "998b7be07c2298ead61e8cffa39dab7583d8b6f3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checkout setup and contributor workflow, with normative boundaries routed to owners. Full 415-line baseline read. Dependency lifecycle, workspace/package contract, command ownership, verification paths and plugin workflow boundaries checked. No installs outside managed setup, plugin installation, runtime/service control, native build or publication performed.",
@@ -13659,7 +13653,7 @@
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
-          "digest": "3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35"
+          "digest": "2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d"
         },
         {
           "path": "scripts/build-portable-server-archive.mjs",
@@ -13711,7 +13705,7 @@
         },
         {
           "path": "scripts/run-ci-fast.mjs",
-          "digest": "9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d"
+          "digest": "eb8fbe81fbd90e279711f64b1cb40ad28a49625b14dc619a68b12d338271ac54"
         },
         {
           "path": "scripts/run-focused-tests.mjs",
@@ -13784,8 +13778,7 @@
         "Named the evidence-check registration and generated-output invariants that ci:fast now runs (run-ci-fast.mjs FAST_STATIC_COMMANDS). Other deltas (package.json scripts, documentation guide and skill freshness text, review compiler predicate) do not affect this guide's claims.",
         "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
         "Reviewed the compileDocumentationReviews reportMissing passthrough and the guide wording change; this guide's claims are unchanged.",
-        "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes.",
-        "Added the GitHub automation token section (#2926) matching scripts/gh-app-token.mjs: Keychain default with hex decode, key-file fallback, config outside the repo, read-only default, repositories:[station], exit 78 when unconfigured."
+        "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes."
       ]
     },
     {
@@ -19335,8 +19328,8 @@
     },
     {
       "path": "docs/guides/testing.md",
-      "documentDigest": "98eea5a77a16fcc0e256c11d1f5dbf92710df700a5cbd046e2c1e2451c64d663",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "documentDigest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2",
+      "sourceRevision": "998b7be07c2298ead61e8cffa39dab7583d8b6f3",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -19412,7 +19405,7 @@
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
-          "digest": "3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35"
+          "digest": "2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d"
         },
         {
           "path": "scripts/cli-agent-e2e.mjs",
@@ -19452,7 +19445,7 @@
         },
         {
           "path": "scripts/run-ci-fast.mjs",
-          "digest": "9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d"
+          "digest": "eb8fbe81fbd90e279711f64b1cb40ad28a49625b14dc619a68b12d338271ac54"
         },
         {
           "path": "scripts/run-focused-tests.mjs",
@@ -19504,11 +19497,11 @@
         },
         {
           "path": "scripts/test-impact-manifest.mjs",
-          "digest": "a16d79677398fc60231240783708d5e2fba0f19cc5b77afe754752abee6c920e"
+          "digest": "2347ccee7f635136d84b242d98236aed8e488c97a376b1106f1e384631a1b286"
         },
         {
           "path": "scripts/__tests__/path-read-pin-boundary.test.ts",
-          "digest": "498d2f31e466316f90c75b4861ae454e94bad8343c01e379b7d50eb240bb0a24"
+          "digest": "c07e3e1ab3e7a9654b68316e817e95fe7a403ea5b1f9f643ea26e5d7c3a242ac"
         },
         {
           "path": "scripts/__tests__/portable-server-archive.test.ts",
@@ -19524,7 +19517,7 @@
         },
         {
           "path": "scripts/__tests__/changed-verification.test.ts",
-          "digest": "6ae5cdade4e17693497354b44780f3f712b3e0508efd38be1d333b41d284b77f"
+          "digest": "e3312055e67b0b484e7e8d1013f808d9b3a33d9b85efef7612765ec24c3859b6"
         },
         {
           "path": "scripts/__tests__/fast-checks-shard-cli.test.ts",
@@ -19578,8 +19571,7 @@
         "Reviewed the reportMissing option added to the review compiler; no claim in this guide changes.",
         "2026-09-28 test-audit refresh: path-read-pin-boundary.test.ts only added one justified entry to the unreported path-read suite list; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only path-read-pin-boundary.test.ts, adding turn-started-attachment-projection.test.ts to the unreported path-read suite list (verified with git diff d0ca944c5 062fad816); the guide names neither file; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes.",
-        "Transfer gate section rewritten for merge-base discovery (#2925); selection section adds derived spawned-script edges and the vitest.setup.ts event-environment scrub (#2922). Other claims re-read against the diff."
+        "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes."
       ]
     },
     {
@@ -25273,7 +25265,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "52d3c088aed1ecaa9eaf65a68eaeedee361d9390ffcd8cf6d5cbcedd846c20a0",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25453,7 +25445,7 @@
         },
         {
           "path": "src-server/tools/__tests__/station-docs-mcp-server.test.ts",
-          "digest": "2cc2af3a7bedebbbbcdd46a4815c6c80a41d24499be7ac9e82a63fb4180b7b44"
+          "digest": "5191f8493c39b336abdb999ebbf4c96ab11a1fd9266a7d155af4c9b956b53a6f"
         },
         {
           "path": "src-server/tools/station-browser-mcp-server.ts",
@@ -25518,8 +25510,7 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) made mcpUiToolCallDecision private and removed the isDistinctFrameOrigin re-export from MCPToolUIFrame.tsx without changing behavior. The sandboxed-frame and mcp-tool-ui renderer claims still hold. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: the regenerated MCP content changes only the StationHomeArchive and verification-coordinator module topics, carrying reviewed module-map corrections. The manual's catalog and credential-free claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "The install statements in this reference are unchanged; the test now pins user-facing ones verbatim and checks architecture topics with an actor invariant (#2927)."
+        "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -25629,8 +25620,8 @@
       "path": "docs/reference/verification-receipts.md",
       "kind": "current",
       "state": "source-reviewed",
-      "documentDigest": "ff74bf1de7043ac6706c6e252e7e5cac78469dfecd92a760e2f44826212d62bd",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "documentDigest": "40c0d99d7078ddf93c5b3a0ac777d239bea9e7653524db53b7444fc82c4155e1",
+      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
       "summary": "Reviewed request identity, schema and semantic pass conditions, source drift, terminal reporting, artifact protection, handoff/orphan retention and CLI composition. Qualified inventory read errors and preview path disclosure.",
       "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt.",
       "sources": [
@@ -25664,7 +25655,7 @@
         },
         {
           "path": "scripts/lib/verification-reporter.mjs",
-          "digest": "4b37b2cac52ce0d2dc2f55f2bf382f980d9addae087702c4ea1fa07d0cc16070"
+          "digest": "095bb2104f3d08d17a3676660a2981ac6ad8e25b5e05e7af7ed0d47a9c3c8db2"
         },
         {
           "path": "scripts/lib/verification-retention-inventory.mjs",
@@ -25698,8 +25689,7 @@
         "Reviewed landing deltas through 111744681: Discovery derives timeout after refinement, keeps a 30s reserve and 60s standalone fallback, refuses insufficient/invalid budgets, and removes the deadline from child environments. Malformed CLI environment is refused before a diagnostic; exhausted valid preparation records infrastructure failure. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
         "Integration source review through e0314c727: package.json only removed the bearing/forage dependencies. The trust-reconcile-manifest entry and the package.json/lockfile digest inputs are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 55cc03451 changes scripts/run-changed-verification.mjs. A product-law path now adds its law's observation and fault-injection Vitest suites to the selection instead of adding a ci-fast lane and setting escalated. Non-vitest-file evidence is refused. The doc makes no claim about how product laws are routed, and its receipt validation, terminal status and exit-3 provisional/deferred claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "failingStep/inFlightStep now documented as the last step boundary, including the [ci:fast] step marker for direct node steps (#2922)."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
       ]
     },
     {
@@ -26388,7 +26378,7 @@
     {
       "path": "docs/testing/browser-smoke.md",
       "documentDigest": "2bc25a448c6189b75253f9b26a10665f40107d168858254c46752f8a2f559412",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "PR smoke manifest, fixture boundaries, browser-health scope and CI execution policy. Full 40-line baseline read. Traced all seven manifest selections, real HTTP Ollama-shaped fixture versus page-routed streams, explicit monitor installations/assertions/exceptions, worker/retry runner flags, CI step timeout and nonblocking artifact retention. Existing mutation protocol remains a maintenance instruction; not executed in this doc-only pass. Final follow-up scopes required fast-checks to same-repository PRs/merge groups, with fork routing distinct.",
@@ -26412,7 +26402,7 @@
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
-          "digest": "3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35"
+          "digest": "2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d"
         },
         {
           "path": "scripts/critical-browser-reporter.mjs",
@@ -26485,8 +26475,7 @@
         "Integration source review through d1e0facc2: Reviewed browser-spec pruning and repaired actions/positive controls; registry.spec.ts remains after the duplicate install spec was removed. Coverage descriptions retain fixture and execution limits. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: ci.yml added a zsh provisioning step and a 65-minute timeout only to the fast-checks shard job. The pr-smoke step, its ten-minute timeout, the same-repository/merge-group routing and artifact retention are unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2919 strengthens the connect-modal and connect-remote-auth-recovery specs, removes the plugin-system and plugin-dependency-lifecycle manifest entries, adds the authenticated-request-canary smoke-live entry, and moves run-e2e-suite failure retention into settleStartedE2ERun. It also drops the e2e-manifest ci.yml text pin, which ci-workflow-contract now covers. PR_BROWSER_SMOKE_CONTRACT is unchanged with seven journeys, 1 worker and 0 retries. ci.yml still runs the smoke with a 10-minute timeout, and neither connection spec uses monitorBrowserHealth. Prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the run-ci-fast.test.ts delta (the pinned static list gains five gates); the browser smoke wiring described here is unchanged.",
-        "run-ci-fast.test.ts only gained step-marker assertions; no browser-smoke claim depends on them."
+        "Reviewed the run-ci-fast.test.ts delta (the pinned static list gains five gates); the browser smoke wiring described here is unchanged."
       ]
     },
     {
@@ -27600,8 +27589,8 @@
     },
     {
       "path": "examples/knowledge-docs-starter/README.md",
-      "documentDigest": "75285d1e90058ea4e6cb084057f98c5f4ca2b5f05c793fd9c35eb30e82ce75f5",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "documentDigest": "51c92abbcd0e29c891baa06fadfd6065602d0431fc8084195dba510bd6a3c4bb",
+      "sourceRevision": "e464b70652dade22324fda9d6111f49082e80df3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: three static rows, no source-selection payload or intake/index/search, chat Dock callback, fixed host prompt, declared namespace versus Kit roots, contributed Agent and permission/model prerequisites. Existing prose remains accurate.",
@@ -27645,8 +27634,7 @@
         "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
         "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
         "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
-        "Integration source review through e464b7065: added the same qualified `station registry install knowledge-docs-starter` path after the build and local catalog selection. The manifest declares no executable or lifecycle contribution. Source review is separate from executed test evidence.",
-        "Now names useNavigation(), which src/index.tsx imports and calls to open the chat Dock; found by the derived README-term test (#2927)."
+        "Integration source review through e464b7065: added the same qualified `station registry install knowledge-docs-starter` path after the build and local catalog selection. The manifest declares no executable or lifecycle contribution. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -29770,7 +29758,7 @@
     },
     {
       "path": "scripts/AGENTS.md",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
       "kind": "policy",
       "state": "classified",
       "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
@@ -29779,11 +29767,11 @@
       "sources": [
         {
           "path": "docs/guides/code-quality.md",
-          "digest": "96a55448c92106cb87224425635a37fa97882c1c52da11aa3a1fe31a7e56cbba"
+          "digest": "c1561e1356529f776d9a4ee0728f3a15780417a527d9e8ea1931c5227e777564"
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "98eea5a77a16fcc0e256c11d1f5dbf92710df700a5cbd046e2c1e2451c64d663"
+          "digest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2"
         },
         {
           "path": "scripts/code-health-gate.mjs",
@@ -29799,7 +29787,7 @@
         },
         {
           "path": "scripts/vitest-resource-manifest.mjs",
-          "digest": "87e077378f4722b3c0560ef0a5ad89ce987f8f525a39f26c28dc41ceaa7f2c8d"
+          "digest": "f0bd2e4975bc5ab08e5ef91a3f242b7ac44e360eaeead1f48c268b97acdf50cc"
         }
       ],
       "checks": [
@@ -29819,8 +29807,7 @@
         "Integration source review through e0314c727: vitest-resource-manifest.mjs dropped the deleted literal-swap-gate test and classified macos-signing-identity.test.mjs and ProjectSidebarBoards.coarseGeometry.test.tsx. The rule that new child-process tests are classified there still holds, and the routed paths and scripts (owned-process.mjs, code-health-gate.mjs, verification-lanes.mjs, lint:check, verification:policy:gate, ci:fast) resolve, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) removes the deleted longrunning-fixture-child.abnormal-exit test entry from PROCESS_HEAVY_VITEST_FILES in scripts/vitest-resource-manifest.mjs; prose accurate: the rule that new child-process tests must be classified in that manifest still holds, and the file still exists. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881), 8b48e2b35 (#2914) and a290454b4 (#2919) add process-heavy entries to vitest-resource-manifest.mjs: service-launcher, tauri-context, bounded-fixture-process and the Chromium geometry tests. That is consistent with the rule that new child-process tests must be classified there; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the vitest-resource-manifest delta (documentation-freshness.test.ts classified as a bounded child-process file) and code-quality.md freshness wording; the routed rules here are unchanged.",
-        "Resource-manifest classification rule still holds: the two new child-process suites are classified process-heavy. Linked guides changed only in the transfer and selection sections."
+        "Reviewed the vitest-resource-manifest delta (documentation-freshness.test.ts classified as a bounded child-process file) and code-quality.md freshness wording; the routed rules here are unchanged."
       ]
     },
     {
@@ -29844,7 +29831,7 @@
     },
     {
       "path": "scripts/__tests__/fixtures/changed-verification/README.md",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "42491ca6bab31b1365b33e3190c171819881eb72",
       "kind": "fixture",
       "state": "classified",
       "summary": "One-sentence fixture marker. scenarios.json names this README as a boundary-selection input; it is not a production feature or executable module.",
@@ -29853,7 +29840,7 @@
       "sources": [
         {
           "path": "scripts/__tests__/changed-verification.test.ts",
-          "digest": "6ae5cdade4e17693497354b44780f3f712b3e0508efd38be1d333b41d284b77f"
+          "digest": "e3312055e67b0b484e7e8d1013f808d9b3a33d9b85efef7612765ec24c3859b6"
         },
         {
           "path": "scripts/__tests__/fixtures/changed-verification/scenarios.json",
@@ -29872,8 +29859,7 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Shard planning records actual related-discovery duration and its existing cap; no coverage or execution semantics weakened. Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts.",
         "Reviewed landing deltas through 111744681: Deadline tests cover the actual selector CLI over fixtures. The representative full-checkout test retains all assertions but has a 120s child / 125s outer liveness fence; measured checkout overhead exceeded its former 30s cap. Discovery derives timeout after refinement, keeps a 30s reserve and 60s standalone fallback, refuses insufficient/invalid budgets, and removes the deadline from child environments. Malformed CLI environment is refused before a diagnostic; exhausted valid preparation records infrastructure failure. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
         "Integration source review through e0314c727: changed-verification.test.ts only changed the SPAWNED_SCRIPT_EDGES count from 11 to 10. The README's narrow-diff demo and 120-second liveness claims still match the test (timeout: 120_000). The ledger summary calls this a 'one-sentence' marker, but the file is a 15-line explanation; the summary wording, not the README, is stale. Classification review only.",
-        "Integration source review through 42491ca6b: 55cc03451 (#2910) makes a product-law path add its law's observation and fault-injection Vitest suites to the selection (productLawEvidenceTests) instead of adding a ci-fast lane and escalating. The test delta covers that behavior. The representative narrow-diff demo and the 120_000 ms liveness timeout that the README describes are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Fixture semantics unchanged; changed-verification.test.ts only accepts the additional explicit suites derived spawned-script edges add (#2922)."
+        "Integration source review through 42491ca6b: 55cc03451 (#2910) makes a product-law path add its law's observation and fault-injection Vitest suites to the selection (productLawEvidenceTests) instead of adding a ci-fast lane and escalating. The test delta covers that behavior. The representative narrow-diff demo and the 120_000 ms liveness timeout that the README describes are unchanged. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -29976,7 +29962,7 @@
     },
     {
       "path": "scripts/fixtures/orchestration-transfer/README.md",
-      "sourceRevision": "21b628e6ec05579c789715dd6c0aa71ac03dbc6c",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
       "kind": "historical",
       "state": "classified",
       "summary": "Retains the original traffic measurements and envelope rationale. The active budget still sets 64000-byte window/snapshot ceilings; the gate consumes budget.json and requires attribution for changed policy.",
@@ -29993,19 +29979,17 @@
         },
         {
           "path": "scripts/orchestration-transfer-gate.mjs",
-          "digest": "717c7650d88da22c743c77f16735428aebc6a2521c6d0a0c1547f6a02fadeb9a"
+          "digest": "f0809c17d88b7abbdbf1e88ab04f98bddebabd8c426db9891763cd76474ac7d5"
         }
       ],
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
-        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
-        "Budget and attribution content unchanged; the gate change is baseline discovery and merge-base selection (#2925).",
-        "Re-read after JSDoc-only types were added to the transfer gate; budget content unchanged."
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
       ]
     },
     {
       "path": "src-desktop/AGENTS.md",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes native changes to native-shell verification and platform guides; separates unit checks from physical device/runtime evidence and retains Windows process requirements.",
@@ -30018,7 +30002,7 @@
         },
         {
           "path": "scripts/gate-for.mjs",
-          "digest": "6cb1fa0145dee1a979cf8d31c47bfd71f78313437a86d85ba29437605183f68f"
+          "digest": "e414b95418770c138509db2b192e64baed53e9c493f6824be2b0cda2a5261821"
         }
       ],
       "checks": [
@@ -30027,8 +30011,7 @@
         "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
         "Normative route still requires native guide and focused gate selection. Native guide source corrections and new gate-for documentation-impact briefing preserve that policy; independent actual gate CLI proved explicit-path/no-Git and unknown-scope exit2 fallback. No policy activation or physical proof.",
         "2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
-        "Reviewed integration deltas: docs/guides/native-shell-verification.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
-        "Routing unchanged; gate:for gained a structured plan and --json with identical report content."
+        "Reviewed integration deltas: docs/guides/native-shell-verification.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits."
       ]
     },
     {
@@ -30136,7 +30119,7 @@
     },
     {
       "path": "src-server/AGENTS.md",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to module-map/development/testing owners. Preserves route/domain boundaries, logger and Windows launch requirements, request-local batching, and yielding installed-package integrity observations. The current integrity owner serializes scans and joins only a queued observation starting after arrival.",
@@ -30149,11 +30132,11 @@
         },
         {
           "path": "docs/guides/development.md",
-          "digest": "a6302414b30ed9a9c590aed0584674f60c34201b86b167a51d06cadace8159ac"
+          "digest": "ec666bebf846549080f52a23b5d13a1f3fc7a87be01a72c78a1ce8cdf13a7a25"
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "98eea5a77a16fcc0e256c11d1f5dbf92710df700a5cbd046e2c1e2451c64d663"
+          "digest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2"
         },
         {
           "path": "src-server/services/evidence/workflow-sidecar-service.ts",
@@ -30180,8 +30163,7 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map removed the CollaborativeEditorPane and PluginForegroundRuns entries. This policy file routes to the module map generally and names neither module, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "The development guide delta only names two more ci:fast invariant groups; the linked development guidance this file routes to is otherwise unchanged.",
-        "Routes to development and testing guides still resolve; their changed sections do not alter server guidance."
+        "The development guide delta only names two more ci:fast invariant groups; the linked development guidance this file routes to is otherwise unchanged."
       ]
     },
     {
@@ -30372,7 +30354,7 @@
     },
     {
       "path": "src-ui/AGENTS.md",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to canonical module/test guidance. The navigation store and useUnsavedGuard support the single route-guard ownership rule; shared controls and physical layout claims remain distinct from DOM tests.",
@@ -30385,7 +30367,7 @@
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "98eea5a77a16fcc0e256c11d1f5dbf92710df700a5cbd046e2c1e2451c64d663"
+          "digest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2"
         },
         {
           "path": "src-ui/src/components/Button.tsx",
@@ -30423,8 +30405,7 @@
         "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged. Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged. Read the changed document in context; its purpose and prior evidence limits remain.",
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: the module map dropped the CollaborativeEditorPane and PluginForegroundRuns sections and added ProjectTaskRoom. This policy only routes to the module map and names no removed module, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Routes to the testing guide still resolve; its changed sections do not alter UI guidance."
+        "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -30449,7 +30430,7 @@
     },
     {
       "path": "tests/AGENTS.md",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "ae89c0396a4e0b05b0848dcbfeee9eed29d188c4",
       "kind": "policy",
       "state": "classified",
       "summary": "All named fixture helpers and npm scripts resolve. buildExamplePlugin uses the supported scripts/station-cli.ts bootstrap with windowsHide; pairBrowser and fixture audit helpers exist. Conversation, navigation, dialog, bootstrap, and real-action requirements are preserved as policy.",
@@ -30458,7 +30439,7 @@
       "sources": [
         {
           "path": "docs/guides/testing.md",
-          "digest": "98eea5a77a16fcc0e256c11d1f5dbf92710df700a5cbd046e2c1e2451c64d663"
+          "digest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2"
         },
         {
           "path": "scripts/station-cli.ts",
@@ -30491,8 +30472,7 @@
         "Reviewed routing dependencies after package-reference and contributor-guide corrections; instruction scope is unchanged. Verification-lane source delta changes only its displayed scope label.",
         "Reviewed source changes: Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
-        "Reviewed landing deltas through 111744681: Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged.",
-        "Routes to the testing guide still resolve; its changed sections do not alter e2e guidance."
+        "Reviewed landing deltas through 111744681: Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged."
       ]
     },
     {
