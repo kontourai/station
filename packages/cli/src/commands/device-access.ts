@@ -368,12 +368,28 @@ function reportFullAccessRevocation(
     );
   const report = record.fullAccessRevocation as
     | {
-        reset?: Array<{ conversationId?: unknown; was?: unknown }>;
-        stillFullAccess?: Array<{ conversationId?: unknown; reason?: unknown }>;
+        reset?: Array<{
+          conversationId?: unknown;
+          title?: unknown;
+          was?: unknown;
+        }>;
+        stillFullAccess?: Array<{
+          conversationId?: unknown;
+          title?: unknown;
+          reason?: unknown;
+        }>;
         reconfined?: Array<{ conversationId?: unknown }>;
-        stillUnconfined?: Array<{ conversationId?: unknown; until?: unknown }>;
+        stillUnconfined?: Array<{
+          conversationId?: unknown;
+          title?: unknown;
+          until?: unknown;
+        }>;
         unattributedHostStarts?: {
-          sessions?: Array<{ conversationId?: unknown; startedAt?: unknown }>;
+          sessions?: Array<{
+            conversationId?: unknown;
+            title?: unknown;
+            startedAt?: unknown;
+          }>;
           total?: unknown;
         };
       }
@@ -391,6 +407,11 @@ function reportFullAccessRevocation(
       ? report.unattributedHostStarts.total
       : unattributed.length;
   const id = (value: unknown) => terminalSafeText(String(value)).slice(0, 128);
+  // A conversation by title, where it has one, then its id.
+  const named = (entry: { conversationId?: unknown; title?: unknown }) =>
+    typeof entry.title === 'string' && entry.title.trim()
+      ? `"${id(entry.title)}" ${id(entry.conversationId)}`
+      : id(entry.conversationId);
   const reconfined = Array.isArray(report.reconfined) ? report.reconfined : [];
   const unconfined = Array.isArray(report.stillUnconfined)
     ? report.stillUnconfined
@@ -411,25 +432,25 @@ function reportFullAccessRevocation(
     );
     for (const entry of reset)
       write(
-        `  ${id(entry.conversationId)}  was: ${RESET_WAS[String(entry.was)] ?? id(entry.was)}`,
+        `  ${named(entry)}  was: ${RESET_WAS[String(entry.was)] ?? id(entry.was)}`,
       );
   }
   if (still.length > 0) {
     write('Still at full access, not changed:');
     for (const entry of still)
       write(
-        `  ${id(entry.conversationId)}  because of ${STILL_REASON[String(entry.reason)] ?? id(entry.reason)}`,
+        `  ${named(entry)}  because of ${STILL_REASON[String(entry.reason)] ?? id(entry.reason)}`,
       );
   }
   if (reconfined.length > 0) {
     write('Re-confined from its next turn (runs inside the workspace again):');
-    for (const entry of reconfined) write(`  ${id(entry.conversationId)}`);
+    for (const entry of reconfined) write(`  ${named(entry)}`);
   }
   if (unconfined.length > 0) {
     write('Still unconfined, not changed:');
     for (const entry of unconfined)
       write(
-        `  ${id(entry.conversationId)}  because ${UNCONFINED_UNTIL[String(entry.until)] ?? id(entry.until)}`,
+        `  ${named(entry)}  because ${UNCONFINED_UNTIL[String(entry.until)] ?? id(entry.until)}`,
       );
   }
   if (unattributed.length > 0) {
@@ -437,7 +458,7 @@ function reportFullAccessRevocation(
       'Unattributed host start: still at full access, not changed (started before Station recorded who granted it; it may be this device):',
     );
     for (const entry of unattributed)
-      write(`  ${id(entry.conversationId)}  started ${id(entry.startedAt)}`);
+      write(`  ${named(entry)}  started ${id(entry.startedAt)}`);
     if (unattributedTotal > unattributed.length)
       write(
         `  … and ${unattributedTotal - unattributed.length} more (${unattributedTotal} in all).`,

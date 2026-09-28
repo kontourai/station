@@ -227,7 +227,14 @@ describe('PairedDevicesPanel', () => {
         id: 'abc',
         fullAccessRevocation: {
           cause: 'device-revoked',
-          reset: [{ conversationId: 'conversation:reset-1', was: 'never' }],
+          reset: [
+            {
+              conversationId: 'conversation:reset-1',
+              title: '[Fix the build](https://evil.example)',
+              sessionId: 'session-reset-1',
+              was: 'never',
+            },
+          ],
           reconfined: [{ conversationId: 'conversation:reset-1' }],
           stillUnconfined: [
             { conversationId: 'conversation:running', until: 'engine-restart' },
@@ -261,22 +268,30 @@ describe('PairedDevicesPanel', () => {
       '“Pixel 9” was revoked, and so was the full access it had given.',
     );
     expect(notice.textContent).toContain(
-      'conversation:reset-1 (was its full-access decision)',
+      '[Fix the build](https://evil.example) conversation:reset-1 (was its full-access decision)',
+    );
+    // The title opens the session in Activity; it is text, never markup.
+    const open = screen.getByRole('link', {
+      name: '[Fix the build](https://evil.example)',
+    });
+    expect(open.getAttribute('href')).toBe(
+      '/?surface=activity&session=session-reset-1',
     );
     expect(notice.textContent).toContain(
-      '[x](https://evil.example), because of the Station’s default approval mode',
+      'Untitled conversation [x](https://evil.example), because of the Station’s default approval mode',
     );
     expect(notice.textContent).toContain(
-      'older-host, started 2026-09-01T00:00:00.000Z',
+      'Untitled conversation older-host, started 2026-09-01T00:00:00.000Z',
     );
     expect(notice.textContent).toContain('…and 1 more (2 in all).');
     expect(notice.textContent).toContain(
-      'Re-confined from its next turn (runs inside the workspace again):conversation:reset-1',
+      'Re-confined from its next turn (runs inside the workspace again):Untitled conversation conversation:reset-1',
     );
     expect(notice.textContent).toContain(
-      'conversation:running, because its engine is running with no decision to re-apply',
+      'Untitled conversation conversation:running, because its engine is running with no decision to re-apply',
     );
-    expect(notice.querySelector('a')).toBeNull();
+    // The only link is the one Station built; no id or title becomes one.
+    expect(notice.querySelectorAll('a')).toHaveLength(1);
   });
 
   test('#1796 G3: revoking a device that had put nothing at full access adds no notice', async () => {

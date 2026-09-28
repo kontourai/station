@@ -8807,6 +8807,7 @@ export class OrchestrationService {
     > = [];
     let unattributedHostStartCount = 0;
     const listed = new Set(conversations.keys());
+    const unattributedSeeds = new Map<string, string>();
     for (const session of this.sessionReadModel.values()) {
       if (session.status === 'closed' || session.status === 'dead') continue;
       const threadId = session.threadId;
@@ -8815,6 +8816,7 @@ export class OrchestrationService {
       const conversationId = conversationOf(threadId);
       if (listed.has(conversationId)) continue;
       listed.add(conversationId);
+      unattributedSeeds.set(conversationId, threadId);
       unattributedHostStartCount += 1;
       if (unattributedHostStarts.length < UNATTRIBUTED_HOST_START_LIMIT)
         unattributedHostStarts.push({
@@ -8832,14 +8834,28 @@ export class OrchestrationService {
           reason: 'unattributed-decision',
         });
     }
+    // Each entry names its conversation by title where it has one, and a
+    // session to open it by: plain data a client renders as text.
+    const describe = <T extends { conversationId: string }>(entry: T): T => {
+      const seed =
+        conversations.get(entry.conversationId) ??
+        unattributed.get(entry.conversationId) ??
+        unattributedSeeds.get(entry.conversationId);
+      if (!seed) return entry;
+      const title = store.conversationTitle([
+        entry.conversationId,
+        ...threadsOf(entry.conversationId, seed),
+      ]);
+      return { ...entry, sessionId: seed, ...(title ? { title } : {}) };
+    };
     return {
       cause: input.cause,
-      reset,
-      stillFullAccess,
-      reconfined,
-      stillUnconfined,
+      reset: reset.map(describe),
+      stillFullAccess: stillFullAccess.map(describe),
+      reconfined: reconfined.map(describe),
+      stillUnconfined: stillUnconfined.map(describe),
       unattributedHostStarts: {
-        sessions: unattributedHostStarts,
+        sessions: unattributedHostStarts.map(describe),
         total: unattributedHostStartCount,
       },
     };

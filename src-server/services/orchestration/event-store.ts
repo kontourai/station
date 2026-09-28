@@ -5075,6 +5075,23 @@ export class EventStore {
   }
 
   /**
+   * #1796: a conversation's title for the revocation report: the first of
+   * `threadIds` (the conversation id, then its sessions) that has one.
+   */
+  conversationTitle(threadIds: readonly string[]): string | undefined {
+    const statement = this.db.prepare(
+      `SELECT title FROM orchestration_conversation_history WHERE thread_id = ?`,
+    );
+    for (const threadId of new Set(threadIds)) {
+      const row = statement.get(threadId) as
+        | { title: string | null }
+        | undefined;
+      if (typeof row?.title === 'string' && row.title.trim()) return row.title;
+    }
+    return undefined;
+  }
+
+  /**
    * #1796: threads holding a `never` decision whose recorder is not known
    * (recorded before decisions carried `clientOrigin`).
    */

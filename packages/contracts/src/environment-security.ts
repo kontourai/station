@@ -1215,6 +1215,10 @@ export interface FullAccessRevocationReport {
   readonly cause: 'scope-removed' | 'device-revoked';
   readonly reset: readonly {
     readonly conversationId: string;
+    /** Its title, when it has one (shown as plain text). */
+    readonly title?: string;
+    /** A session of it, to open it by (the Activity deep link). */
+    readonly sessionId?: string;
     /**
      * What the device had granted: its own recorded `never`, its Default
      * pick that resolved to full access, or a session it started unconfined
@@ -1229,6 +1233,10 @@ export interface FullAccessRevocationReport {
   }[];
   readonly stillFullAccess: readonly {
     readonly conversationId: string;
+    /** Its title, when it has one (shown as plain text). */
+    readonly title?: string;
+    /** A session of it, to open it by (the Activity deep link). */
+    readonly sessionId?: string;
     readonly reason:
       | 'operator-decision'
       | 'another-device-decision'
@@ -1242,7 +1250,11 @@ export interface FullAccessRevocationReport {
    * each turn re-applies its mode under the confinement the grant no longer
    * lifts; or the engine is not running, so its next start is confined.
    */
-  readonly reconfined: readonly { readonly conversationId: string }[];
+  readonly reconfined: readonly {
+    readonly conversationId: string;
+    readonly title?: string;
+    readonly sessionId?: string;
+  }[];
   /**
    * The same kind of session, still unconfined: its engine is running with
    * no decision standing, so it keeps the posture it started with until it
@@ -1251,6 +1263,10 @@ export interface FullAccessRevocationReport {
    */
   readonly stillUnconfined: readonly {
     readonly conversationId: string;
+    /** Its title, when it has one (shown as plain text). */
+    readonly title?: string;
+    /** A session of it, to open it by (the Activity deep link). */
+    readonly sessionId?: string;
     readonly until: 'engine-restart' | 'grant-not-checked';
   }[];
   /**
@@ -1262,6 +1278,10 @@ export interface FullAccessRevocationReport {
   readonly unattributedHostStarts: {
     readonly sessions: readonly {
       readonly conversationId: string;
+      /** Its title, when it has one (shown as plain text). */
+      readonly title?: string;
+      /** A session of it, to open it by (the Activity deep link). */
+      readonly sessionId?: string;
       readonly startedAt: string;
     }[];
     readonly total: number;

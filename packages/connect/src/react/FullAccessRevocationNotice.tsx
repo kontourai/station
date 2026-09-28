@@ -1,4 +1,5 @@
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { useEffect, useRef } from 'react';
 
 /**
@@ -64,6 +65,18 @@ function oneOf<T extends string>(
   return values.find((candidate) => candidate === value);
 }
 
+/** An entry's title and session, when it carries valid ones. */
+const named = (
+  entry: Record<string, unknown>,
+): { title?: string; sessionId?: string } => {
+  const title = text(entry.title);
+  const sessionId = text(entry.sessionId);
+  return {
+    ...(title ? { title } : {}),
+    ...(sessionId ? { sessionId } : {}),
+  };
+};
+
 /**
  * The report, read field by field from the Station's answer: entries that
  * do not match the contract are dropped, not cast through.
@@ -85,7 +98,8 @@ function parseReport(value: unknown): Report | null {
     if (!isRecord(entry)) continue;
     const conversationId = text(entry.conversationId);
     const was = oneOf(RESET_KINDS, entry.was);
-    if (conversationId && was) reset.push({ conversationId, was });
+    if (conversationId && was)
+      reset.push({ conversationId, ...named(entry), was });
   }
   const stillFullAccess: Array<Report['stillFullAccess'][number]> = [];
   for (const entry of value.stillFullAccess) {
@@ -93,14 +107,13 @@ function parseReport(value: unknown): Report | null {
     const conversationId = text(entry.conversationId);
     const reason = oneOf(STILL_KINDS, entry.reason);
     if (conversationId && reason)
-      stillFullAccess.push({ conversationId, reason });
+      stillFullAccess.push({ conversationId, ...named(entry), reason });
   }
   const reconfined: Array<Report['reconfined'][number]> = [];
   for (const entry of Array.isArray(value.reconfined) ? value.reconfined : []) {
-    const conversationId = isRecord(entry)
-      ? text(entry.conversationId)
-      : undefined;
-    if (conversationId) reconfined.push({ conversationId });
+    if (!isRecord(entry)) continue;
+    const conversationId = text(entry.conversationId);
+    if (conversationId) reconfined.push({ conversationId, ...named(entry) });
   }
   const stillUnconfined: Array<Report['stillUnconfined'][number]> = [];
   for (const entry of Array.isArray(value.stillUnconfined)
@@ -110,7 +123,7 @@ function parseReport(value: unknown): Report | null {
     const conversationId = text(entry.conversationId);
     const until = oneOf(UNTIL_KINDS, entry.until);
     if (conversationId && until)
-      stillUnconfined.push({ conversationId, until });
+      stillUnconfined.push({ conversationId, ...named(entry), until });
   }
   const sessions: Array<Report['unattributedHostStarts']['sessions'][number]> =
     [];
@@ -124,7 +137,7 @@ function parseReport(value: unknown): Report | null {
     const conversationId = text(entry.conversationId);
     const startedAt = text(entry.startedAt);
     if (conversationId && startedAt)
-      sessions.push({ conversationId, startedAt });
+      sessions.push({ conversationId, ...named(entry), startedAt });
   }
   const total =
     typeof unattributed?.total === 'number' &&
@@ -164,6 +177,28 @@ export function readFullAccessRevocation(
   )
     return null;
   return { kind: 'report', deviceName, report };
+}
+
+/**
+ * A conversation as the notice lists it: its title (plain text) and id, and
+ * where it names a session, a link that opens it in Activity.
+ */
+function ConversationRef({
+  entry,
+}: {
+  entry: { conversationId: string; title?: string; sessionId?: string };
+}) {
+  const name = entry.title ?? 'Untitled conversation';
+  return (
+    <>
+      {entry.sessionId ? (
+        <a href={activityDeepLink({ sessionId: entry.sessionId })}>{name}</a>
+      ) : (
+        <span>{name}</span>
+      )}{' '}
+      <code style={{ opacity: 0.7 }}>{entry.conversationId}</code>
+    </>
+  );
 }
 
 export function FullAccessRevocationNotice({
@@ -223,7 +258,7 @@ export function FullAccessRevocationNotice({
           <ul style={LIST_STYLE}>
             {reset.map((entry) => (
               <li key={`reset-${entry.conversationId}`}>
-                <code>{entry.conversationId}</code> (was{' '}
+                <ConversationRef entry={entry} /> (was{' '}
                 {RESET_WAS[entry.was] ?? entry.was})
               </li>
             ))}
@@ -236,7 +271,7 @@ export function FullAccessRevocationNotice({
           <ul style={LIST_STYLE}>
             {stillFullAccess.map((entry) => (
               <li key={`still-${entry.conversationId}`}>
-                <code>{entry.conversationId}</code>, because of{' '}
+                <ConversationRef entry={entry} />, because of{' '}
                 {STILL_REASON[entry.reason] ?? entry.reason}
               </li>
             ))}
@@ -251,7 +286,7 @@ export function FullAccessRevocationNotice({
           <ul style={LIST_STYLE}>
             {reconfined.map((entry) => (
               <li key={`reconfined-${entry.conversationId}`}>
-                <code>{entry.conversationId}</code>
+                <ConversationRef entry={entry} />
               </li>
             ))}
           </ul>
@@ -263,7 +298,7 @@ export function FullAccessRevocationNotice({
           <ul style={LIST_STYLE}>
             {stillUnconfined.map((entry) => (
               <li key={`unconfined-${entry.conversationId}`}>
-                <code>{entry.conversationId}</code>, because{' '}
+                <ConversationRef entry={entry} />, because{' '}
                 {UNCONFINED_UNTIL[entry.until] ?? entry.until}
               </li>
             ))}
@@ -280,7 +315,7 @@ export function FullAccessRevocationNotice({
           <ul style={LIST_STYLE}>
             {unattributed.sessions.map((entry) => (
               <li key={`unattributed-${entry.conversationId}`}>
-                <code>{entry.conversationId}</code>, started {entry.startedAt}
+                <ConversationRef entry={entry} />, started {entry.startedAt}
               </li>
             ))}
           </ul>

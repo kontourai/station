@@ -309,7 +309,11 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
         cause: 'scope-removed',
         reset: [{ conversationId: 'conversation:a', was: 'never' }],
         stillFullAccess: [
-          { conversationId: 'conversation:b', reason: 'agent-default' },
+          {
+            conversationId: 'conversation:b',
+            title: 'Fix the \u001b[31mbuild',
+            reason: 'agent-default',
+          },
         ],
         reconfined: [{ conversationId: 'conversation:a' }],
         stillUnconfined: [
@@ -331,7 +335,7 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
       'Reset to Ask (a turn already running finishes first; the next one asks):\n  conversation:a  was: its full-access decision',
     );
     expect(printed()).toContain(
-      "Still at full access, not changed:\n  conversation:b  because of the Agent's default approval mode",
+      'Still at full access, not changed:\n  "Fix the \\u001b[31mbuild" conversation:b  because of the Agent\'s default approval mode',
     );
     expect(printed()).toContain(
       '  older-\\u001b[31m  started 2026-09-01T00:00:00.000Z',

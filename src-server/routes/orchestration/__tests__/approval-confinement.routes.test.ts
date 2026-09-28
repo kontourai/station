@@ -1422,6 +1422,26 @@ test('sessionRunsHost reads the start stamp and a recorded never, as a turn does
 describe('#1796 G3: revoking a device resets the full access it granted', () => {
   const standardScope = [...PAIRING_SCOPE_PRESETS.standard];
   const NONE_UNATTRIBUTED = { sessions: [], total: 0 };
+  /**
+   * The report without each entry's title and session (pinned on their own
+   * in the test that names them), so the rest compares exactly.
+   */
+  const bare = (report: any) => {
+    if (!report) return report;
+    const strip = (entries: any[]) =>
+      entries.map(({ title: _title, sessionId: _session, ...rest }) => rest);
+    return {
+      ...report,
+      reset: strip(report.reset),
+      stillFullAccess: strip(report.stillFullAccess),
+      reconfined: strip(report.reconfined),
+      stillUnconfined: strip(report.stillUnconfined),
+      unattributedHostStarts: {
+        ...report.unattributedHostStarts,
+        sessions: strip(report.unattributedHostStarts.sessions),
+      },
+    };
+  };
   const startGrantor = (f: Fixture, threadId: string) =>
     (
       f.store.latestEventByMethod(threadId, 'session.started')?.payload as
@@ -1534,7 +1554,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     const removed = await removeFullAccess(f, laptop.device.id);
 
     expect(removed.status, removed.text).toBe(200);
-    expect(removed.body.fullAccessRevocation).toEqual({
+    expect(bare(removed.body.fullAccessRevocation)).toEqual({
       cause: 'scope-removed',
       reset: [{ conversationId, was: 'never' }],
       stillFullAccess: [],
@@ -1581,7 +1601,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     const revoked = await revokeDevice(f, laptop.device.id);
 
     expect(revoked.status, revoked.text).toBe(200);
-    expect(revoked.body.fullAccessRevocation).toEqual({
+    expect(bare(revoked.body.fullAccessRevocation)).toEqual({
       cause: 'device-revoked',
       reset: [{ conversationId, was: 'host-start' }],
       stillFullAccess: [],
@@ -1610,7 +1630,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     const removed = await removeFullAccess(f, laptop.device.id);
 
     expect(removed.status, removed.text).toBe(200);
-    expect(removed.body.fullAccessRevocation.reset).toHaveLength(1);
+    expect(bare(removed.body.fullAccessRevocation).reset).toHaveLength(1);
     expect(interrupt).not.toHaveBeenCalled();
     expect(stop).not.toHaveBeenCalled();
     expect(f.claude.turns).toHaveLength(turnsBefore);
@@ -1650,7 +1670,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const removed = await removeFullAccess(f, laptop.device.id);
 
-    expect(removed.body.fullAccessRevocation).toEqual({
+    expect(bare(removed.body.fullAccessRevocation)).toEqual({
       cause: 'scope-removed',
       reset: [],
       stillFullAccess: [{ conversationId, reason: 'operator-decision' }],
@@ -1681,7 +1701,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const removed = await removeFullAccess(f, laptop.device.id);
 
-    expect(removed.body.fullAccessRevocation).toEqual({
+    expect(bare(removed.body.fullAccessRevocation)).toEqual({
       cause: 'scope-removed',
       reset: [],
       stillFullAccess: [],
@@ -1757,7 +1777,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const removed = await removeFullAccess(f, laptop.device.id);
 
-    expect(removed.body.fullAccessRevocation).toEqual({
+    expect(bare(removed.body.fullAccessRevocation)).toEqual({
       cause: 'scope-removed',
       reset: [],
       stillFullAccess: [{ conversationId, reason: 'agent-default' }],
@@ -1790,7 +1810,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const removed = await removeFullAccess(f, laptop.device.id);
 
-    expect(removed.body.fullAccessRevocation).toEqual({
+    expect(bare(removed.body.fullAccessRevocation)).toEqual({
       cause: 'scope-removed',
       reset: [],
       stillFullAccess: [{ conversationId, reason: 'unattributed-decision' }],
@@ -1817,7 +1837,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       { scope: [...standardScope, PAIRING_SCOPE_APPROVAL_FULL_ACCESS] },
     );
     expect(kept.status, kept.text).toBe(200);
-    expect(kept.body.fullAccessRevocation).toBeUndefined();
+    expect(bare(kept.body.fullAccessRevocation)).toBeUndefined();
     expect(decisions(f, threadId).map((event) => event.approvalMode)).toEqual([
       'never',
     ]);
@@ -1831,8 +1851,10 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     const removed = await removeFullAccess(f, laptop.device.id);
 
     expect(removed.status, removed.text).toBe(200);
-    expect(removed.body.fullAccessRevocation.reset).toEqual([]);
-    expect(removed.body.fullAccessRevocation.unattributedHostStarts).toEqual({
+    expect(bare(removed.body.fullAccessRevocation).reset).toEqual([]);
+    expect(
+      bare(removed.body.fullAccessRevocation).unattributedHostStarts,
+    ).toEqual({
       sessions: [
         { conversationId: 'older-host-session', startedAt: expect.any(String) },
       ],
@@ -1849,7 +1871,9 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const removed = await removeFullAccess(f, laptop.device.id);
 
-    const listing = removed.body.fullAccessRevocation.unattributedHostStarts;
+    const listing = bare(
+      removed.body.fullAccessRevocation,
+    ).unattributedHostStarts;
     expect(listing.sessions).toHaveLength(50);
     expect(listing.total).toBe(51);
   });
@@ -1897,7 +1921,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const removed = await removeFullAccess(f, laptop.device.id);
 
-    expect(removed.body.fullAccessRevocation).toMatchObject({
+    expect(bare(removed.body.fullAccessRevocation)).toMatchObject({
       reset: [],
       reconfined: [{ conversationId: response.body.data.conversationId }],
       stillUnconfined: [],
@@ -1943,7 +1967,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const revoked = await revokeDevice(f, laptop.device.id);
 
-    expect(revoked.body.fullAccessRevocation.reset).toEqual([
+    expect(bare(revoked.body.fullAccessRevocation).reset).toEqual([
       { conversationId, was: 'host-start' },
     ]);
   });
@@ -1976,10 +2000,10 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const removed = await removeFullAccess(f, laptop.device.id);
 
-    expect(removed.body.fullAccessRevocation.reset).toEqual([
+    expect(bare(removed.body.fullAccessRevocation).reset).toEqual([
       { conversationId: auto.conversationId, was: 'auto-on-host' },
     ]);
-    const reconfined = removed.body.fullAccessRevocation.reconfined.map(
+    const reconfined = bare(removed.body.fullAccessRevocation).reconfined.map(
       (entry: { conversationId: string }) => entry.conversationId,
     );
     expect(reconfined.sort()).toEqual(
@@ -2006,7 +2030,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const removed = await removeFullAccess(f, laptop.device.id);
 
-    expect(removed.body.fullAccessRevocation).toMatchObject({
+    expect(bare(removed.body.fullAccessRevocation)).toMatchObject({
       reset: [{ conversationId, was: 'never' }],
       reconfined: [],
       stillUnconfined: [{ conversationId, until: 'grant-not-checked' }],
@@ -2084,7 +2108,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     ]);
     // A scope write that keeps it absent, without asking, resets nothing.
     const plain = await removeFullAccess(f, laptop.device.id);
-    expect(plain.body.fullAccessRevocation).toBeUndefined();
+    expect(bare(plain.body.fullAccessRevocation)).toBeUndefined();
     const retry = () =>
       f.request(
         f.bearer(f.operator.credential),
@@ -2094,12 +2118,12 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const retried = await retry();
 
-    expect(retried.body.fullAccessRevocation).toMatchObject({
+    expect(bare(retried.body.fullAccessRevocation)).toMatchObject({
       reset: [{ conversationId, was: 'never' }],
       reconfined: [{ conversationId }],
     });
     const again = await retry();
-    expect(again.body.fullAccessRevocation).toMatchObject({
+    expect(bare(again.body.fullAccessRevocation)).toMatchObject({
       reset: [],
       reconfined: [{ conversationId }],
     });
@@ -2107,5 +2131,24 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       'never',
       'ask',
     ]);
+  });
+
+  test('each listed conversation carries its title and a session to open it by', async () => {
+    const f = await fixture({});
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId, threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'recorded',
+    );
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    const entry = { conversationId, sessionId: threadId, title: 'go' };
+    expect(removed.body.fullAccessRevocation.reset).toEqual([
+      { ...entry, was: 'never' },
+    ]);
+    expect(removed.body.fullAccessRevocation.reconfined).toEqual([entry]);
   });
 });
