@@ -13,21 +13,10 @@ const { discard } = vi.hoisted(() => ({
 vi.mock('../lib/outboundQueue', () => ({ outboundDispatch: { discard } }));
 
 import { OutboundQueuedMessages } from '../components/chat/OutboundQueuedMessages';
-import {
-  agentIdentityFromSession,
-  startNewChatWithMessage,
-} from '../components/chat-dock/ChatDock';
+import { startNewChatWithMessage } from '../components/chat-dock/ChatDock';
+import { NewChatUnavailableError } from '../components/chat-dock/newChatErrors';
 
 describe('ChatDock offline queued-turn identity (station#2600)', () => {
-  test('uses only the active session identity when the server-loaded agent list is empty', () => {
-    expect(
-      agentIdentityFromSession({
-        agentSlug: agentId('codex'),
-        agentName: 'Codex',
-      }),
-    ).toEqual({ slug: agentId('codex'), name: 'Codex' });
-  });
-
   test('a real failed queue-row tap creates, seeds, and discards from its own offline session identity', async () => {
     const openChatForAgent = vi.fn();
     render(
@@ -80,12 +69,26 @@ describe('ChatDock offline queued-turn identity (station#2600)', () => {
     await waitFor(() => expect(discard).toHaveBeenCalledWith('queued-turn'));
   });
 
-  test('fails closed when the persisted session itself has no agent identity', () => {
-    expect(
-      agentIdentityFromSession({
-        agentSlug: undefined as any,
-        agentName: undefined as any,
-      }),
-    ).toBeNull();
-  });
+  test.each([
+    ['no agent identity at all', undefined, undefined],
+    ['a blank agent name', 'codex', '   '],
+  ])(
+    'fails closed, opening nothing, when the persisted session has %s',
+    async (_case, slug, name) => {
+      const openChatForAgent = vi.fn();
+      await expect(
+        startNewChatWithMessage({
+          initialMessage: 'continue offline work',
+          agents: [],
+          activeSession: {
+            agentSlug: slug === undefined ? undefined : agentId(slug),
+            agentName: name,
+            projectSlug: 'offline-project',
+          } as any,
+          openChatForAgent,
+        }),
+      ).rejects.toThrow(NewChatUnavailableError);
+      expect(openChatForAgent).not.toHaveBeenCalled();
+    },
+  );
 });

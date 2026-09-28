@@ -8,10 +8,27 @@
  * slash-command short-circuits.
  */
 import { contextRegistry } from '@kontourai/station-sdk';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { geolocationContextProvider } from '../providers/context/GeolocationContextProvider';
 import { timezoneContextProvider } from '../providers/context/TimezoneContextProvider';
 import { ambientContextForSend } from '../utils/chatAmbientContext';
+
+function stubGeolocation() {
+  Object.defineProperty(navigator, 'geolocation', {
+    configurable: true,
+    value: {
+      watchPosition: (
+        onSuccess: (pos: {
+          coords: { latitude: number; longitude: number };
+        }) => void,
+      ) => {
+        onSuccess({ coords: { latitude: 39.7392, longitude: -104.9903 } });
+        return 1;
+      },
+      clearWatch: () => {},
+    },
+  });
+}
 
 describe('ambientContextForSend', () => {
   it('passes the composed context through for a normal send', () => {
@@ -66,23 +83,6 @@ describe('geolocation context provider feed', () => {
     geolocationContextProvider.enabled = false;
   });
 
-  function stubGeolocation() {
-    Object.defineProperty(navigator, 'geolocation', {
-      configurable: true,
-      value: {
-        watchPosition: (
-          onSuccess: (pos: {
-            coords: { latitude: number; longitude: number };
-          }) => void,
-        ) => {
-          onSuccess({ coords: { latitude: 39.7392, longitude: -104.9903 } });
-          return 1;
-        },
-        clearWatch: () => {},
-      },
-    });
-  }
-
   it('yields a [My location: …] context once enabled with coordinates', () => {
     stubGeolocation();
     geolocationContextProvider.enabled = true;
@@ -91,8 +91,16 @@ describe('geolocation context provider feed', () => {
     expect(ambientContextForSend(ctx, 'where am I?')).toBe(ctx);
   });
 
-  it('is disabled by default and yields no context', () => {
-    expect(geolocationContextProvider.getContext()).toBeNull();
+  it('is disabled by default and yields no context', async () => {
+    // A fresh module reads the shipped default, not the flag the test above
+    // flipped and afterEach reset on the shared singleton.
+    stubGeolocation();
+    vi.resetModules();
+    const { geolocationContextProvider: fresh } = await import(
+      '../providers/context/GeolocationContextProvider'
+    );
+    expect(fresh.enabled).toBe(false);
+    expect(fresh.getContext()).toBeNull();
   });
 });
 
@@ -105,10 +113,14 @@ describe('registry composition feed', () => {
   });
 
   it('joins enabled providers with newlines and flows through the helper', () => {
+    stubGeolocation();
+    geolocationContextProvider.enabled = true;
     contextRegistry.register(timezoneContextProvider);
     contextRegistry.register(geolocationContextProvider);
     const composed = contextRegistry.getComposedContext();
-    expect(composed).toMatch(/^\[Timezone: .+\]$/);
+    expect(composed).toBe(
+      `${timezoneContextProvider.getContext()}\n[My location: 39.73920, -104.99030]`,
+    );
     expect(ambientContextForSend(composed, 'what time is it?')).toBe(composed);
   });
 });

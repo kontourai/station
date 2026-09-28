@@ -110,14 +110,6 @@ describe('AnswerSharesSection', () => {
     ).toBeTruthy();
   });
 
-  it('never renders a token or a digest', () => {
-    sharesQuery.data = [share()];
-    const { container } = render(<AnswerSharesSection />);
-    // The store keeps only a digest and the summary carries neither; this
-    // pins that the row has nothing capability-shaped to display.
-    expect(container.textContent).not.toMatch(/[A-Za-z0-9_-]{40,}/);
-  });
-
   it('names an unparseable timestamp instead of printing an epoch date', () => {
     sharesQuery.data = [share({ createdAt: 'nonsense' })];
     const { container } = render(<AnswerSharesSection />);

@@ -344,7 +344,6 @@
     "src-ui/src/contexts/active-chats-state.ts:boundQueuedMessages",
     "src-ui/src/contexts/background-tasks-store.ts:FINISHED_LIMIT_PER_CHAT",
     "src-ui/src/contexts/banner-store.ts:BANNER_TONE_WORD",
-    "src-ui/src/contexts/chat-drafts-store.ts:MAX_DRAFTS",
     "src-ui/src/core/PluginRegistry.ts:authorizesPluginLayout",
     "src-ui/src/core/permission-vocabulary.ts:PERMISSION_LABELS",
     "src-ui/src/core/pluginSharedRuntime.ts:loadStationSdkClient",

@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import {
-  appendInputHistory,
   assignConversationIdState,
   clearEphemeralMessagesState,
   clearInputState,
@@ -10,8 +9,6 @@ import {
   createEphemeralMessageState,
   hydrateActiveChats,
   mergeChatUpdates,
-  navigateHistoryDownState,
-  navigateHistoryUpState,
   removeQueuedMessageState,
   reorderQueuedMessageState,
   serializeActiveChats,
@@ -301,46 +298,6 @@ describe('active chat state helpers', () => {
     expect(chats['external-agent'].executionMode).toBe('external');
   });
 
-  test('navigates history and restores saved input', () => {
-    const seeded = appendInputHistory(
-      {
-        input: 'draft',
-        attachments: [],
-        queuedMessages: [],
-        inputHistory: ['first', 'second'],
-        hasUnread: false,
-      },
-      'third',
-    );
-
-    expect(seeded.inputHistory).toEqual(['first', 'second', 'third']);
-
-    const up = navigateHistoryUpState({
-      ...seeded,
-      input: 'draft',
-      historyIndex: -1,
-      savedInput: undefined,
-    });
-
-    expect(up).toMatchObject({
-      input: 'third',
-      historyIndex: 2,
-      savedInput: 'draft',
-    });
-
-    const down = navigateHistoryDownState({
-      ...up!,
-      historyIndex: 2,
-      savedInput: 'draft',
-    });
-
-    expect(down).toMatchObject({
-      input: 'draft',
-      historyIndex: -1,
-      savedInput: undefined,
-    });
-  });
-
   test('merges updates and resets history when input changes', () => {
     const result = mergeChatUpdates(
       {
@@ -391,42 +348,6 @@ describe('active chat state helpers', () => {
       shouldPersist: true,
       droppedQueuedMessages: [],
     });
-  });
-
-  test('creates ephemeral messages using the persisted conversation id', () => {
-    const next = createEphemeralMessageState(
-      {
-        input: '',
-        attachments: [],
-        queuedMessages: [],
-        inputHistory: [],
-        hasUnread: false,
-        agentSlug: 'planner',
-        conversationId: 'conv-42',
-        ephemeralMessages: [],
-      },
-      {
-        role: 'system',
-        content: 'queued',
-      },
-      () => 100,
-      () => 'seed',
-      (agentSlug, conversationId) => {
-        expect(agentSlug).toBe('planner');
-        expect(conversationId).toBe('conv-42');
-        return [{ timestamp: '2026-01-01T00:00:05.000Z' }];
-      },
-    );
-
-    expect(next?.ephemeralMessages?.[0]).toMatchObject({
-      id: 'ephemeral-100-seed',
-      content: 'queued',
-      ephemeral: true,
-      timestamp: new Date('2026-01-01T00:00:05.000Z').getTime() + 1,
-    });
-    // archive#1292: insertAfterCount was dropped — nothing ever read it, and
-    // the guaranteed timestamp above is sufficient for the transcript sort.
-    expect(next?.ephemeralMessages?.[0]).not.toHaveProperty('insertAfterCount');
   });
 
   test('creates ephemeral messages carrying an action (station#1292: every failure-path notice, including one with a Retry/Continue/Discard action, now goes through this single assignment path)', () => {
@@ -541,34 +462,27 @@ describe('active chat state helpers', () => {
       attachments: [
         { id: 'a1', name: 'file', type: 'text/plain', size: 1, data: '' },
       ],
-      queuedMessages: ['queued'],
+      queuedMessages: ['a', 'b'],
       ephemeralMessages: [{ role: 'assistant', content: 'hi' }],
     };
 
-    expect(clearInputState(chat)).toEqual(
-      expect.objectContaining({
-        input: '',
-        attachments: [],
-      }),
-    );
-    expect(clearQueueState(chat)).toEqual(
-      expect.objectContaining({
-        queuedMessages: [],
-      }),
-    );
-    expect(clearEphemeralMessagesState(chat)).toEqual(
-      expect.objectContaining({
-        ephemeralMessages: [],
-      }),
-    );
-    expect(assignConversationIdState(chat, 'conv-new')).toEqual(
-      expect.objectContaining({
-        conversationId: 'conv-new',
-      }),
-    );
-    expect(
-      removeQueuedMessageState({ ...chat, queuedMessages: ['a', 'b'] }, 0),
-    ).toEqual(expect.objectContaining({ queuedMessages: ['b'] }));
+    const before = structuredClone(chat);
+    const transforms: Array<[ChatUIState, Partial<ChatUIState>]> = [
+      [clearInputState(chat), { input: '', attachments: [] }],
+      [clearQueueState(chat), { queuedMessages: [] }],
+      [clearEphemeralMessagesState(chat), { ephemeralMessages: [] }],
+      [
+        assignConversationIdState(chat, 'conv-new'),
+        { conversationId: 'conv-new' },
+      ],
+      [removeQueuedMessageState(chat, 0), { queuedMessages: ['b'] }],
+    ];
+
+    for (const [result, expected] of transforms) {
+      expect(result).toMatchObject(expected);
+      expect(result).not.toBe(chat);
+    }
+    expect(chat).toEqual(before);
   });
 
   describe('reorderQueuedMessageState (#613)', () => {

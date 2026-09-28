@@ -314,10 +314,3 @@ export const chatDraftsStore = {
     notify();
   },
 };
-
-export {
-  CHAT_DRAFTS_STORAGE_KEY,
-  MAX_DRAFT_LENGTH,
-  MAX_DRAFTS,
-  MAX_STASHED_IMAGES,
-};
