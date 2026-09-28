@@ -234,6 +234,17 @@ export type StationConfinement = 'host' | 'workspace';
 export const STATION_CONFINEMENT_METADATA_KEY = 'stationConfinement';
 
 /**
+ * #1796: who granted a `host` start stamp, beside it: the server-derived
+ * actor of the request that started the session (`{ kind: 'device',
+ * deviceId }` or `{ kind: 'operator' }`). Revoking a device's full access
+ * finds the sessions its grant unconfined through this. Absent on a
+ * `workspace` start, and on starts from before it existed (unattributed).
+ * Reserved like the stamp.
+ */
+export const STATION_CONFINEMENT_GRANTOR_METADATA_KEY =
+  'stationConfinementGrantor';
+
+/**
  * Complete set of orchestration evidence fields a public caller may never
  * provide. Keep this list aligned with session-summary model projections:
  * launch plan, typed receipt, requested/effective selector and options, and
@@ -257,6 +268,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
+  STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
 ] as const;
 
 /**

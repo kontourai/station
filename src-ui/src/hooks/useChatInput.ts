@@ -38,7 +38,8 @@ import {
   approvalModeLabel,
   approvalPickReceived,
   approvalPickUpdate,
-  fullAccessRefusalNote,
+  FULL_ACCESS_REFUSAL_SUMMARY,
+  fullAccessRefusalNotice,
   isFullAccessRefusal,
   supersededPickNote,
 } from '../utils/approvalMode';
@@ -908,7 +909,11 @@ export function useChatInput({
               updateChat(sessionId, { queuedApprovalMode: undefined });
             addEphemeralMessage(sessionId, {
               role: 'system',
-              content: fullAccessRefusalNote,
+              content: FULL_ACCESS_REFUSAL_SUMMARY,
+              fullAccessRefusal: fullAccessRefusalNotice(
+                error,
+                'pick-not-applied',
+              ),
             });
           }
           // Otherwise still queued: the next send carries it, and the server
