@@ -12,7 +12,7 @@ import {
 } from '../../lib/review-ledger-store.mjs';
 
 /** A revision placeholder for fixtures that never resolve revisions. */
-export const FIXTURE_REVISION = 'a'.repeat(40);
+const FIXTURE_REVISION = 'a'.repeat(40);
 
 type Binding = { path: string; digest: string; revision?: string };
 
@@ -41,7 +41,7 @@ const withRevision = (revision: string) => (source: Binding) => ({
 });
 
 /** The review ledger files the real serializer writes (#2936), path -> text. */
-export function reviewLedgerFiles(
+function reviewLedgerFiles(
   records: FixtureRecord[],
   { coverageBaseline }: { coverageBaseline?: string } = {},
 ) {

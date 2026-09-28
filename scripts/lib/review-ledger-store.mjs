@@ -302,7 +302,7 @@ function compileCaptureReview(data, notes = []) {
  * @param {any} manifest parsed media.json
  * @param {Map<string, any>} reviews path -> compiled capture review
  */
-export function joinLearningMedia(manifest, reviews) {
+function joinLearningMedia(manifest, reviews) {
   if (manifest?.version !== 1 || !Array.isArray(manifest.captures))
     throw new Error('Learning media requires version 1 captures.');
   const seen = new Set();
@@ -362,7 +362,7 @@ export function compileReviewState(parsed, manifest) {
 }
 
 /** The pre-#2936 single ledger file, compiled into the current shape. */
-export function fromLegacyReviewLedger(legacy) {
+function fromLegacyReviewLedger(legacy) {
   if (legacy?.version !== 1 || !Array.isArray(legacy.records))
     throw new Error('Legacy review ledger requires version 1 records.');
   return {
@@ -385,7 +385,7 @@ export function fromLegacyReviewLedger(legacy) {
 }
 
 /** A pre-#2936 media.json, whose captures carried their own review. */
-export function fromLegacyMedia(legacy) {
+function fromLegacyMedia(legacy) {
   return {
     version: legacy.version,
     captures: legacy.captures.map((capture) => {
