@@ -1693,7 +1693,7 @@
     {
       "path": "deploy/gcp-dev/README.md",
       "documentDigest": "b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Single-owner GCP development recipe with a retained historical qualification record. Full 170-line baseline read. Bootstrap guard/swap helper, container enrollment boundary and GCP preview source checked; official GCP documentation checked read-only. The 2026-09-05 drill remains historical evidence, not fresh cloud qualification.",
@@ -1821,7 +1821,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-control-runtime-env.ts",
-          "digest": "958976bc63f37dfad74594f59cce183640b70daffb787f68d43d905dba05c6fb"
+          "digest": "c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
@@ -1868,13 +1868,14 @@
         "Integration source review through d72f79b08: #2904 added the operator-only, loopback-gated `station environment access devices|scope|scopes` verbs by extracting openLocalOperatorChannel in environment.ts. It also added deviceHoldsScope and deviceHoldsFullAccess to the pairing and security services, and added full-access revocation reports to the device scope and revoke routes. The recipe's IAP tunnel, its distinction between browser-bootstrap, local-grant and operator credentials, and its dated 2026-09-05 drill record are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) un-exports contributorCommandMessage (distribution.ts) and cf43e14d0 (#2731) adds the recognizeCredential hook in runtime-routes.ts for a 403 on unadmitted credentials; prose accurate: the recipe makes no claim about either the export or the refusal status. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) passes STATION_SERVICE_LAUNCHER through lifecycle.ts start, adds the service-update status line to service.ts, and adds update backup/restore to station-home-archive.ts. 8b48e2b35 (#2914) drops listeningPidsByPort from station-dogfood-health and a redundant assertion from container-release.test. None of this touches the container/VM recipe, the offline-backup guidance or the verification checklist; prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The README's separate terminal/voice listener and station-control delivery statements do not depend on the removed path, so the prose remains accurate. Source review only."
       ]
     },
     {
       "path": "deploy/public-ingress/README.md",
       "documentDigest": "713a080bec7e77d77db623d83a52874bb698556e6ddc28bb75eda69b0e864d5b",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Optional Caddy Compose ingress template and its protocol qualification fixture. Full 128-line baseline read. Compose/Caddy files and the synthetic smoke upstream traced; actual Compose model validated read-only. No Caddy/Station startup, public CA issuance, DNS change or smoke execution.",
@@ -2002,7 +2003,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-control-runtime-env.ts",
-          "digest": "958976bc63f37dfad74594f59cce183640b70daffb787f68d43d905dba05c6fb"
+          "digest": "c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
@@ -2049,7 +2050,8 @@
         "Integration source review through d72f79b08: #2904 adds the host-only `environment access devices|scope|scopes` verbs on the existing loopback operator channel, deviceHoldsScope and deviceHoldsFullAccess, the per-request refusal-identity middleware, and full-access reset on device scope removal or revoke. None of this touches the Caddy ingress, TLS, proxy upstream, pairing-enrollment or terminal/voice listener claims. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) stops exporting contributorCommandMessage from packages/cli/src/distribution.ts, with no behavior change. cf43e14d0 (#2731) adds the recognizeCredential wiring in runtime-routes. The README makes claims only about the Caddy/Compose template, protocol qualification and passing through Station's own authorization and cookies, and neither change touches those. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the launcher's context env scrub in lifecycle.ts, the launcher install, `service update-home` and update status in service.ts, and a separate update-backup schema (station.home-update-backup/v1) in station-home-archive.ts. 8b48e2b35 (#2914) removed a redundant assertion in container-release.test.ts and the unused listeningPidsByPort export from station-dogfood-health.mjs. The README's Compose, volume and backup/rollback guidance does not depend on any of these. Prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The profile's ingress, CA and rate-limit statements are unaffected, so the prose remains accurate. Source review only."
       ]
     },
     {
@@ -10059,7 +10061,7 @@
     {
       "path": "docs/design/station-topology.md",
       "documentDigest": "f6bc98daaafe1fa9b46d983cebc2826ef9b867a91b573708b710a3921039ec5f",
-      "sourceRevision": "9e821273f4e0e4db059222e01744ab9f512418a7",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "design",
       "state": "classified",
       "summary": "Dated topology decision/current-target distinction preserved with explicit deployment and capability limits; principal and instance owners checked.",
@@ -10075,12 +10077,13 @@
         },
         {
           "path": "src-server/services/identity/principal-resolver.ts",
-          "digest": "d711ab8ee4be0444fb8559d23a356744e8a26f3e8697525236410584e45af614"
+          "digest": "479b1c2d15f60ec6e3c1f4b15f2536390ed265a63307c27c9a52329c9c4985e6"
         }
       ],
       "checks": [
         "Full original body read; bounded actual-owner/caller review. Purpose classification is separate from whole-document semantic review.",
-        "Focused batch: 140 tests across 9 files passed; documentation links397, index, MCP98 and Conduit generated parity passed."
+        "Focused batch: 140 tests across 9 files passed; documentation links397, index, MCP98 and Conduit generated parity passed.",
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Principal attribution from verified home-possession or operator credential is unchanged, so the prose remains accurate. Source review only."
       ]
     },
     {
@@ -11765,7 +11768,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "2cedf1eac83d8f845ef59de57b678e1adf27153a",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12021,7 +12024,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "efca27a7ce69dc40c3ddf60090294b5b1f4a285a21ade2a89431fff2d41dd951"
+          "digest": "63a925322b10744eed1b8061ddaa5c6e4cd59dd6c2f5a1d0530f9fdf8d9b005d"
         },
         {
           "path": "src-server/security/station-browser-origins.ts",
@@ -12089,7 +12092,7 @@
         },
         {
           "path": "src-server/services/terminal/terminal-ws-server.ts",
-          "digest": "49ce5f3ff4d59f1e04024bc3211361d23c840a6bedeb6c46841f28de4677f7f7"
+          "digest": "fda1cd3049b51f46292bfa7672d66dfc08f3b83cfd0b45598c657a33df079f30"
         },
         {
           "path": "src-server/tools/station-control-catalog-tools.ts",
@@ -12271,7 +12274,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement metadata to the ACP, Claude and Codex adapters and adds Codex replyToApproval and acknowledgement watching in codex-adapter-transport. It also adds lastDecision folding in station-control-delegation. 7cd4892e5 touches only codex-adapter-events, which is not an input here. The guide makes no claim about engine approval delivery or delegation status, and its Engine and connection configuration prose is unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds one inherited /api/system read leaf, GET /api/system/core-update/service-update, in pairing-route-scopes.ts. The guide's pairing-scope description (read/operate/access scopes, and Origin checks as separate from scope) is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks. Scope, loopback terminal and Device statements remain accurate; no stdio caller-token claim is made. Source review only."
       ]
     },
     {
@@ -12819,7 +12823,7 @@
     {
       "path": "docs/guides/deployment.md",
       "documentDigest": "1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Operating paths for checkout/container deployments, hosted foundations, and the legacy macOS dogfood supervisor. Full 920-line baseline and parent working bytes read. Source checks cover Docker, CLI/proxy/auth, home archive/schema/migration, hosted preflight, channel homes, supervisor staging/timing/health and cleanup. Detailed installer rollback, tenant carriers and lifecycle journal failure matrices were not fully re-executed; runtime qualification is partial. Follow-up: Changed pre-provisioning paragraphs checked against real schema-gate/lifecycle/server/migration ordering. Windows issue-link addition preserves the already disclosed staging limitation.",
@@ -12959,7 +12963,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-control-runtime-env.ts",
-          "digest": "958976bc63f37dfad74594f59cce183640b70daffb787f68d43d905dba05c6fb"
+          "digest": "c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
@@ -13008,7 +13012,8 @@
         "Integration source review through d72f79b08: #2904 moves the local access verbs in environment.ts onto a shared loopback-proved operator channel and adds `access devices|scope|scopes`. Bare pairing errors now keep their code and status. device-pairing-service and environment-security-service gain `deviceHoldsScope` and `deviceHoldsFullAccess`, and runtime-routes appends revocation reports to the scope and revoke answers. The guide's statements about access list/approve/deny, the loopback proof, the Paired devices revoke path and environment reset are still true; the new verbs extend them without contradicting anything. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) deletes the unused parseGitSource/extractPluginName from packages/cli/src/commands/helpers.ts and un-exports contributorCommandMessage in distribution.ts; cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401; prose accurate: the guide does not describe those helpers or the 401/403 split, the distribution-boundary link still holds, and the unauthenticated `authentication_required` curl check is unchanged. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds createStationHomeUpdateBackup/restoreStationHomeUpdateBackup to station-home-archive.ts, moves packaged-release parsing from lifecycle-code-root.ts to shared prebuilt-archive, adds a hidden service update-home action, service status `update` output and the launcher install. #2914 removes the listeningPidsByPort alias and one tautological container-release assertion. home backup/restore, published-CLI service status|start|stop control, and install needing a checkout or prebuilt archive are unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The hosted tenant carrier claim (token-bound Codex HTTP/SSE session, exact built-in child environment, trusted async context) remains accurate. Source review only."
       ]
     },
     {
@@ -21514,7 +21519,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "2cedf1eac83d8f845ef59de57b678e1adf27153a",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -22019,7 +22024,7 @@
         },
         {
           "path": "src-server/services/identity/principal-resolver.ts",
-          "digest": "d711ab8ee4be0444fb8559d23a356744e8a26f3e8697525236410584e45af614"
+          "digest": "479b1c2d15f60ec6e3c1f4b15f2536390ed265a63307c27c9a52329c9c4985e6"
         },
         {
           "path": "src-server/services/inference/fleet-inference-service.ts",
@@ -22216,7 +22221,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the request.delivery event and the acknowledgement field to runtime-events, adds ACP approvalAcknowledgement 'none', and adds delegation lastDecision. It changes only a comment in useToolApproval (already-settled now covers requests closed by the engine, cancelled or expired). The /tool-approval routing, /events payload-vocabulary pointer, continuation-caller and ACP model-apply claims are unchanged by the delta. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) install-provenance.ts adds installKind 'archive'; system-update-routes.ts branches GET/POST /api/system/core-update on archives (signed-manifest releaseCheck, applyMethod service-update/station-upgrade/reinstall, installKind archive-service; POST queues an update request and returns 202 with serviceUpdate.requestId or 409/500) and adds GET /api/system/core-update/service-update; pairing scopes add that read leaf; SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery; lifecycle.ts forwards STATION_SERVICE_LAUNCHER only to the supervised server; ChatDock only un-exports a helper (#2919). Corrected the Check/Apply Core App Update sections, which listed only source/desktop/unknown provenance: they now cover the archive branch, the 202 service-update request, its 409 refusals and the service-update progress route. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; system-update-routes.ts only made coreUpdateSupervision module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only."
       ]
     },
     {
@@ -22640,7 +22646,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "2cedf1eac83d8f845ef59de57b678e1adf27153a",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -22821,7 +22827,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "efca27a7ce69dc40c3ddf60090294b5b1f4a285a21ade2a89431fff2d41dd951"
+          "digest": "63a925322b10744eed1b8061ddaa5c6e4cd59dd6c2f5a1d0530f9fdf8d9b005d"
         },
         {
           "path": "src-server/security/station-control-authority-guard.ts",
@@ -22833,7 +22839,7 @@
         },
         {
           "path": "src-server/services/infra/server-log-reader.ts",
-          "digest": "9f3c743cdaed8ca9bdae610c9f48144be1d41bc14690e7fbf2028d89da9f4621"
+          "digest": "2b71dc69ab73e803132fd01b8fa552b164b70e942a9bad38ecbb7c22a5dcc1b9"
         },
         {
           "path": "src-server/services/infra/server-log-store.ts",
@@ -22915,12 +22921,13 @@
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds a chat-stream-status notice to ChatDockBody for unacknowledged or not-sent decisions. It adds no setting and changes no attachment re-send behavior. The chat-dock claims in config.md (attachment re-send refusal) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read leaf to pairing-route-scopes. a290454b4 (#2919) makes ChatDock's agentIdentityFromSession private. Neither changes the config fields, the diagnostics-logs scope tier or the chat-dock re-send claims; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); strands-tool-loader.ts now imports the shared tool-load-failure classifier instead of its private copy of the same redaction decision; mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected.",
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only."
       ]
     },
     {
       "path": "docs/reference/connect.md",
-      "sourceRevision": "2cedf1eac83d8f845ef59de57b678e1adf27153a",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Previous declaration/health/endpoint/CLI review unchanged by source hashes. Finished store selection and legacy migration, React asynchronous broker activation, profile normalization, pairing offer/QR/exchange/cookie/native host custody and revocation admission callers. Corrected setActive boolean/refusals, React Promise<void>, retained migration key, source-ranked candidate ordering, server-versus-decoder HTTP difference and blanket existing-socket revocation wording. Public endpoint ownership limitation retained without further security probing.",
@@ -23057,7 +23064,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "efca27a7ce69dc40c3ddf60090294b5b1f4a285a21ade2a89431fff2d41dd951"
+          "digest": "63a925322b10744eed1b8061ddaa5c6e4cd59dd6c2f5a1d0530f9fdf8d9b005d"
         },
         {
           "path": "src-server/security/websocket-auth.ts",
@@ -23081,7 +23088,7 @@
         },
         {
           "path": "src-server/services/terminal/terminal-ws-server.ts",
-          "digest": "49ce5f3ff4d59f1e04024bc3211361d23c840a6bedeb6c46841f28de4677f7f7"
+          "digest": "fda1cd3049b51f46292bfa7672d66dfc08f3b83cfd0b45598c657a33df079f30"
         },
         {
           "path": "src-ui/src/contexts/ApiBaseContext.tsx",
@@ -23133,7 +23140,8 @@
         "Integration source review through e0314c727: ApiBaseContext.tsx only lost a comment about the deleted legacy notification_watch. The resolver still supplies no mutationAllowed guard, as documented, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 added `station environment access devices|scope|scopes` over a shared loopback operator channel. It keeps the non-loopback refusal, now with wider message wording. It added PAIRING_SCOPE_DESCRIPTIONS, isPairingScopeGrantable and FullAccessRevocationReport to environment-security, deviceHoldsScope/deviceHoldsFullAccess, and a FullAccessRevocationNotice rendered from the scope-change and revoke route responses. Those responses now add fullAccessRevocation or fullAccessRevocationError. The documented access list/approve/deny flow and its loopback refusal, the offer/exchange/cookie claims, and the revocation paragraph are unchanged. The revocation paragraph says revoke does not recall delivered data or guarantee cancellation of dispatched effects, and the reset records new Ask decisions without interrupting a running turn. The new scope verbs and the revocation reset are not described here, but no current claim is contradicted. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 changes runtime-http.ts, runtime-routes.ts and runtime-request-security.ts. A credential that verifyCredential recognizes but authorizeCredential refuses (an ordinary device on /api/pairing outside the approval leaves, or a mutation on /api/environments/peers) now gets 403 insufficient_scope instead of 401. Unrecognized and revoked credentials still get 401. The doc's claims hold: a 401 goes to credential-required recovery, 401/403 authentication-failed is terminal, and a revoked credential fails later admission. Prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by device-pairing-service.test.ts (duplicate persistence/restart tests dropped); terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by device-pairing-service.test.ts (duplicate persistence/restart tests dropped); terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); claims unaffected.",
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks. Pairing, access-request and connection claims are unchanged, so the prose remains accurate. Source review only."
       ]
     },
     {
@@ -23481,7 +23489,7 @@
     },
     {
       "path": "docs/reference/env-vars.md",
-      "sourceRevision": "2cedf1eac83d8f845ef59de57b678e1adf27153a",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed every current table and setup claim against configuration resolvers and their runtime/CLI/frontend callers. Corrected root/home derivation, development instance paths, control-client base/port precedence, exact browser origin admission, hosted registry file requirements, AWS region precedence, inert DEBUG_STREAMING behavior, production Vite override, OTLP versus disclosed product usage telemetry, and incomplete IAM example. Added operator scope and feature-specific navigation instead of claiming an exhaustive environment inventory. Corrected matching .env.example comments without changing values.",
@@ -23558,7 +23566,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-control-runtime-env.ts",
-          "digest": "958976bc63f37dfad74594f59cce183640b70daffb787f68d43d905dba05c6fb"
+          "digest": "c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
@@ -23586,7 +23594,7 @@
         },
         {
           "path": "src-server/tools/station-control-shared.ts",
-          "digest": "a64f0a06d9ca20825c184e678ed8f0f117e692a047d92203921ea595b21cd065"
+          "digest": "1cda615bd82a88dfe4dcde495613c6d1cd87f19d7971853ba2c084baf525a372"
         },
         {
           "path": "src-ui/src/contexts/ApiBaseContext.tsx",
@@ -23609,7 +23617,8 @@
         "Integration source review through d72f79b08: #2904's runtime-initialize, runtime-routes and orchestration-service changes add full-access grantor wiring, refusal identity binding and device revocation reset. They add or change no environment variable or resolver precedence. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds an auth-refusal branch in runtime-http.ts configureRuntimeSecurity and recognizeCredential in runtime-routes.ts; prose accurate: ALLOWED_ORIGINS and the other runtime-http.ts citations concern origin admission, which did not change. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) lifecycle.ts forwards the internal STATION_SERVICE_LAUNCHER only to the supervised server and strips it from the UI child; the doc says it does not list internal launcher variables and lists no STATION_SERVICE_* entries; the listed lifecycle.ts-sourced rows are unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). STATION_API_BASE/STATION_PORT resolution in station-control-shared.ts is unchanged; STATION_CONTROL_CALLER_TOKEN was never documented here and is not a supported variable. Prose remains accurate. Source review only."
       ]
     },
     {
@@ -23917,7 +23926,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "2cedf1eac83d8f845ef59de57b678e1adf27153a",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24666,7 +24675,7 @@
         },
         {
           "path": "src-server/tools/station-control-shared.ts",
-          "digest": "a64f0a06d9ca20825c184e678ed8f0f117e692a047d92203921ea595b21cd065"
+          "digest": "1cda615bd82a88dfe4dcde495613c6d1cd87f19d7971853ba2c084baf525a372"
         },
         {
           "path": "src-server/voice/voice-session.ts",
@@ -24913,7 +24922,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c added approvalAcknowledgement 'in-process' to StationAgentAdapter, and conversationOpenPatch now also clears unacknowledgedDecisions alongside the other local approval state. That is consistent with the doc's statement that predecessor local approval state is not carried over; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds archive/archive-service installKind, the station-upgrade/service-update applyMethod values, releaseCheck, serviceUpdate, requestServiceUpdateProgress and useServiceUpdateProgressQuery (root exports), and the service-update pairing leaf. The parser now checks installKind and releaseCheck against known values and still passes applyMethod through unchecked. a290454b4 (#2919) only removes internal UI exports. Main's merged paragraph fits the branch text: it has no duplicate and does not bring back the /queries subpath claim. Corrected the stale sentence that said installKind and applyMethod both pass through without enum validation; it now says installKind and releaseCheck are checked (an unknown value is left out) and applyMethod is still unchecked. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only."
       ]
     },
     {
@@ -25329,7 +25339,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11",
-      "sourceRevision": "2cedf1eac83d8f845ef59de57b678e1adf27153a",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25437,7 +25447,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-control-runtime-env.ts",
-          "digest": "958976bc63f37dfad74594f59cce183640b70daffb787f68d43d905dba05c6fb"
+          "digest": "c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601"
         },
         {
           "path": "src-server/runtime/conversation/dispatch-model-policy.ts",
@@ -25575,7 +25585,8 @@
         "Integration source review through 2ef40ae83: the regenerated MCP content changes only the StationHomeArchive and verification-coordinator module topics, carrying reviewed module-map corrections. The manual's catalog and credential-free claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); session-agent-resolution.ts (never-read provider input removed); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); station-docs-content.ts (regenerated module-map scheduler paragraph); claims unaffected. 2026-09-28 test-audit follow-up: removed the sentence 'Other scheduler providers have their own capabilities.' because addProvider was deleted and only the built-in provider can exist; station-docs-content.ts regenerated with npm run docs:mcp:generate. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); session-agent-resolution.ts (never-read provider input removed); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); station-docs-content.ts (regenerated module-map scheduler paragraph); claims unaffected. 2026-09-28 test-audit follow-up: removed the sentence 'Other scheduler providers have their own capabilities.' because addProvider was deleted and only the built-in provider can exist; station-docs-content.ts regenerated with npm run docs:mcp:generate. Source review only; no new executed evidence.",
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). station-control still needs an instance credential over reviewed channels and remains subject to caller authority; the prose remains accurate. Source review only."
       ]
     },
     {
@@ -25761,7 +25772,7 @@
     {
       "path": "docs/security/remote-access-threat-model.md",
       "documentDigest": "5545f52b980d2071732503351ddbd811e19d4c6e333c7e02b294db00a197a147",
-      "sourceRevision": "2cedf1eac83d8f845ef59de57b678e1adf27153a",
+      "sourceRevision": "2ecbfde674548842e094ba13a2bbdbcf96ef26e4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented HTTP capability, proxy/Origin, scope, mutation budget, SSH host-key/probe, fleet, credential and recovery boundaries. Historical pairing probes remain explicitly historical. Corrected custom capability/query-token exceptions, unmapped-route refusal, retained loopback WS scope limits, and SSH handshake versus authenticated-session reachability.",
@@ -25853,7 +25864,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "efca27a7ce69dc40c3ddf60090294b5b1f4a285a21ade2a89431fff2d41dd951"
+          "digest": "63a925322b10744eed1b8061ddaa5c6e4cd59dd6c2f5a1d0530f9fdf8d9b005d"
         },
         {
           "path": "src-server/security/station-browser-origins.ts",
@@ -25941,7 +25952,7 @@
         },
         {
           "path": "src-server/services/terminal/terminal-ws-server.ts",
-          "digest": "49ce5f3ff4d59f1e04024bc3211361d23c840a6bedeb6c46841f28de4677f7f7"
+          "digest": "fda1cd3049b51f46292bfa7672d66dfc08f3b83cfd0b45598c657a33df079f30"
         },
         {
           "path": "src-server/utils/private-sqlite.ts",
@@ -25992,7 +26003,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds RuntimeHttpSecurityOptions.recognizeCredential, wired in runtime-routes.ts to verifyCredential. When admission refuses a credential the server still recognizes, runtime-http.ts now answers 403 insufficient_scope (audited, limiter cleared) instead of 401. The document states 401 only for missing, malformed or uncredentialed requests. It gives no status code for ordinary credentials refused on the pairing family, and its credentialed cells say scope/resource authorization applies. So nothing it states is contradicted. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds GET /api/system/core-update/service-update as an /api/system read in pairing-route-scopes.ts, which keeps the GET-requires-orchestration:read rule of the single table. lifecycle.ts passes STATION_SERVICE_LAUNCHER only to the supervised server and removes it from the UI child. The surface matrix, the scope-table description and the internal-token scrub claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); claims unaffected.",
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks (strengthens the documented bounded limiting of repeated authentication failures, including for IPv4 peers on a dual-stack listener). Station-control MCP token and loopback WebSocket statements remain accurate. Source review only."
       ]
     },
     {
