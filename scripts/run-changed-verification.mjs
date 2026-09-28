@@ -66,7 +66,7 @@ import {
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
 } from './test-impact-manifest.mjs';
-import { resolveLane } from './verification-lanes.mjs';
+import { CI_FAST_TIMEOUT_MS, resolveLane } from './verification-lanes.mjs';
 import { partitionVitestResourceSubset } from './vitest-resource-manifest.mjs';
 import {
   assertWorkspacePackageProvenance,
@@ -80,7 +80,32 @@ const FAILURE_EXCERPT_LIMIT = CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES;
 const NARROW_DIFF_FIXTURE =
   'scripts/__tests__/fixtures/changed-verification/narrow-diff.json';
 const RELATED_DISCOVERY_LIMIT_BYTES = 1024 * 1024;
-const RELATED_DISCOVERY_TIMEOUT_MS = 60_000;
+/**
+ * #2855: related discovery is one fixed-cost Vitest graph build (27-38s on
+ * hosted runners whatever the diff; 48-66s on a dev host at load 47-93), so
+ * a constant below every enclosing budget failed closed on a busy host with
+ * no test run. The timeout is now derived from the caller's remaining budget:
+ * deadline - now - reserve.
+ *
+ * The floor is the old constant. A caller with no budget keeps exactly that;
+ * a caller whose remaining budget is below it is refused before discovery
+ * starts, since a timeout the budget cannot cover would only let the
+ * enclosing kill win with nothing written. The reserve is what the caller
+ * still needs after a discovery that
+ * used everything else: the child's settlement (grace then force, 5s each),
+ * provenance collection and the selection receipt or plan write -- so a slow
+ * discovery ends as this lane's own attributable infrastructure_error rather
+ * than being killed by the enclosing deadline with nothing written.
+ */
+export const RELATED_DISCOVERY_FLOOR_MS = 60_000;
+export const RELATED_DISCOVERY_RESERVE_MS = 30_000;
+/**
+ * No caller's budget exceeds the fifteen-minute ci:fast lane, so a derived or
+ * explicit timeout above it is a misconfiguration and is refused, not clamped.
+ */
+const RELATED_DISCOVERY_MAX_TIMEOUT_MS = CI_FAST_TIMEOUT_MS;
+/** Absolute epoch-ms deadline run-ci-fast hands its selector child. */
+export const CHANGED_DEADLINE_ENV = 'STATION_TEST_CHANGED_DEADLINE_AT';
 const RELATED_DISCOVERY_SETTLEMENT_MS = 5_000;
 const CHANGED_CHILD_OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
 const VITEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
@@ -129,6 +154,11 @@ export function parseRelatedTestDiscovery(result) {
   return parsed;
 }
 
+function withoutChangedDeadline(env) {
+  const { [CHANGED_DEADLINE_ENV]: _deadline, ...rest } = env;
+  return rest;
+}
+
 export async function runOwnedChangedCommand(
   command,
   args,
@@ -158,9 +188,10 @@ export async function runOwnedChangedCommand(
   try {
     execution = execute(command, args, spawn, processLabel, {
       cwd,
-      // Undefined inherits this process's environment, as before; a shard
-      // passes the request-bound environment (#2709).
-      ...(env ? { env } : {}),
+      // A shard passes the request-bound environment (#2709); otherwise the
+      // child inherits this process's. Either way the selector's discovery
+      // deadline (#2855) is its own, and no child inherits it.
+      env: withoutChangedDeadline(env ?? process.env),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -270,6 +301,45 @@ export async function runOwnedChangedCommand(
   }
 }
 
+function assertDiscoveryTimeout(timeoutMs) {
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > RELATED_DISCOVERY_MAX_TIMEOUT_MS
+  )
+    throw new Error('Related Vitest discovery timeout is invalid');
+  return timeoutMs;
+}
+
+/**
+ * deadline - now - reserve, or the floor alone with no deadline. A budget
+ * below the floor is refused before discovery starts, naming what is left;
+ * a deadline that is not an integer, or that would allow more than the
+ * ci:fast lane itself, is refused rather than clamped.
+ */
+export function relatedDiscoveryTimeoutMs({ deadlineAt, now = Date.now } = {}) {
+  if (deadlineAt === undefined) return RELATED_DISCOVERY_FLOOR_MS;
+  if (!Number.isSafeInteger(deadlineAt))
+    throw new Error('Related Vitest discovery deadline is invalid');
+  const remaining = deadlineAt - now() - RELATED_DISCOVERY_RESERVE_MS;
+  if (remaining < RELATED_DISCOVERY_FLOOR_MS)
+    throw new Error(
+      `Related Vitest discovery refused: ${Math.max(0, remaining)}ms of its budget remain after the ${RELATED_DISCOVERY_RESERVE_MS}ms reserve, below the ${RELATED_DISCOVERY_FLOOR_MS}ms minimum`,
+    );
+  return assertDiscoveryTimeout(remaining);
+}
+
+/** The selector's deadline from its environment, strictly parsed. */
+export function changedDeadlineFromEnv(env = process.env) {
+  const value = env[CHANGED_DEADLINE_ENV];
+  if (value === undefined || value === '') return undefined;
+  if (!/^[1-9][0-9]{0,15}$/.test(value) || !Number.isSafeInteger(Number(value)))
+    throw new Error(
+      `${CHANGED_DEADLINE_ENV} must be an epoch-millisecond integer`,
+    );
+  return Number(value);
+}
+
 /**
  * `base` enables SDK barrel-aware seeds (#2707): a changed SDK module is
  * replaced by the files whose imports actually reach it, rather than by
@@ -284,7 +354,10 @@ export async function runOwnedChangedCommand(
  * @param {(decision: any) => void} [options.reportRefinement]
  * @param {(...args: any[]) => Promise<any>} [options.run]
  * @param {AbortSignal} [options.signal]
- * @param {number} [options.timeoutMs]
+ * @param {number} [options.timeoutMs] an explicit timeout; overrides deadlineAt
+ * @param {number} [options.deadlineAt] the caller's budget end (epoch ms)
+ * @param {() => number} [options.now]
+ * @param {(timeoutMs: number) => void} [options.onTimeout] told the timeout the child runs under
  */
 export async function discoverRelatedTestFiles(
   root,
@@ -303,13 +376,15 @@ export async function discoverRelatedTestFiles(
     },
     run = runOwnedChangedCommand,
     signal,
-    timeoutMs = RELATED_DISCOVERY_TIMEOUT_MS,
+    timeoutMs,
+    deadlineAt,
+    now = Date.now,
+    onTimeout = () => {},
   } = {},
 ) {
   if (!Array.isArray(relatedPaths) || relatedPaths.length === 0)
     throw new Error('Related Vitest discovery requires at least one path');
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000)
-    throw new Error('Related Vitest discovery timeout is invalid');
+  if (timeoutMs !== undefined) assertDiscoveryTimeout(timeoutMs);
   let result;
   try {
     const refined = refine(root, relatedPaths, { base });
@@ -317,6 +392,10 @@ export async function discoverRelatedTestFiles(
     // Every refined path reached no file outside SDK source: nothing imports
     // it, which is discovery's empty answer, not a failure.
     if (refined.paths.length === 0) return [];
+    // Derived here, after refinement, so the child gets what is actually left.
+    const childTimeoutMs =
+      timeoutMs ?? relatedDiscoveryTimeoutMs({ deadlineAt, now });
+    onTimeout(childTimeoutMs);
     result = await run(
       process.execPath,
       [
@@ -330,7 +409,7 @@ export async function discoverRelatedTestFiles(
         maxBytes: RELATED_DISCOVERY_LIMIT_BYTES,
         processLabel: 'Related Vitest discovery',
         signal,
-        timeoutMs,
+        timeoutMs: childTimeoutMs,
       },
     );
     return parseRelatedTestDiscovery(result);
@@ -1511,6 +1590,7 @@ export async function runChangedVerification(
     assertDependencyProvenance = assertWorkspacePackageProvenance,
     pathExists = existsSync,
     signal,
+    discoveryDeadlineAt,
   } = {},
 ) {
   // Resolve dependency provenance before selecting or starting Vitest. A
@@ -1561,6 +1641,7 @@ export async function runChangedVerification(
                 ...options,
                 run,
                 signal,
+                deadlineAt: discoveryDeadlineAt,
               }))
           )(discoveryRoot, relatedPaths, { base: changed.mergeBase }),
         partition: resourcePartition,
@@ -1706,11 +1787,12 @@ function prepareCiFastExecution({ cwd, env }) {
  *   root?: string;
  *   run?: typeof runOwnedChangedCommand;
  *   changedPathsFn?: typeof changedPaths;
- *   discoverRelatedFiles?: (root: string, relatedPaths: string[], options?: { base?: string }) => Promise<string[]>;
+ *   discoverRelatedFiles?: (root: string, relatedPaths: string[], options?: { base?: string; onTimeout?: (timeoutMs: number) => void }) => Promise<string[]>;
  *   resourcePartition?: typeof partitionVitestResourceSubset;
  *   assertDependencyProvenance?: (options: { cwd: string }) => unknown;
  *   pathExists?: typeof existsSync;
  *   signal?: AbortSignal;
+ *   discoveryDeadlineAt?: number;
  *   headSha?: string;
  *   shardCount?: number;
  *   now?: () => number;
@@ -1727,6 +1809,7 @@ export async function planChangedVerificationShards(
     assertDependencyProvenance = assertWorkspacePackageProvenance,
     pathExists = existsSync,
     signal,
+    discoveryDeadlineAt,
     headSha = git(root, ['rev-parse', 'HEAD']).trim(),
     shardCount = FAST_CHECKS_SHARD_COUNT,
     now = Date.now,
@@ -1751,19 +1834,30 @@ export async function planChangedVerificationShards(
     const discover =
       discoverRelatedFiles ??
       ((rootPath, paths, options) =>
-        discoverRelatedTestFiles(rootPath, paths, { ...options, run, signal }));
+        discoverRelatedTestFiles(rootPath, paths, {
+          ...options,
+          run,
+          signal,
+          deadlineAt: discoveryDeadlineAt,
+        }));
     const planned = await planChangedVitestGroups(root, executionSelection, {
       discoverRelated: async (discoveryRoot, relatedPaths) => {
         const startedAt = now();
+        let timeoutMilliseconds;
         const files = await discover(discoveryRoot, relatedPaths, {
           base: changed.mergeBase,
+          onTimeout: (value) => {
+            timeoutMilliseconds = value;
+          },
         });
-        // #2803: discovery now runs on far more pull requests and has a
-        // fixed cap. Record its cost in every plan, so the hosted margin is
-        // measured per run rather than argued.
+        // #2803: discovery now runs on far more pull requests. Record its
+        // cost in every plan, so the hosted margin is measured per run rather
+        // than argued; #2855 derives the timeout from the budget, so record
+        // the timeout the child actually ran under (absent when no child
+        // started, e.g. refinement found nothing to discover).
         relatedDiscovery = {
           milliseconds: now() - startedAt,
-          capMilliseconds: RELATED_DISCOVERY_TIMEOUT_MS,
+          ...(timeoutMilliseconds === undefined ? {} : { timeoutMilliseconds }),
         };
         relatedDiscoveryCount = files.length;
         return files;
@@ -1896,7 +1990,11 @@ if (invokedDirectly(import.meta.url)) {
     const result = await (args.length === 1 &&
     args[0] === '--representative-narrow-diff'
       ? runRepresentativeNarrowDiffFixture({ signal: controller.signal })
-      : runChangedVerification(args, { signal: controller.signal }));
+      : runChangedVerification(args, {
+          signal: controller.signal,
+          // #2855: run-ci-fast hands its selector the end of its allowance.
+          discoveryDeadlineAt: changedDeadlineFromEnv(),
+        }));
     console.log(renderChangedVerificationSummary(result));
     process.exitCode = result.exitCode;
   } catch (error) {
