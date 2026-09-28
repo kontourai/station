@@ -186,7 +186,7 @@ under `$STATION_ROOT/installs/<channel>/releases/<checksum>` (default
 archive installs under `.../versions/<version>` instead, see
 [Release channel ports](../guides/release-channel-ports.md#prebuilt-archives-and-source-releases)). It preserves every
 checkout-required verb *by construction*, and it is how `station upgrade` works
-for non-git installs (`commands/lifecycle.ts:2690`).
+for non-git installs (`upgrade()` in `commands/lifecycle.ts`).
 
 These are complementary, not competing, and the doc states the split explicitly:
 

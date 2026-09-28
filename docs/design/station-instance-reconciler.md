@@ -18,7 +18,9 @@ manifest presence, orphaned registration, supervisor state, the exact
 authenticated Station identity, readiness, and configured ports. `station
 service status` takes supervisor and authenticated identity state from that
 single `InstanceState`. It also reports separate scheduling-policy and installed
-PATH-drift observations; these do not replace the reconciler's lifecycle state.
+PATH-drift observations and, for a launcher-run archive, the update read from
+that install's runtime files (`update` in `--json`); these do not replace the
+reconciler's lifecycle state.
 A stopped state
 requires both an inactive supervisor and an absent exact identity, so a
 stranded live process is never called stopped merely because its supervisor

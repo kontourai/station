@@ -271,6 +271,8 @@ The platform-array release manifest now selects these archives through
 `install.sh`'s explicit signed-public-manifest path. The installer verifies the
 host target, launcher protocol, signed size/hash and release identity, stages
 the bundled runtime under `versions/<version>`, then promotes the active link.
+When a running Station service's fixed launcher runs that install, the installer only
+stages the version and the launcher trials the switch instead.
 It does not run dependencies or build that archive. The default authenticated
 GitHub path and schema-v1 public source manifests still install and build a source
 release under `releases/`. See the [consumer formats](../../packaging/manifest/README.md#formats-and-consumers)

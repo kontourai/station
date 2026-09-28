@@ -61,7 +61,9 @@ uses v1 through a disposable local endpoint. The separate
 uses two locally built preview archives and fixture signing keys to exercise
 install, start, upgrade and uninstall without Node.js on the installer's PATH.
 Its workflow covers Linux x64 and macOS arm64; only the Linux leg also installs
-a systemd user service and checks that it restarts on the upgraded archive.
+a systemd user service that runs the fixed service launcher, and checks that
+`station upgrade` hands the upgraded archive to that launcher, which trials
+and commits it before the service serves it.
 These source definitions are
 not executed receipts or public-release proof. See the
 [archive install contract](../../docs/guides/release-channel-ports.md#prebuilt-archives-and-source-releases)

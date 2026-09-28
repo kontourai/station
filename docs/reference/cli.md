@@ -2314,10 +2314,13 @@ install state, provenance, ownership marker and active link, then re-runs that
 version's installer with the recorded release manifest. Public-manifest
 installs record the URL in schema-4 state; an explicit
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. A Station user service
-installed from that archive does not block it: the installer stops the
-service, switches `current`, and starts the service again, and if the service
-does not come back answering as the new release it restores the previous
-version and restarts the service on it. Any other installed service still
+installed from that archive does not block it. When that service runs through
+the fixed service launcher and is running, the installer only stages the new
+version and asks the service to switch; the launcher trials it and keeps the
+previous version if the trial fails (see [`service`](#service)). Otherwise
+the installer stops the service, switches `current`, and starts the service
+again, and if the service does not come back answering as the new release it
+restores the previous version and restarts the service on it. Any other installed service still
 blocks the upgrade, as in a source checkout.
 
 A loose extracted archive has no installer-owned layout and still refuses

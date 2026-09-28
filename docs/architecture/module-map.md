@@ -1271,7 +1271,11 @@ backs `station home backup|restore`. Backup returns a schema-bound manifest
 and a published directory. Restore validates that archive, replaces the selected
 home under maintenance ownership and returns the retained previous-home path
 when one existed. It copies the selected home, not external Git workspaces,
-the entire Station root or an OS keychain.
+the entire Station root or an OS keychain. A separate update-backup schema
+serves a launcher-run service's supervised update (#2675 D): it omits the
+store registry's external paths, records symbolic links as links instead of
+refusing them, and has larger default caps. Neither restore accepts the
+other's backup; the traversal and caps below describe `home backup`.
 
 **Ownership and backup.** [StationHomeLifecycle](../../packages/shared/src/station-home-lifecycle.ts)
 tracks runtime owners by PID and birth identity and gives maintenance exclusive
@@ -2387,8 +2391,9 @@ more than its actual selected checks establish.
 [Coordinator tests](../../scripts/__tests__/verification-coordinator.test.ts)
 and [terminal-receipt tests](../../scripts/__tests__/verification-terminal-receipt.test.ts)
 exercise leases, same-worktree coexistence, phase reuse, cancellation, deadlines,
-FIFO and publication failures. Size/import ratchets protect the decomposition;
-they are structural checks, not proof of semantic completeness. Keep identity,
+FIFO and publication failures. An import-direction check keeps the extracted
+modules from importing the coordinator back; it is a structural check, not
+proof of semantic completeness. Keep identity,
 lease mutation and receipt construction with their single owners, and do not
 bypass an output fence or add recursive command-entrypoint imports.
 

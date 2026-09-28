@@ -3438,8 +3438,9 @@ HTTP status throws a `StationHttpError` before the body can read as success;
 a genuine `error` field still throws a plain `Error` with the server's
 message.
 
-This is field-specific parsing: `installKind` and `applyMethod` are currently
-passed through without enum validation. See the
+This is field-specific parsing: `installKind` and `releaseCheck` are checked
+against their known values (an unknown value is left out), while `applyMethod`
+is still passed through without enum validation. See the
 [parser](../../packages/sdk/src/system-update-status-parser.ts) and
 [request boundary](../../packages/sdk/src/query-domains/systemRuntimeRequests.ts).
 

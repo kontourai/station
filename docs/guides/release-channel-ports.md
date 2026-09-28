@@ -113,12 +113,19 @@ which released installers and CLIs read. A packaged `station upgrade` re-runs th
 
 A service installed from an archive's active version (`station service
 install` run through the launcher) runs `<install root>/current`, and its
-service manifest records `kind: "archive"` and that install root. Such a
-service does not block `station upgrade`: the installer stops it, switches
-`current`, and starts it again, restoring the previous version if the service
-does not come back as the new release. A registered unit that is not running
-is left stopped, and no separate Station is started beside it. The unit keeps
-its installed ports; an explicitly named different port refuses the upgrade.
+service manifest records `kind: "archive"` and that install root. On Linux and
+macOS the unit runs through the fixed service launcher that `service install`
+copies to `<install root>/runtime/station-launcher.mjs`. Such a service does
+not block `station upgrade`. For a running launcher service, the installer
+only stages the new version, asks the service to switch, and reports the
+outcome; the launcher trials the new version and keeps the previous one if the
+trial fails. Otherwise the installer stops the service, switches `current`,
+and starts it again, restoring the previous version if the service does not
+come back as the new release. A registered unit that is not running is left
+stopped, and no separate Station is started beside it. The unit keeps its
+installed ports; an explicitly named different port refuses the upgrade. An
+unfinished or operator-blocked launcher update refuses the upgrade until the
+service has finished or restored it.
 Installing a service from an inactive `versions/<version>` directory is
 refused. Any other installed service, including one on a source release, still
 blocks `station upgrade`. See the [CLI reference](../reference/cli.md) for

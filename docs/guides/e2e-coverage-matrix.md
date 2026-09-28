@@ -40,7 +40,7 @@ intercepts before extending its evidence to a backend or provider.
 | Skills | `skills` | Create/edit/source labeling, command switches, variable resolution, test runs, read-only explanation, and the retired playbook redirect |
 | Registry | `registry`, `skills` | Tabs including Layouts, preview, search, install/remove, enable/disable, and action failures |
 | Connections | `connections-crud`, `connect-modal`, `connect-remote-auth-recovery`, `connect-reconnect-banner` | Model/runtime/tool-server setup, manual consent, connection repair, keyboard focus, and phone-sized dialogs |
-| Plugins | `plugin-update`, `plugin-system`, `plugin-preview` | Update success/failure, permission denial, installed layout loading, settings, removal, and dialog containment |
+| Plugins | `plugin-update`, `plugin-preview`, `plugin-pane-sdk-context`, `minimal-workspace-example`, `bundled-plugin-registry-lifecycle` | Update success/failure, permission denial, installed plugin panes rendering, settings, removal, and dialog containment |
 | Schedule | `schedule`, `schedule-runs` | CRUD, explicit run, filter/toggle, keyboard sorting, run history, output, and exact-run deep links |
 | Monitoring | `monitoring` | Fixture history, event/search filters, chips, time ranges, and sidebar/metric rendering; this does not establish telemetry producer completeness |
 

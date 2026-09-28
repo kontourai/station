@@ -196,6 +196,12 @@ separate:
   source ref. A stamped build hash that differs from the source ref is a
   build-stamp comparison only — it does **not** establish that an installable
   release is available, and the UI never renders it as "update available".
+  A prebuilt release archive is the exception: the same route fetches the
+  signed public manifest its install records, verifies it against the pinned
+  keys for its ring, and reports the running and newest versions. Settings can
+  apply that update only when the service's fixed launcher runs the server;
+  any other archive names `station upgrade` on the host, or a reinstall (see
+  the [CLI `service` reference](../reference/cli.md#service)).
 
 An established built-in (embedded sidecar) server never runs the ordinary
 source check at all; its update path is the desktop app itself, and its card

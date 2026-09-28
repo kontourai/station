@@ -510,7 +510,10 @@ serving a partial answer. `shaSource` names what computed `sha` — a
 checkout-derived value is labeled, never presented as the build's identity.
 `UpdateProvenanceIssue` is a typed reason minted by the server's install
 provenance resolver; consumers render from the code and never re-parse it out
-of prose. Runtime parsing of these shapes lives at the route and SDK
+of prose. `ServiceUpdateProgress` (with its `ServiceUpdatePhase`) is the
+service launcher's update state for a prebuilt-archive install, as
+`GET /api/system/core-update/service-update` reads it from that install's
+runtime files. Runtime parsing of these shapes lives at the route and SDK
 boundaries, not in this package.
 
 The deployment authentication descriptor's optional `externalLogins` lists

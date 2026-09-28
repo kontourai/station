@@ -2191,7 +2191,8 @@ request worked, not a completed inference turn or universal account model access
 
 `GET /api/system/core-update` branches on
 [install provenance](../../src-server/routes/system/install-provenance.ts):
-source checkout, desktop bundle, or unknown. Read `installKind`, `applyMethod`,
+source checkout, desktop bundle, prebuilt archive, or unknown. Read
+`installKind`, `applyMethod`,
 server identity, provenance issue, and unavailable reason as well as
 `updateAvailable`.
 
@@ -2201,7 +2202,12 @@ branch; this GET is not a filesystem-inert observation. No usable upstream
 returns `noUpstream: true`. A failed check can return 200 with `error` and
 `updateAvailable: false`; that is not proof the installation is current.
 Desktop bundles check their recorded channel source; unknown provenance cannot
-check or apply an update reliably.
+check or apply an update reliably. A prebuilt archive fetches the signed public
+manifest its install records and verifies it against the pinned keys for its
+ring (`releaseCheck`: `verified`, `unreachable`, `unverified`, or
+`not-recorded`). Its `applyMethod` is `service-update` only when the fixed
+service launcher supervises this server (`installKind: "archive-service"`);
+otherwise it is `station-upgrade` (update on the host) or `reinstall`.
 
 ### Apply Core App Update
 
@@ -2220,7 +2226,14 @@ instance/build/deadline receipt. It is not restart completion. Read
 The retained desktop-bundle apply path is macOS-only and requires the recorded
 source checkout, matching origin, and owned installer. It starts that installer
 detached and returns 202 with `updating: true` and a log path. That is initiation,
-not installation or relaunch proof. Unknown/ineligible provenance returns 409.
+not installation or relaunch proof. A launcher-supervised archive writes an
+update request and returns 202 with `serviceUpdate: {requestId}`; the service
+stages, trials, and may roll back the release afterward, so 202 is not update
+proof. It returns 409 when another update is in flight or needs an operator,
+when no newer verified release this host and launcher can run is found, or for
+any other archive. `GET /api/system/core-update/service-update` reads that
+install's progress from its runtime files, or `{state: "unavailable"}` when the
+server is not launcher-supervised. Unknown/ineligible provenance returns 409.
 See the [update owner](../../src-server/routes/system/system-update-routes.ts)
 for exact result branches.
 
