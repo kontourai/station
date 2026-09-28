@@ -456,9 +456,11 @@ indicator's read: one open pull request's ref, source branch, the source
 branch's owner when the provider reports it, and mergeability, and nothing a
 review needs. The GitHub adapter serves at most 100 and refuses a longer list
 as unavailable rather than serving part of it. `PullRequestClientContext.head`
-names where the checkout's branch is pushed when that differs from `branch` on
-the repository (an upstream of another name or a fork), so a fork's pull
-request of the same branch name is distinguishable. The optional
+names the upstream branch the checkout's branch is pushed to and, when the
+upstream remote is a fork, that fork's owner. Only an explicit owner
+distinguishes a fork's pull request of the same branch name; an absent owner
+is not a claim about the push target, since a `pushurl` can differ from the
+fetch repository. The optional
 `IPullRequestProvider.listOpenPullRequestMergeability` answers it for a
 repository; the route refuses a provider without it rather than falling back
 to the full list. See the [GitHub adapter](../../src-server/services/pull-requests/github-pull-request-provider.ts).
