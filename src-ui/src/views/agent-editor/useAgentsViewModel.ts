@@ -25,13 +25,13 @@ import {
 } from '../../contexts/AgentsContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { navigationStore } from '../../contexts/navigation-store';
-import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useAIEnrich } from '../../hooks/useAIEnrich';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../../hooks/useUrlSelection';
 import type { NavigationView, Tool } from '../../types';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   defaultSelectableManagedRuntimeConnection,
   isAgentConnectionSelectable,
@@ -332,22 +332,13 @@ export function useAgentsViewModel({
     );
   }, [allAgents, search]);
 
-  const { data: knownProjects = [] } = useScopedProjectsQuery() as {
-    data?: Array<{ slug: string }>;
-  };
   // archive#3843: the rail's one fixing verb names the machine an engine would be
   // set up on. Read from the same status query the rest of the app uses.
   const devicePresentation = useDevicePresentation();
-  const knownProjectSlugs = useMemo(
-    () => new Set(knownProjects.map((project) => project.slug)),
-    [knownProjects],
-  );
   const listItems = useMemo(
     () =>
       buildAgentsViewItems(
         filteredAgents,
-        [],
-        knownProjectSlugs,
         {
           onChat: (agent) =>
             window.dispatchEvent(
@@ -359,7 +350,7 @@ export function useAgentsViewModel({
         },
         { readinessKnown, devicePresentation },
       ),
-    [devicePresentation, filteredAgents, knownProjectSlugs, readinessKnown],
+    [devicePresentation, filteredAgents, readinessKnown],
   );
 
   /*
@@ -667,8 +658,8 @@ export function useAgentsViewModel({
       await deleteAgent(selectedSlug!);
       urlDeselect();
       setIsCreating(false);
-    } catch (err: any) {
-      setActionError(err.message);
+    } catch (err: unknown) {
+      setActionError(userFacingErrorMessage(err));
     }
   }
 
@@ -761,7 +752,9 @@ export function useAgentsViewModel({
       const slug = (data as { slug?: string })?.slug;
       if (slug) urlSelect(slug);
     } catch (err: any) {
-      setEnableError(err?.message ?? String(err));
+      setEnableError(
+        err instanceof Error ? userFacingErrorMessage(err) : String(err),
+      );
     }
   }
 

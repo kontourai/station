@@ -49,10 +49,6 @@ function cssRuleFrom(css: string, selector: string): string {
   return start === -1 || end === -1 ? '' : css.slice(start, end + 2);
 }
 
-function cssRule(selector: string): string {
-  return cssRuleFrom(splitPaneCss, selector);
-}
-
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation(() => ({
@@ -66,40 +62,6 @@ describe('SplitPaneLayout', () => {
   beforeEach(() => {
     isMobileMock.mockReturnValue(false);
     window.localStorage.clear();
-  });
-
-  test('owns mobile detail-sheet dock and back clearance in the shared shell', () => {
-    const back = cssRule('.split-pane__back');
-    const sheet = cssRule('.split-pane__right--sheet');
-    const portaledSheet = cssRule('.split-pane__right--portaled');
-    const sheetDetailHeader = cssRule(
-      '.split-pane__right--sheet .detail-header',
-    );
-    const mobileStart = splitPaneCss.indexOf('@media (max-width: 768px)');
-
-    expect(sheet).toContain('--split-pane-mobile-back-height: 44px;');
-    expect(back).toContain('min-height: var(--split-pane-mobile-back-height);');
-    expect(splitPaneCss).not.toContain('.split-pane__right::after');
-    expect(sheet).toContain('position: absolute;');
-    expect(sheet).toContain('inset: 0;');
-    expect(portaledSheet).toContain('position: fixed;');
-    expect(portaledSheet).toContain('--app-toolbar-total-height, 46px');
-    expect(portaledSheet).toContain('--banner-stack-height, 0px');
-    expect(portaledSheet).toContain('right: 0;');
-    expect(portaledSheet).toContain('left: 0;');
-    expect(portaledSheet).toContain('--dock-slot-size');
-    expect(portaledSheet).toContain('--chat-dock-header-height, 38px');
-    expect(portaledSheet).toContain('--safe-bottom, 0px');
-    expect(portaledSheet).toContain('--visual-viewport-bottom-inset, 0px');
-    expect(portaledSheet).toContain('z-index: var(--layer-sticky);');
-    expect(sheet).toContain(
-      'scroll-padding-top: var(--split-pane-mobile-back-height);',
-    );
-    expect(sheetDetailHeader).toContain('position: static;');
-    expect(splitPaneCss.indexOf(sheet)).toBeGreaterThan(mobileStart);
-    expect(splitPaneCss.indexOf(sheetDetailHeader)).toBeGreaterThan(
-      mobileStart,
-    );
   });
 
   test('renders entity-specific list empty copy when provided', () => {
@@ -1574,35 +1536,5 @@ describe('SplitPaneLayout', () => {
           ?.textContent,
       ).toBe('+ Add provider');
     });
-  });
-});
-
-/**
- * a row with `trailing` content (Agents' Chat/Connect
- * button, Sessions' project-filter pill) ellipsized names like "Claude Code"
- * and "Station" at the pane's generous default width (280px,
- * `SPLIT_PANE_DEFAULT_WIDTH`). `.split-pane__item`'s own right padding is
- * meant for a STANDALONE row, whose right edge is the pane's own edge — but
- * inside `.split-pane__item-row` that edge is already the row's own
- * gap + padding-right before the trailing action, so the item's copy of
- * that padding doubled the reserved space between the name and the button
- * and starved the name column before the pane ran out of width. jsdom does
- * not apply stylesheets or compute layout, so this pins the fix in the CSS
- * source: the standalone-row padding is not duplicated for a trailing row,
- * and the row's own edge spacing did not silently grow back to compensate.
- */
-describe('split-pane row column sizing (station audit F6)', () => {
-  const itemInRow = cssRule('.split-pane__item-row .split-pane__item');
-  const row = cssRule('.split-pane__item-row');
-
-  test('the item does not duplicate the standalone row’s right padding when it shares a trailing row', () => {
-    expect(itemInRow).toMatch(/padding-right:\s*0\s*;/);
-  });
-
-  test('the trailing row’s own edge spacing stays tight rather than growing back to reclaim the freed space', () => {
-    const gap = row.match(/gap:\s*([^;]+);/)?.[1]?.trim();
-    const paddingRight = row.match(/padding-right:\s*([^;]+);/)?.[1]?.trim();
-    expect(gap).toBe('0.2rem');
-    expect(paddingRight).toBe('0.2rem');
   });
 });

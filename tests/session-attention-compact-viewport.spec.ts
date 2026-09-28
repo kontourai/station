@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
   installMockOrchestrationSse,
   seedOrchestrationRoutes,
@@ -24,30 +24,43 @@ import {
  * invisible to it. `getComputedStyle` and
  * `boundingBox()` here read the real CSS cascade.
  */
-test('needs_input attention answer field stays genuinely visible once the viewport goes compact (keyboard-open)', async ({
-  page,
-}) => {
-  // Short viewport height simulates the on-screen keyboard shrinking the
-  // visual viewport: headless Chromium has no real OS keyboard, but
-  // window.visualViewport.height tracks window.innerHeight absent one, so a
-  // genuinely short layout viewport reproduces the same
-  // visualViewport.height <= 620 signal SessionsView reacts to.
+const THREAD_ID = {
+  needs_input: 'claude:1785191319504',
+  failed: 'claude:1785191319999',
+} as const;
+
+/**
+ * Opens one Station-owned session's detail at 390x560. The short height is
+ * the on-screen keyboard: headless Chromium has no real OS keyboard, but
+ * window.visualViewport.height tracks window.innerHeight absent one, so a
+ * genuinely short layout viewport reproduces the same
+ * visualViewport.height <= 620 signal SessionsView reacts to. Returns the
+ * detail once the compact variant is actually engaged — the exact condition
+ * both regressions below were hidden by.
+ */
+async function openCompactSessionDetail(
+  page: Page,
+  lifecycleState: keyof typeof THREAD_ID,
+) {
   await page.setViewportSize({ width: 390, height: 560 });
 
-  const threadId = 'claude:1785191319504';
+  const threadId = THREAD_ID[lifecycleState];
   const session = {
     provider: 'claude',
     threadId,
-    status: 'ready',
+    status: lifecycleState === 'failed' ? 'failed' : 'ready',
     isLoaded: true,
     isPersisted: true,
     eventCount: 1,
     createdAt: '2026-07-28T09:00:00.000Z',
     updatedAt: '2026-07-28T09:05:00.000Z',
     controlMode: 'station-owned',
-    lifecycleState: 'needs_input',
+    lifecycleState,
     model: 'claude-fable-5',
     projectSlug: 'dev',
+    ...(lifecycleState === 'failed'
+      ? { blockedReason: 'Claude model "claude-fable-5" failed: rate limited' }
+      : {}),
   };
   const events = [
     {
@@ -60,6 +73,21 @@ test('needs_input attention answer field stays genuinely visible once the viewpo
       prompt: 'Investigate the failing nightly build and report back',
     },
   ];
+  const attentionItems =
+    lifecycleState === 'needs_input'
+      ? [
+          {
+            id: `needs_input:${threadId}`,
+            kind: 'needs_input',
+            title: 'Input needed',
+            createdAt: '2026-07-28T09:04:00.000Z',
+            updatedAt: '2026-07-28T09:05:00.000Z',
+            sessionId: threadId,
+            openHref: `/?surface=activity&session=${encodeURIComponent(threadId)}`,
+            source: { threadId },
+          },
+        ]
+      : [];
 
   await installMockOrchestrationSse(page);
   await seedOrchestrationRoutes(page);
@@ -68,19 +96,8 @@ test('needs_input attention answer field stays genuinely visible once the viewpo
       json: {
         success: true,
         data: {
-          items: [
-            {
-              id: `needs_input:${threadId}`,
-              kind: 'needs_input',
-              title: 'Input needed',
-              createdAt: '2026-07-28T09:04:00.000Z',
-              updatedAt: '2026-07-28T09:05:00.000Z',
-              sessionId: threadId,
-              openHref: `/?surface=activity&session=${encodeURIComponent(threadId)}`,
-              source: { threadId },
-            },
-          ],
-          pendingCount: 1,
+          items: attentionItems,
+          pendingCount: attentionItems.length,
         },
       },
     }),
@@ -106,10 +123,42 @@ test('needs_input attention answer field stays genuinely visible once the viewpo
   await page.goto(`/?surface=activity&session=${encodeURIComponent(threadId)}`);
   const detail = page.getByTestId('session-detail');
   await detail.waitFor({ state: 'visible' });
-
-  // Confirm the compact variant is actually engaged — the exact condition
-  // that used to hide the answer form.
   await expect(detail).toHaveClass(/sessions-detail--viewport-compact/);
+  return detail;
+}
+
+/**
+ * archive#1170 (HIGH #3): `.sessions-detail__header` used to be hidden
+ * entirely (`display: none`) at this exact viewport — reproduced live at
+ * 390x560 with a `failed` session: title/prompt, status badge, live
+ * indicator, and Stop task all disappeared. The header rule is not
+ * state-specific, so both lifecycle states below assert it survives, using
+ * real CSS (`getComputedStyle`, a non-zero bounding box, `toBeVisible()`),
+ * not DOM presence alone.
+ */
+async function expectIdentityHeaderVisible(detail: Locator) {
+  const title = detail.locator('h2');
+  await expect(title).toBeVisible();
+  const titleBox = await title.boundingBox();
+  expect(titleBox, 'bounding box of the session title').not.toBeNull();
+  expect(titleBox?.width ?? 0, 'title width').toBeGreaterThan(0);
+  expect(titleBox?.height ?? 0, 'title height').toBeGreaterThan(0);
+
+  const status = detail.locator('.sessions-detail__status');
+  await expect(status).toBeVisible();
+  const statusDisplay = await status.evaluate(
+    (el) => getComputedStyle(el).display,
+  );
+  expect(statusDisplay, 'computed display of the status badge').not.toBe(
+    'none',
+  );
+  return status;
+}
+
+test('needs_input attention answer field stays genuinely visible once the viewport goes compact (keyboard-open)', async ({
+  page,
+}) => {
+  const detail = await openCompactSessionDetail(page, 'needs_input');
 
   const attentionBlock = page.getByTestId('session-attention');
   const display = await attentionBlock.evaluate(
@@ -129,124 +178,15 @@ test('needs_input attention answer field stays genuinely visible once the viewpo
   await expect(answer).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send answer' })).toBeVisible();
 
-  // archive#1170 (HIGH #3): .sessions-detail__header used
-  // to be hidden entirely at this exact viewport, taking the page's title
-  // and status badge with it — reproduced live at 390x560 with a `failed`
-  // session (title/prompt, status badge, live indicator, and Stop task all
-  // disappeared; only failure text and the collapsed diagnostics summary
-  // remained). This session is `needs_input`, not `failed`, but the header
-  // rule is not state-specific, so it must hold here too.
-  const title = detail.locator('h2');
-  await expect(title).toBeVisible();
-  const titleBox = await title.boundingBox();
-  expect(titleBox, 'bounding box of the session title').not.toBeNull();
-  expect(titleBox?.width ?? 0, 'title width').toBeGreaterThan(0);
-  expect(titleBox?.height ?? 0, 'title height').toBeGreaterThan(0);
-
-  const status = detail.locator('.sessions-detail__status');
-  await expect(status).toBeVisible();
-  const statusDisplay = await status.evaluate(
-    (el) => getComputedStyle(el).display,
-  );
-  expect(statusDisplay, 'computed display of the status badge').not.toBe(
-    'none',
-  );
+  await expectIdentityHeaderVisible(detail);
 });
 
-/**
- * archive#1170 (HIGH #3) regression guard.
- *
- * `.sessions-detail__header` used to be hidden entirely (`display: none`)
- * in the same compact-viewport media query the sibling test above covers —
- * reproduced live at 390x560 with a `failed` session: title/prompt, status
- * badge, live indicator, and Stop task all disappeared, leaving only the
- * failure text and the collapsed diagnostics summary. The owner's original
- * archive#1170 complaint came from a phone, so the exact moment the keyboard
- * opens is when "what am I looking at" (title) and "what state is it in"
- * (status badge) matter most — this asserts both survive, using the same
- * real-CSS technique as the sibling test (`getComputedStyle`, a non-zero
- * bounding box, and `toBeVisible()`), not DOM presence alone.
- */
 test('failed session keeps its title and status badge visible once the viewport goes compact', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 560 });
-
-  const threadId = 'claude:1785191319999';
-  const session = {
-    provider: 'claude',
-    threadId,
-    status: 'failed',
-    isLoaded: true,
-    isPersisted: true,
-    eventCount: 1,
-    createdAt: '2026-07-28T09:00:00.000Z',
-    updatedAt: '2026-07-28T09:05:00.000Z',
-    controlMode: 'station-owned',
-    lifecycleState: 'failed',
-    model: 'claude-fable-5',
-    projectSlug: 'dev',
-    blockedReason: 'Claude model "claude-fable-5" failed: rate limited',
-  };
-  const events = [
-    {
-      eventId: 'e1',
-      provider: 'claude',
-      threadId,
-      createdAt: '2026-07-28T09:00:05.000Z',
-      turnId: 't1',
-      method: 'turn.started',
-      prompt: 'Investigate the failing nightly build and report back',
-    },
-  ];
-
-  await installMockOrchestrationSse(page);
-  await seedOrchestrationRoutes(page);
-  await page.route('**/api/attention', (route) =>
-    route.fulfill({
-      json: { success: true, data: { items: [], pendingCount: 0 } },
-    }),
-  );
-  await page.route('**/api/projects/*/workflow/tasks', (route) =>
-    route.fulfill({ json: { success: true, data: [] } }),
-  );
-  await page.route('**/api/orchestration/sessions/**', (route) => {
-    const url = new URL(route.request().url());
-    const parts = url.pathname.split('/').filter(Boolean);
-    const last = parts.at(-1);
-    if (last === 'read-model') {
-      return route.fulfill({ json: { success: true, data: [session] } });
-    }
-    if (last === 'flow-run') {
-      return route.fulfill({ json: { success: true, data: null } });
-    }
-    return route.fulfill({
-      json: { success: true, data: { session, events } },
-    });
-  });
-
-  await page.goto(`/?surface=activity&session=${encodeURIComponent(threadId)}`);
-  const detail = page.getByTestId('session-detail');
-  await detail.waitFor({ state: 'visible' });
-
-  await expect(detail).toHaveClass(/sessions-detail--viewport-compact/);
-
-  const title = detail.locator('h2');
-  await expect(title).toBeVisible();
-  const titleBox = await title.boundingBox();
-  expect(titleBox, 'bounding box of the session title').not.toBeNull();
-  expect(titleBox?.width ?? 0, 'title width').toBeGreaterThan(0);
-  expect(titleBox?.height ?? 0, 'title height').toBeGreaterThan(0);
-
-  const status = detail.locator('.sessions-detail__status');
-  await expect(status).toBeVisible();
-  const statusDisplay = await status.evaluate(
-    (el) => getComputedStyle(el).display,
-  );
-  expect(statusDisplay, 'computed display of the status badge').not.toBe(
-    'none',
-  );
+  const detail = await openCompactSessionDetail(page, 'failed');
+  const status = await expectIdentityHeaderVisible(detail);
   // Lifecycle labels are user-facing title case; the underlying lifecycle
-  // state remains the lowercase `failed` fixture value above.
+  // state remains the lowercase `failed` fixture value.
   await expect(status).toHaveText('Failed');
 });

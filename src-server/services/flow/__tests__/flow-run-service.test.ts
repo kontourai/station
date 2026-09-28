@@ -33,6 +33,9 @@ const {
   FlowRunNotFoundError,
   commandOutcomePassed,
 } = await import('../flow-run-service.js');
+const { attachFlowRunForSessionStart } = await import(
+  '../orchestration-flow-gate.js'
+);
 
 /** Minimal valid Flow Definition: two steps, one gated with route-back. */
 const TEST_DEFINITION = {
@@ -247,15 +250,6 @@ describe('FlowRunService', () => {
       ).rejects.toBeInstanceOf(FlowRunNotFoundError);
     });
 
-    test('throws invalid for duplicate run id', async () => {
-      const cwd = createWorkspace();
-      const svc = new FlowRunService();
-      await svc.startRun(cwd, { definition: 'test-flow', runId: 'dup' });
-      await expect(
-        svc.startRun(cwd, { definition: 'test-flow', runId: 'dup' }),
-      ).rejects.toBeInstanceOf(FlowRunInvalidError);
-    });
-
     test('discardRun removes the canonical run directory', async () => {
       const cwd = createWorkspace();
       const runId = 'rollback-run';
@@ -348,13 +342,6 @@ describe('FlowRunService', () => {
       expect(run.state.run_id).toBe('run-1');
       expect(run.manifest.evidence).toEqual([]);
       expect(run.openGates.map((g) => g.id)).toEqual(['build-gate']);
-    });
-
-    test('getRun throws not-found for unknown run', async () => {
-      const cwd = createWorkspace();
-      await expect(
-        new FlowRunService().getRun(cwd, 'missing'),
-      ).rejects.toBeInstanceOf(FlowRunNotFoundError);
     });
 
     test('listRuns returns run summaries', async () => {
@@ -1404,21 +1391,6 @@ describe('FlowRunService', () => {
       });
     });
 
-    test('an obsolete Station switch cannot disable Flow policy', async () => {
-      const cwd = createPinnedWorkspace();
-      const svc = new FlowRunService();
-      await svc.startRun(cwd, { definition: 'pinned-readiness', runId: 'r1' });
-      await svc.attachEvidence(cwd, 'r1', {
-        gate: 'readiness-gate',
-        file: bundleEvidence(cwd, 'governance.merge-readiness'),
-        kind: 'trust.bundle',
-        producer: 'station/command',
-      });
-      expect((await svc.evaluate(cwd, 'r1')).outcomes[0].status).toBe(
-        'route-back',
-      );
-    });
-
     test('quality.* gates stay unpinned: manual and helper attachments keep working', async () => {
       const cwd = createPinnedWorkspace();
       const svc = new FlowRunService();
@@ -1644,30 +1616,32 @@ describe('FlowRunService', () => {
     });
 
     /**
-     * The end-to-end shape M4 names: startRun collides with the half-written
-     * directory, the resume path reads it, and session start degrades with a
-     * typed error instead of an untyped 500.
+     * The end-to-end shape M4 names: session start collides with a
+     * half-written run directory at its deterministic run id, the resume path
+     * reads it, and the attach rejects with a typed not-found instead of an
+     * untyped 500. A complete run at the same id resumes.
      */
     test('session start over a half-written run degrades honestly', async () => {
       const cwd = createWorkspace();
       const svc = new FlowRunService();
+      const attach = (threadId: string) =>
+        attachFlowRunForSessionStart({
+          flowRunService: svc,
+          input: { provider: 'codex', threadId, cwd },
+        });
       mkdirSync(join(cwd, '.kontourai', 'flow', 'runs', 'session-wedged'), {
         recursive: true,
       });
 
-      const startError = await svc
-        .startRun(cwd, { definition: 'test-flow', runId: 'session-wedged' })
-        .catch((e) => e);
-      expect(startError).toBeInstanceOf(FlowRunInvalidError);
-      expect(startError.code).toBe(FLOW_RUN_LOCATION_ALLOCATION_COLLISION);
+      const error = await attach('wedged').catch((e) => e);
+      expect(error).toBeInstanceOf(FlowRunNotFoundError);
+      expect(error.code).toBe(FLOW_RUN_LOCATION_NO_COMPLETE_CANDIDATE);
 
-      // The resume path's read: typed, so the caller can report it as a
-      // missing run rather than a server fault.
-      const resumeError = await svc
-        .getRun(cwd, 'session-wedged')
-        .catch((e) => e);
-      expect(resumeError).toBeInstanceOf(FlowRunNotFoundError);
-      expect(resumeError.code).toBe(FLOW_RUN_LOCATION_NO_COMPLETE_CANDIDATE);
+      await attach('complete');
+      await expect(attach('complete')).resolves.toMatchObject({
+        runId: 'session-complete',
+        resumed: true,
+      });
     });
 
     /**

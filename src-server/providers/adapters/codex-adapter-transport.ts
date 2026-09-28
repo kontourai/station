@@ -26,18 +26,19 @@ import {
 import {
   type CodexProcessLike,
   type CodexSessionRecord,
+  type JsonRpcId,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 
 type JsonRpcRequest = {
-  id?: string | number;
+  id?: JsonRpcId;
   method: string;
   params?: unknown;
 };
 
 type JsonRpcResponse = {
-  id: string | number;
+  id: JsonRpcId;
   result?: unknown;
   error?: {
     code?: number;
@@ -382,7 +383,7 @@ export class CodexAdapterTransport {
     if (hasMethod(message) && hasId(message)) {
       this.handleServerRequest(
         record,
-        message as JsonRpcRequest & { id: string | number },
+        message as JsonRpcRequest & { id: JsonRpcId },
       );
       return;
     }
@@ -414,7 +415,7 @@ export class CodexAdapterTransport {
 
   sendResponse(
     record: CodexSessionRecord,
-    requestId: string,
+    requestId: JsonRpcId,
     result: unknown,
   ): void {
     record.process.stdin.write(
@@ -424,7 +425,7 @@ export class CodexAdapterTransport {
 
   sendErrorResponse(
     record: CodexSessionRecord,
-    requestId: string,
+    requestId: JsonRpcId,
     message: string,
   ): void {
     record.process.stdin.write(
@@ -602,7 +603,11 @@ export class CodexAdapterTransport {
     record: CodexSessionRecord,
     response: JsonRpcResponse,
   ): void {
-    const requestId = String(response.id);
+    // Station only issues string ids (`sendRequest`), and a peer echoes the
+    // id with its type, so a numeric id is never a reply to one of ours —
+    // `String()` would let a numeric `1` settle our pending `"1"` (#562).
+    if (typeof response.id !== 'string') return;
+    const requestId = response.id;
     const pending = record.pendingRpcRequests.get(requestId);
     if (!pending) return;
     record.pendingRpcRequests.delete(requestId);
@@ -620,9 +625,12 @@ export class CodexAdapterTransport {
 
   private handleServerRequest(
     record: CodexSessionRecord,
-    request: JsonRpcRequest & { id: string | number },
+    request: JsonRpcRequest & { id: JsonRpcId },
   ): void {
-    const requestId = String(request.id);
+    // #562: the reply must carry the id exactly as received (value and
+    // type). Codex sends numeric ids and drops a reply whose id is `"0"`
+    // for request `0`, leaving the approval recorded but never delivered.
+    const requestId = request.id;
     const canonicalRequestId = crypto.randomUUID();
     const event = mapServerRequestToEvent(
       record.externalThreadId,

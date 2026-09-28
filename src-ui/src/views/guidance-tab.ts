@@ -17,20 +17,6 @@ export type GuidanceTab = 'skills' | 'commands';
 export const GUIDANCE_TAB_MEMORY_KEY = 'station-guidance-tab';
 
 /**
- * Which Guidance list is on screen, when the reader narrowed it.
- *
- * Only one narrowing exists: `commands` is the set of skills that are runnable
- * as a `/command`. It is a URL param rather than component state because a
- * bookmark, a palette entry and a deep link all have to land on the same list,
- * and a remembered-in-React filter cannot be linked to.
- */
-type GuidanceFilter = 'commands';
-
-export function isGuidanceFilter(value: unknown): value is GuidanceFilter {
-  return value === 'commands';
-}
-
-/**
  * The tab remembered from this session, or `skills`.
  *
  * `sessionStorage` can throw in privacy-restricted webviews, and an unreadable

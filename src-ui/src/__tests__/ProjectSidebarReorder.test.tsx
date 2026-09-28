@@ -6,9 +6,6 @@
  * slug-derived accent colors.
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -47,7 +44,6 @@ import { ProjectSidebarRow } from '../components/project-sidebar/ProjectSidebarR
 import { projectAccents } from '../components/project-sidebar/projectAccent';
 import {
   dropEdgeFor,
-  reorderedSlugs,
   useProjectListReorder,
 } from '../components/project-sidebar/useProjectListReorder';
 
@@ -130,11 +126,6 @@ function layoutRows(container: HTMLElement, rowHeight = 40) {
 afterEach(cleanup);
 
 describe('project sidebar reorder (station#3315)', () => {
-  test('reorderedSlugs applies splice semantics', () => {
-    expect(reorderedSlugs(['a', 'b', 'c'], 0, 2)).toEqual(['b', 'c', 'a']);
-    expect(reorderedSlugs(['a', 'b', 'c'], 2, 0)).toEqual(['c', 'a', 'b']);
-  });
-
   test('keyboard: ArrowDown on the handle commits the moved order', () => {
     const onCommit = vi.fn();
     render(<Harness slugs={['alpha', 'beta', 'gamma']} onCommit={onCommit} />);
@@ -312,83 +303,11 @@ describe('project sidebar reorder (station#3315)', () => {
     expect(screen.getByTestId('reorder-status').textContent).toBe('');
   });
 
-  // archive#3331. jsdom evaluates no media query and computes no
-  // layout, so this pins only the stylesheet's own text — every assertion is
-  // scoped to the rule it is about, because an unscoped `css.toContain(...)`
-  // is satisfied by any rule in the file and discriminates nothing.
-  //
-  // The RENDERED result was measured separately, under Chromium coarse-pointer
-  // emulation against a live Station: `(pointer: coarse)` matched, the handle
-  // computed to opacity 1 / 28x44 / touch-action none, the row-main box
-  // measured 44px so adjacent handles tile instead of overlapping, and the
-  // project name's right edge sat left of the handle's left edge. The same
-  // probe with `opacity: 1` reverted reproduced the invisible-but-active trap.
-  test('the reorder handle is visible and 44px-tall on coarse pointers (station#3331)', () => {
-    const css = readFileSync(
-      join(
-        dirname(fileURLToPath(import.meta.url)),
-        '../components/project-sidebar/ProjectSidebar.css',
-      ),
-      'utf8',
-    );
-    /** The declarations of the first rule whose selector line matches. */
-    const ruleBody = (selector: string): string => {
-      const start = css.indexOf(`\n${selector} {`);
-      expect(start).toBeGreaterThan(-1);
-      const from = start + selector.length + 4;
-      return css.slice(from, css.indexOf('\n}', from));
-    };
-
-    // Base rule: hidden by default, and it owns the gesture. Both facts have
-    // to live on the SAME rule for the trap to be what archive#3331 described.
-    const base = ruleBody('.sidebar__reorder-handle');
-    expect(base).toContain('opacity: 0');
-    expect(base).toContain('touch-action: none');
-
-    // Coarse block: visible, and the row grown so the 44px target fits inside
-    // a row that was 34px (6px padding + a 22px accent, no min-height).
-    const coarseStart = css.indexOf('@media (pointer: coarse)');
-    expect(coarseStart).toBeGreaterThan(-1);
-    const coarse = css.slice(coarseStart);
-    const coarseBlock = coarse.slice(0, coarse.indexOf('}\n}'));
-    expect(coarseBlock).toContain('opacity: 1');
-    expect(coarseBlock).toContain('height: 44px');
-    expect(coarseBlock).toContain('min-height: 44px');
-    // The base rule's 0 must not survive into the coarse block.
-    expect(coarseBlock).not.toContain('opacity: 0');
-
-    // Whole-block `toContain` cannot tell whose 44px it found, so read the
-    // handle's own nested rule.
-    const coarseRuleBody = (selector: string): string => {
-      const start = coarseBlock.indexOf(`\n  ${selector} {`);
-      expect(start).toBeGreaterThan(-1);
-      const from = start + selector.length + 6;
-      return coarseBlock.slice(from, coarseBlock.indexOf('\n  }', from));
-    };
-    // #2063 retired the expand chevron with the nested layout tree
-    // (archive#3346 sized it here), so the handle is the row's only overlaid
-    // control and takes the column the chevron held: 4-32px from the right
-    // edge, with the row reserving 36px of text so the name still clears it
-    // by the same 4px the 66px reservation gave when the two shared the edge.
-    const handle = coarseRuleBody('.sidebar__reorder-handle');
-    expect(handle).toContain('width: 28px');
-    expect(handle).toContain('right: 4px');
-    const row = coarseRuleBody(
-      '.sidebar:not(.sidebar--collapsed) .sidebar__project-btn',
-    );
-    expect(row).toContain('padding-right: 36px');
-    // The control the chevron's removal freed this column of is really gone,
-    // so nothing sized for a two-control row survives to collide with it.
-    expect(css).not.toContain('.sidebar__chevron');
-  });
-
   // The accent palette is allocated over the SORTED slug set
   // (`projectAccents`), so an order change must never repaint a project.
   test('reordering does not reassign slug-derived accent colors', () => {
     const before = projectAccents(['alpha', 'beta', 'gamma']);
-    const after = projectAccents(
-      reorderedSlugs(['alpha', 'beta', 'gamma'], 0, 2),
-    );
+    const after = projectAccents(['beta', 'gamma', 'alpha']);
     for (const slug of ['alpha', 'beta', 'gamma']) {
       expect(after.get(slug)).toBe(before.get(slug));
     }

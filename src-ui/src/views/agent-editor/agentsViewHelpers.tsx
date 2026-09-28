@@ -22,13 +22,6 @@ import { agentEngineDescriptor } from '../../utils/engine';
 export { agentFixRoute } from '../../components/AgentReadinessCell';
 export type { AgentFixRoute };
 
-type ACPConnectionItem = {
-  id: string;
-  name?: string;
-  icon?: string;
-  modes?: unknown[];
-};
-
 /**
  * DESIGN.md §2 — the rail is a READINESS BOARD, not a directory. Two bands
  * (`section`), and a row carrying the user's own name, the engine chip ONLY
@@ -42,8 +35,6 @@ type ACPConnectionItem = {
  */
 export function buildAgentsViewItems(
   agents: AgentData[],
-  _acpConnections: ACPConnectionItem[],
-  _knownProjectSlugs?: ReadonlySet<string>,
   actions?: {
     onChat: (agent: AgentData) => void;
     onFix: (agent: AgentData, route: AgentFixRoute) => void;

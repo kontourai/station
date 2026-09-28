@@ -110,7 +110,6 @@
         "readRunFile",
         "getStats",
         "getStatus",
-        "previewSchedule",
         "subscribe",
         "getPrerequisites"
       ]

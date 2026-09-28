@@ -46,8 +46,16 @@ export interface PendingRpcRequest {
   turnId?: string;
 }
 
+/**
+ * A JSON-RPC 2.0 request id exactly as the peer sent it (#562). Codex issues
+ * its server requests with numeric ids and matches replies by value AND type,
+ * so a reply carrying `"0"` for request `0` is silently dropped. Never
+ * normalize this to a string; echo it back unchanged.
+ */
+export type JsonRpcId = string | number;
+
 export interface PendingApprovalRequest {
-  rpcRequestId: string;
+  rpcRequestId: JsonRpcId;
   method: string;
   title: string;
   threadId: string;

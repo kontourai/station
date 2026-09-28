@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { SelfHostedBrokerService } from '../../src-server/services/connections/self-hosted-broker-service.js';
 import {
   captureOwnedProcessOutput,
@@ -41,6 +42,7 @@ test.runIf(process.platform === 'win32')(
   },
 );
 describe.runIf(process.platform !== 'win32')('self-hosted broker CLI', () => {
+  const makeTempDir = trackTempDirs();
   test('issues a private one-time invitation and lists/revokes one client grant', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-broker-invite-cli-'));
     const configPath = join(root, 'config.json');
@@ -174,6 +176,123 @@ describe.runIf(process.platform !== 'win32')('self-hosted broker CLI', () => {
           }
         ).count,
       ).toBe(1);
+      db.close();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('provisions two exact Station scopes into one broker database with separate private credentials', () => {
+    const root = makeTempDir('station-broker-multi-station-');
+    const databasePath = join(root, 'broker.sqlite');
+    const stations = [
+      {
+        directory: join(root, 'station-a'),
+        scope: {
+          stationId: 'station-a-12345678',
+          enrollmentId: 'enroll-a-12345678',
+          routingGeneration: 1,
+          browserOrigin: 'http://localhost:4173',
+        },
+      },
+      {
+        directory: join(root, 'station-b'),
+        scope: {
+          stationId: 'station-b-12345678',
+          enrollmentId: 'enroll-b-12345678',
+          routingGeneration: 1,
+          browserOrigin: 'http://localhost:4174',
+        },
+      },
+    ] as const;
+    const run = (configPath: string) =>
+      execFileSync(
+        resolve('node_modules/.bin/tsx'),
+        ['scripts/self-hosted-broker.ts', 'init', configPath],
+        {
+          cwd: resolve(import.meta.dirname, '../..'),
+          windowsHide: true,
+          timeout: 10_000,
+          maxBuffer: 64 * 1024,
+        },
+      );
+    try {
+      for (const { directory, scope } of stations) {
+        mkdirSync(directory, { mode: 0o700 });
+        writeFileSync(
+          join(directory, 'init.json'),
+          JSON.stringify({
+            version: 'station-self-hosted-broker/v1',
+            databasePath,
+            credentialsPath: join(directory, 'credentials.json'),
+            port: 0,
+            provision: [scope],
+          }),
+          { mode: 0o600 },
+        );
+      }
+
+      for (const { directory } of stations) run(join(directory, 'init.json'));
+
+      const bundles = stations.map(({ directory, scope }) => {
+        const credentialsPath = join(directory, 'credentials.json');
+        expect(statSync(credentialsPath).mode & 0o077).toBe(0);
+        const record = JSON.parse(readFileSync(credentialsPath, 'utf8')) as {
+          scope: (typeof stations)[number]['scope'];
+          bundle: {
+            connector: { id: string; secret: string };
+            routing: { id: string; secret: string };
+          };
+        };
+        expect(record.scope).toEqual(scope);
+        return record.bundle;
+      });
+      expect(bundles[0]).not.toEqual(bundles[1]);
+
+      const service = new SelfHostedBrokerService(databasePath);
+      try {
+        for (const [index, { scope }] of stations.entries()) {
+          expect(service.status(scope, bundles[index]!.routing).state).toBe(
+            'offline',
+          );
+          expect(() =>
+            service.status(scope, bundles[1 - index]!.routing),
+          ).toThrow('broker_credential_refused');
+        }
+        service.withdraw(stations[0].scope, bundles[0]!.connector);
+        expect(() =>
+          service.status(stations[0].scope, bundles[0]!.routing),
+        ).toThrow('broker_credential_refused');
+        expect(
+          service.status(stations[1].scope, bundles[1]!.routing).state,
+        ).toBe('offline');
+        const registration = service.register(
+          stations[1].scope,
+          bundles[1]!.connector,
+        );
+        expect(
+          service.status(stations[1].scope, bundles[1]!.routing).state,
+        ).toBe('online');
+        const renewal = service.renew(
+          stations[1].scope,
+          bundles[1]!.connector,
+          registration.revision,
+        );
+        expect(renewal.revision).toBe(registration.revision + 1);
+        expect(
+          service.status(stations[1].scope, bundles[1]!.routing).state,
+        ).toBe('online');
+      } finally {
+        service.close();
+      }
+
+      const db = new DatabaseSync(databasePath, { readOnly: true });
+      expect(
+        (
+          db.prepare('SELECT count(*) count FROM broker_leases').get() as {
+            count: number;
+          }
+        ).count,
+      ).toBe(2);
       db.close();
     } finally {
       rmSync(root, { recursive: true, force: true });

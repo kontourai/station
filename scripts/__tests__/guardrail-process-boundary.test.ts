@@ -742,6 +742,23 @@ describe('builder-delivery-viewer-import:gate rejects an unpublished import', ()
       `unapproved-module-capability: ${ROOT}/evil.ts:1`,
     );
   });
+
+  it('refuses an empty scope rather than reporting it clean', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const dir = scratchRepo({
+      script: SCRIPT,
+      files: {
+        'examples/other-plugin/src/plugin.tsx': clean[`${ROOT}/plugin.tsx`],
+      },
+    });
+    linkNodeModules(dir);
+    const result = runGuardrail(dir, SCRIPT);
+    expect(result.status, result.output).toBe(1);
+    expect(result.stderr).toContain(
+      'Builder Delivery Viewer import gate failed: no source files under examples/builder-delivery-viewer.',
+    );
+  });
 });
 
 describe('check-mobile-permissions rejects an unreviewed Android permission', () => {
@@ -1156,6 +1173,8 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
+      // The ratchet lints the roots named by the real lint:check script.
+      productionFiles: ['package.json'],
       files: {
         ...config,
         'src-ui/clean.tsx':
@@ -1176,6 +1195,7 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
+      productionFiles: ['package.json'],
       files: {
         ...config,
         'src-ui/clean.tsx': 'export const A = () => <button>x</button>;\n',
@@ -1199,6 +1219,7 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
+      productionFiles: ['package.json'],
       files: {
         ...config,
         'scripts/a11y-baseline.json': `${JSON.stringify(
