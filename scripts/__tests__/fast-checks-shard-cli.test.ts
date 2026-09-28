@@ -16,6 +16,7 @@ import { runFastChecksShardCli } from '../fast-checks-shard.mjs';
 import {
   digestText,
   FAST_CHECKS_PART_JOBS,
+  FAST_CHECKS_PLAN_BUDGET_MS,
   FAST_CHECKS_PLAN_KIND,
   FAST_CHECKS_RECEIPT_KIND,
   FAST_CHECKS_SHARD_COUNT,
@@ -32,6 +33,7 @@ import {
   vitestExecutionsForGroups,
 } from '../run-changed-verification.mjs';
 import { buildTestImpactManifest } from '../test-impact-manifest.mjs';
+import { listWorkspacePackageManifests } from '../workspace-dependency-provenance.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -771,7 +773,9 @@ describe('transitional legacy path: the base-controlled shell in ci.yml (child p
 
 describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
   test('a committed file nothing imports defers the plan to test-full, as the unsharded lane exits 3', {
-    timeout: 240_000,
+    // The plan step's budget, which discovery may now use, plus the
+    // unsharded run and the fixture worktree.
+    timeout: FAST_CHECKS_PLAN_BUDGET_MS + 60_000,
   }, async () => {
     // A disposable worktree at HEAD with one committed orphan module, so
     // the diff is a real `git diff` and discovery is the real Vitest graph.
@@ -821,20 +825,23 @@ describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
       });
       let discovered: string[] | undefined;
 
+      // #2855: discovery gets the plan step's own budget, as the plan command
+      // gives it, not the old fixed 60s that a loaded host outlasts.
+      const discoveryDeadlineAt = Date.now() + FAST_CHECKS_PLAN_BUDGET_MS;
       const plan = await planChangedVerificationShards('HEAD~1', {
         root: worktree,
         headSha,
         assertDependencyProvenance,
+        discoveryDeadlineAt,
         discoverRelatedFiles: async (
           discoveryRoot: string,
           paths: string[],
           options?: { base?: string },
         ) => {
-          discovered = await discoverRelatedTestFiles(
-            discoveryRoot,
-            paths,
-            options,
-          );
+          discovered = await discoverRelatedTestFiles(discoveryRoot, paths, {
+            ...options,
+            deadlineAt: discoveryDeadlineAt,
+          });
           return discovered;
         },
       });
@@ -968,8 +975,121 @@ describe("a real shard run inherits the lane coordinator's bindings (review H1)"
   });
 });
 
+describe('the plan command gives discovery the plan step budget (#2855)', () => {
+  test('the deadline is the command start plus the plan step fence', async () => {
+    const { directory, head } = repository();
+    const seen: number[] = [];
+    const status = await runFastChecksShardCli(['plan', '--out=plan.json'], {
+      cwd: directory,
+      env: { STATION_CI_FAST_BASE: 'HEAD' },
+      report: () => {},
+      error: () => {},
+      now: () => 5_000,
+      planShards: async (_base, options) => {
+        seen.push(options.discoveryDeadlineAt);
+        return planFor(head, ['a/a.test.ts']);
+      },
+    });
+    expect(status).toBe(0);
+    expect(FAST_CHECKS_PLAN_BUDGET_MS).toBe(300_000);
+    expect(seen).toEqual([5_000 + 300_000]);
+  });
+});
+
+describe('the selector CLI takes its discovery deadline from run-ci-fast (#2855 review M2)', () => {
+  test('with the deadline almost spent, the real CLI refuses discovery and writes an infrastructure_error receipt', {
+    timeout: 180_000,
+  }, () => {
+    // A disposable worktree with one changed script, so the selection has
+    // a related path and reaches discovery; the only way the refusal can
+    // happen is the CLI reading STATION_TEST_CHANGED_DEADLINE_AT.
+    const worktree = join(makeTempDir('station-changed-deadline-'), 'wt');
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync('git', args, {
+        cwd,
+        encoding: 'utf8',
+        windowsHide: true,
+      }).trim();
+    git(root, 'worktree', 'add', '--detach', worktree, 'HEAD');
+    let failure: unknown;
+    try {
+      // node_modules is a directory of links to the primary install, except
+      // workspace packages, which point at this worktree's own sources so
+      // the CLI's dependency-provenance preflight accepts it.
+      const workspace = new Map(
+        listWorkspacePackageManifests(worktree).map((entry) => [
+          entry.name,
+          entry.directory,
+        ]),
+      );
+      const modules = join(worktree, 'node_modules');
+      mkdirSync(modules);
+      for (const entry of readdirSync(join(root, 'node_modules'))) {
+        const scoped = [...workspace.keys()].filter((name) =>
+          name.startsWith(`${entry}/`),
+        );
+        if (!scoped.length) {
+          symlinkSync(join(root, 'node_modules', entry), join(modules, entry));
+          continue;
+        }
+        mkdirSync(join(modules, entry));
+        for (const member of readdirSync(join(root, 'node_modules', entry))) {
+          const name = `${entry}/${member}`;
+          symlinkSync(
+            workspace.get(name) ?? join(root, 'node_modules', entry, member),
+            join(modules, entry, member),
+          );
+        }
+      }
+      const changed = join(worktree, 'scripts/lib/module-entry.mjs');
+      writeFileSync(changed, `${readFileSync(changed, 'utf8')}\n`);
+
+      const env: Record<string, string | undefined> = {
+        ...process.env,
+        STATION_TEST_CHANGED_DEADLINE_AT: String(Date.now() + 10_000),
+      };
+      const result = spawnSync(
+        process.execPath,
+        // This checkout's CLI (the code under test) over the fixture's
+        // repository: the CLI takes its root from cwd.
+        [join(root, 'scripts/run-changed-verification.mjs'), '--base=HEAD'],
+        {
+          cwd: worktree,
+          encoding: 'utf8',
+          env,
+          timeout: 170_000,
+          windowsHide: true,
+        },
+      );
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(1);
+      const selection = JSON.parse(
+        readFileSync(
+          join(worktree, '.kontourai/test-impact/changed-selection.json'),
+          'utf8',
+        ),
+      );
+      expect(selection.receipt.status).toBe('infrastructure_error');
+      expect(selection.preparation).toMatchObject({
+        phase: 'related-discovery',
+        childStarted: false,
+      });
+      expect(selection.preparation.error).toContain(
+        'Related Vitest discovery refused: 0ms of its budget remain',
+      );
+    } catch (error) {
+      failure = error;
+    }
+    try {
+      git(root, 'worktree', 'remove', '--force', worktree);
+    } catch (cleanupError) {
+      if (failure === undefined) throw cleanupError;
+    }
+    if (failure !== undefined) throw failure;
+  });
+});
+
 describe('the plan records its related-discovery cost (#2803)', () => {
-  test('a plan that ran discovery records its duration against the cap, and one that did not records nothing', async () => {
+  test('a plan that ran discovery records its duration and the timeout its child ran under, and one that did not records nothing', async () => {
     let clock = 1_000;
     const plan = await planChangedVerificationShards('HEAD', {
       root,
@@ -983,14 +1103,16 @@ describe('the plan records its related-discovery cost (#2803)', () => {
         paths: ['scripts/lib/fast-checks-shards.mjs'],
       }),
       now: () => clock,
-      discoverRelatedFiles: async () => {
+      // As the real discovery does: report the derived timeout, then run.
+      discoverRelatedFiles: async (_root, _paths, options) => {
+        options?.onTimeout?.(265_000);
         clock += 34_200;
         return ['scripts/__tests__/fast-checks-shards.test.ts'];
       },
     });
     expect(plan.relatedDiscovery).toEqual({
       milliseconds: 34_200,
-      capMilliseconds: 60_000,
+      timeoutMilliseconds: 265_000,
     });
     const explicit = await planChangedVerificationShards('HEAD', {
       root,
@@ -1020,12 +1142,15 @@ describe('the plan records its related-discovery cost (#2803)', () => {
       error: () => {},
       planShards: async () => ({
         ...planFor(head, ['a/a.test.ts']),
-        relatedDiscovery: { milliseconds: 34_200, capMilliseconds: 60_000 },
+        relatedDiscovery: {
+          milliseconds: 34_200,
+          timeoutMilliseconds: 265_000,
+        },
       }),
     });
     expect(status).toBe(0);
     expect(lines.join('')).toContain(
-      '[fast-checks] related discovery: 34.2s of its 60s cap',
+      '[fast-checks] related discovery: 34.2s of its 265.0s timeout\n',
     );
   });
 });

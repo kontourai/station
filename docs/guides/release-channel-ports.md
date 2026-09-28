@@ -60,6 +60,70 @@ nightly install over a port that is already in use. Stable and beta desktop
 apps share their channels' defaults in the same way; the installer does not
 yet guard those channels.
 
+## Prebuilt archives and source releases
+
+A signed public manifest (schema 2) names one prebuilt server archive per
+platform (`station-server-<os>-<arch>`). `install.sh` verifies the manifest
+against the pinned keys, picks this host's archive, checks its size and
+sha256, its `.station-prebuilt-archive` marker and its `.station-release.json`
+provenance, and extracts it to
+`$STATION_ROOT/installs/<channel>/versions/<version>/`. It then runs the
+version's own `bin/station --version`, which must report the signed version
+on the manifest's Node.js, writes the `.station-install-complete` sentinel,
+and makes the directory read-only. `current` points at the active version,
+and the launcher (`station-owned-launcher-v2`) runs `current/bin/station`.
+Nothing is built, and the archive's bundled Node.js runs Station. Pruning
+happens only after the installer itself starts Station: it keeps the active
+version and the one it replaced, and removes the rest. With
+`STATION_INSTALL_NO_START=1` nothing is pruned.
+
+Verifying the manifest still needs a Node.js at install time. `install.sh`
+uses a Node.js 20 or newer from `PATH`. If there is none, it uses the Node.js
+inside the channel's installed archive, so `station upgrade` and uninstall
+need no host Node.js. Otherwise, for uninstall and on the public-manifest
+path, it downloads the official Node.js distribution pinned by sha256 in
+`config/portable-server-node-runtime.json` (a generated block in
+`install.sh`), and uses it only to verify and extract.
+
+The install state (`.station-release-state.json`) is schema 4 and records
+the manifest URL when the install came from a public manifest. The
+authenticated GitHub-release path records no URL and keeps writing schema 3,
+which released installers and CLIs read. A packaged `station upgrade` re-runs the installed version's
+`install.sh` with that URL, so it needs no environment variable. An explicit
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins. Under an installed service,
+`station upgrade` refuses, as it does for every packaged install.
+
+Source releases are still supported and are built on the host. They come from
+the authenticated GitHub-release path, which is how stable and beta install
+today, and from a schema 1 public manifest (`station-portable.tar.gz`), which
+stable and preview can publish until those rings ship archives. A source
+release lives in `installs/<channel>/releases/<sha256>/`, needs Node.js 24
+and npm on the host, and uses the v1 launcher. An install can move from a
+source release to an archive: the installer recognises either launcher as its
+own and keeps the source release as the rollback target. Uninstall removes
+both layouts.
+
+The installer checks a schema 1 manifest with the signer's rules, so its
+source SHA and sha256 must be lowercase hex, as the signer writes them. (It
+accepted uppercase before.) Downloads are capped with curl's
+`--max-filesize`: the manifest at 1 MiB, an archive at its signed size. curl
+8.4.0 and newer stop any transfer at the cap; older curl (Ubuntu 22.04,
+Debian 12) enforces it only on a declared Content-Length, so a chunked
+response can exceed it there. The size and sha256 checks refuse it after the
+download either way.
+
+Moving between layouts at the same version needs no rollback flag. A replayed
+old signed manifest can therefore swap a source vX for a previously published
+archive vX (or back); both are legitimately signed vX, so this is accepted.
+
+Known limits until later #2675 slices:
+
+- An `install.sh` from before prebuilt archives (for example the copy inside
+  an old source release) cannot remove a read-only version directory left in
+  the install root. Uninstall with a current `install.sh`.
+- Installed services (`station service install`) still run the source-release
+  layout. Service units that run an archive arrive with slice C.
+
 ## Platform identity matrix
 
 `config/channel-platform-matrix.json` is the explicit cross-platform contract
