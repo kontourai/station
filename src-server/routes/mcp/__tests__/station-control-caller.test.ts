@@ -1065,8 +1065,7 @@ describe('agent-started child sessions (security review B2, D1, D2, D3)', () => 
   test('D1: a stdio-env-token caller for the same owner is unattributed', async () => {
     process.env.STATION_API_BASE = baseUrl;
     installStationControlStdioCallerCredential({
-      [STATION_CONTROL_CALLER_TOKEN_ENV]:
-        stdioToken('session-a'),
+      [STATION_CONTROL_CALLER_TOKEN_ENV]: stdioToken('session-a'),
     });
     await api('/api/orchestration/delegations', {
       method: 'POST',

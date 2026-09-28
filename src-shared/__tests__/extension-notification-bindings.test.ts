@@ -3,7 +3,6 @@ import {
   EXTENSION_NOTIFICATION_BINDINGS,
   EXTENSION_NOTIFICATION_EVIDENCE_GAPS,
   extensionNotificationBinding,
-  isBoundExtensionNotification,
   takeUnboundExtensionNotice,
 } from '../extension-notification-bindings.js';
 

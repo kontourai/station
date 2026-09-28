@@ -84,7 +84,6 @@ import {
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
-import { STATION_CONTROL_CALLER_TOKEN_ENV } from '../../tools/station-control-shared.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import {
