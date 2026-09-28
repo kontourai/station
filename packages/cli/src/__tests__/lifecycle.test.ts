@@ -459,7 +459,6 @@ async function loadLifecycleModule(
     LIFECYCLE_CODE_ROOT: codeRoot,
     PLUGINS_DIR: join(TEST_DEFAULT_HOME, 'plugins'),
     PROJECT_HOME: TEST_DEFAULT_HOME,
-    extractPluginName: () => '',
     getInstanceStatePath: (instanceId: string, projectHome?: string) =>
       join(
         resolveLifecycleState(projectHome).instanceStateDir,
@@ -470,7 +469,6 @@ async function loadLifecycleModule(
     normalizeHomePath:
       options.normalizeHomePathMock ?? ((path: string) => resolve(path)),
     normalizeInstanceName,
-    parseGitSource: () => ({ branch: 'main', url: '' }),
     readManifest: vi.fn(),
     resolveLifecycleHomeTarget,
     resolveLifecycleState,

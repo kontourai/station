@@ -319,19 +319,35 @@ describe('configSet', () => {
     });
   });
 
-  // Review round 1 MEDIUM 2(a): the offline write is temp-file + rename,
-  // not a direct in-place write — no leftover `.tmp` file after a normal
-  // write, and the final file is valid JSON (not partially written).
-  test('--offline writes atomically: no leftover temp file, valid JSON on disk', async () => {
-    const { configSet } = await import('../commands/config.js');
-    await configSet('logLevel', 'debug', OFFLINE);
+  // Review round 1 MEDIUM 2(a): the offline write is temp-file + rename, not
+  // a direct in-place write. A write that fails before the rename must leave
+  // the previous app.json byte-for-byte intact and clean up its temp file.
+  test('--offline writes atomically: a failed rename keeps the prior app.json and leaves no temp file', async () => {
+    markCurrentHome();
+    const configDir = join(tempHome, 'config');
+    const appJson = join(configDir, 'app.json');
+    mkdirSync(configDir, { recursive: true });
+    const prior = JSON.stringify({ logLevel: 'info' });
+    writeFileSync(appJson, prior);
+    vi.doMock('node:fs', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:fs')>()),
+      renameSync: () => {
+        throw new Error('simulated rename failure');
+      },
+    }));
+    try {
+      const { configSet } = await import('../commands/config.js');
 
-    const { readdirSync } = await import('node:fs');
-    const entries = readdirSync(join(tempHome, 'config'));
-    expect(entries).toEqual(['app.json']);
-    expect(() =>
-      JSON.parse(readFileSync(join(tempHome, 'config', 'app.json'), 'utf-8')),
-    ).not.toThrow();
+      await expect(configSet('logLevel', 'debug', OFFLINE)).rejects.toThrow(
+        'simulated rename failure',
+      );
+
+      const { readdirSync } = await import('node:fs');
+      expect(readdirSync(configDir)).toEqual(['app.json']);
+      expect(readFileSync(appJson, 'utf-8')).toBe(prior);
+    } finally {
+      vi.doUnmock('node:fs');
+    }
   });
 
   // Review round 1 MEDIUM 2(b): a composite-kind field (structurally

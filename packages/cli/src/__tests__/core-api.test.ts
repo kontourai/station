@@ -138,10 +138,12 @@ describe('resolveApiBase', () => {
     expect(resolveApiBase(parsed)).toBe('http://127.0.0.1:4242');
   });
 
+  // DEFAULT_SERVER_PORT is resolved from the load-time channel env; the
+  // stable literal (18141) is pinned in shared runtime-path-resolver.test.ts.
   it('falls back to the current runtime port when nothing is set', () => {
     const parsed = parseCoreArgs([]);
     expect(resolveApiBase(parsed)).toBe(
-      `http://127.0.0.1:${process.env.STATION_PORT || DEFAULT_SERVER_PORT}`,
+      `http://127.0.0.1:${DEFAULT_SERVER_PORT}`,
     );
   });
 
