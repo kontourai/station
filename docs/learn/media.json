@@ -180,7 +180,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "reviewedRevision": "bef4d5230e321a78f9764cdcb3081df3d145462a",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -188,7 +188,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -242,7 +242,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "reviewedRevision": "bef4d5230e321a78f9764cdcb3081df3d145462a",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -250,7 +250,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
