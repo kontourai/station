@@ -304,6 +304,7 @@ function deriveSession(
     currentModeId: chatState.currentModeId,
     planArtifact: latestPlanArtifact,
     pendingApprovals: chatState.pendingApprovals,
+    unacknowledgedDecisions: chatState.unacknowledgedDecisions,
     isProcessingStep: chatState.isProcessingStep,
     flowRun: chatState.flowRun,
     activityHint: chatState.activityHint,

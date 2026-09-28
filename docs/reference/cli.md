@@ -995,6 +995,40 @@ station delegate --agent=codex --on=env-media-host --model=gpt-5.6-sol "Review t
 station delegate respond task:0f3c... req-1 accept --json
 ```
 
+#### Recorded versus acknowledged decisions
+
+`station delegate respond` records a decision; it does not wait for the
+engine. Its `resolved` result, and the `request.resolved` event, mean
+"Station recorded this decision", never "the engine applied it". What the
+engine reports afterwards is shown separately as `lastDecision` on
+`station delegate status`, with one of these `delivery` values:
+
+| `delivery` | Meaning |
+| --- | --- |
+| `awaiting-acknowledgement` | The engine acknowledges decisions and has not yet. Codex normally does within a second. |
+| `acknowledged` | The engine closed the request after Station's well-formed reply. This is not proof it applied the decision as given; `engineStatus` carries the engine's own outcome when it reports one (Muse). |
+| `unacknowledged` | `reason: no-acknowledgement`: nothing arrived within the adapter's window (30 s for Codex), or the session ended first. Station has not re-sent the decision. A late acknowledgement replaces this with `acknowledged`. `reason: invalid-reply`: Station refused to send a reply the engine would not accept, so the engine is still waiting. |
+| `in-process` | Station's own engine consumed the decision. |
+| `closed-by-engine` | Codex closed the request on its own (for example when a turn is interrupted) before Station answered. Station made no decision (`status` is `cancelled`), and a decision sent afterwards is refused, since Codex would never read it. Printed as `Request req-1: closed by the engine before Station answered`. |
+| `not-reported` | The engine's protocol reports no delivery (Claude Code, ACP connections), or the decision predates delivery reporting. This is a capability, not a warning. |
+
+One race stays open: if Codex closes a request while Station's reply is
+already on its way, the close reads as `acknowledged` even though Codex
+discarded the reply, because Codex's close does not say which came first.
+
+The default output prints it as one line, for example
+`Decision on req-1: approved (recorded), acknowledged by the engine after 42 ms`.
+An earlier decision on the same task that is still `unacknowledged` is listed
+as `earlierUnacknowledgedDecisions` and printed on its own line above it, so
+a later acknowledged decision never hides it.
+Codex acknowledges even a reply it cannot parse, so Station checks every
+reply against the engine's decision vocabulary before sending it; that check,
+not the acknowledgement, is what keeps a malformed reply from reading as
+acknowledged. An unacknowledged decision also raises a `runtime.warning`
+(`engine-decision-unacknowledged` or `engine-decision-not-sent`), and
+`station delegate events` lists each observation as a `request` event with
+status `acknowledged` or `unacknowledged`.
+
 Discovering ready targets before delegating:
 
 ```bash

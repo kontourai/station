@@ -9,6 +9,7 @@ import {
   MUSE_SERVE_HOST_EXITED_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
+  type ApprovalAcknowledgement,
   type ApprovalStatus,
   type CanonicalRuntimeEvent,
   PROVIDER_TURN_TRIGGER,
@@ -88,6 +89,13 @@ const MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS: ReadonlySet<string> = new Set([
  * person who stepped away, short enough that nothing waits forever.
  */
 export const MUSE_APPROVAL_DEADLINE_MS = 30 * 60_000;
+/**
+ * #2880: `muse serve` closes each approval with `approval/resolved`, which
+ * acknowledges the decision Station recorded. The metadata declaration and
+ * every decision's `request.resolved` read this one value.
+ */
+export const MUSE_SERVE_APPROVAL_ACKNOWLEDGEMENT: ApprovalAcknowledgement =
+  'engine';
 export const MUSE_SERVE_HANDSHAKE_TIMEOUT_MS = 20_000;
 export const MUSE_SERVE_REQUEST_TIMEOUT_MS = 30_000;
 /** How long an interrupt waits for the turn's own `cancelled` terminal. */
@@ -265,6 +273,11 @@ interface PendingApproval {
   /** A `request.resolved` was published; nothing later publishes another. */
   resolvedPublished: boolean;
   intent?: 'accept' | 'decline' | 'cancel' | 'expire';
+  /**
+   * #2880: when Station recorded its decision (`intent`), in ms. Muse's own
+   * `approval/resolved` after this is the engine's acknowledgement.
+   */
+  decidedAtMs?: number;
   deciding: boolean;
   lastDecidedKey?: string;
   stagesDecided: number;
@@ -631,7 +644,26 @@ export class MuseServeSession {
         : decision === 'decline'
           ? 'decline'
           : 'cancel';
+    // #2880: `request.resolved` means "decision recorded" on every adapter;
+    // Muse's `approval/resolved` later acknowledges it (`request.delivery`).
+    this.recordDecision(pending);
     this.continueWalk(pending);
+  }
+
+  private recordDecision(pending: PendingApproval): void {
+    pending.decidedAtMs = this.deps.now().getTime();
+    this.publishResolved(
+      pending,
+      pending.intent === 'accept'
+        ? 'approved'
+        : pending.intent === 'decline'
+          ? 'denied'
+          : pending.intent === 'expire'
+            ? 'expired'
+            : 'cancelled',
+      undefined,
+      MUSE_SERVE_APPROVAL_ACKNOWLEDGEMENT,
+    );
   }
 
   async stopChild(childId: string): Promise<ProviderTaskStopResult> {
@@ -664,7 +696,7 @@ export class MuseServeSession {
     for (const pending of this.approvals.values()) {
       this.clearDeadline(pending);
       this.clearEscalation(pending);
-      this.publishResolved(pending, 'cancelled');
+      this.settleUnanswered(pending, 'cancelled');
     }
     this.approvals.clear();
     for (const turn of this.turns.values()) {
@@ -892,7 +924,7 @@ export class MuseServeSession {
     for (const pending of this.approvals.values()) {
       this.clearDeadline(pending);
       this.clearEscalation(pending);
-      this.publishResolved(pending, 'cancelled');
+      this.settleUnanswered(pending, 'cancelled');
     }
     this.approvals.clear();
     settleOpenMuseChildren(this.childWork, { close: false });
@@ -1437,7 +1469,7 @@ export class MuseServeSession {
     ) {
       pending.subjectSignature = signature;
       this.updateApproval(pending, params);
-      this.publishResolved(pending, 'cancelled', {
+      this.settleUnanswered(pending, 'cancelled', {
         reason: 'subject-changed',
       });
       pending.requestId = `${pending.approvalId}:${crypto.randomUUID()}`;
@@ -1474,22 +1506,73 @@ export class MuseServeSession {
     this.clearDeadline(pending);
     this.clearEscalation(pending);
     const decision = readString(params.decision);
-    this.publishResolved(
-      pending,
-      mapResolvedDecision(decision, pending.intent),
-      {
-        ...(decision ? { decision } : {}),
-        ...(readString(params.resolvedBy)
-          ? { resolvedBy: params.resolvedBy }
-          : {}),
-      },
-    );
+    const engineStatus = mapResolvedDecision(decision, pending.intent);
+    if (pending.decidedAtMs !== undefined && pending.resolvedPublished) {
+      // #2880: Station's recorded decision, closed by the engine. The
+      // engine's own outcome rides along: "acknowledged" never claims the
+      // decision was applied as given.
+      this.deps.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'muse',
+        threadId: this.deps.threadId,
+        createdAt: this.nowIso(),
+        requestId: pending.requestId,
+        method: 'request.delivery',
+        outcome: 'acknowledged',
+        waitedMs: Math.max(0, this.deps.now().getTime() - pending.decidedAtMs),
+        engineStatus,
+      });
+      return;
+    }
+    this.publishResolved(pending, engineStatus, {
+      ...(decision ? { decision } : {}),
+      ...(readString(params.resolvedBy)
+        ? { resolvedBy: params.resolvedBy }
+        : {}),
+    });
+  }
+
+  /**
+   * #2880: a request Station stops waiting on without muse closing it. If
+   * Station had recorded a decision, that decision was never acknowledged
+   * (`request.delivery` `unacknowledged`); otherwise the request itself
+   * resolves with `status`, as before.
+   */
+  private settleUnanswered(
+    pending: PendingApproval,
+    status: ApprovalStatus,
+    response?: Record<string, unknown>,
+  ): void {
+    if (pending.decidedAtMs !== undefined && pending.resolvedPublished) {
+      this.publishUnacknowledged(pending);
+      return;
+    }
+    this.publishResolved(pending, status, response);
+  }
+
+  private publishUnacknowledged(pending: PendingApproval): void {
+    if (pending.decidedAtMs === undefined) return;
+    const decidedAtMs = pending.decidedAtMs;
+    // Once: a request is only ever given up on once.
+    pending.decidedAtMs = undefined;
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      requestId: pending.requestId,
+      method: 'request.delivery',
+      outcome: 'unacknowledged',
+      reason: 'no-acknowledgement',
+      waitedMs: Math.max(0, this.deps.now().getTime() - decidedAtMs),
+    });
   }
 
   private publishResolved(
     pending: PendingApproval,
     status: ApprovalStatus,
     response?: Record<string, unknown>,
+    acknowledgement?: ApprovalAcknowledgement,
   ): void {
     if (!pending.published || pending.resolvedPublished) return;
     pending.resolvedPublished = true;
@@ -1503,6 +1586,7 @@ export class MuseServeSession {
       method: 'request.resolved',
       status,
       ...(response && Object.keys(response).length > 0 ? { response } : {}),
+      ...(acknowledgement ? { acknowledgement } : {}),
     });
   }
 
@@ -1513,6 +1597,7 @@ export class MuseServeSession {
       pending.deadline = undefined;
       if (pending.escalatedBefore) {
         this.approvals.delete(pending.approvalId);
+        this.publishUnacknowledged(pending);
         this.deps.publish({
           eventId: crypto.randomUUID(),
           provider: 'muse',
@@ -1528,7 +1613,7 @@ export class MuseServeSession {
       }
       const limit = formatMuseServeDuration(this.deps.approvalTimeoutMs);
       pending.intent = 'expire';
-      this.publishResolved(pending, 'expired');
+      this.recordDecision(pending);
       this.deps.publish({
         eventId: crypto.randomUUID(),
         provider: 'muse',

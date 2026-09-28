@@ -141,7 +141,7 @@ async function answerFromToast(
     });
     if (outcome === 'already-settled') {
       toastStore.show(
-        `${view.toolName}: this request was already answered.`,
+        `${view.toolName}: this request is no longer open.`,
         event.threadId,
         5000,
       );
@@ -166,6 +166,45 @@ async function answerFromToast(
       showApprovalToast(apiBase, event, view);
     }
   }
+}
+
+/**
+ * #2880: the engine-side fate of a recorded decision. `unacknowledged` puts
+ * the request on the chat's list; a later `acknowledged` (late ack) takes it
+ * off, which clears the status note. The runtime.warning that accompanies an
+ * unacknowledged decision is shown by its own handler.
+ */
+export function handleRequestDeliveryEvent(
+  event: Extract<OrchestrationEvent, { method: 'request.delivery' }>,
+) {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  if (!chat) return;
+  // The note speaks for a live engine; a report settled after the session
+  // ended (a cancel written during teardown) must not re-add what
+  // `session.exited` cleared.
+  if (
+    event.outcome === 'unacknowledged' &&
+    chat.orchestrationStatus === 'exited'
+  )
+    return;
+  const others = (chat.unacknowledgedDecisions || []).filter(
+    (decision) => decision.requestId !== event.requestId,
+  );
+  activeChatsStore.updateChat(event.threadId, {
+    unacknowledgedDecisions:
+      event.outcome === 'unacknowledged'
+        ? [
+            ...others,
+            {
+              requestId: event.requestId,
+              reason:
+                event.reason === 'invalid-reply'
+                  ? 'invalid-reply'
+                  : 'no-acknowledgement',
+            },
+          ]
+        : others,
+  });
 }
 
 export function handleRequestResolvedEvent(
