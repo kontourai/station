@@ -386,13 +386,19 @@ store.
   A station-control tool no longer resolves, connects to, or holds a bearer
   for another Station. It sends the saved Environment to this Station's own
   dispatch route, which applies the caller's scope and then reaches the other
-  Station through the one remote seam, `RemoteStationForwarder`
-  (`src-server/services/remote-stations/remote-station-forwarder.ts`), built
-  only by runtime composition. The seam keeps the SSH-then-peer order
-  (`connectSshTarget`/`resolveTarget` below now name its `resolve`), attaches
-  the outbound bearer in-process, and bounds each request to the other
-  Station (`STATION_REMOTE_REQUEST_TIMEOUT_MS`, default 30 s), so a slow peer
-  is reported by the route. `GET /api/environments/peers/:id/credential`, the
+  Station through `RemoteStationForwarder`
+  (`src-server/services/remote-stations/remote-station-forwarder.ts`), the one
+  seam delegation dispatch uses, built only by runtime composition. The seam
+  keeps the SSH-then-peer order (`connectSshTarget`/`resolveTarget` below now
+  name its `resolve`), attaches the outbound bearer in-process, and bounds
+  every dispatch request to the other Station, SDK reads included
+  (`STATION_REMOTE_REQUEST_TIMEOUT_MS`, default 30 s, validated when the
+  runtime starts), so a slow peer is reported by the route. Another
+  Station's refusal reaches the caller as this Station's fixed copy and the
+  HTTP status, never its own words or code. Other server-side peer clients
+  (session analytics, remote message search, home-authority room binding,
+  the fleet probe) still read the peer store in-process for their own calls;
+  they are not routed through this seam. `GET /api/environments/peers/:id/credential`, the
   internal-token leaf that returned the raw bearer to the tool process, is
   deleted; no HTTP route returns an outbound peer bearer to any caller.
 

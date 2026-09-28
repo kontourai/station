@@ -62,6 +62,7 @@ import {
   listOrchestrationSessions,
   respondToRequest,
   StationHttpError,
+  StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
 import {
   formatProviderQuotaEventText,
@@ -146,23 +147,81 @@ interface ApiEnvelope<T> {
  * `code` on an error relays it as its own (the delegate route's
  * `delegationRefusal` and receiver-refusal mapping), and a peer can send any
  * string. So only THIS Station's refusal keeps its code, and only as a
- * `LocalStationRefusal` cause; a peer's code is dropped. Any other failure
- * (a transport error, a protocol error) passes through unchanged.
+ * `LocalStationRefusal` cause; a peer's code is dropped.
+ *
+ * #2377 C2b review: another Station's words are dropped too (they reach an
+ * agent's tool result); its refusal becomes this Station's fixed copy with
+ * the HTTP status, and a read that outlived the target's bound (the SDK
+ * deadline the forwarder set, `requestOptions.timeoutMs`) is reported as
+ * this Station's timeout. Any other failure (a transport error, a protocol
+ * error) passes through unchanged.
  */
 export async function readRelayingLocalRefusal<T>(
-  target: { readonly kind: string },
+  target: SelectedStation,
   read: () => Promise<T>,
 ): Promise<T> {
   try {
     return await read();
   } catch (error) {
+    if (target.kind !== 'current') throw anotherStationFailure(target, error);
     if (!(error instanceof StationHttpError)) throw error;
-    const cause =
-      target.kind === 'current' && error.code
-        ? new LocalStationRefusal(error.code, error.message)
-        : undefined;
+    const cause = error.code
+      ? new LocalStationRefusal(error.code, error.message)
+      : undefined;
     throw new Error(error.message, cause ? { cause } : undefined);
   }
+}
+
+type SelectedStation = {
+  readonly kind: string;
+  readonly requestOptions?: { readonly timeoutMs?: number };
+};
+
+/**
+ * An SDK call to the selected Station. This Station's own answer is left as
+ * the SDK raised it; another Station's failure is rewritten
+ * (`anotherStationFailure`).
+ */
+async function readSelectedStation<T>(
+  target: SelectedStation,
+  read: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    throw target.kind === 'current'
+      ? error
+      : anotherStationFailure(target, error);
+  }
+}
+
+/**
+ * #2377 C2b review: what another Station's failed SDK call becomes. Its words
+ * never reach the caller (they would reach an agent's tool result): its HTTP
+ * refusal becomes this Station's fixed copy with the status, and a call that
+ * outlived the target's bound (the SDK deadline the forwarder set,
+ * `requestOptions.timeoutMs`, headers or body) is reported as this Station's
+ * timeout. Any other failure (a transport or protocol error raised here)
+ * passes through.
+ */
+function anotherStationFailure(
+  target: SelectedStation,
+  error: unknown,
+): unknown {
+  const timeoutMs = target.requestOptions?.timeoutMs;
+  if (
+    timeoutMs !== undefined &&
+    (error instanceof StationRequestTimeoutError ||
+      (error instanceof Error && error.name === 'TimeoutError'))
+  ) {
+    const timeout = new RemoteStationTimeoutError(timeoutMs);
+    return new Error(timeout.message, { cause: timeout });
+  }
+  if (error instanceof StationHttpError)
+    return new Error(
+      `The selected Station refused the request (HTTP ${error.status})`,
+    );
+  return error;
 }
 
 /**
@@ -255,6 +314,18 @@ interface SshEnvironmentView {
  * remote runtime's `401 authentication_required` rather than receiving an
  * address-derived exception.
  */
+/**
+ * The request options a target's calls carry. `timeoutMs` is set only on a
+ * target the remote forwarder minted (another Station): the SDK fetchers
+ * read it as their deadline and `stationFetch` refuses a request to another
+ * Station without it. A request to this Station carries none, so a tool's
+ * call waits for the route, which owns the peer timeout.
+ */
+type RemoteRequestOptions = {
+  headers: Record<string, string>;
+  timeoutMs?: number;
+};
+
 interface DelegationTarget {
   apiBase: string;
   environmentId: string;
@@ -269,7 +340,7 @@ interface DelegationTarget {
    * this as an opaque `{ headers }` bag passed straight to
    * `@kontourai/station-sdk/client` fetchers.
    */
-  requestOptions?: { headers: Record<string, string> };
+  requestOptions?: RemoteRequestOptions;
   /**
    * #2377 slice C2b: set only on a `current` target a tool resolved for a
    * saved Environment. The call goes to this Station's own route, naming
@@ -1320,16 +1391,43 @@ function currentControlApiBase(): string {
   return resolveControlApiBase();
 }
 
+/** Whether a URL is this Station's own control API (else: another Station). */
+function isThisStationUrl(url: string): boolean {
+  return new URL(url).origin === new URL(currentControlApiBase()).origin;
+}
+
 /**
  * #2377 slice C2b: every request this module makes. One to this Station's
  * own API is unbounded here (a tool's call waits for the route, which owns
  * the timeout); one to another Station, which only server code with the
- * forwarder makes, goes through the seam's bounded fetch.
+ * forwarder makes, goes through the seam's bounded fetch, bounded by the
+ * `timeoutMs` the forwarder put on the target. A request to another Station
+ * without one is refused rather than sent unbounded.
  */
-function stationFetch(url: string, init?: RequestInit): Promise<Response> {
-  return new URL(url).origin === new URL(currentControlApiBase()).origin
-    ? fetch(url, init)
-    : fetchRemoteStation(url, init);
+function stationFetch(
+  url: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Response> {
+  const { timeoutMs, ...rest } = init;
+  if (isThisStationUrl(url)) return fetch(url, rest);
+  if (typeof timeoutMs !== 'number')
+    return Promise.reject(
+      new Error('A request to another Station must carry its route bound'),
+    );
+  return fetchRemoteStation(url, rest, timeoutMs);
+}
+
+/** Whether an error is a request to another Station outliving its bound. */
+function remoteTimeoutOf(
+  error: unknown,
+): RemoteStationTimeoutError | undefined {
+  if (error instanceof RemoteStationTimeoutError) return error;
+  if (
+    error instanceof Error &&
+    error.cause instanceof RemoteStationTimeoutError
+  )
+    return error.cause;
+  return undefined;
 }
 
 /** A transport failure's caller-safe message: ours for a slow Station. */
@@ -1337,8 +1435,27 @@ function transportFailureMessage(
   error: unknown,
   unavailableMessage: string,
 ): string {
-  return error instanceof RemoteStationTimeoutError
-    ? `${unavailableMessage}: ${error.message}`
+  const timeout = remoteTimeoutOf(error);
+  return timeout
+    ? `${unavailableMessage}: ${timeout.message}`
+    : unavailableMessage;
+}
+
+/**
+ * The words of a failed answer the caller may see. This Station's own answer
+ * keeps its text; another Station's never does (its text reaches an agent's
+ * tool result, so it is replaced by this Station's fixed copy and the HTTP
+ * status, #2377 C2b review).
+ */
+function answerText(
+  url: string,
+  peerText: unknown,
+  unavailableMessage: string,
+  status: number,
+): string {
+  if (!isThisStationUrl(url)) return `${unavailableMessage} (HTTP ${status})`;
+  return typeof peerText === 'string' && peerText
+    ? peerText
     : unavailableMessage;
 }
 
@@ -1523,7 +1640,12 @@ async function readJson<T>(
     throw new Error(unavailableMessage);
   }
   if (!response.ok) {
-    const message = payload.error || unavailableMessage;
+    const message = answerText(
+      url,
+      payload.error,
+      unavailableMessage,
+      response.status,
+    );
     const cause = localRefusalOf(origin, payload, message);
     throw new Error(message, cause ? { cause } : undefined);
   }
@@ -1546,14 +1668,31 @@ async function postCanonical<T>(
         ...(target.requestOptions?.headers ?? {}),
       },
       body: JSON.stringify(body),
+      ...remoteBound(target),
     },
     unavailableMessage,
     target,
   );
   if (!payload.success || payload.data === undefined) {
-    throw new Error(payload.error || unavailableMessage);
+    throw new Error(
+      answerText(
+        `${target.apiBase}${path}`,
+        payload.error,
+        unavailableMessage,
+        200,
+      ),
+    );
   }
   return payload.data;
+}
+
+/** The target's route-owned bound, for a request built from its headers. */
+function remoteBound(target: Pick<DelegationTarget, 'requestOptions'>): {
+  timeoutMs?: number;
+} {
+  return target.requestOptions?.timeoutMs !== undefined
+    ? { timeoutMs: target.requestOptions.timeoutMs }
+    : {};
 }
 
 /** Error envelopes the runtime auth boundary and the delegation route emit. */
@@ -1775,6 +1914,7 @@ async function postDelegationJson(
       ...(target.requestOptions?.headers ?? {}),
     },
     body: JSON.stringify(body),
+    ...remoteBound(target),
   });
 }
 
@@ -1836,6 +1976,7 @@ async function getCanonical<T>(
       method: 'GET',
       headers: target.requestOptions?.headers,
       signal,
+      ...remoteBound(target),
     });
   } catch (cause) {
     throw new CanonicalDelegationReadError(
@@ -1857,7 +1998,12 @@ async function getCanonical<T>(
     );
   }
   if (!response.ok || !payload.success || payload.data === undefined) {
-    const message = payload.error || unavailableMessage;
+    const message = answerText(
+      `${target.apiBase}${path}`,
+      payload.error,
+      unavailableMessage,
+      response.status,
+    );
     throw new CanonicalDelegationReadError(
       'http',
       message,
@@ -1937,6 +2083,7 @@ async function postForegroundMessage(
         ...(target.requestOptions?.headers ?? {}),
       },
       body: JSON.stringify(body),
+      ...remoteBound(target),
     });
   } catch (error) {
     // POST may have reached the peer before its response became unavailable
@@ -1952,11 +2099,16 @@ async function postForegroundMessage(
   } catch {
     throw new ForegroundMessageTurnIdentityUnavailableError(unavailableMessage);
   }
+  const url = `${target.apiBase}${path}`;
+  // Another Station's own words never reach the caller (#2377 C2b review).
+  const indeterminateText = isThisStationUrl(url)
+    ? payload.error || 'Foreground session start is indeterminate.'
+    : 'Foreground session start is indeterminate.';
   const indeterminate = foregroundIndeterminateDetail(payload);
   if (indeterminate) {
     throw new ForegroundMessageIndeterminateError(
       indeterminate,
-      payload.error || 'Foreground session start is indeterminate.',
+      indeterminateText,
     );
   }
   if (
@@ -1965,23 +2117,28 @@ async function postForegroundMessage(
   ) {
     // Peers predating receipt projection still return the stable detail-less
     // 409 contract. Keep it typed all the way to the controlling UI.
-    throw new ForegroundMessageTurnIdentityUnavailableError(
-      payload.error || 'Foreground session start is indeterminate.',
-    );
+    throw new ForegroundMessageTurnIdentityUnavailableError(indeterminateText);
   }
   if (!response.ok || !payload.success || payload.data === undefined) {
     // #2377 C2b: another Station's refusal reaches this Station's route only
-    // as the closed receiver-refusal set (fixed copy); its own code never
-    // becomes this Station's answer, since the route now forwards for agents
-    // as well as for the operator's UI.
+    // as the closed receiver-refusal set (a 403 carrying one of its codes,
+    // fixed copy); its own code never becomes this Station's answer, since
+    // the route now forwards for agents as well as for the operator's UI. A
+    // peer 401 is NOT translated here: that mapping (to "authority changed")
+    // belongs to portable execution, not an ordinary message.
     if (target.kind !== 'current' && !response.ok) {
-      const refusal = peerPortableRefusalFor(
+      const refusal = peerPortableFollowUpRefusalFor(
         response.status,
         payload as PeerPortableErrorEnvelope,
       );
       if (refusal) throw refusal;
     }
-    const message = payload.error || unavailableMessage;
+    const message = answerText(
+      url,
+      payload.error,
+      unavailableMessage,
+      response.status,
+    );
     // #2708/#2795: only this Station's own answer is relayed to the agent,
     // as a `LocalStationRefusal` cause; `code` below is the route contract.
     const cause = localRefusalOf(target, payload, message);
@@ -2095,9 +2252,10 @@ async function resolveTarget(
     kind: target.kind,
     ...(target.projectPath ? { projectPath: target.projectPath } : {}),
     ...(target.remoteHome ? { remoteHome: target.remoteHome } : {}),
-    ...(target.requestOptions
-      ? { requestOptions: { headers: { ...target.requestOptions.headers } } }
-      : {}),
+    requestOptions: {
+      headers: { ...target.requestOptions.headers },
+      timeoutMs: target.requestOptions.timeoutMs,
+    },
   };
 }
 
@@ -2189,10 +2347,8 @@ async function pinSshDispatchWorkspace(
 
   const slug = workspace.projectSlug.trim();
   if (!slug) throw new Error('Execution workspace project must not be empty');
-  const project = (await getProject(
-    target.apiBase,
-    slug,
-    target.requestOptions,
+  const project = (await readSelectedStation(target, () =>
+    getProject(target.apiBase, slug, target.requestOptions),
   )) as { workingDirectory?: string } | undefined;
   if (!project?.workingDirectory) {
     throw new Error(`Project '${slug}' has no working directory configured`);
@@ -2252,10 +2408,9 @@ async function resolveProject(
   let projectPath = target.projectPath;
   let slugJoin: ResolvedDelegationProject['slugJoin'];
   if (input.projectSlug) {
-    const project = (await getProject(
-      target.apiBase,
-      input.projectSlug,
-      target.requestOptions,
+    const slug = input.projectSlug;
+    const project = (await readSelectedStation(target, () =>
+      getProject(target.apiBase, slug, target.requestOptions),
     )) as { workingDirectory?: string } | undefined;
     if (!project?.workingDirectory) {
       throw new Error(
@@ -2621,20 +2776,22 @@ async function existingSession(
       events?: Array<Record<string, unknown>>;
     } | null;
   }
-  try {
-    return await getOrchestrationSession<{
-      session?: Record<string, unknown>;
-      events?: Array<Record<string, unknown>>;
-    }>(target.apiBase, sessionId, {
-      ...target.requestOptions,
-      ...(signal ? { signal } : {}),
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message === 'Session not found') {
-      return null;
+  return readSelectedStation(target, async () => {
+    try {
+      return await getOrchestrationSession<{
+        session?: Record<string, unknown>;
+        events?: Array<Record<string, unknown>>;
+      }>(target.apiBase, sessionId, {
+        ...target.requestOptions,
+        ...(signal ? { signal } : {}),
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Session not found') {
+        return null;
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 function assertSessionBinding(
@@ -3491,11 +3648,13 @@ async function verifyDelegatedTaskListItem(options: {
             limit: TASK_BINDING_EVENT_LIMIT,
             authority: options.readAuthority,
           })) as RawTaskEventPage | null) ?? undefined)
-        : await getOrchestrationSessionEventPage<RawTaskEventPage>(
-            options.target.apiBase,
-            taskId,
-            { afterSequence: 0, limit: TASK_BINDING_EVENT_LIMIT },
-            options.target.requestOptions,
+        : await readSelectedStation(options.target, () =>
+            getOrchestrationSessionEventPage<RawTaskEventPage>(
+              options.target.apiBase,
+              taskId,
+              { afterSequence: 0, limit: TASK_BINDING_EVENT_LIMIT },
+              options.target.requestOptions,
+            ),
           );
   } catch {
     return undefined;
@@ -3595,9 +3754,8 @@ export async function listDelegatedTasks(
     rawSessions =
       target.kind === 'current' && orchestrationService
         ? await orchestrationService.listSessionReadModel(readAuthority)
-        : await listOrchestrationSessions(
-            target.apiBase,
-            target.requestOptions,
+        : await readSelectedStation(target, () =>
+            listOrchestrationSessions(target.apiBase, target.requestOptions),
           );
   } catch (error) {
     // #2708: this Station's own refusal (the station-control guard answering
@@ -3610,7 +3768,10 @@ export async function listDelegatedTasks(
       error.code
         ? new LocalStationRefusal(error.code, error.message)
         : undefined;
-    throw new Error(message, cause ? { cause } : undefined);
+    throw new Error(
+      transportFailureMessage(error, message),
+      cause ? { cause } : undefined,
+    );
   }
   if (!Array.isArray(rawSessions)) {
     throw new Error(
@@ -3707,11 +3868,13 @@ export async function observeDelegatedTaskEvents(
           limit,
           authority: readAuthority,
         })
-      : await getOrchestrationSessionEventPage<RawTaskEventPage>(
-          loaded.target.apiBase,
-          currentSessionId,
-          { afterSequence, limit },
-          loaded.target.requestOptions,
+      : await readSelectedStation(loaded.target, () =>
+          getOrchestrationSessionEventPage<RawTaskEventPage>(
+            loaded.target.apiBase,
+            currentSessionId,
+            { afterSequence, limit },
+            loaded.target.requestOptions,
+          ),
         );
   if (!page) {
     throw new Error('Delegated task not found');
@@ -4151,14 +4314,16 @@ export async function respondToDelegatedTaskRequest(
         : undefined,
     );
   } else {
-    await respondToRequest(
-      loaded.target.apiBase,
-      {
-        threadId: snapshot.currentSessionId,
-        requestId: input.requestId,
-        decision: input.decision,
-      },
-      loaded.target.requestOptions,
+    await readSelectedStation(loaded.target, () =>
+      respondToRequest(
+        loaded.target.apiBase,
+        {
+          threadId: snapshot.currentSessionId,
+          requestId: input.requestId,
+          decision: input.decision,
+        },
+        loaded.target.requestOptions,
+      ),
     );
   }
   delegatedTaskRequestResponses.add(1, {
@@ -4230,13 +4395,15 @@ export async function interruptDelegatedTask(
       ),
     );
   } else {
-    await interruptTurn(
-      loaded.target.apiBase,
-      {
-        threadId: snapshot.currentSessionId,
-        ...(input.turnId ? { turnId: input.turnId } : {}),
-      },
-      loaded.target.requestOptions,
+    await readSelectedStation(loaded.target, () =>
+      interruptTurn(
+        loaded.target.apiBase,
+        {
+          threadId: snapshot.currentSessionId,
+          ...(input.turnId ? { turnId: input.turnId } : {}),
+        },
+        loaded.target.requestOptions,
+      ),
     );
   }
   delegatedTaskInterrupts.add(1, {
@@ -4339,6 +4506,7 @@ export async function delegateTask(
       `${selectedTarget.apiBase}/.well-known/station/v1`,
       {
         headers: selectedTarget.requestOptions?.headers ?? {},
+        ...remoteBound(selectedTarget),
       },
       'The selected Station could not be reached to confirm portable execution support',
     );

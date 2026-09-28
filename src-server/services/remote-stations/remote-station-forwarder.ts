@@ -1,6 +1,12 @@
 /**
- * #2377 slice C2b: the one seam through which this Station reaches ANOTHER
- * Station (a saved SSH Environment or a directly reachable peer).
+ * #2377 slice C2b: the one seam through which DELEGATION DISPATCH reaches
+ * another Station (a saved SSH Environment or a directly reachable peer):
+ * every dispatch-family request (delegate, message, continue, respond,
+ * interrupt, list, observe, options) to another Station starts from a target
+ * minted here and is bounded by it. It is not the only reader of the outbound
+ * peer-credential store: session analytics, remote message search,
+ * home-authority room binding and the fleet probe read it in-process too,
+ * each for its own server-side peer call.
  *
  * It is built only by runtime composition (`runtime-routes.ts`, and the
  * runtime's own server-driven turns) from the in-process SSH service and
@@ -13,8 +19,9 @@
  *
  * The interface is deliberately one call. `resolve` answers the reachable
  * address of a saved Environment and the headers this Station presents
- * there; every remote request the dispatch code makes starts from a target
- * this seam minted (`isRemoteStationTarget`). Later remote work (#2875,
+ * there, and the bound on each request (`requestOptions.timeoutMs`); every
+ * remote request the dispatch code makes starts from a target this seam
+ * minted (`isRemoteStationTarget`). Later remote work (#2875,
  * provider-neutral workspace preparation) resolves through the same call.
  */
 import type { PeerCredentialStore } from '../peers/peer-credential-store.js';
@@ -36,10 +43,18 @@ export interface RemoteStationTarget {
   /** `ssh` only: the remote home the SSH profile verified. */
   readonly remoteHome?: string;
   /**
-   * The headers this Station presents there: the outbound peer bearer when
-   * one is provisioned for the Environment (always, for `peer`).
+   * How every request to this target is made. `headers`: the outbound peer
+   * bearer when one is provisioned for the Environment (always, for `peer`;
+   * empty for an SSH tunnel without one). `timeoutMs`: the route-owned
+   * bound on each request, fixed when the forwarder was built. The SDK
+   * fetchers read it as their per-call deadline and this module's
+   * `fetchRemoteStation` as its own, so no request to another Station goes
+   * out unbounded.
    */
-  readonly requestOptions?: { readonly headers: Record<string, string> };
+  readonly requestOptions: {
+    readonly headers: Record<string, string>;
+    readonly timeoutMs: number;
+  };
 }
 
 export interface RemoteStationForwarder {
@@ -100,15 +115,15 @@ export class RemoteStationTimeoutError extends Error {
 }
 
 /**
- * `fetch` for a request to another Station, bounded by
- * `remoteStationRequestTimeoutMs()`, headers and body alike. A timeout is
- * reported as `RemoteStationTimeoutError`; any other failure is rethrown.
+ * `fetch` for a request to another Station, bounded by the target's
+ * `timeoutMs`, headers and body alike. A timeout is reported as
+ * `RemoteStationTimeoutError`; any other failure is rethrown.
  */
 export async function fetchRemoteStation(
   url: string,
-  init: RequestInit = {},
+  init: RequestInit,
+  timeoutMs: number,
 ): Promise<Response> {
-  const timeoutMs = remoteStationRequestTimeoutMs();
   const timeout = AbortSignal.timeout(timeoutMs);
   const signal = init.signal
     ? AbortSignal.any([init.signal, timeout])
@@ -185,11 +200,17 @@ export interface RemoteStationForwarderDependencies {
   readonly peers: Pick<PeerCredentialStore, 'get'>;
   /** Where a failed credential read is reported (it never fails the hop). */
   readonly warn?: (message: string) => void;
+  /** Where `STATION_REMOTE_REQUEST_TIMEOUT_MS` is read (default: the process). */
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 export function createRemoteStationForwarder(
   deps: RemoteStationForwarderDependencies,
 ): RemoteStationForwarder {
+  // Read once, here: an invalid override fails the composition that builds
+  // the forwarder (startup), with its own message, instead of surfacing
+  // later as a generic dispatch failure.
+  const timeoutMs = remoteStationRequestTimeoutMs(deps.env);
   const peerHeaders = (
     environmentId: string,
   ): { headers: Record<string, string> } | undefined => {
@@ -274,7 +295,7 @@ export function createRemoteStationForwarder(
       ...(view.profile.remoteHome
         ? { remoteHome: view.profile.remoteHome }
         : {}),
-      ...(requestOptions ? { requestOptions } : {}),
+      requestOptions: { headers: requestOptions?.headers ?? {}, timeoutMs },
     });
   };
 
@@ -306,6 +327,7 @@ export function createRemoteStationForwarder(
           environmentName: peer.label || peer.apiBase,
           requestOptions: {
             headers: { Authorization: `Bearer ${peer.credential}` },
+            timeoutMs,
           },
         });
       }

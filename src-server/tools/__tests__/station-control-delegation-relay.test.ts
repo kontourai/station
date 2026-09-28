@@ -263,7 +263,10 @@ describe('server code cannot slip past the remote seam', () => {
         apiBase: PEER_API,
         environmentId: SAVED,
         environmentName: 'forged',
-        requestOptions: { headers: { Authorization: 'Bearer forged' } },
+        requestOptions: {
+          headers: { Authorization: 'Bearer forged' },
+          timeoutMs: 30_000,
+        },
       }),
     };
     await expect(

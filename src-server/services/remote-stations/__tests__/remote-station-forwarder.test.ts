@@ -1,12 +1,16 @@
 import { mkdirSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PeerCredentialStore } from '../../peers/peer-credential-store.js';
 import {
   createRemoteStationForwarder,
+  fetchRemoteStation,
   isRemoteStationTarget,
   REMOTE_STATION_REQUEST_TIMEOUT_MS,
+  RemoteStationTimeoutError,
   remoteStationRequestTimeoutMs,
 } from '../remote-station-forwarder.js';
 
@@ -175,7 +179,8 @@ describe('RemoteStationForwarder (#2377 C2b)', () => {
     });
     const target = await forwarder.resolve(ENV);
     expect(target.kind).toBe('ssh');
-    expect(target.requestOptions).toBeUndefined();
+    // No bearer, but still the route's bound.
+    expect(target.requestOptions).toEqual({ headers: {}, timeoutMs: 30_000 });
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('store unreadable'),
     );
@@ -218,4 +223,56 @@ describe('the route-owned remote request bound (#2377 C2b)', () => {
       ).toThrow(/must be an integer from 1 to 600000/);
     },
   );
+});
+
+describe('the bound is fixed when the forwarder is built (#2377 C2b review)', () => {
+  test('an invalid override fails the composition with its own message', () => {
+    expect(() =>
+      createRemoteStationForwarder({
+        env: { STATION_REMOTE_REQUEST_TIMEOUT_MS: '30s' },
+        ssh: { list: () => [], connect: vi.fn() },
+        peers: { get: () => null },
+      }),
+    ).toThrow(
+      'STATION_REMOTE_REQUEST_TIMEOUT_MS must be an integer from 1 to 600000',
+    );
+  });
+
+  test('every minted target carries the bound it was built with', async () => {
+    const forwarder = createRemoteStationForwarder({
+      env: { STATION_REMOTE_REQUEST_TIMEOUT_MS: '1234' },
+      ssh: { list: () => [], connect: vi.fn() },
+      peers: await realPeerStore(true),
+    });
+    expect((await forwarder.resolve(ENV)).requestOptions.timeoutMs).toBe(1234);
+  });
+});
+
+describe('fetchRemoteStation bounds the body as well as the headers', () => {
+  test('a peer that sends its headers and then stalls is reported at the bound', async () => {
+    let timer: NodeJS.Timeout | undefined;
+    const server = createServer((_request, response) => {
+      response.statusCode = 200;
+      response.setHeader('content-type', 'application/json');
+      response.flushHeaders();
+      response.write('{"success":');
+      timer = setTimeout(() => response.end('true}'), 3_000);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', () => resolve()),
+    );
+    try {
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+      const started = Date.now();
+      const error = await fetchRemoteStation(url, {}, 200).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(RemoteStationTimeoutError);
+      expect(Date.now() - started).toBeLessThan(2_000);
+    } finally {
+      if (timer) clearTimeout(timer);
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });

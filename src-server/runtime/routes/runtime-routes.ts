@@ -1254,10 +1254,13 @@ export function configureRuntimeRoutes(
   const peerCredentialStore = new PeerCredentialStore(
     context.configLoader.getProjectHomeDir(),
   );
-  // #2377 slice C2b: the one seam through which this Station reaches another
-  // Station. Only this composition holds it: the dispatch routes forward a
-  // saved Environment through it after their scope check, and no
-  // station-control tool (or HTTP route) ever receives a peer bearer.
+  // #2377 slice C2b: the one seam through which delegation dispatch reaches
+  // another Station. Only this composition holds it: the dispatch routes
+  // forward a saved Environment through it after their scope check, and no
+  // station-control tool (or HTTP route) ever receives a peer bearer. Built
+  // here, at startup, so an invalid STATION_REMOTE_REQUEST_TIMEOUT_MS fails
+  // the boot with its own message. (The peer store above has other
+  // in-process readers for their own peer calls.)
   const remoteStations = createRemoteStationForwarder({
     ssh: context.sshEnvironmentService,
     peers: peerCredentialStore,

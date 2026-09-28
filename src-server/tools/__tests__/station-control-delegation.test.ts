@@ -1255,7 +1255,10 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(fallbackSignal).toBeInstanceOf(AbortSignal);
   });
 
-  test('relays target-side delegation validation errors without a fallback', async () => {
+  // #2377 C2b review: the target Station's words are replaced by this
+  // Station's fixed copy and the status (they reach an agent's tool result);
+  // there is still exactly one request and no fallback.
+  test('reports a target-side validation error as fixed copy, without a fallback', async () => {
     installRemoteStationFetch('/api/orchestration/delegations', undefined);
     // Replace only the canonical target response with a rejection while the
     // SSH resolution requests continue through the installed implementation.
@@ -1273,7 +1276,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     await expect(
       delegateTask({ prompt: 'Run tests', target: savedTarget() }),
-    ).rejects.toThrow('Agent is not currently launchable.');
+    ).rejects.toThrow(
+      'The selected Station could not start the delegated task (HTTP 400)',
+    );
     expect(
       fetchMock.mock.calls.filter(([url]) =>
         String(url).endsWith('/api/orchestration/delegations'),
@@ -4533,13 +4538,17 @@ describe('readRelayingLocalRefusal', () => {
     });
   });
 
+  // #2377 C2b review: another Station's words are dropped as well as its
+  // code; only the status survives, in this Station's fixed copy.
   test.each(['peer', 'ssh'])(
-    'a %s Station’s coded refusal keeps its words and loses its code',
+    'a %s Station’s coded refusal loses its code and its words',
     async (kind) => {
       const error = await failed(kind, refusal());
 
       expect((error as { code?: unknown }).code).toBeUndefined();
-      expect(error.message).toBe('Delegation depth exceeded.');
+      expect(error.message).toBe(
+        'The selected Station refused the request (HTTP 403)',
+      );
       expect(error.cause).toBeUndefined();
     },
   );

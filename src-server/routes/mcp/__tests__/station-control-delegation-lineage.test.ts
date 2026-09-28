@@ -212,28 +212,33 @@ function namesSavedEnvironment(input: unknown): boolean {
 
 // #2377 slice C2b: the route's one remote seam, over a peer store holding
 // the peer's credential (no SSH profile names the Environment).
-const remoteStations = createRemoteStationForwarder({
-  ssh: {
-    list: () => [],
-    connect: async () => {
-      throw new Error('no SSH profile in this suite');
+// The forwarder reads its bound when it is built (#2377 C2b review), so a
+// test that needs a short bound builds its own and swaps it in.
+const buildForwarder = (env: NodeJS.ProcessEnv = {}) =>
+  createRemoteStationForwarder({
+    env,
+    ssh: {
+      list: () => [],
+      connect: async () => {
+        throw new Error('no SSH profile in this suite');
+      },
     },
-  },
-  peers: {
-    get: (id: string) =>
-      id === PEER_ENVIRONMENT_ID
-        ? {
-            environmentId: id,
-            apiBase: peerBaseUrl,
-            scope: 'orchestration:read orchestration:operate',
-            credential: PEER_CREDENTIAL,
-            label: 'Peer',
-            createdAt: 0,
-            updatedAt: 0,
-          }
-        : null,
-  },
-});
+    peers: {
+      get: (id: string) =>
+        id === PEER_ENVIRONMENT_ID
+          ? {
+              environmentId: id,
+              apiBase: peerBaseUrl,
+              scope: 'orchestration:read orchestration:operate',
+              credential: PEER_CREDENTIAL,
+              label: 'Peer',
+              createdAt: 0,
+              updatedAt: 0,
+            }
+          : null,
+    },
+  });
+let remoteStations = buildForwarder();
 
 // #2377 C2b: the route's forward runs in-process with the orchestration
 // service, so a peer dispatch now records its delegator-side Activity row.
@@ -499,7 +504,7 @@ beforeEach(() => {
   recordPeerDelegationActivityDispatch.mockClear();
   peerStallMs = 0;
   peerRefusal = undefined;
-  delete process.env.STATION_REMOTE_REQUEST_TIMEOUT_MS;
+  remoteStations = buildForwarder();
 });
 
 async function readJsonRpc(response: Response): Promise<any> {
@@ -979,6 +984,8 @@ describe('#2377 C2b: a peer answer never becomes a code at the agent', () => {
           name,
           envelope: expect.not.objectContaining({ code: expect.anything() }),
         });
+        // Nor its words (#2377 C2b review).
+        expect(result.text, name).not.toContain('peer text');
       }
       expect(peerReceived).toHaveLength(2);
     },
@@ -1007,9 +1014,31 @@ describe('#2377 C2b: a peer answer never becomes a code at the agent', () => {
   });
 });
 
+describe('#2377 C2b review: a peer 401 on an ordinary message is not an authority change', () => {
+  test('send_message relays neither the portable "authority changed" refusal nor the peer text', async () => {
+    peerRefusal = {
+      status: 401,
+      body: { success: false, error: 'peer text' },
+    };
+    const result = await callTool('session-root', 'send_message', {
+      ...SEND_ARGS,
+      environmentId: PEER_ENVIRONMENT_ID,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).not.toContain('receiver_execution_authority_changed');
+    expect(result.text).not.toContain(
+      RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
+    );
+    expect(result.text).not.toContain('peer text');
+    expect(result.text).toContain('(HTTP 401)');
+  });
+});
+
 describe('#2377 C2b: the route owns the peer-hop timeout', () => {
   test('a slow peer is reported by the route as an isError tool result; the tool does not abort first', async () => {
-    process.env.STATION_REMOTE_REQUEST_TIMEOUT_MS = '300';
+    remoteStations = buildForwarder({
+      STATION_REMOTE_REQUEST_TIMEOUT_MS: '300',
+    });
     peerStallMs = 2_000;
     const started = Date.now();
     const delegated = await callTool('session-root', 'delegate_task', {
