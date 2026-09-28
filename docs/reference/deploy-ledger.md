@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-28T20:32:01Z | nightly-desktop | 0.1.11-nightly.2462.2 | `d0ca944` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36471134637) |
 | 2026-09-28T20:31:58Z | nightly-android | 0.1.11-nightly.2462.2 | `d0ca944` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36471134637) |
 | 2026-09-28T20:28:33Z | nightly-npm | 0.6.0-nightly.2462.36471134637 | `d0ca944` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36471134637) |
 | 2026-09-28T15:27:48Z | nightly-desktop | 0.1.11-nightly.2462.1 | `a30f084` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36429714384) |
@@ -184,6 +185,36 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-28T20:32:01Z · nightly-desktop · 0.1.11-nightly.2462.2
+
+- Ship SHA: `d0ca944c58c8dd4de5a17563eb97d06dbdbe3512`
+- Artifact built at: `2026-09-28T19:27:41.570Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36471134637)
+
+### Changelog
+
+Commits since `a30f084` ([full sha](https://github.com/kontourai/station/commit/a30f084b3b93f254337127cb18907d041570f9fc)):
+
+**Features**
+
+- [#2886](https://github.com/kontourai/station/pull/2886) feat(docs): add a source-reviewed learning library and maintenance gates
+- [#2881](https://github.com/kontourai/station/pull/2881) feat(update): archive installs update themselves: launcher trial/rollback, update requests, Check for server updates (#2675 D)
+- [#2912](https://github.com/kontourai/station/pull/2912) feat(approvals): report engine acknowledgement apart from the recorded decision (#2880)
+
+**Fixes**
+
+- [#2913](https://github.com/kontourai/station/pull/2913) fix(codex): grant nothing when a permissions request is declined, cancelled or interrupted (#2909)
+- [#2731](https://github.com/kontourai/station/pull/2731) fix(auth): answer a live but unadmitted credential with 403
+- [#2910](https://github.com/kontourai/station/pull/2910) fix(test-changed): a product-law path adds its evidence instead of deferring the whole diff (#2887)
+- [#2864](https://github.com/kontourai/station/pull/2864) fix(plugins): keep proposal-staged installs stripped on reinstall; CLI consent echo
+
+**Other**
+
+- [#2919](https://github.com/kontourai/station/pull/2919) test: test-audit UI and Playwright e2e specs (batches 37, 38, 41, 46, 63, 58, 62)
+- [#2914](https://github.com/kontourai/station/pull/2914) test: test-audit Scripts, CI, release and verification tooling (batches 64, 52, 61, 45)
+- [#2907](https://github.com/kontourai/station/pull/2907) test: test-audit CLI and published SDK packages (batches 36, 47, 53, 40)
 
 ## 2026-09-28T20:31:58Z · nightly-android · 0.1.11-nightly.2462.2
 
