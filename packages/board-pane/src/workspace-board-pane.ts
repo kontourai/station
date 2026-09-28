@@ -6,11 +6,11 @@ import {
   type WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
 
-export const WORKSPACE_BOARD_PANE_DESCRIPTOR_ID = 'pane:builtin:board';
+const WORKSPACE_BOARD_PANE_DESCRIPTOR_ID = 'pane:builtin:board';
 export const WORKSPACE_BOARD_PANE_RENDERER_ID =
   'renderer:builtin:builtin-component:workspace-board';
 export const WORKSPACE_BOARD_PANE_RENDERER_NAME = 'workspace-board';
-export const WORKSPACE_BOARD_PANE_SOURCE_ID = 'builtin:workspace-board';
+const WORKSPACE_BOARD_PANE_SOURCE_ID = 'builtin:workspace-board';
 
 const parsed = parseWorkspacePaneDescriptor({
   version: WORKSPACE_PANE_CONTRACT_VERSION,
@@ -94,17 +94,5 @@ export function isCanonicalWorkspaceBoardPaneInstance(
     instance.boundContext?.sourceId === WORKSPACE_BOARD_PANE_SOURCE_ID &&
     instance.boundContext.projectId === projectId &&
     Object.keys(instance.boundContext).length === 2
-  );
-}
-
-export function isCanonicalWorkspaceBoardDescriptor(
-  descriptor: WorkspacePaneDescriptor,
-): boolean {
-  return (
-    descriptor.id === WORKSPACE_BOARD_PANE_DESCRIPTOR.id &&
-    descriptor.rendererId === WORKSPACE_BOARD_PANE_DESCRIPTOR.rendererId &&
-    descriptor.renderer.kind === 'builtin-component' &&
-    descriptor.renderer.name === WORKSPACE_BOARD_PANE_RENDERER_NAME &&
-    descriptor.provenance.origin === 'builtin'
   );
 }
