@@ -179,7 +179,9 @@ Three things that look like wins and are not, all measured rather than assumed:
 `scripts/package-portable-release.sh` + `install.sh` already produce a
 distributable Station: a `.git`-less source checkout plus `npm ci`, installed
 under `$STATION_ROOT/installs/<channel>/releases/<checksum>` (default
-`~/.station/installs/<channel>/releases/<checksum>`). It preserves every
+`~/.station/installs/<channel>/releases/<checksum>`; a prebuilt per-platform
+archive installs under `.../versions/<version>` instead, see
+[Release channel ports](../guides/release-channel-ports.md#prebuilt-archives-and-source-releases)). It preserves every
 checkout-required verb *by construction*, and it is how `station upgrade` works
 for non-git installs (`commands/lifecycle.ts:2690`).
 
