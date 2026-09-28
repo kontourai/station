@@ -1,5 +1,45 @@
 [
   {
+    "timestampUtc": "2026-09-28T20:28:33Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2462.36471134637",
+    "sha": "d0ca944c58c8dd4de5a17563eb97d06dbdbe3512",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36471134637",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2462.36471134637 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "a30f084b3b93f254337127cb18907d041570f9fc",
+      "groups": {
+        "feat": [
+          "[#2886](https://github.com/kontourai/station/pull/2886) feat(docs): add a source-reviewed learning library and maintenance gates",
+          "[#2881](https://github.com/kontourai/station/pull/2881) feat(update): archive installs update themselves: launcher trial/rollback, update requests, Check for server updates (#2675 D)",
+          "[#2912](https://github.com/kontourai/station/pull/2912) feat(approvals): report engine acknowledgement apart from the recorded decision (#2880)"
+        ],
+        "fix": [
+          "[#2913](https://github.com/kontourai/station/pull/2913) fix(codex): grant nothing when a permissions request is declined, cancelled or interrupted (#2909)",
+          "[#2731](https://github.com/kontourai/station/pull/2731) fix(auth): answer a live but unadmitted credential with 403",
+          "[#2910](https://github.com/kontourai/station/pull/2910) fix(test-changed): a product-law path adds its evidence instead of deferring the whole diff (#2887)",
+          "[#2864](https://github.com/kontourai/station/pull/2864) fix(plugins): keep proposal-staged installs stripped on reinstall; CLI consent echo"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2919](https://github.com/kontourai/station/pull/2919) test: test-audit UI and Playwright e2e specs (batches 37, 38, 41, 46, 63, 58, 62)",
+          "[#2914](https://github.com/kontourai/station/pull/2914) test: test-audit Scripts, CI, release and verification tooling (batches 64, 52, 61, 45)",
+          "[#2907](https://github.com/kontourai/station/pull/2907) test: test-audit CLI and published SDK packages (batches 36, 47, 53, 40)"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
     "timestampUtc": "2026-09-28T15:27:48Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2462.1",
