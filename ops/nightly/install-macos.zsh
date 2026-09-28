@@ -23,7 +23,7 @@ while (( $# > 0 )); do
     --output-dir)
       shift
       if (( $# == 0 )) || [[ -z "$1" ]]; then
-        print -u2 '--output-dir requires a non-empty directory path.'
+        print -u2 -- '--output-dir requires a non-empty directory path.'
         exit 1
       fi
       output_dir="$1"
@@ -31,7 +31,7 @@ while (( $# > 0 )); do
     --notary-profile)
       shift
       if (( $# == 0 )) || [[ -z "$1" ]]; then
-        print -u2 '--notary-profile requires an existing named Keychain profile.'
+        print -u2 -- '--notary-profile requires an existing named Keychain profile.'
         exit 1
       fi
       notary_profile="$1"
@@ -46,15 +46,15 @@ done
 
 if (( build_only )); then
   if (( relaunch )); then
-    print -u2 '--relaunch cannot be used with --build-only.'
+    print -u2 -- '--relaunch cannot be used with --build-only.'
     exit 1
   fi
   if [[ -z "$output_dir" ]]; then
-    print -u2 '--build-only requires --output-dir so artifacts never overwrite an implicit location.'
+    print -u2 -- '--build-only requires --output-dir so artifacts never overwrite an implicit location.'
     exit 1
   fi
 elif [[ -n "$output_dir" || -n "$notary_profile" ]]; then
-  print -u2 '--output-dir and --notary-profile require --build-only.'
+  print -u2 -- '--output-dir and --notary-profile require --build-only.'
   exit 1
 fi
 

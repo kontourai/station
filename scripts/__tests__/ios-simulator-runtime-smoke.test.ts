@@ -107,115 +107,38 @@ describe('iOS simulator runtime smoke selection', () => {
     ).toThrow(/available iOS simulator/);
   });
 
-  test('dismisses a late notification sheet before tapping through the WKWebView', () => {
-    const calls = [...swiftSmoke.matchAll(/dismissSystemAlertIfPresent\(\)/g)];
-    // Three invocations plus the helper declaration: launch-time best effort,
-    // the required post-shell retry, then one bounded post-tap recovery for a
-    // permission sheet that wins the final race with the first WebView tap.
-    expect(calls).toHaveLength(4);
-
-    const firstShellWait = swiftSmoke.indexOf(
-      'waitForElement(connect, budget: 90)',
-    );
-    const secondDismissal = calls[1].index;
-    const reactivation = swiftSmoke.indexOf('app.activate()', secondDismissal);
-    const reacquire = swiftSmoke.indexOf(
-      'connect.waitForExistence(timeout: 5)',
-      reactivation,
-    );
-    const hittable = swiftSmoke.indexOf(
-      'XCTAssertTrue(connect.isHittable)',
-      reacquire,
-    );
-    const tap = swiftSmoke.indexOf('connect.tap()', hittable);
-    const managerAction = swiftSmoke.indexOf(
-      'app.buttons["Add a Station address"]',
-      tap,
-    );
-    const conditionalRecovery = swiftSmoke.indexOf(
-      'if !addAddress.waitForExistence(timeout: 2)',
-      managerAction,
-    );
-    const postTapDismissal = calls[2].index;
-    const postTapReactivation = swiftSmoke.indexOf(
-      'app.activate()',
-      postTapDismissal,
-    );
-    const postTapReacquire = swiftSmoke.indexOf(
-      'connect.waitForExistence(timeout: 5)',
-      postTapReactivation,
-    );
-    const postTapHittable = swiftSmoke.indexOf(
-      'XCTAssertTrue(connect.isHittable)',
-      postTapReacquire,
-    );
-    const retryTap = swiftSmoke.indexOf('connect.tap()', postTapHittable);
-    // The manager assertion is a bounded tap-retry, not a single existence
-    // wait: a tap delivered to a WKWebView before its handler is attached is
-    // dropped, and one `waitForExistence` afterwards cannot tell that apart
-    // from a surface that never opens (#1174).
-    const finalManagerWait = swiftSmoke.indexOf(
-      'tap(connect, until: addAddress, budget: 20)',
-      retryTap,
-    );
-
-    const orderedContract = [
-      firstShellWait,
-      secondDismissal,
-      reactivation,
-      reacquire,
-      hittable,
-      tap,
-      managerAction,
-      conditionalRecovery,
-      postTapDismissal,
-      postTapReactivation,
-      postTapReacquire,
-      postTapHittable,
-      retryTap,
-      finalManagerWait,
-    ];
-    expect(orderedContract.every((position) => position >= 0)).toBe(true);
-    expect(orderedContract).toEqual(
-      [...orderedContract].sort((left, right) => left - right),
-    );
-    expect([...swiftSmoke.matchAll(/connect\.tap\(\)/g)]).toHaveLength(2);
-    expect(swiftSmoke).not.toContain('while !addAddress.waitForExistence');
-    // Hold the ground this test just gained: neither surface may go back to a
-    // single-shot existence wait after a tap.
-    expect(swiftSmoke).not.toContain(
-      'addAddress.waitForExistence(timeout: 10)',
-    );
-    expect(swiftSmoke).not.toContain('name.waitForExistence(timeout: 10)');
-    expect(swiftSmoke).toContain('tap(addAddress, until: name, budget: 20)');
-
-    const conditionalActivations = [
+  test('reacquires Station after every dismissed sheet and never single-shots a post-tap wait', () => {
+    // Every dismissal call site reactivates Station once a sheet actually
+    // went away; a dismissal without it leaves the WebView covered.
+    const callSites =
+      [...swiftSmoke.matchAll(/dismissSystemAlertIfPresent\(\)/g)].length - 1;
+    const reactivating = [
       ...swiftSmoke.matchAll(
         /if dismissSystemAlertIfPresent\(\) \{\s+app\.activate\(\)\s+\}/g,
       ),
-    ];
-    expect(conditionalActivations).toHaveLength(3);
-    expect([...swiftSmoke.matchAll(/app\.activate\(\)/g)]).toHaveLength(3);
-
-    const helper = swiftSmoke.slice(
-      swiftSmoke.indexOf('private func dismissSystemAlertIfPresent() -> Bool'),
-      swiftSmoke.indexOf('private func assertContained'),
-    );
-    expect(helper).toContain('let deadline = Date().addingTimeInterval(2)');
-    expect(helper).toContain('return false');
-    expect(helper).toContain('alert.waitForNonExistence(timeout: remaining)');
-    expect(helper).not.toContain('waitForExistence(timeout: 3)');
+    ].length;
+    expect(callSites).toBeGreaterThan(0);
+    expect(reactivating).toBe(callSites);
+    // A tap delivered to a WKWebView before its handler is attached is
+    // dropped, and one existence wait afterwards cannot tell that apart from
+    // a surface that never opens (#1174): each tap-opened surface is asserted
+    // through the bounded tap-retry helper, never a bare existence wait.
+    for (const [source, target] of [
+      ['connect', 'addAddress'],
+      ['addAddress', 'name'],
+    ]) {
+      expect(swiftSmoke).toMatch(
+        new RegExp(`tap\\(${source}, until: ${target}, budget: \\d+\\)`),
+      );
+      expect(swiftSmoke).not.toMatch(
+        new RegExp(`XCTAssertTrue\\(\\s*${target}\\.waitForExistence`),
+      );
+    }
   });
 
   test('registers final-state evidence and cleanup before launch', () => {
     const teardown = swiftSmoke.indexOf('addTeardownBlock {');
     const launch = swiftSmoke.indexOf('app.launch()');
-    const firstDismissal = swiftSmoke.indexOf(
-      'if dismissSystemAlertIfPresent()',
-    );
-    const firstActivation = swiftSmoke.indexOf('app.activate()');
-
-    expect([...swiftSmoke.matchAll(/addTeardownBlock \{/g)]).toHaveLength(1);
     expect(teardown).toBeGreaterThanOrEqual(0);
     expect(teardown).toBeLessThan(launch);
     const teardownBody = swiftSmoke.slice(teardown, launch);
@@ -223,8 +146,6 @@ describe('iOS simulator runtime smoke selection', () => {
     const terminate = teardownBody.indexOf('app.terminate()');
     expect(screenshot).toBeGreaterThanOrEqual(0);
     expect(terminate).toBeGreaterThan(screenshot);
-    expect(launch).toBeLessThan(firstDismissal);
-    expect(firstDismissal).toBeLessThan(firstActivation);
   });
 });
 

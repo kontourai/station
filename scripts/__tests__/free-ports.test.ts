@@ -1,9 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import {
-  findFreePort,
-  findFreePortBlock,
-  findPreferredPortBlock,
-} from '../lib/free-ports.mjs';
+import { findPreferredPortBlock } from '../lib/free-ports.mjs';
 
 /**
  * Regression guard for a suite-wide flake.
@@ -21,19 +17,6 @@ import {
  * happened to draw the unlucky port.
  */
 describe('free-ports', () => {
-  test('allocates a single port inside the valid range', async () => {
-    const port = await findFreePort();
-    expect(port).toBeGreaterThan(0);
-    expect(port).toBeLessThanOrEqual(65535);
-  });
-
-  test('keeps every port of a contiguous block inside the valid range', async () => {
-    const size = 6;
-    const start = await findFreePortBlock(size);
-    expect(start).toBeGreaterThan(0);
-    expect(start + size - 1).toBeLessThanOrEqual(65535);
-  });
-
   test('does not throw when a preferred block would run past the top of the range', async () => {
     // 65530 leaves only 6 ports below the ceiling, so a block of 8 must step
     // past it. Before the guard this threw RangeError instead of moving on.

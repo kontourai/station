@@ -154,10 +154,6 @@ export function resolveNativeUpdateAuthority(
   return platform === null ? authority : { ...authority, platform };
 }
 
-export function validateUpdateConfig(env = process.env, options = {}) {
-  return resolveNativeUpdateAuthority(env, options);
-}
-
 export function writeNativeUpdateAuthorityReceipt(
   output,
   env = process.env,

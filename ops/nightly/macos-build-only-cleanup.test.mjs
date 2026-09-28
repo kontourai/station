@@ -66,7 +66,7 @@ workdir=''
 if [[ "$1" == -C ]]; then workdir="$2"; shift 2; fi
 if [[ "$1 $2" == 'rev-parse --show-toplevel' ]]; then print "${'$'}{workdir:-${root}}"; exit 0; fi
 if [[ "$1 $2" == 'rev-parse --git-common-dir' ]]; then print .git; exit 0; fi
-if [[ "$1" == status ]]; then exit 0; fi
+if [[ "$1" == status ]]; then [[ -z "${'$'}{GIT_DIRTY:-}" ]] || print ' M package.json'; exit 0; fi
 if [[ "$1" == fetch || "$1" == checkout ]]; then exit 0; fi
 if [[ "$1 $2" == 'rev-parse HEAD' || "$1 $2" == 'rev-parse FETCH_HEAD' || "$1 $2" == 'rev-parse origin/main' ]]; then print ${'a'.repeat(40)}; exit 0; fi
 if [[ "$1" == clone ]]; then [[ -z "${'$'}{GIT_LOG:-}" ]] || print "${'$'}{@: -1}" >> "$GIT_LOG"; mkdir -p "${'$'}{@: -1}/.git"; exit 0; fi
@@ -256,5 +256,80 @@ exit 99
     expect(existsSync(join(f.lock, 'foreign-owner'))).toBe(true);
     expect(existsSync(f.output)).toBe(false);
     expect(existsSync(join(f.dir, 'npx-ran'))).toBe(false);
+  });
+});
+
+describe('installer refusals', () => {
+  function run(f, args, env = {}) {
+    try {
+      execFileSync('zsh', [installer, ...args], {
+        cwd: root,
+        env: {
+          ...process.env,
+          GIT_LOG: f.gitLog,
+          HOME: f.home,
+          NPM_RAN: f.npmRan,
+          PATH: `${f.bin}:${process.env.PATH}`,
+          STATION_ROOT: join(f.home, '.station'),
+          ...env,
+        },
+        stdio: 'pipe',
+      });
+    } catch (error) {
+      return { status: error.status, stderr: String(error.stderr) };
+    }
+    return { status: 0, stderr: '' };
+  }
+
+  // Each message starts with `--`: `print -u2` without `--` parsed it as
+  // options and replaced the refusal with "bad option" noise.
+  it.each([
+    [['--build-only'], '--build-only requires --output-dir'],
+    [
+      ['--output-dir', 'out'],
+      '--output-dir and --notary-profile require --build-only.',
+    ],
+    [
+      ['--build-only', '--relaunch', '--output-dir', 'out'],
+      '--relaunch cannot be used with --build-only.',
+    ],
+    [
+      ['--build-only', '--output-dir', 'out', '--notary-profile'],
+      '--notary-profile requires an existing named Keychain profile.',
+    ],
+  ])('refuses %j before touching the checkout', (args, message) => {
+    const f = fixture();
+    expect(run(f, args)).toMatchObject({
+      status: 1,
+      stderr: expect.stringContaining(message),
+    });
+    expect(existsSync(f.gitLog)).toBe(false);
+    expect(existsSync(f.npmRan)).toBe(false);
+  });
+
+  it('refuses a dirty tracked checkout before building', () => {
+    const f = fixture();
+    expect(
+      run(f, ['--build-only', '--output-dir', f.output], { GIT_DIRTY: '1' }),
+    ).toMatchObject({
+      status: 1,
+      stderr: expect.stringContaining(
+        'Refusing to build Station Nightly from a dirty tracked checkout.',
+      ),
+    });
+    expect(existsSync(f.gitLog)).toBe(false);
+    expect(existsSync(f.npmRan)).toBe(false);
+  });
+
+  it('refuses a held lock before refreshing the owned checkout', () => {
+    const f = fixture({ foreignLock: true });
+    expect(run(f, ['--build-only', '--output-dir', f.output])).toMatchObject({
+      status: 1,
+      stderr: expect.stringContaining(
+        'Another Station Nightly installation is already running.',
+      ),
+    });
+    expect(existsSync(f.gitLog)).toBe(false);
+    expect(existsSync(f.npmRan)).toBe(false);
   });
 });

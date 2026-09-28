@@ -147,39 +147,6 @@ export function parseNightlyRebuildIndex(rebuildIndex) {
 }
 
 /**
- * Distinguishes the GitHub Actions archive receipt from the independent Play
- * publication result. A successful upload without an artifact ID is not
- * evidence that a downloadable archive exists.
- */
-export function classifyNightlyArtifactArchive({ outcome, artifactId }) {
-  if (outcome === 'success' && typeof artifactId === 'string' && artifactId) {
-    return {
-      annotation: 'notice',
-      message:
-        'Signed Nightly artifacts were retained by this workflow archive.',
-    };
-  }
-  if (outcome === 'success') {
-    return {
-      annotation: 'warning',
-      message:
-        'Nightly artifact upload completed without an artifact ID. Workflow artifact availability is NOT_VERIFIED.',
-    };
-  }
-  if (outcome === 'skipped') {
-    return {
-      annotation: 'notice',
-      message:
-        'Nightly artifact archive was skipped. Workflow artifact availability is NOT_VERIFIED.',
-    };
-  }
-  return {
-    annotation: 'warning',
-    message: `Signed Nightly artifact archive was not retained (upload outcome: ${String(outcome)}). Do not claim a workflow artifact is available; Play publication is a separate outcome.`,
-  };
-}
-
-/**
  * Selects an Android version code that is strictly above every durable
  * reservation and the one pre-reservation published code. A supplied manual
  * build is an explicit upward choice, never permission to reuse a lower code.

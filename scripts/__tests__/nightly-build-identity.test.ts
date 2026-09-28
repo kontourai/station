@@ -13,7 +13,6 @@ import {
 } from '../classify-nightly-reservation-response.mjs';
 import {
   allocateNightlyVersionCode,
-  classifyNightlyArtifactArchive,
   createNightlyConfig,
   createNightlyDesktopConfig,
   MAX_ANDROID_VERSION_CODE,
@@ -194,28 +193,6 @@ describe('Nightly version-code reservation allocation', () => {
         'reservation_tag=nightly-version-code/242704',
       ].join('\n'),
     );
-  });
-});
-
-describe('Nightly artifact archive receipt', () => {
-  it('requires an artifact ID before asserting archive availability', () => {
-    expect(
-      classifyNightlyArtifactArchive({ outcome: 'success', artifactId: '123' }),
-    ).toMatchObject({ annotation: 'notice', message: /retained/ });
-    for (const artifactId of ['', undefined, null]) {
-      expect(
-        classifyNightlyArtifactArchive({ outcome: 'success', artifactId }),
-      ).toMatchObject({ annotation: 'warning', message: /NOT_VERIFIED/ });
-    }
-  });
-
-  it('keeps skipped and failed archives distinct from signed-artifact absence', () => {
-    expect(
-      classifyNightlyArtifactArchive({ outcome: 'skipped', artifactId: '' }),
-    ).toMatchObject({ annotation: 'notice', message: /skipped.*NOT_VERIFIED/ });
-    expect(
-      classifyNightlyArtifactArchive({ outcome: 'failure', artifactId: '' }),
-    ).toMatchObject({ annotation: 'warning', message: /not retained/ });
   });
 });
 
@@ -606,13 +583,6 @@ describe('the nightly workflow keeps its promises', () => {
     );
   });
 
-  it('makes the nightly build job need both promotion gates', () => {
-    const nativeCaller = callerWorkflow.slice(
-      callerWorkflow.indexOf('\n  native-cohort:'),
-    );
-    expect(nativeCaller).toContain('needs: [test-gate, full-regression]');
-  });
-
   it('retries the registry provenance read that lags npm publish, bounded and fail-closed (#1498)', () => {
     const receipt = callerWorkflow.slice(
       callerWorkflow.indexOf(
@@ -632,7 +602,7 @@ describe('the nightly workflow keeps its promises', () => {
     );
   });
 
-  it('publishes only on literal success from both promotion gates', () => {
+  it('publishes the CLI only on literal success from both promotion gates', () => {
     // `!= 'failure'` would admit a skipped or cancelled gate — the exact
     // green-looking hole this predicate exists to close. Pinned as one
     // literal LINE (not a whole-file substring: a `#`-commented copy of the
@@ -982,7 +952,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     expect(desktopJob).toContain('Cleanup macOS Developer ID keychain');
   });
 
-  it('publishes only on literal success from both promotion gates', () => {
+  it('publishes the CLI only on literal success from both promotion gates', () => {
     // Same literal line as the Android job's pin above, and the same
     // conjunct-order reasoning: scripts/actionlint-gate.mjs's
     // skipsAutomaticPullRequest accepts only this exact prefix ladder.

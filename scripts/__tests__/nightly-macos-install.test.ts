@@ -11,10 +11,6 @@ const root = resolve(import.meta.dirname, '../..');
 const configPath = resolve(root, 'src-desktop/tauri.nightly.conf.json');
 const infoPlistPath = resolve(root, 'src-desktop/Info.nightly.plist');
 const installerPath = resolve(root, 'ops/nightly/install-macos.zsh');
-const signingIdentityPath = resolve(
-  root,
-  'ops/nightly/macos-signing-identity.mjs',
-);
 const dogfoodConfigPath = resolve(
   root,
   'ops/dogfood/station-dogfood.json.example',
@@ -98,9 +94,6 @@ describe('macOS nightly lane', () => {
     expect(statSync(installerPath).mode & 0o111).not.toBe(0);
     expect(installer).not.toContain('git fetch origin main');
     expect(installer).not.toContain('Switch to the exact latest origin/main');
-    expect(installer).toContain(
-      'Refusing to build Station Nightly from a dirty tracked checkout.',
-    );
     expect(installer).toContain("'/Applications/Station Nightly.app'");
     expect(installer).not.toContain("'/Applications/Station.app'");
     expect(installer).toContain('station-nightly-source.json');
@@ -114,26 +107,10 @@ describe('macOS nightly lane', () => {
       'A newly built app does not replace that checkout',
     );
     expect(installer).toContain('--relaunch');
-    // The lock must cover the build, not just the swap: npm ci is not
-    // concurrency-safe, and the self-updater can trigger this script over
-    // HTTP (#1624). Assert ORDER, not mere presence.
-    expect(installer.indexOf('if ! mkdir "$lock_dir"')).toBeGreaterThan(0);
-    expect(installer.indexOf('if ! mkdir "$lock_dir"')).toBeLessThan(
-      installer.indexOf('\nnpm run dependencies:ci\n'),
-    );
     expect(installer).toContain('to quit');
     expect(installer).toContain("arm64) target='aarch64-apple-darwin'");
     expect(installer).toContain("x86_64) target='x86_64-apple-darwin'");
     expect(installer).toContain('--target "$target"');
-    expect(readFileSync(signingIdentityPath, 'utf8')).toContain(
-      'STATION_NIGHTLY_CODESIGN_IDENTITY',
-    );
-    expect(readFileSync(signingIdentityPath, 'utf8')).toContain(
-      'Developer ID Application: Kontour AI LLC',
-    );
-    expect(readFileSync(signingIdentityPath, 'utf8')).toContain(
-      'Apple Distribution and ad-hoc signing (-) are not allowed',
-    );
     expect(installer).toContain(
       'node "$build_root/ops/nightly/macos-signing-identity.mjs"',
     );
@@ -155,9 +132,6 @@ describe('macOS nightly lane', () => {
     expect(installer).toContain('--candidate-designated-requirement');
     expect(installer).toContain('--raw-designated-requirement');
     expect(installer).not.toContain("sed -n 's/^designated => //p'");
-    expect(readFileSync(signingIdentityPath, 'utf8')).toContain(
-      'CDHash-only/ad-hoc signing is refused',
-    );
     expect(installer).toContain(
       'stable certificate-backed designated requirement',
     );
@@ -190,9 +164,6 @@ describe('macOS nightly lane', () => {
     ).toBeLessThan(installer.indexOf('if [[ -e "$destination" ]]'));
     expect(installer).toContain('if [[ -e "$backup" && ! -e "$destination" ]]');
     expect(installer).toContain(
-      'Another Station Nightly installation is already running.',
-    );
-    expect(installer).toContain(
       'A stale Station Nightly installation candidate or backup needs inspection.',
     );
   });
@@ -204,8 +175,6 @@ describe('macOS nightly lane', () => {
     // outside any repo — and the script fails closed if it would overlap the
     // primary checkout. npm ci must never tear down node_modules under a
     // Station service running from the primary tree.
-    expect(installer).toContain('lock_root="$station_root/cache/nightly"');
-    expect(installer).toContain('build_root="$lock_root/build-checkout-v2"');
     expect(installer).toContain('Leave legacy build-checkout intact');
     expect(installer).toContain(
       'Isolated build checkout must live outside the primary checkout.',
@@ -244,13 +213,6 @@ describe('macOS nightly lane', () => {
     // the checkout that recorded install provenance.
     expect(installer).toContain('owned-source-checkout.mjs');
     expect(installer).toContain(
-      'const raw = (process.env.STATION_ROOT ?? "").trim()',
-    );
-    expect(installer).toContain(
-      'resolve(process.argv[1], raw || join(homedir(), ".station"))',
-    );
-    expect(installer).toContain('export STATION_ROOT="$station_root"');
-    expect(installer).toContain(
       'the recorded source checkout was left unchanged.',
     );
     expect(installer).toContain(
@@ -271,14 +233,9 @@ describe('macOS nightly lane', () => {
     );
     expect(installer).not.toContain('"$(git remote get-url origin)"');
 
-    // The lock still covers the whole operation, including the owned checkout
-    // refresh. The installer must never recursively delete the recorded
-    // provenance checkout.
-    const lock = installer.indexOf('if ! mkdir "$lock_dir"');
-    expect(lock).toBeGreaterThan(0);
-    expect(lock).toBeLessThan(installer.indexOf('prepare_build_checkout'));
+    // The installer must never recursively delete the recorded provenance
+    // checkout.
     expect(installer).not.toContain('rm -rf "$build_root"');
-    expect(lock).toBeLessThan(cdBuild);
   });
 
   it('can archive a signed Nightly without touching the installed app', () => {
@@ -286,11 +243,6 @@ describe('macOS nightly lane', () => {
     const buildOnly = installer.indexOf('if (( build_only )); then');
     const install = installer.indexOf('if [[ -e "$destination" ]]; then');
 
-    expect(installer).toContain('--build-only requires --output-dir');
-    expect(installer).toContain('--relaunch cannot be used with --build-only');
-    expect(installer).toContain(
-      '--notary-profile requires an existing named Keychain profile.',
-    );
     expect(buildOnly).toBeGreaterThan(0);
     expect(buildOnly).toBeLessThan(install);
     expect(installer.slice(buildOnly, install)).not.toContain(

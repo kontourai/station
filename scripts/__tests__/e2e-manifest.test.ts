@@ -446,20 +446,6 @@ describe('e2e manifest', () => {
     );
   });
 
-  it('requires the bounded smoke lane on pull requests with diagnostics', () => {
-    const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
-
-    // The smoke runs as a step of the required fast-checks job.
-    expect(workflow).toContain(
-      'name: Verify critical browser journeys before merge',
-    );
-    expect(workflow).toContain('timeout-minutes: 10');
-    expect(workflow).toContain('run: npm run test:e2e:pr-smoke');
-    expect(workflow).toContain('playwright-report/');
-    expect(workflow).toContain('test-results/');
-    expect(workflow).toContain('if: always()');
-  });
-
   it('refuses an inline foreground chat receipt and an unfixtured chat-route mock (station#3800)', () => {
     const inline = foregroundReceiptFixtureErrors(
       'tests/fixture.spec.ts',

@@ -1494,6 +1494,36 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
+  it('bounds the PR browser smoke and uploads its diagnostics even when it fails', () => {
+    type Step = {
+      name?: string;
+      run?: string;
+      if?: string;
+      'timeout-minutes'?: unknown;
+      with?: { path?: string };
+    };
+    const steps = (
+      load(workflow('ci.yml')) as {
+        jobs: Record<string, { steps: Step[] }>;
+      }
+    ).jobs['fast-checks-statics'].steps;
+    const smoke = steps.findIndex(
+      (step) => step.run === 'npm run test:e2e:pr-smoke',
+    );
+    expect(smoke).toBeGreaterThanOrEqual(0);
+    expect(steps[smoke]['timeout-minutes']).toBe(10);
+    // The upload must follow the smoke and run on its failure, or a red smoke
+    // leaves no Playwright report or traces to diagnose.
+    const upload = steps.findIndex(
+      (step) => step.name === 'Upload bounded fast-feedback diagnostics',
+    );
+    expect(upload).toBeGreaterThan(smoke);
+    expect(steps[upload].if).toBe('always()');
+    const paths = String(steps[upload].with?.path).split('\n');
+    expect(paths).toContain('playwright-report/');
+    expect(paths).toContain('test-results/');
+  });
+
   it('reports the UI bundle delta in its own non-blocking, PR-only job (#1703)', () => {
     type Step = {
       name?: string;

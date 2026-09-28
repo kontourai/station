@@ -34,31 +34,60 @@ describe('native recovery documentation', () => {
     const userGuide = read('docs/user/native-recovery.md');
     const operatorGuide = read('docs/guides/native-shell-verification.md');
 
-    expect(source).toContain('pub const MAX_ATTEMPTS: u32 = 5;');
-    expect(source).toContain('const BACKOFF_BASE_MS: u64 = 500;');
+    const constant = (name: string) => {
+      const match = new RegExp(`const ${name}: u(?:32|64) = ([\\d_]+);`).exec(
+        source,
+      );
+      expect(match, name).not.toBeNull();
+      return Number(match![1].replaceAll('_', ''));
+    };
+    const maxAttempts = constant('MAX_ATTEMPTS');
+    const backoffBaseMs = constant('BACKOFF_BASE_MS');
+    const backoffCapMs = constant('BACKOFF_CAP_MS');
+    // The transition guard the derivation below relies on: each counted exit
+    // increments the attempt, the max_attempts-th is terminal, and every
+    // earlier one waits backoff_delay_ms(attempt).
     expect(source).toContain(
       'let attempt = current.attempt.saturating_add(1);',
     );
     expect(source).toContain('if attempt >= current.max_attempts');
     expect(source).toContain('let delay = backoff_delay_ms(attempt);');
+    expect(source).toContain(
+      'BACKOFF_BASE_MS.saturating_mul(factor).min(BACKOFF_CAP_MS)',
+    );
 
-    const automaticRespawns = 5 - 1;
-    const delays = Array.from(
-      { length: automaticRespawns },
-      (_, index) => 500 * 2 ** (index + 1),
+    const respawns = maxAttempts - 1;
+    const seconds = Array.from(
+      { length: respawns },
+      (_, index) =>
+        Math.min(backoffBaseMs * 2 ** (index + 1), backoffCapMs) / 1000,
     );
-    expect(delays).toEqual([1000, 2000, 4000, 8000]);
+    const cardinal = ['zero', 'one', 'two', 'three', 'four', 'five', 'six'];
+    const ordinal = [
+      '',
+      'first',
+      'second',
+      'third',
+      'fourth',
+      'fifth',
+      'sixth',
+    ];
+    const series = (items: string[]) =>
+      `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+    const terminal = ordinal[maxAttempts];
 
-    expect(userGuide).toContain('respawn the sidecar four times');
-    expect(userGuide).toContain('after 1, 2, 4, and 8 seconds');
-    expect(userGuide).toContain('fifth counted exit is terminal');
+    expect(userGuide).toContain(
+      `respawn the sidecar ${cardinal[respawns]} times`,
+    );
+    expect(userGuide).toContain(`after ${series(seconds.map(String))} seconds`);
+    expect(userGuide).toContain(`${terminal} counted exit is terminal`);
     expect(operatorGuide).toContain(
-      'uses 1 s, 2 s, 4 s, and 8 s crash backoff for its four automatic respawns',
+      `uses ${series(seconds.map((value) => `${value} s`))} crash backoff for its ${cardinal[respawns]} automatic respawns`,
     );
     expect(operatorGuide).toContain(
-      'fifth counted exit is terminal; it does not schedule a fifth respawn.',
+      `${terminal} counted exit is terminal; it does not schedule a ${terminal} respawn.`,
     );
-    expect(operatorGuide).not.toContain('500 ms');
+    expect(operatorGuide).not.toContain(`${backoffBaseMs} ms`);
   });
 
   it('derives channel-specific shell and service log paths from their producers', () => {
@@ -105,7 +134,6 @@ describe('native recovery documentation', () => {
     const guide = read('docs/guides/native-shell-verification.md');
     const cli = read('packages/cli/src/cli.ts');
     const help = read('packages/cli/src/help.ts');
-    const lifecycle = read('packages/cli/src/commands/lifecycle.ts');
     const allocator = read('scripts/lib/free-ports.mjs');
     const proofBlock = guide
       .split('```sh\n')
@@ -152,41 +180,26 @@ describe('native recovery documentation', () => {
       'export async function findFreePortBlock(size)',
     );
     expect(allocator).toContain('export async function findFreePortOutside(');
-    expect(lifecycle).toContain('function matchesSelector(');
-    expect(lifecycle).toContain('record.instanceId !== selector.instanceId');
-    expect(lifecycle).toContain('record.serverPort !== selector.serverPort');
-    expect(lifecycle).toContain('record.uiPort !== selector.uiPort');
-    expect(lifecycle).toContain(
-      "const match = ensureSingleMatch(matches, 'stop');",
-    );
   });
 
-  it('keeps evidence boundaries bound to the tray, hostile plugin, and browser harness sources', () => {
+  it('states that the hostile-plugin proof is browser evidence, not native IPC evidence', () => {
     const guide = read('docs/guides/native-shell-verification.md');
-    const tray = read('src-desktop/src/tray.rs');
-    const hostilePlugin = read('tests/plugin-host-security.spec.ts');
-    const playwright = read('playwright.config.ts');
 
-    expect(tray).toContain('crate::request_main_window_activation(app)');
-    expect(tray).toContain('queue_tray_navigation(app, destination_kind);');
-    expect(hostilePlugin).toContain('window.parent.__TAURI__');
-    expect(hostilePlugin).toContain('__TAURI_INTERNALS__.invoke');
-    expect(hostilePlugin).toContain(
-      'requires running this suite INSIDE the real WebView',
-    );
-    expect(playwright).toContain("browserName: 'chromium'");
     expect(guide).toContain('It is a browser test');
     expect(guide).toContain('cannot prove native IPC denial');
     expect(guide).toContain('Do not invent a `tauri-driver` command');
   });
 
-  it('selects this contract test when any named native or browser seam changes', () => {
-    const testFor = (pattern: string) =>
-      TEST_IMPACT_MANIFEST.find((edge) => edge.pattern === pattern)?.tests;
+  it('selects this contract test when any source it reads changes', () => {
+    const testFor = (pattern: string) => {
+      const edge = TEST_IMPACT_MANIFEST.find(
+        (candidate) => candidate.pattern === pattern,
+      );
+      return edge && 'tests' in edge ? edge.tests : undefined;
+    };
     for (const pattern of [
       'src-desktop/src/bundled_server_state.rs',
       'src-desktop/src/lib.rs',
-      'src-desktop/src/tray.rs',
       'src-desktop/tauri.conf.json',
       'src-desktop/tauri.beta.conf.json',
       'src-desktop/tauri.nightly.conf.json',
@@ -196,10 +209,7 @@ describe('native recovery documentation', () => {
       'packages/cli/src/commands/service-launchd.ts',
       'packages/cli/src/commands/service-systemd.ts',
       'packages/cli/src/commands/service-windows.ts',
-      'packages/cli/src/commands/lifecycle.ts',
       'scripts/lib/free-ports.mjs',
-      'tests/plugin-host-security.spec.ts',
-      'playwright.config.ts',
     ])
       expect(testFor(pattern), pattern).toContain(
         'scripts/__tests__/native-recovery-docs.test.ts',

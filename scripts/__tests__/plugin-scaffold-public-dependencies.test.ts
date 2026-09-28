@@ -26,25 +26,37 @@ describe('plugin scaffold public dependency qualification', () => {
     ).toBeLessThan(workflow.indexOf('name: Build shared'));
   });
 
-  test('the generated dependency authority resolves against registry facts', () => {
+  test('the checked-in authority names both packages by caret registry range', () => {
+    // Which versions exist is registry truth, checked live by the publish
+    // step above; this pins only the authority's shape.
     const dependencies = readPluginScaffoldDependencies();
+    expect(Object.keys(dependencies).sort()).toEqual([
+      '@kontourai/station-sdk',
+      '@kontourai/station-shared',
+    ]);
+    for (const range of Object.values(dependencies))
+      expect(range).toMatch(/^\^\d+\.\d+\.\d+$/);
+  });
+
+  test('resolves each range to its highest published match', () => {
     expect(
-      assertPublishedPluginScaffoldDependencies(dependencies, () => [
-        '0.4.0',
-        '0.4.1',
-        '0.5.0',
-        '0.7.0',
-      ]),
+      assertPublishedPluginScaffoldDependencies(
+        {
+          '@kontourai/station-sdk': '^0.4.0',
+          '@kontourai/station-shared': '^0.5.0',
+        },
+        () => ['0.4.0', '0.4.1', '0.5.0', '0.7.0'],
+      ),
     ).toEqual([
       {
         packageName: '@kontourai/station-sdk',
-        range: '^0.7.0',
-        resolved: '0.7.0',
+        range: '^0.4.0',
+        resolved: '0.4.1',
       },
       {
         packageName: '@kontourai/station-shared',
-        range: '^0.7.0',
-        resolved: '0.7.0',
+        range: '^0.5.0',
+        resolved: '0.5.0',
       },
     ]);
   });
