@@ -15,7 +15,6 @@ use crate::native_proof_key_core::{
     proof_key_account, valid_app_identifier, KeyringSecretBackend, ProofKeyOwner,
 };
 use crate::native_relay_proof_key::NativeProofKeyChannel;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -230,6 +229,7 @@ impl MemoryNativeAccountProofKeyVault {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine as _;
     use ring::rand::SystemRandom;
     use ring::signature::{self, UnparsedPublicKey};
@@ -512,7 +512,12 @@ mod tests {
     fn account_namespace_is_distinct_from_the_relay_proof_key() {
         let owner = owner();
         let account = owner.account();
-        assert!(account.starts_with("native-account-proof:v1:"));
+        // Pinned from the pre-refactor account derivation: an existing
+        // Keychain record must remain addressable after the shared-core move.
+        assert_eq!(
+            account,
+            "native-account-proof:v1:w1CQKqVxj3t58V7EHhFjaJ-GSFz_Y2AWcu-LZRkrTl0"
+        );
         // Same owner fields as the relay vault would hash differently, and the
         // service string is separate, so keyring entries cannot collide.
         assert!(!account.starts_with("native-proof:"));

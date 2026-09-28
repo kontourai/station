@@ -9,7 +9,7 @@
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
-use ring::rand::{SecureRandom as _, SystemRandom};
+use ring::rand::SystemRandom;
 use ring::signature::{self, KeyPair as _};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};

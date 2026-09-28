@@ -15,19 +15,17 @@ use crate::native_proof_key_core::{
     proof_key_account, valid_app_identifier, KeyringSecretBackend, ProofKeyOwner,
 };
 use crate::native_relay_proof_key::NativeProofKeyChannel;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine as _;
-use ring::signature::{self, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[cfg(test)]
 pub(crate) use crate::native_proof_key_core::MemorySecretBackend;
+#[cfg(test)]
+use crate::native_proof_key_core::ProofKeySecretBackend;
 pub(crate) use crate::native_proof_key_core::{
     ProofKeyError as DeviceProofKeyError,
     ProofKeyPublicMetadata as NativeDeviceProofKeyPublicMetadata,
-    ProofKeyResult as DeviceProofKeyResult, ProofKeySecretBackend,
-    ProofKeyVaultCore as DeviceProofKeyVaultCore,
+    ProofKeyResult as DeviceProofKeyResult, ProofKeyVaultCore as DeviceProofKeyVaultCore,
 };
 
 const KEYRING_SERVICE: &str = "io.kontourai.station.device-proof";
@@ -48,9 +46,9 @@ pub(crate) struct NativeDeviceProofKeyOwner {
 }
 
 impl NativeDeviceProofKeyOwner {
-    /// Mints a fresh random Device-proof binding UUID. Use this for `create`
-    /// and `replace`; use [`Self::with_binding_id`] to address an existing
-    /// binding exactly.
+    /// Mints a fresh random Device-proof binding UUID for `create`.
+    /// Use [`Self::with_binding_id`] to address an existing binding for
+    /// restore, replacement, signing, or revocation.
     pub(crate) fn new(
         app_identifier: &str,
         channel: NativeProofKeyChannel,
@@ -266,7 +264,9 @@ mod tests {
     use crate::native_account_proof_key::{
         MemoryNativeAccountProofKeyVault, NativeAccountProofKeyOwner,
     };
-    use ring::rand::SystemRandom;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine as _;
+    use ring::signature::{self, UnparsedPublicKey};
     use zeroize::Zeroizing;
 
     const APP: &str = "io.kontourai.station";
