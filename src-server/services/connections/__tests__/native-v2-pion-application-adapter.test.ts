@@ -22,6 +22,7 @@ import type { PionApplicationAdapterInput } from '../pion-application-adapter.js
 import {
   readVerifiedNativeVirtualApplicationRequest,
   readVerifiedVirtualApplicationRequest,
+  transferVerifiedNativeVirtualApplicationRequest,
   VirtualApplicationIngress,
 } from '../virtual-application.js';
 
@@ -95,9 +96,11 @@ async function fixture(
     },
   };
   let lastRequest: Request | undefined;
+  const seenPeerNonces: Array<string | undefined> = [];
   const handler = vi.fn((request: Request) => {
     lastRequest = request;
     const native = readVerifiedNativeVirtualApplicationRequest(request);
+    seenPeerNonces.push(native?.peerNonce);
     expect(request.headers.get('authorization')).toBe(
       'station-session-continuation opaque-proof',
     );
@@ -122,6 +125,7 @@ async function fixture(
   ingress.bind({ fetch: handler });
   const application = ingress.activate();
   let accept: ((channel: FakeChannel) => void) | undefined;
+  const accepts: Array<(channel: FakeChannel) => void> = [];
   let earlyChannel: FakeChannel | undefined;
   let resolveCleanup!: () => void;
   let rejectCleanup!: (reason: unknown) => void;
@@ -133,6 +137,7 @@ async function fixture(
     expect(input.profile).toBe('application');
     expect(input.applicationChannelLabel).toBe('station-application-v1');
     accept = input.accept as (channel: FakeChannel) => void;
+    accepts.push(accept);
     if (options.acceptChannelDuringStartup) {
       earlyChannel = new FakeChannel();
       input.accept(earlyChannel);
@@ -182,8 +187,10 @@ async function fixture(
     startAdapter,
     application,
     accept: () => accept,
+    accepts: () => accepts,
     earlyChannel: () => earlyChannel,
     lastRequest: () => lastRequest,
+    seenPeerNonces,
     resolveCleanup,
     rejectCleanup,
   };
@@ -378,5 +385,121 @@ describe('native v2 Pion application adapter', () => {
     await expect(h.adapter.close()).rejects.toThrow(
       'native_pion_application_close_failed',
     );
+  });
+
+  test('carries the exact broker offer nonce through fresh Request and bounded-body replacement and refuses forged substitutes', async () => {
+    const h = await fixture();
+    const requestNonce = randomBytes(32).toString('base64url');
+    await h.adapter.adapter.answer(
+      h.offer,
+      h.trustOwner.current()!,
+      new AbortController().signal,
+    );
+    const channel = new FakeChannel();
+    h.accept()!(channel);
+    const requestFrame = JSON.stringify({
+      version: 'station.application-channel/v1',
+      type: 'request',
+      method: 'POST',
+      path: '/api/projects',
+      headers: [
+        ['authorization', 'station-session-continuation opaque-proof'],
+        ['x-station-peer-nonce', requestNonce],
+      ],
+      body: Buffer.from(JSON.stringify({ peerNonce: requestNonce })).toString(
+        'base64',
+      ),
+    });
+    channel.receive(requestFrame);
+    await vi.waitFor(() => expect(h.lastRequest()).toBeDefined());
+    const observed = h.lastRequest()!;
+    const admitted = readVerifiedNativeVirtualApplicationRequest(observed);
+    expect(admitted?.peerNonce).toBe(h.offer.nonce);
+    expect(admitted?.peerNonce).not.toBe(requestNonce);
+
+    const replacement = new Request(observed.url, {
+      method: observed.method,
+      headers: observed.headers,
+      body: new Blob([JSON.stringify({ peerNonce: requestNonce })]),
+    });
+    expect(
+      transferVerifiedNativeVirtualApplicationRequest(observed, replacement),
+    ).toBe(true);
+    const carried = readVerifiedNativeVirtualApplicationRequest(replacement);
+    expect(carried?.peerNonce).toBe(h.offer.nonce);
+    expect(carried?.peerNonce).not.toBe(requestNonce);
+
+    const forged = new Request(observed.url, {
+      method: observed.method,
+      headers: {
+        ...Object.fromEntries(observed.headers),
+        'x-station-peer-nonce': requestNonce,
+      },
+      body: JSON.stringify({ peerNonce: requestNonce }),
+      duplex: 'half',
+    });
+    expect(
+      transferVerifiedNativeVirtualApplicationRequest(observed, forged),
+    ).toBe(false);
+    expect(readVerifiedNativeVirtualApplicationRequest(forged)).toBeUndefined();
+    expect(
+      readVerifiedNativeVirtualApplicationRequest(
+        new Request(observed.url, { method: observed.method }),
+      ),
+    ).toBeUndefined();
+    await h.adapter.close();
+  });
+
+  test('two offers for the same client instance with distinct nonces remain distinguishable', async () => {
+    const h = await fixture();
+    const firstOffer = h.offer;
+    const secondNonce = randomBytes(32).toString('base64url');
+    expect(secondNonce).not.toBe(firstOffer.nonce);
+    const secondOffer = { ...firstOffer, nonce: secondNonce };
+    await h.adapter.adapter.answer(
+      firstOffer,
+      h.trustOwner.current()!,
+      new AbortController().signal,
+    );
+    await h.adapter.adapter.answer(
+      secondOffer,
+      h.trustOwner.current()!,
+      new AbortController().signal,
+    );
+    expect(h.adapter.activePeerCount).toBe(2);
+    const firstChannel = new FakeChannel();
+    const secondChannel = new FakeChannel();
+    const [firstAccept, secondAccept] = h.accepts();
+    firstAccept!(firstChannel);
+    secondAccept!(secondChannel);
+    firstChannel.receive(APPLICATION_REQUEST);
+    secondChannel.receive(APPLICATION_REQUEST);
+    await vi.waitFor(() => expect(h.handler).toHaveBeenCalledTimes(2));
+    expect(h.seenPeerNonces).toEqual([firstOffer.nonce, secondNonce]);
+    await h.adapter.close();
+  });
+
+  test('retiring a peer makes its nonce-bearing facts refuse', async () => {
+    const h = await fixture();
+    await h.adapter.adapter.answer(
+      h.offer,
+      h.trustOwner.current()!,
+      new AbortController().signal,
+    );
+    const channel = new FakeChannel();
+    h.accept()!(channel);
+    channel.receive(APPLICATION_REQUEST);
+    await vi.waitFor(() => expect(h.lastRequest()).toBeDefined());
+    const observed = h.lastRequest()!;
+    expect(
+      readVerifiedNativeVirtualApplicationRequest(observed)?.peerNonce,
+    ).toBe(h.offer.nonce);
+    h.resolveCleanup();
+    await vi.waitFor(() => expect(h.adapter.activePeerCount).toBe(0));
+    expect(channel.closeCalls).toBeGreaterThan(0);
+    expect(
+      readVerifiedNativeVirtualApplicationRequest(observed),
+    ).toBeUndefined();
+    await h.adapter.close();
   });
 });
