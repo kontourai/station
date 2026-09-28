@@ -1820,15 +1820,20 @@ setInterval(() => {}, 1000);`,
       collectProvenance: provenance,
       writeReceipt: vi.fn(),
     });
-    expect(run).toHaveBeenCalledOnce();
-    expect(run.mock.calls[0][1]).toEqual(
+    // One invocation per resource group: the suites that spawn a script
+    // importing this module join the named targets (#2922), and every
+    // invocation is explicit -- none comes from related discovery.
+    expect(run).toHaveBeenCalled();
+    expect(run.mock.calls.flatMap((call) => call[1])).toEqual(
       expect.arrayContaining([
-        'run',
         './scripts/__tests__/prepush-tier.test.ts',
         './scripts/__tests__/verification-lanes.test.ts',
       ]),
     );
-    expect(result.executed.map((entry) => entry.kind)).toEqual(['explicit']);
+    expect(result.executed.length).toBe(run.mock.calls.length);
+    expect(new Set(result.executed.map((entry) => entry.kind))).toEqual(
+      new Set(['explicit']),
+    );
   });
   test('keeps broad related-test expansion deferred', async () => {
     const run = vi.fn();

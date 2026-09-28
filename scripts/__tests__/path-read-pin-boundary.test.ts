@@ -68,6 +68,7 @@ import {
   PATH_READ_PIN_BOUNDARY_TEST,
   pathReadPinEdges,
   REPO_SCAN_SUITES,
+  spawnedScriptEdges,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
@@ -766,7 +767,12 @@ describe('derived pin edges only add to selection', () => {
     expect(built.slice(0, TEST_IMPACT_MANIFEST.length)).toEqual(
       TEST_IMPACT_MANIFEST,
     );
-    expect(built.length).toBe(TEST_IMPACT_MANIFEST.length + derived.length);
+    // #2922: the spawned-script edges follow the pin edges.
+    expect(built.length).toBe(
+      TEST_IMPACT_MANIFEST.length +
+        derived.length +
+        spawnedScriptEdges({ root: ROOT }).length,
+    );
     expect(derived.length).toBeGreaterThan(40);
   });
 
