@@ -15,6 +15,12 @@ const RESET_WAS: Record<string, string> = {
   'default-reaching-full-access':
     'its Default pick, which resolved to full access',
   'host-start': 'a session it started at full access',
+  'auto-on-host': 'its Auto decision on a session its grant had unconfined',
+};
+const UNCONFINED_UNTIL: Record<string, string> = {
+  'engine-restart':
+    'its engine is running with no decision to re-apply, so it keeps its starting posture until it restarts',
+  'grant-not-checked': 'this Station does not re-check the grant at each turn',
 };
 const STILL_REASON: Record<string, string> = {
   'operator-decision': 'the operator’s own decision',
@@ -34,6 +40,11 @@ const RESET_KINDS: readonly Report['reset'][number]['was'][] = [
   'never',
   'default-reaching-full-access',
   'host-start',
+  'auto-on-host',
+];
+const UNTIL_KINDS: readonly Report['stillUnconfined'][number]['until'][] = [
+  'engine-restart',
+  'grant-not-checked',
 ];
 const STILL_KINDS: readonly Report['stillFullAccess'][number]['reason'][] = [
   'operator-decision',
@@ -84,6 +95,23 @@ function parseReport(value: unknown): Report | null {
     if (conversationId && reason)
       stillFullAccess.push({ conversationId, reason });
   }
+  const reconfined: Array<Report['reconfined'][number]> = [];
+  for (const entry of Array.isArray(value.reconfined) ? value.reconfined : []) {
+    const conversationId = isRecord(entry)
+      ? text(entry.conversationId)
+      : undefined;
+    if (conversationId) reconfined.push({ conversationId });
+  }
+  const stillUnconfined: Array<Report['stillUnconfined'][number]> = [];
+  for (const entry of Array.isArray(value.stillUnconfined)
+    ? value.stillUnconfined
+    : []) {
+    if (!isRecord(entry)) continue;
+    const conversationId = text(entry.conversationId);
+    const until = oneOf(UNTIL_KINDS, entry.until);
+    if (conversationId && until)
+      stillUnconfined.push({ conversationId, until });
+  }
   const sessions: Array<Report['unattributedHostStarts']['sessions'][number]> =
     [];
   const unattributed = isRecord(value.unattributedHostStarts)
@@ -108,6 +136,8 @@ function parseReport(value: unknown): Report | null {
     cause,
     reset,
     stillFullAccess,
+    reconfined,
+    stillUnconfined,
     unattributedHostStarts: { sessions, total },
   };
 }
@@ -128,6 +158,8 @@ export function readFullAccessRevocation(
     report.cause === 'device-revoked' &&
     report.reset.length === 0 &&
     report.stillFullAccess.length === 0 &&
+    report.reconfined.length === 0 &&
+    report.stillUnconfined.length === 0 &&
     report.unattributedHostStarts.sessions.length === 0
   )
     return null;
@@ -158,11 +190,14 @@ export function FullAccessRevocationNotice({
         current approval mode until someone changes it.
       </div>
     );
-  const { reset, stillFullAccess } = outcome.report;
+  const { reset, stillFullAccess, reconfined, stillUnconfined } =
+    outcome.report;
   const unattributed = outcome.report.unattributedHostStarts;
   const nothing =
     reset.length === 0 &&
     stillFullAccess.length === 0 &&
+    reconfined.length === 0 &&
+    stillUnconfined.length === 0 &&
     unattributed.sessions.length === 0;
   return (
     <div
@@ -203,6 +238,33 @@ export function FullAccessRevocationNotice({
               <li key={`still-${entry.conversationId}`}>
                 <code>{entry.conversationId}</code>, because of{' '}
                 {STILL_REASON[entry.reason] ?? entry.reason}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {reconfined.length > 0 ? (
+        <>
+          <div>
+            Re-confined from its next turn (runs inside the workspace again):
+          </div>
+          <ul style={LIST_STYLE}>
+            {reconfined.map((entry) => (
+              <li key={`reconfined-${entry.conversationId}`}>
+                <code>{entry.conversationId}</code>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {stillUnconfined.length > 0 ? (
+        <>
+          <div>Still unconfined, not changed:</div>
+          <ul style={LIST_STYLE}>
+            {stillUnconfined.map((entry) => (
+              <li key={`unconfined-${entry.conversationId}`}>
+                <code>{entry.conversationId}</code>, because{' '}
+                {UNCONFINED_UNTIL[entry.until] ?? entry.until}
               </li>
             ))}
           </ul>

@@ -228,6 +228,10 @@ describe('PairedDevicesPanel', () => {
         fullAccessRevocation: {
           cause: 'device-revoked',
           reset: [{ conversationId: 'conversation:reset-1', was: 'never' }],
+          reconfined: [{ conversationId: 'conversation:reset-1' }],
+          stillUnconfined: [
+            { conversationId: 'conversation:running', until: 'engine-restart' },
+          ],
           stillFullAccess: [
             {
               conversationId: '[x](https://evil.example)',
@@ -266,6 +270,12 @@ describe('PairedDevicesPanel', () => {
       'older-host, started 2026-09-01T00:00:00.000Z',
     );
     expect(notice.textContent).toContain('…and 1 more (2 in all).');
+    expect(notice.textContent).toContain(
+      'Re-confined from its next turn (runs inside the workspace again):conversation:reset-1',
+    );
+    expect(notice.textContent).toContain(
+      'conversation:running, because its engine is running with no decision to re-apply',
+    );
     expect(notice.querySelector('a')).toBeNull();
   });
 

@@ -474,16 +474,27 @@ A session spawned before this change has nothing recorded.
   A `host` start stamp carries its grantor in
   `metadata.stationConfinementGrantor`, beside the stamp and carried forward
   on a respawn. The start's command receipt now also records `clientOrigin`.
-  - A conversation whose standing decision is that device's `never`, or its
-    Default that resolves to unconfined `never`, gets a new Ask decision. So
-    does one with no standing decision whose `host` session that device
-    started, unless that session's `never` comes from the Agent's or
+  - A conversation gets a new Ask decision when its standing decision is one
+    of that device's: its `never`, its Default that still resolves to
+    unconfined `never`, or its Auto on a session its grant unconfined. So
+    does a conversation with no standing decision whose `host` session that
+    device started, unless that session's `never` comes from the Agent's or
     Station's default.
+  - Re-confinement: the applied start stamp reads the grant live
+    (`isFullAccessGrantorCurrent`, backed by the pairing registry). A `host`
+    stamp whose device grantor no longer holds `approval:full-access` applies
+    as `workspace` at every turn start and respawn. The respawn then
+    re-stamps it `workspace`. Both adapters take confinement per turn, but
+    Claude only changes its permission mode when a mode is sent. So a session
+    is re-confined from its next turn while a decision stands, and from its
+    next start otherwise. A running engine with no decision standing keeps
+    its start posture until it restarts. It is listed as `stillUnconfined`
+    (`engine-restart`). Re-granting the scope lets the stamp apply again, but
+    the recorded Ask still stands.
   - The Ask carries `revocation: { reason, deviceId, cause }` and the
     operator's `clientOrigin`. History is kept.
   - A running turn is not touched. The next turn start or respawn applies the
-    decision, which wins over a start's carried mode. The `host` stamp stays,
-    so the session runs unconfined but at Ask: the engine asks first.
+    decision, which wins over a start's carried mode.
   - Left alone and listed: a standing decision by the operator or another
     device; a default-only `never`; a `never` decision with no recorded
     actor; and live `host` sessions with no recorded grantor (at most 50,

@@ -69,18 +69,28 @@ grant; a person has to choose it. Nothing is retried at another approval mode.
 Removing the scope, whether with `--remove`, `--set` or in the desktop app,
 takes back the full access that device had already given (owner decision,
 #1796). Revoking the whole device does the same. For every conversation the
-device had put at full access (its own full-access decision, its Default pick
-that resolved to full access, or a session it started at full access), Station
-records a new decision of **Ask**, attributed to the operator's revocation.
-Nothing is deleted from the conversation's history. A turn already running
-finishes; the next turn asks before acting.
+device had put at full access (its own full-access decision, its Auto
+decision on a session it had unconfined, or a session it started at full
+access), Station records a new decision of **Ask**, attributed to the
+operator's revocation. Nothing is deleted from the conversation's history.
+
+The sessions its grant had unconfined also run confined again (inside the
+workspace), because Station checks the grant each time it hands the engine a
+posture. That happens at every turn while a decision stands, and at the
+session's next start. A turn already running finishes. The next turn is
+confined and asks. The command lists these conversations as re-confined.
+
+One case waits: a running session with no decision standing, at full access
+only because of its Agent's or the Station's default. Station re-applies no
+posture on a turn of such a session, so it stays unconfined until its engine
+restarts. It is listed as "still unconfined".
 
 Some conversations stay at full access, and the command lists them without
 changing them:
 
 - a full-access decision the operator or another device made;
-- a session whose full access comes only from its Agent's or the Station's
-  default;
+- another person's session whose full access comes only from its Agent's or
+  the Station's default;
 - a decision recorded before Station kept track of who made it;
 - a live session started at full access before Station recorded who granted
   it ("unattributed host start"). At most 50 of these are listed, with the

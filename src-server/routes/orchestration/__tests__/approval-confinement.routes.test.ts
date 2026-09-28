@@ -227,6 +227,8 @@ async function fixture(
     station?: ApprovalMode;
     agents?: Partial<Record<keyof typeof AGENTS, ApprovalMode>>;
   } = { station: 'never' },
+  /** #1796: whether the service reads a device grantor's full access live. */
+  liveGrantCheck = true,
 ) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = makeTempDir('station-confinement-');
@@ -276,6 +278,12 @@ async function fixture(
     eventBus,
     eventStore: store,
     resolveStationDefaultApprovalMode: async () => defaults.station,
+    ...(liveGrantCheck
+      ? {
+          isFullAccessGrantorCurrent: (deviceId: string) =>
+            security.deviceHoldsFullAccess(deviceId),
+        }
+      : {}),
     loadAgentExecutionConfig: async (slug: string) => {
       const mode = defaults.agents?.[slug as keyof typeof AGENTS];
       return mode ? { approvalMode: mode } : undefined;
@@ -1519,6 +1527,8 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       cause: 'scope-removed',
       reset: [{ conversationId, was: 'never' }],
       stillFullAccess: [],
+      reconfined: [{ conversationId }],
+      stillUnconfined: [],
       unattributedHostStarts: NONE_UNATTRIBUTED,
     });
     // History kept: the device's never, then the operator's Ask.
@@ -1539,8 +1549,9 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
         cause: 'scope-removed',
       },
     });
-    // The host stamp stays; the next turn runs at Ask, so the engine asks.
+    // The grant is gone: the next turn is confined, and asks.
     expect(await nextTurn(f, threadId)).toMatchObject({
+      confinement: 'workspace',
       modelOptions: { approvalMode: 'ask' },
     });
   });
@@ -1563,9 +1574,12 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       cause: 'device-revoked',
       reset: [{ conversationId, was: 'host-start' }],
       stillFullAccess: [],
+      reconfined: [{ conversationId }],
+      stillUnconfined: [],
       unattributedHostStarts: NONE_UNATTRIBUTED,
     });
     expect(await nextTurn(f, threadId)).toMatchObject({
+      confinement: 'workspace',
       modelOptions: { approvalMode: 'ask' },
     });
   });
@@ -1629,6 +1643,8 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       cause: 'scope-removed',
       reset: [],
       stillFullAccess: [{ conversationId, reason: 'operator-decision' }],
+      reconfined: [],
+      stillUnconfined: [],
       unattributedHostStarts: NONE_UNATTRIBUTED,
     });
     expect(decisions(f, threadId).at(-1)?.approvalMode).toBe('never');
@@ -1638,7 +1654,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     });
   });
 
-  test('never that comes only from an Agent default is listed, not reset', async () => {
+  test('a running session the device started, at never only by its Agent default, is not reset: listed unconfined until it restarts, and restarts confined', async () => {
     const f = await fixture({ agents: { 'claude-agent': 'never' } });
     f.claude.completeTurns = true;
     const laptop = f.pair('Laptop', true);
@@ -1657,10 +1673,91 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     expect(removed.body.fullAccessRevocation).toEqual({
       cause: 'scope-removed',
       reset: [],
-      stillFullAccess: [{ conversationId, reason: 'agent-default' }],
+      stillFullAccess: [],
+      reconfined: [],
+      stillUnconfined: [{ conversationId, until: 'engine-restart' }],
       unattributedHostStarts: NONE_UNATTRIBUTED,
     });
     expect(decisions(f, threadId)).toEqual([]);
+    // A turn on the running engine carries no posture (#2144 slice 6), so
+    // the engine keeps what it started with: that is why it is listed.
+    const turn = await nextTurn(f, threadId);
+    expect(turn?.confinement).toBe('workspace');
+    expect(turn?.modelOptions?.approvalMode).toBeUndefined();
+    // Its next start is confined: the Agent's never, as Claude's auto.
+    const stopped = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/commands',
+      { type: 'stopSession', threadId },
+    );
+    expect(stopped.status, stopped.text).toBe(200);
+    const starts = f.claude.starts.length;
+    await vi.waitFor(async () => {
+      const continued = await f.request(
+        f.bearer(f.operator.credential),
+        `/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
+        { message: 'again' },
+      );
+      expect(continued.status, continued.text).toBe(200);
+    });
+    expect(f.claude.starts.length).toBe(starts + 1);
+    expect(lastStart(f, 'claude-agent')).toMatchObject({
+      confinement: 'workspace',
+      approvalMode: 'auto',
+      stamp: 'workspace',
+    });
+  });
+
+  test('never only from an Agent default on someone else’s unconfined session is listed, not changed', async () => {
+    const f = await fixture({ agents: { 'claude-agent': 'never' } });
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId } = await f.chat(
+      f.bearer(f.operator.credential),
+      'claude-agent',
+    );
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    const latest = () =>
+      Math.max(
+        0,
+        ...f.store
+          .listEvents(threadId)
+          .filter((row) => row.payload.method === 'session.approval-mode-set')
+          .map((row) => row.globalSequence),
+      );
+    // The device takes part, then the operator picks Default, which
+    // resolves to the Agent's never on the operator's unconfined session.
+    for (const [credential, approvalMode] of [
+      [laptop.credential, 'ask'],
+      [f.operator.credential, 'connection-default'],
+    ] as const) {
+      const decided = await f.request(
+        f.bearer(credential),
+        '/api/orchestration/commands',
+        {
+          type: 'setApprovalMode',
+          threadId,
+          approvalMode,
+          basedOnSequence: latest() || null,
+        },
+      );
+      expect(decided.status, decided.text).toBe(200);
+    }
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    expect(removed.body.fullAccessRevocation).toEqual({
+      cause: 'scope-removed',
+      reset: [],
+      stillFullAccess: [{ conversationId, reason: 'agent-default' }],
+      reconfined: [],
+      stillUnconfined: [],
+      unattributedHostStarts: NONE_UNATTRIBUTED,
+    });
+    expect(await nextTurn(f, threadId)).toMatchObject({
+      confinement: 'host',
+      modelOptions: { approvalMode: 'never' },
+    });
   });
 
   test('a never decision recorded before decisions carried their actor is listed as unattributed, not reset', async () => {
@@ -1686,6 +1783,8 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       cause: 'scope-removed',
       reset: [],
       stillFullAccess: [{ conversationId, reason: 'unattributed-decision' }],
+      reconfined: [],
+      stillUnconfined: [],
       unattributedHostStarts: NONE_UNATTRIBUTED,
     });
     expect(decisions(f, threadId).map((event) => event.approvalMode)).toEqual([
@@ -1764,7 +1863,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     ).toEqual({ kind: 'device', deviceId: laptop.device.id });
   });
 
-  test('a device’s Default pick that resolves to unconfined never resets to Ask', async () => {
+  test('a device’s Default pick that reached unconfined never is re-confined instead, and keeps resolving through its default', async () => {
     const f = await fixture({ station: 'never' });
     f.claude.completeTurns = true;
     const laptop = f.pair('Laptop', true);
@@ -1787,14 +1886,16 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     const removed = await removeFullAccess(f, laptop.device.id);
 
-    expect(removed.body.fullAccessRevocation.reset).toEqual([
-      {
-        conversationId: response.body.data.conversationId,
-        was: 'default-reaching-full-access',
-      },
-    ]);
+    expect(removed.body.fullAccessRevocation).toMatchObject({
+      reset: [],
+      reconfined: [{ conversationId: response.body.data.conversationId }],
+      stillUnconfined: [],
+    });
+    // The Default now resolves confined: the Station's never, as Claude's
+    // auto inside the workspace, re-applied on this turn.
     expect(await nextTurn(f, threadId)).toMatchObject({
-      modelOptions: { approvalMode: 'ask' },
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
     });
   });
 
@@ -1834,5 +1935,97 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     expect(revoked.body.fullAccessRevocation.reset).toEqual([
       { conversationId, was: 'host-start' },
     ]);
+  });
+
+  test('the device’s Auto on a session its grant unconfined resets to Ask; its Ask is left', async () => {
+    const f = await fixture({});
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const start = async (approvalMode: 'auto' | 'ask') => {
+      const response = await f.request(
+        f.bearer(laptop.credential),
+        '/api/orchestration/chat',
+        {
+          message: 'go',
+          target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+          setApprovalMode: approvalMode,
+          setApprovalModeBasedOn: null,
+        },
+      );
+      expect(response.status, response.text).toBe(200);
+      const threadId = f.claude.starts.at(-1)!.threadId;
+      expect(lastStart(f, 'claude-agent').stamp).toBe('host');
+      return {
+        conversationId: response.body.data.conversationId as string,
+        threadId,
+      };
+    };
+    const auto = await start('auto');
+    const ask = await start('ask');
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    expect(removed.body.fullAccessRevocation.reset).toEqual([
+      { conversationId: auto.conversationId, was: 'auto-on-host' },
+    ]);
+    const reconfined = removed.body.fullAccessRevocation.reconfined.map(
+      (entry: { conversationId: string }) => entry.conversationId,
+    );
+    expect(reconfined.sort()).toEqual(
+      [auto.conversationId, ask.conversationId].sort(),
+    );
+    expect(
+      decisions(f, ask.threadId).map((event) => event.approvalMode),
+    ).toEqual(['ask']);
+    expect(await nextTurn(f, auto.threadId)).toMatchObject({
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'ask' },
+    });
+  });
+
+  test('without a live grant check the sessions stay unconfined, and are listed so', async () => {
+    const f = await fixture({}, false);
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId, threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'recorded',
+    );
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    expect(removed.body.fullAccessRevocation).toMatchObject({
+      reset: [{ conversationId, was: 'never' }],
+      reconfined: [],
+      stillUnconfined: [{ conversationId, until: 'grant-not-checked' }],
+    });
+    expect(await nextTurn(f, threadId)).toMatchObject({
+      confinement: 'host',
+      modelOptions: { approvalMode: 'ask' },
+    });
+  });
+
+  test('a device that regains full access does not get its old sessions back at full access', async () => {
+    const f = await fixture({});
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'recorded',
+    );
+    await removeFullAccess(f, laptop.device.id);
+    const regranted = await f.request(
+      f.bearer(f.operator.credential),
+      `/api/pairing/devices/${encodeURIComponent(laptop.device.id)}/scope`,
+      { scope: [...standardScope, PAIRING_SCOPE_APPROVAL_FULL_ACCESS] },
+    );
+    expect(regranted.status, regranted.text).toBe(200);
+    // The stamp applies again, but the reset Ask stands: no full access
+    // without a new pick.
+    expect(await nextTurn(f, threadId)).toMatchObject({
+      modelOptions: { approvalMode: 'ask' },
+    });
   });
 });

@@ -311,6 +311,10 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
         stillFullAccess: [
           { conversationId: 'conversation:b', reason: 'agent-default' },
         ],
+        reconfined: [{ conversationId: 'conversation:a' }],
+        stillUnconfined: [
+          { conversationId: 'conversation:c', until: 'engine-restart' },
+        ],
         unattributedHostStarts: {
           sessions: [
             {
@@ -333,6 +337,12 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
       '  older-\\u001b[31m  started 2026-09-01T00:00:00.000Z',
     );
     expect(printed()).toContain('  … and 2 more (3 in all).');
+    expect(printed()).toContain(
+      'Re-confined from its next turn (runs inside the workspace again):\n  conversation:a',
+    );
+    expect(printed()).toContain(
+      'Still unconfined, not changed:\n  conversation:c  because its engine is running with no decision to re-apply',
+    );
     expect(printed()).not.toContain('\u001b');
   });
 

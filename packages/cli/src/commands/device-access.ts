@@ -319,6 +319,12 @@ const RESET_WAS: Record<string, string> = {
   'default-reaching-full-access':
     'its Default pick, which resolved to full access',
   'host-start': 'a session it started at full access',
+  'auto-on-host': 'its Auto decision on a session its grant had unconfined',
+};
+const UNCONFINED_UNTIL: Record<string, string> = {
+  'engine-restart':
+    'its engine is running with no decision to re-apply, so it keeps its starting posture until it restarts',
+  'grant-not-checked': 'this Station does not re-check the grant at each turn',
 };
 const STILL_REASON: Record<string, string> = {
   'operator-decision': "the operator's own decision",
@@ -348,6 +354,8 @@ function reportFullAccessRevocation(
     | {
         reset?: Array<{ conversationId?: unknown; was?: unknown }>;
         stillFullAccess?: Array<{ conversationId?: unknown; reason?: unknown }>;
+        reconfined?: Array<{ conversationId?: unknown }>;
+        stillUnconfined?: Array<{ conversationId?: unknown; until?: unknown }>;
         unattributedHostStarts?: {
           sessions?: Array<{ conversationId?: unknown; startedAt?: unknown }>;
           total?: unknown;
@@ -367,7 +375,17 @@ function reportFullAccessRevocation(
       ? report.unattributedHostStarts.total
       : unattributed.length;
   const id = (value: unknown) => terminalSafeText(String(value)).slice(0, 128);
-  if (reset.length === 0 && still.length === 0 && unattributed.length === 0) {
+  const reconfined = Array.isArray(report.reconfined) ? report.reconfined : [];
+  const unconfined = Array.isArray(report.stillUnconfined)
+    ? report.stillUnconfined
+    : [];
+  if (
+    reset.length === 0 &&
+    still.length === 0 &&
+    unattributed.length === 0 &&
+    reconfined.length === 0 &&
+    unconfined.length === 0
+  ) {
     write('No conversation was at full access through this device.');
     return;
   }
@@ -385,6 +403,17 @@ function reportFullAccessRevocation(
     for (const entry of still)
       write(
         `  ${id(entry.conversationId)}  because of ${STILL_REASON[String(entry.reason)] ?? id(entry.reason)}`,
+      );
+  }
+  if (reconfined.length > 0) {
+    write('Re-confined from its next turn (runs inside the workspace again):');
+    for (const entry of reconfined) write(`  ${id(entry.conversationId)}`);
+  }
+  if (unconfined.length > 0) {
+    write('Still unconfined, not changed:');
+    for (const entry of unconfined)
+      write(
+        `  ${id(entry.conversationId)}  because ${UNCONFINED_UNTIL[String(entry.until)] ?? id(entry.until)}`,
       );
   }
   if (unattributed.length > 0) {

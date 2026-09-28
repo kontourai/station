@@ -776,6 +776,14 @@ interface OrchestrationServiceOptions {
    * Loaded per call, like the workspace default above.
    */
   resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
+  /**
+   * #1796: whether the device that granted a session's `host` stamp still
+   * holds `approval:full-access` (live, not revoked). Read at every turn
+   * start and respawn: a stamp whose device grantor no longer holds it is
+   * applied as `workspace`, so revoking the grant re-confines the session at
+   * its next turn. Absent: stamps apply as written.
+   */
+  isFullAccessGrantorCurrent?: (deviceId: string) => boolean;
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -8585,11 +8593,18 @@ export class OrchestrationService {
     const stillFullAccess: Array<
       FullAccessRevocationReport['stillFullAccess'][number]
     > = [];
+    const reconfined: Array<FullAccessRevocationReport['reconfined'][number]> =
+      [];
+    const stillUnconfined: Array<
+      FullAccessRevocationReport['stillUnconfined'][number]
+    > = [];
     if (!store)
       return {
         cause: input.cause,
         reset,
         stillFullAccess,
+        reconfined,
+        stillUnconfined,
         unattributedHostStarts: { sessions: [], total: 0 },
       };
     const conversationOf = (threadId: string) =>
@@ -8659,9 +8674,23 @@ export class OrchestrationService {
       return undefined;
     };
 
+    const grantedConversations: Array<[string, string, string[]]> = [];
     for (const [conversationId, seed] of conversations) {
       const threads = threadsOf(conversationId, seed);
       const standing = this.approvalPosture.decision(seed);
+      // The sessions this device's grant unconfined, from the stamp as
+      // written (the grant is already gone, so the applied stamp says
+      // `workspace` for them now).
+      const grantedHere = threads.filter((threadId) => {
+        const grantor = this.readStartConfinementGrantor(threadId);
+        return (
+          this.readStartConfinementStampAsWritten(threadId) === 'host' &&
+          grantor?.kind === 'device' &&
+          grantor.deviceId === input.deviceId
+        );
+      });
+      if (grantedHere.length > 0)
+        grantedConversations.push([conversationId, seed, grantedHere]);
       if (standing && byDevice(standing.actor)) {
         if (standing.approvalMode === 'never') {
           recordAsk(
@@ -8682,6 +8711,15 @@ export class OrchestrationService {
             standing.threadId,
             standing.sequence,
             'default-reaching-full-access',
+          );
+        } else if (standing.approvalMode === 'auto' && grantedHere.length > 0) {
+          // Auto on a session this device's grant unconfined acts without
+          // asking, outside the workspace: full access in effect.
+          recordAsk(
+            conversationId,
+            standing.threadId,
+            standing.sequence,
+            'auto-on-host',
           );
         }
         continue;
@@ -8705,22 +8743,47 @@ export class OrchestrationService {
         }
         continue;
       }
-      // The latest start's own stamp and grantor: a later start by someone
-      // else re-stamps it.
-      const hostStart = threads.find((threadId) => {
-        const grantor = this.readStartConfinementGrantor(threadId);
-        return (
-          this.readStartConfinementStamp(threadId) === 'host' &&
-          grantor?.kind === 'device' &&
-          grantor.deviceId === input.deviceId
-        );
-      });
+      // A session this device started at full access, with no decision
+      // since: its engine keeps the start's mode, so record Ask. A `never`
+      // that comes from a default on a session still unconfined for
+      // another reason is listed instead.
       const source = await hostDefaultSource(threads);
       if (source) {
         stillFullAccess.push({ conversationId, reason: source });
-      } else if (hostStart) {
-        recordAsk(conversationId, hostStart, null, 'host-start');
+      } else if (grantedHere[0]) {
+        // Its `never` came from the Agent's or Station's default: that
+        // default is not this device's to take back. Re-confinement (listed
+        // above) is what revoking its grant changes there.
+        const agentSlug = this.readLatestSessionStartMetadata(
+          grantedHere[0],
+        )?.agentSlug;
+        const fromDefault = await this.approvalPosture.fullAccessDefaultSource(
+          typeof agentSlug === 'string' ? agentSlug : undefined,
+        );
+        if (!fromDefault)
+          recordAsk(conversationId, grantedHere[0], null, 'host-start');
       }
+    }
+    // Sessions this device's grant unconfined. The applied stamp reads the
+    // grant live, so each is confined from the next time Station hands its
+    // engine a posture: every turn while a decision stands (the decision's
+    // mode is re-applied under `workspace`), or its next start or respawn.
+    // A live engine with no decision standing is sent no posture on a turn
+    // (#2144 slice 6), so it keeps what it started with until it restarts:
+    // listed as still unconfined. So is everything when this Station cannot
+    // check the grant. A standing `never` from someone else keeps the
+    // conversation unconfined anyway and is listed as still at full access.
+    for (const [conversationId, seed, granted] of grantedConversations) {
+      const standing = this.approvalPosture.decision(seed);
+      if (standing?.approvalMode === 'never') continue;
+      if (!this.options.isFullAccessGrantorCurrent)
+        stillUnconfined.push({ conversationId, until: 'grant-not-checked' });
+      else if (
+        !standing &&
+        granted.some((threadId) => this.sessionAdapters.has(threadId))
+      )
+        stillUnconfined.push({ conversationId, until: 'engine-restart' });
+      else reconfined.push({ conversationId });
     }
     // Live `host` sessions started before the grantor was recorded: listed,
     // never reset. Only sessions this process tracks, and at most
@@ -8761,6 +8824,8 @@ export class OrchestrationService {
       cause: input.cause,
       reset,
       stillFullAccess,
+      reconfined,
+      stillUnconfined,
       unattributedHostStarts: {
         sessions: unattributedHostStarts,
         total: unattributedHostStartCount,
@@ -8883,7 +8948,24 @@ export class OrchestrationService {
     });
   }
 
+  /**
+   * #1796: the start stamp as it applies now. A `host` stamp granted by a
+   * device that no longer holds `approval:full-access` applies as
+   * `workspace`: the grant it recorded has been taken back. The operator's
+   * stamps, and stamps with no recorded grantor, apply as written.
+   */
   private readStartConfinementStamp(threadId: string): unknown {
+    const stamp = this.readStartConfinementStampAsWritten(threadId);
+    if (stamp !== 'host' || !this.options.isFullAccessGrantorCurrent)
+      return stamp;
+    const grantor = this.readStartConfinementGrantor(threadId);
+    return grantor?.kind === 'device' &&
+      !this.options.isFullAccessGrantorCurrent(grantor.deviceId)
+      ? 'workspace'
+      : stamp;
+  }
+
+  private readStartConfinementStampAsWritten(threadId: string): unknown {
     const metadata = (
       this.options.eventStore?.latestEventByMethod(threadId, 'session.started')
         ?.payload as { metadata?: Record<string, unknown> } | undefined

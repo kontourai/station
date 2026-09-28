@@ -294,9 +294,13 @@ nothing. Removing the scope, or revoking the device, refuses the device's
 next full-access request and resets the full access it had already granted:
 each conversation it put at full access gets a new Ask decision attributed to
 the operator. Attribution is exact, from the server-derived actor on the
-decision or beside the start's `host` stamp. A running turn finishes; the
-next one asks. Full access from the operator, another device, or an Agent or
-Station default is listed and left alone. So are live sessions started before
+decision or beside the start's `host` stamp. The sessions its grant unconfined
+run confined again, because the stamp is checked against the grant at every
+turn start and respawn. A running turn finishes; the next one is confined and
+asks. The exception is a running engine with no decision standing: it keeps
+its start posture until it restarts, and it is listed. Full access from the
+operator, another device, or an Agent or Station default on someone else's
+session is listed and left alone. So are live sessions started before
 grantors were recorded (at most 50, with the total).
 
 Enforcement is a single route -> required-scope table

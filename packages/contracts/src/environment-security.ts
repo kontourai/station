@@ -1220,7 +1220,12 @@ export interface FullAccessRevocationReport {
      * pick that resolved to full access, or a session it started unconfined
      * with no decision recorded since.
      */
-    readonly was: 'never' | 'default-reaching-full-access' | 'host-start';
+    readonly was:
+      | 'never'
+      | 'default-reaching-full-access'
+      | 'host-start'
+      /** Its Auto decision on a session its grant unconfined. */
+      | 'auto-on-host';
   }[];
   readonly stillFullAccess: readonly {
     readonly conversationId: string;
@@ -1230,6 +1235,23 @@ export interface FullAccessRevocationReport {
       | 'unattributed-decision'
       | 'agent-default'
       | 'station-default';
+  }[];
+  /**
+   * Conversations with a session this device's grant had unconfined, which
+   * run confined (`workspace`) from their next turn: a decision stands, so
+   * each turn re-applies its mode under the confinement the grant no longer
+   * lifts; or the engine is not running, so its next start is confined.
+   */
+  readonly reconfined: readonly { readonly conversationId: string }[];
+  /**
+   * The same kind of session, still unconfined: its engine is running with
+   * no decision standing, so it keeps the posture it started with until it
+   * restarts (`engine-restart`); or this Station does not check the grant
+   * at each turn (`grant-not-checked`).
+   */
+  readonly stillUnconfined: readonly {
+    readonly conversationId: string;
+    readonly until: 'engine-restart' | 'grant-not-checked';
   }[];
   /**
    * Live sessions running unconfined (`host`) whose start recorded no
