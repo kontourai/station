@@ -5592,14 +5592,6 @@
         "count": 1
       }
     },
-    "src-shared/__tests__/collaborative-editor-pane.test.ts": {
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "src-shared/chat-input-limits.ts": {
       "complexity_high": {
         "count": 1
@@ -5609,23 +5601,6 @@
       },
       "crap_moderate": {
         "count": 1
-      }
-    },
-    "src-shared/collaborative-editor-pane.ts": {
-      "complexity_critical": {
-        "count": 7
-      },
-      "complexity_high": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 7
-      },
-      "crap_high": {
-        "count": 4
-      },
-      "crap_moderate": {
-        "count": 9
       }
     },
     "src-ui/public/sw.js": {
@@ -8239,7 +8214,6 @@
     "src-server/services/flow/orchestration-flow-gate.ts:complexity",
     "src-server/runtime/conversation/fleet-inference-model.ts:dead code",
     "src-ui/src/views/project-page/ProjectKnowledgeSection.tsx:complexity",
-    "src-shared/collaborative-editor-pane.ts:dead code",
     "src-ui/src/workspace-panes/builtinWorkspacePaneCanonical.ts:high impact",
     "src-server/providers/adapters/acp-adapter.ts:complexity",
     "src-ui/src/views/ProjectSettingsView.tsx:complexity",
