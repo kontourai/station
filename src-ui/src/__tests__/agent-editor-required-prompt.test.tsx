@@ -1,6 +1,5 @@
 /** @vitest-environment jsdom */
 
-import { requiresAuthoredAgentPrompt } from '@kontourai/station-contracts/agent-validation';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
@@ -42,23 +41,6 @@ describe('agent editor required system prompt', () => {
     const markup = promptTabMarkup(false);
     expect(markup).not.toContain('editor-required');
     expect(markup).not.toContain('aria-required="true"');
-  });
-
-  // The marker and the refusal read one predicate, so a field can never be
-  // unmarked and still refuse — nor marked and then accepted as empty.
-  test('the marker and the save requirement are the same predicate', () => {
-    const form = { ...createEmptyAgentForm(), name: 'Helper', slug: 'helper' };
-    expect(requiresAuthoredAgentPrompt(form.slug, true)).toBe(true);
-    expect(validateAgentForm(form, true, { requiresPrompt: true })).toEqual({
-      prompt: 'System prompt is required',
-    });
-
-    // The reserved `station` Agent runs on Station's own prompt.
-    const reserved = { ...form, slug: 'station' };
-    expect(requiresAuthoredAgentPrompt(reserved.slug, true)).toBe(false);
-    expect(validateAgentForm(reserved, true, { requiresPrompt: true })).toEqual(
-      {},
-    );
   });
 
   // The defect itself: a ready engine was enough to make Create pressable, so

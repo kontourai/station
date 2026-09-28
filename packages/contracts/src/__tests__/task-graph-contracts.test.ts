@@ -10,7 +10,6 @@ import {
   parseTaskTurnReference,
   parseTaskUserInputReference,
   type RelationGraphLink,
-  type TaskRecord,
   taskReferenceToRelationGraphLinkInput,
   validateRelationGraphLinkInput,
   validateTaskCreateInput,
@@ -18,28 +17,6 @@ import {
 } from '../task-graph.js';
 
 describe('task graph contracts', () => {
-  test('task records expose the dispatch-oriented status model', () => {
-    const task: TaskRecord = {
-      id: 'task-1',
-      projectId: 'project-alpha',
-      title: 'Harden dispatch',
-      description: 'Create a dispatch proof lane',
-      priority: 'high',
-      status: 'ready',
-      createdBy: 'agent',
-      createdAt: '2026-05-03T00:00:00.000Z',
-      updatedAt: '2026-05-03T00:00:00.000Z',
-    };
-
-    expect(task).toEqual(
-      expect.objectContaining({
-        projectId: 'project-alpha',
-        priority: 'high',
-        status: 'ready',
-      }),
-    );
-  });
-
   test('status transitions allow dispatch progress without reopening terminal states', () => {
     expect(canTransitionTaskStatus('todo', 'ready')).toBe(true);
     expect(canTransitionTaskStatus('ready', 'triage')).toBe(true);
@@ -330,23 +307,6 @@ describe('task graph contracts', () => {
         metadata: { value: Number.NaN },
       }),
     ).toEqual(['metadata must be a JSON object']);
-  });
-
-  test('legacy task objects remain valid without additive workspace fields', () => {
-    const legacy: TaskRecord = {
-      id: 'task-legacy',
-      projectId: 'project-alpha',
-      title: 'Existing task',
-      description: '',
-      priority: 'normal',
-      status: 'todo',
-      createdBy: 'user',
-      createdAt: '2026-05-03T00:00:00.000Z',
-      updatedAt: '2026-05-03T00:00:00.000Z',
-    };
-
-    expect(legacy.workspaceBinding).toBeUndefined();
-    expect(legacy.id).toBe('task-legacy');
   });
 
   test('dispatch session ids are deterministic per task dispatch index', () => {

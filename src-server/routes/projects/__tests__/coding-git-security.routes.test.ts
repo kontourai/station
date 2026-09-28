@@ -185,6 +185,20 @@ function swapForLink(path: string, target: string): void {
   symlinkSync(target, path);
 }
 
+/**
+ * A loose-object fan-out name (`00`..`ff`) the Project's store does not use
+ * yet. The initial commit's id depends on the clock, so any fixed name is
+ * already a real directory in 1 of 256 runs.
+ */
+function unusedFanOut(): string {
+  const objects = join(project, '.git', 'objects');
+  for (let i = 0; i < 256; i += 1) {
+    const name = i.toString(16).padStart(2, '0');
+    if (!existsSync(join(objects, name))) return name;
+  }
+  throw new Error(`no unused fan-out directory in ${objects}`);
+}
+
 /** The operator's other repository, outside the Project. */
 function otherRepository(): string {
   const other = join(root, 'operator-other');
@@ -688,7 +702,7 @@ describe.skipIf(process.platform === 'win32')(
         (other: string) =>
           symlinkSync(
             join(other, '.git', 'objects'),
-            join(project, '.git', 'objects', 'ab'),
+            join(project, '.git', 'objects', unusedFanOut()),
           ),
       ],
       [

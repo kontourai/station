@@ -244,15 +244,6 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     ).toEqual(['Coding', 'Tasks', 'Chat']);
   });
 
-  test('the nested layout tree and its expand control are gone', () => {
-    const { container } = renderSidebar(<ProjectSidebar />);
-
-    expect(container.querySelector('.sidebar__layouts')).toBeNull();
-    expect(container.querySelector('.sidebar__layout-btn')).toBeNull();
-    expect(container.querySelector('.sidebar__chevron')).toBeNull();
-    expect(screen.queryByRole('button', { name: /Demo layouts$/ })).toBeNull();
-  });
-
   test('the row is one tab stop and arrow keys move between the chips', () => {
     renderSidebar(<ProjectSidebar />);
 

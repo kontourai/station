@@ -130,14 +130,19 @@ describe('NativeDeclaredPullRequestResolver', () => {
     );
   });
 
-  test('refuses repository substitution or a changed native id', async () => {
+  // Each case changes exactly one field of an otherwise exact match, so a
+  // dropped check cannot hide behind another one.
+  test.each([
+    ['repository substitution', { owner: 'attacker', nativeId: '44' }],
+    ['a changed native id', { owner: 'kontourai', nativeId: 'changed' }],
+  ])('refuses %s', async (_case, { owner, nativeId }) => {
     const { resolver: subject } = resolver(
       pullRequest({
         provider: 'github',
         host: 'github.com',
-        repository: { owner: 'attacker', name: 'station' },
+        repository: { owner, name: 'station' },
         ref: '44',
-        nativeId: 'changed',
+        nativeId,
       }),
     );
     await expect(subject.read(request)).resolves.toBeNull();

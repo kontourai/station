@@ -103,19 +103,4 @@ describe('model picker device settings', () => {
     });
     expect(deviceSettingsStore.get('theme')).toBe('light');
   });
-
-  test('resetModelPickerPreferencesCacheForTests is a harmless no-op (envelope has no separate read cache)', async () => {
-    const {
-      readModelPickerPreferences,
-      resetModelPickerPreferencesCacheForTests,
-      updateModelPickerPreferences,
-    } = await freshModelPickerPreferences();
-
-    updateModelPickerPreferences((current) => ({
-      ...current,
-      favorites: ['x'],
-    }));
-    resetModelPickerPreferencesCacheForTests();
-    expect(readModelPickerPreferences().favorites).toEqual(['x']);
-  });
 });

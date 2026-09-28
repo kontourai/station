@@ -8729,6 +8729,76 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     }
   });
 
+  it('upgrades an installer-owned archive version by re-running its installer with the recorded manifest (#2675 B2)', async () => {
+    const installRoot = join(TEST_ROOT, 'archive-install');
+    const version = join(installRoot, 'versions', '0.7.0-preview.3');
+    const stationHome = join(TEST_ROOT, 'home-archive');
+    ensureDir(version);
+    ensureDir(stationHome);
+    writeFileSync(
+      join(version, '.station-prebuilt-archive'),
+      'station-prebuilt-archive-v1\n',
+    );
+    writeFileSync(
+      join(version, '.station-release.json'),
+      `${JSON.stringify({
+        schemaVersion: 2,
+        sha: 'a'.repeat(40),
+        ref: 'v0.7.0-preview.3',
+        createdAt: '2026-09-26T00:00:00.000Z',
+        channel: 'beta',
+        releaseChannel: 'preview',
+        prerelease: true,
+      })}\n`,
+    );
+    writeFileSync(join(version, 'install.sh'), '#!/bin/sh\nexit 0\n', {
+      mode: 0o700,
+    });
+    writeFileSync(
+      join(installRoot, '.station-portable-install-root'),
+      'station-portable-install-root-v1\n',
+    );
+    const manifestUrl = 'https://example.test/station/preview.json';
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      `${JSON.stringify({
+        schemaVersion: 4,
+        channel: 'beta',
+        releaseChannel: 'preview',
+        installRoot,
+        stationRoot: join(TEST_ROOT, 'root-archive'),
+        stationHome,
+        manifestUrl,
+      })}\n`,
+      { mode: 0o600 },
+    );
+    symlinkSync(version, join(installRoot, 'current'));
+    vi.stubEnv('STATION_INSTALL_PUBLIC_MANIFEST_URL', '');
+    const execFileSync = vi.fn();
+    const execSync = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      cwd: version,
+      childProcessMock: { execFileSync, execSync },
+    });
+
+    await lifecycle.upgrade();
+
+    expect(execFileSync).toHaveBeenCalledWith(
+      'sh',
+      ['./install.sh', 'install'],
+      expect.objectContaining({
+        cwd: version,
+        env: expect.objectContaining({
+          STATION_CHANNEL: 'beta',
+          STATION_HOME: stationHome,
+          STATION_INSTALL_ROOT: installRoot,
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,
+        }),
+      }),
+    );
+    expect(execSync).not.toHaveBeenCalled();
+  });
+
   it('refuses station upgrade precisely, before touching git or an installer', async () => {
     ensurePrebuiltArchive();
     vi.stubEnv('STATION_HOME', TEST_ROOTED_HOME);
@@ -8740,9 +8810,9 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
 
     await expect(lifecycle.upgrade()).rejects.toThrow(
       [
-        `station upgrade cannot update a prebuilt Station archive in place: ${TEST_CWD} is v0.0.0 (0123456789ab, stable ring). Nothing was changed.`,
-        'Upgrading an archive install is the installer’s job, which arrives with the installer slice (#2675, B2).',
-        'To move to a newer version now: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
+        `station upgrade cannot update a prebuilt Station archive in place: ${TEST_CWD} is v0.0.0 (0123456789ab, stable ring), and install.sh did not install it. Nothing was changed.`,
+        'Install through install.sh to get upgrades (`station upgrade` re-runs the installer that installed the version).',
+        'To move this copy to a newer version by hand: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
         `Instance state for the stable channel lives in ${join(TEST_STATION_ROOT, 'state', 'stable')}, outside every version directory, so the new version sees and stops what this one started.`,
       ].join('\n'),
     );

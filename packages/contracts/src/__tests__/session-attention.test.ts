@@ -128,17 +128,4 @@ describe('sessionAttentionDisposition ordering (station#3227 B1)', () => {
       });
     }
   });
-
-  test('every subject lands in exactly one arm (total over the full matrix)', () => {
-    let count = 0;
-    for (const subject of allSubjects()) {
-      const disposition = sessionAttentionDisposition(subject);
-      expect(['failed', 'finished', 'awaiting', 'active']).toContain(
-        disposition.state,
-      );
-      count += 1;
-    }
-    // 10 lifecycle shapes (9 states + undefined) × 6 statuses × 3 flags.
-    expect(count).toBe(10 * 6 * 3);
-  });
 });

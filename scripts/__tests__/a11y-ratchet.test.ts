@@ -6,6 +6,7 @@ import {
   biomeLintInvocation,
   countViolations,
   evaluate,
+  lintCheckRoots,
 } from '../a11y-ratchet.mjs';
 
 describe('a11yEnabled', () => {
@@ -90,27 +91,32 @@ describe('evaluate', () => {
 });
 
 describe('lint scope', () => {
-  it('keeps the ratchet source roots in step with the lint:check script', () => {
-    // The ratchet must measure exactly what the gate lints. If lint:check is
-    // rescoped and SOURCE_ROOTS is not, the ratchet silently measures a
-    // different tree than the one being enforced.
+  it('measures exactly the roots the lint:check script lints', () => {
+    // If lint:check is rescoped and the ratchet is not, the ratchet silently
+    // measures a different tree than the one being enforced.
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-    const lintRoots = pkg.scripts['lint:check']
-      .replace('biome check ', '')
-      .trim()
-      .split(/\s+/);
-    const ratchetSource = readFileSync('scripts/a11y-ratchet.mjs', 'utf8');
-    const declared = ratchetSource
-      .slice(ratchetSource.indexOf('const SOURCE_ROOTS = ['))
-      .slice(
-        0,
-        ratchetSource
-          .slice(ratchetSource.indexOf('const SOURCE_ROOTS = ['))
-          .indexOf('];'),
-      );
-    const ratchetRoots = [...declared.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    const lintRoots = pkg.scripts['lint:check'].trim().split(/\s+/).slice(2);
+    expect(lintRoots).toContain('src-ui/');
+    expect(biomeLintInvocation().args.slice(3)).toEqual(lintRoots);
+  });
 
-    expect(ratchetRoots).toEqual(lintRoots);
+  it('refuses a lint:check it cannot read roots from', () => {
+    expect(
+      lintCheckRoots('{"scripts":{"lint:check":"biome check src-ui/ tests/"}}'),
+    ).toEqual(['src-ui/', 'tests/']);
+    for (const script of [
+      'eslint src-ui/',
+      'biome check',
+      undefined,
+      'biome check --diagnostic-level=error src-ui/',
+      'biome check --write src-ui/',
+      'biome check src-ui/ && tsc',
+      'biome check src-ui/ | tee lint.log',
+    ]) {
+      expect(() =>
+        lintCheckRoots(JSON.stringify({ scripts: { 'lint:check': script } })),
+      ).toThrow('lint:check must be "biome check <roots...>"');
+    }
   });
 
   it('never lints generated output, signed attestations or Protected Standards', () => {

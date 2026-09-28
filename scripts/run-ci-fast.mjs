@@ -14,6 +14,20 @@ export const FAST_FEEDBACK_TIMEOUT_MS = CI_FAST_TIMEOUT_MS;
 export const CI_FAST_BUDGET_EXCEEDED_CAUSE = `ci:fast exceeded its ${FAST_FEEDBACK_TIMEOUT_MS / 60_000}-minute feedback budget`;
 export const FAST_BASE_ENV = 'STATION_CI_FAST_BASE';
 /**
+ * Mirrors CHANGED_DEADLINE_ENV in run-changed-verification.mjs, which this
+ * runner must not import (it loads Vitest); run-ci-fast.test.ts pins them equal.
+ */
+export const CHANGED_DEADLINE_ENV = 'STATION_TEST_CHANGED_DEADLINE_AT';
+/**
+ * #2855: the share of the selector's allowance related discovery may use, so
+ * a slow discovery cannot starve the tests it selects. Discovery is a fixed
+ * graph build: 27-38s on hosted runners, up to 66s on a dev host at load
+ * 47-93. A quarter of the 680s allowance is 170s; after the selector's 30s
+ * reserve that is a 140s discovery timeout, ~3.7x the worst hosted and ~2x
+ * the worst loaded measurement, while the tests keep at least 510s.
+ */
+export const FAST_SELECTOR_DISCOVERY_SHARE = 0.25;
+/**
  * #2709: the required `fast-checks` check is an aggregator over a sharded
  * affected-test selection (scripts/fast-checks-shard.mjs) and a statics job.
  * The statics job runs this lane with the scope set to `statics`, which drops
@@ -300,9 +314,10 @@ export function classifyCiFastCommandResult(result) {
   return result.status;
 }
 
-function run(command, args, { cwd, timeout }) {
+function run(command, args, { cwd, timeout, env }) {
   const result = spawnSync(command, args, {
     cwd,
+    ...(env ? { env } : {}),
     stdio: 'inherit',
     timeout,
     windowsHide: true,
@@ -344,7 +359,24 @@ export function runCiFast({
       remaining(startedAt, now) - (index === 0 ? FAST_STATIC_RESERVE_MS : 0);
     if (timeout <= 0)
       throw new CiFastInfrastructureError(CI_FAST_BUDGET_EXCEEDED_CAUSE);
-    const status = execute(command, args, { cwd, timeout });
+    // #2855: the selector learns when its related discovery must end: a
+    // pinned share of its allowance, instead of a fixed 60s. The statics need
+    // no deadline of their own.
+    const status = execute(command, args, {
+      cwd,
+      timeout,
+      ...(index === 0
+        ? {
+            env: {
+              ...env,
+              [CHANGED_DEADLINE_ENV]: String(
+                iterationStartedAt +
+                  Math.floor(timeout * FAST_SELECTOR_DISCOVERY_SHARE),
+              ),
+            },
+          }
+        : {}),
+    });
     // station#2621: the timed-out receipt for a candidate merge_group run
     // showed no evidence at all of which step consumed the ~6 extra
     // minutes -- every command's own stdout is buffered by its own tooling
