@@ -126,7 +126,7 @@ describe('independent review operator surface', () => {
 describe('scheduler operator surface', () => {
   it('help advertises exactly the contract CLI actions plus the jobs alias', () => {
     expect(
-      actionsFor('schedule').filter((action) => action !== 'jobs'),
+      actionsFor('schedule')?.filter((action) => action !== 'jobs'),
     ).toEqual(Object.values(SCHEDULER_OPERATOR_SURFACE).map(({ cli }) => cli));
   });
 
