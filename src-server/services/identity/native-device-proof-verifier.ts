@@ -1,4 +1,3 @@
-import type { webcrypto as nodeWebcrypto } from 'node:crypto';
 import {
   NATIVE_DEVICE_PROOF_LIFETIME_SECONDS,
   NATIVE_DEVICE_PROOF_REQUEST_PURPOSE,
@@ -24,6 +23,9 @@ const BASE64URL_SHA256 = /^[A-Za-z0-9_-]{43}$/;
 const BASE64URL_JTI = /^[A-Za-z0-9_-]{16,128}$/;
 const HTTP_METHOD = /^[A-Z]{1,16}$/;
 const OPAQUE_ID = /^[A-Za-z0-9_-]{43}$/;
+const APP_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/;
+const CLIENT_INSTANCE_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type NativeDeviceProofBindingStatus = 'approved' | 'rotated' | 'revoked';
 
@@ -437,10 +439,8 @@ function validateClaims(
     typeof surface.clientInstanceId !== 'string' ||
     typeof surface.keyThumbprint !== 'string' ||
     !OPAQUE_ID.test(surface.keyThumbprint) ||
-    surface.appIdentifier.length === 0 ||
-    surface.appIdentifier.length > 255 ||
-    surface.clientInstanceId.length === 0 ||
-    surface.clientInstanceId.length > 64 ||
+    !APP_IDENTIFIER.test(surface.appIdentifier) ||
+    !CLIENT_INSTANCE_ID.test(surface.clientInstanceId) ||
     (surface.channel !== 'dev' &&
       surface.channel !== 'stable' &&
       surface.channel !== 'beta' &&
@@ -483,7 +483,13 @@ function validateClaims(
     deviceId,
     bindingId,
     deviceProofKeyThumbprint,
-    surface: surface as unknown as SelfHostedBrokerNativeClientSurfaceV2,
+    surface: {
+      kind: 'station-native',
+      appIdentifier: surface.appIdentifier,
+      channel: surface.channel,
+      clientInstanceId: surface.clientInstanceId,
+      keyThumbprint: surface.keyThumbprint,
+    },
     peerNonce,
     htm,
     htu,
@@ -650,7 +656,13 @@ export async function verifyNativeDeviceRequestProof(
       throw new Error('native_device_public_key_thumbprint_mismatch');
     publicKey = await crypto.subtle.importKey(
       'jwk',
-      { ...proofKey, ext: true } as unknown as nodeWebcrypto.JsonWebKey,
+      {
+        kty: proofKey.kty,
+        crv: proofKey.crv,
+        x: proofKey.x,
+        y: proofKey.y,
+        ext: true,
+      },
       { name: 'ECDSA', namedCurve: 'P-256' },
       false,
       ['verify'],
