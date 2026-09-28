@@ -8,12 +8,16 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  type ConsumerProbeObservation,
   canonicalizeForDigest,
   capFleetEvidenceLevel,
+  describeConsumerProbe,
   FLEET_LOCAL_EVIDENCE_LABEL,
   FLEET_PEER_ATTESTED_EVIDENCE_LABEL,
+  FLEET_PROBE_VERIFIED_EVIDENCE_LABEL,
   FLEET_ROUTING_EXCLUSION_CODES,
   type FleetRoutingExclusionCode,
+  fleetEvidenceLevelWithProbe,
 } from '../fleet-routing-receipt.js';
 
 describe('a peer-attested claim can never grade as confirmed', () => {
@@ -152,5 +156,151 @@ describe('canonicalizeForDigest copies __proto__ instead of assigning it', () =>
     expect(JSON.stringify(canonicalizeForDigest(nested))).not.toBe(
       JSON.stringify(canonicalizeForDigest(clean)),
     );
+  });
+});
+
+describe('the cap still binds every unverified claim', () => {
+  function probe(status: ConsumerProbeObservation['status']) {
+    return {
+      status,
+      observedAt: '2026-08-01T12:00:00.000Z',
+      expiresAt: '2026-08-01T12:15:00.000Z',
+      elapsedMs: 12,
+      servedProviderModel: 'qwen3:32b',
+      failureCode: null,
+    } satisfies ConsumerProbeObservation;
+  }
+
+  // Asked AT a fixed instant inside the fixture's own window, never against
+  // the wall clock. A fixture with a hardcoded `expiresAt` evaluated against
+  // `Date.now()` asserts the pass path right up until that timestamp goes by
+  // and then reds spontaneously on pristine main — the time-bomb shape.
+  const WITHIN_WINDOW = Date.parse('2026-08-01T12:05:00.000Z');
+
+  it('raises a probed candidate to confirmed, with probe-verified provenance and its own label', () => {
+    expect(
+      fleetEvidenceLevelWithProbe('confirmed', probe('passed'), WITHIN_WINDOW),
+    ).toEqual({
+      level: 'confirmed',
+      provenance: 'probe-verified',
+      label: FLEET_PROBE_VERIFIED_EVIDENCE_LABEL,
+    });
+  });
+
+  it('the probe-verified label is DISTINCT from the peer-attested one', () => {
+    expect(FLEET_PROBE_VERIFIED_EVIDENCE_LABEL).not.toBe(
+      FLEET_PEER_ATTESTED_EVIDENCE_LABEL,
+    );
+    expect(FLEET_PROBE_VERIFIED_EVIDENCE_LABEL).toContain('bounded completion');
+  });
+
+  it('an UNVERIFIED claim is still capped at declared, however healthy the peer says it is', () => {
+    // The fault this whole design exists to prevent: a peer asserting
+    // available/live must not reach `confirmed` by any path that does not
+    // include an observation.
+    for (const probeState of [null, probe('failed'), probe('stale')] as const) {
+      expect(
+        fleetEvidenceLevelWithProbe('confirmed', probeState, WITHIN_WINDOW),
+      ).toEqual({
+        level: 'declared',
+        provenance: 'peer-attested',
+        label: FLEET_PEER_ATTESTED_EVIDENCE_LABEL,
+      });
+    }
+    // And the underlying cap is untouched, not deleted.
+    expect(capFleetEvidenceLevel('confirmed', 'peer-attested')).toBe(
+      'declared',
+    );
+  });
+
+  it("a 'passed' record whose expiresAt has gone by does NOT reach confirmed, even when the caller forgot to re-stamp it", () => {
+    // The replay case. `FleetProbeService.observe` stamps `status: 'stale'`
+    // on an expired record, so the LIVE path never reaches this function with
+    // an expired `passed`. But this function is exported from contracts, and
+    // `ConsumerProbeObservation` is stored verbatim in the receipt — anything
+    // that reads one back (receipt replay, a cross-process cache)
+    // hands it over exactly as stored, with `status: 'passed'` intact.
+    // Enforcing expiry only in the caller made the docblock's "and has not
+    // expired" a promise the function did not keep.
+    const expiredPass: ConsumerProbeObservation = {
+      status: 'passed',
+      observedAt: '2026-08-01T11:00:00.000Z',
+      expiresAt: '2026-08-01T11:15:00.000Z',
+      elapsedMs: 12,
+      servedProviderModel: 'qwen3:32b',
+      failureCode: null,
+    };
+    const wellAfterExpiry = Date.parse('2026-08-01T12:00:00.000Z');
+
+    expect(
+      fleetEvidenceLevelWithProbe('confirmed', expiredPass, wellAfterExpiry),
+    ).toEqual({
+      level: 'declared',
+      provenance: 'peer-attested',
+      label: FLEET_PEER_ATTESTED_EVIDENCE_LABEL,
+    });
+
+    // ... and the identical record, asked BEFORE its expiry, still verifies.
+    // Without this half the test would also pass if the function simply
+    // stopped honoring probes at all.
+    const beforeExpiry = Date.parse('2026-08-01T11:14:00.000Z');
+    expect(
+      fleetEvidenceLevelWithProbe('confirmed', expiredPass, beforeExpiry),
+    ).toEqual({
+      level: 'confirmed',
+      provenance: 'probe-verified',
+      label: FLEET_PROBE_VERIFIED_EVIDENCE_LABEL,
+    });
+  });
+
+  it('a passing probe outranks the manifest, even for a model the peer called unavailable', () => {
+    // `unavailable` in means `unavailable` out is NOT the rule — a probe is a
+    // genuine observation and outranks the manifest. But the peer's
+    // unavailable models never reach the probe at all (they are excluded as
+    // `evidence-stale` first), so this pins the function's honest behavior
+    // rather than the pipeline's: given an observation, the observation wins.
+    expect(
+      fleetEvidenceLevelWithProbe(
+        'unavailable',
+        probe('passed'),
+        WITHIN_WINDOW,
+      ),
+    ).toEqual({
+      level: 'confirmed',
+      provenance: 'probe-verified',
+      label: FLEET_PROBE_VERIFIED_EVIDENCE_LABEL,
+    });
+  });
+});
+
+describe('describeConsumerProbe is the one wording both surfaces render', () => {
+  it('says nothing when there is nothing to say', () => {
+    expect(describeConsumerProbe(null)).toBeNull();
+  });
+
+  it('names the expiry on a stale observation, so it cannot read as current', () => {
+    const phrase = describeConsumerProbe({
+      status: 'stale',
+      observedAt: '2026-08-01T12:00:00.000Z',
+      expiresAt: '2026-08-01T12:15:00.000Z',
+      elapsedMs: 12,
+      servedProviderModel: 'qwen3:32b',
+      failureCode: null,
+    });
+    expect(phrase).toContain('expired');
+    expect(phrase).toContain('not evidence about now');
+  });
+
+  it('names the failure code on a failed observation', () => {
+    expect(
+      describeConsumerProbe({
+        status: 'failed',
+        observedAt: '2026-08-01T12:00:00.000Z',
+        expiresAt: '2026-08-01T12:02:00.000Z',
+        elapsedMs: null,
+        servedProviderModel: null,
+        failureCode: 'peer-unreachable',
+      }),
+    ).toContain('peer-unreachable');
   });
 });
