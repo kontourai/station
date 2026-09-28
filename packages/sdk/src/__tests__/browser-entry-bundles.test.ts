@@ -9,7 +9,7 @@ import { describe, expect, test } from 'vitest';
  * bundle text is not scanned for `node:` because the Pane bundle legitimately
  * contains the object key `node: {`. `Buffer` is a global, not an import, so
  * it is matched as a whole word: the Basis bundle uses
- * `response.arrayBuffer()`, a browser API (station#4292).
+ * `response.arrayBuffer()`, a browser API (archive#4292).
  */
 describe.each([
   { entry: '../answer-basis.ts', mustContain: [] as string[] },

@@ -946,11 +946,9 @@ describe('systemRuntimeRequests', () => {
       );
     });
 
-    // fix-round HIGH-1: the route (`src-server/routes/operations/monitoring.ts`)
-    // deliberately authors a 503 body explaining WHY, and the fetcher must not
-    // discard it in favor of a synthesized "rejected with HTTP 503" — that
-    // sentence is the one thing standing between the reader and a lie
-    // ("Station isn't responding") once the copy derives from this message.
+    // The route (`src-server/routes/operations/monitoring.ts`) authors a 503
+    // body explaining why; the fetcher keeps it rather than synthesizing
+    // "rejected with HTTP 503", because UI copy derives from this message.
     it('a rejected response keeps the SERVER-authored error text, verbatim', async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,

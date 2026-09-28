@@ -319,8 +319,7 @@ describe('configSet', () => {
     });
   });
 
-  // Review round 1 MEDIUM 2(a): the offline write is temp-file + rename, not
-  // a direct in-place write. A write that fails before the rename must leave
+  // The offline write is temp-file + rename, not a direct in-place write. A write that fails before the rename must leave
   // the previous app.json byte-for-byte intact and clean up its temp file.
   test('--offline writes atomically: a failed rename keeps the prior app.json and leaves no temp file', async () => {
     markCurrentHome();

@@ -7,7 +7,7 @@ import {
 } from '../query-domains/systemRuntime';
 
 /**
- * station#3436 / station#3444: a REST poll beside an SSE stream must stop on
+ * archive#3436 / archive#3444: a REST poll beside an SSE stream must stop on
  * the same terminal statuses the shared `fetchSSE` transport stops on
  * (401/403, `isTerminalConnectionStatus`) and keep its own cadence through
  * everything else. Each resolver keeps its cadence as a literal here.
