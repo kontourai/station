@@ -32,7 +32,7 @@
 
     {"path":"scripts/lib/review-ledger-store.mjs","digest":"0ae9f94081af3b929fb17cc93bc222e9ce84227fe3832aa1beb1fbbc8dd3884a","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/lib/review-binding.mjs","digest":"d55daea7fb536248f1c11a5e8a9965be1dd1db43fefe9839080d3688b2e28ce4","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    {"path":"scripts/lib/review-binding.mjs","digest":"09c45446e0d7070b8310fd86f888b37dbe873f53854f48e8bf63ed18481fa692","revision":"6c3604888394821808a5617ddd044c6e61d86fc2"},
 
     {"path":"scripts/migrate-review-ledger.mjs","digest":"84d5bca81f7830e606f0ad5e9c1a84592aa942e5c63db705a68117ec81438612","revision":"2b8b40405cc07c61151dfecefe79491ee751b0dd"}
   ],
