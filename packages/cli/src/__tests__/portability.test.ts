@@ -106,8 +106,21 @@ describe('portability commands', () => {
 
     expect(existsSync(join(cwd, 'AGENTS.md'))).toBe(true);
     expect(output).toContain('<!-- STATION:EXPORT:START -->');
-    expect(output).toContain('## Workspace Guidance');
-    expect(output).toContain('defaultModel');
+    expect(
+      [...output.matchAll(/^##\s+(.*)$/gm)].map(([, heading]) => heading),
+    ).toEqual([
+      'Workspace Guidance',
+      'Managed Agents',
+      'MCP Tool Expectations',
+      'Loss Report',
+    ]);
+    const document = JSON.parse(output.match(/```json\s*([\s\S]*?)\s*```/)![1]);
+    expect(document.guidance.workspace.systemPrompt).toBe('Be helpful');
+    expect(document.losses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'omitted-field', path: 'defaultModel' }),
+      ]),
+    );
   });
 
   test('import restores canonical config, writes notes, and appends import ledger', async () => {
@@ -182,9 +195,13 @@ ${JSON.stringify(
     expect(readFileSync(result.notesPath!, 'utf-8')).toContain(
       'Imported prose that should become notes.',
     );
-    expect(
-      JSON.parse(readFileSync(result.ledgerPath, 'utf-8')).sourceFormat,
-    ).toBe('agents-md');
+    const ledger = JSON.parse(readFileSync(result.ledgerPath, 'utf-8'));
+    expect(ledger.sourceFormat).toBe('agents-md');
+    expect(ledger.degradedFields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'ambiguous-prose', path: 'AGENTS.md' }),
+      ]),
+    );
   });
 
   test('export -> import -> export preserves the structured Station document', async () => {
