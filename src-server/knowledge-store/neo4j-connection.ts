@@ -26,11 +26,12 @@
  * `validateNeo4jGraphViewConnection` (the "validateRoot"-equivalent K4 onboarding
  * hook, named for what it actually validates — a connection, not a store root).
  *
- * K2 ships ONLY: the connection-config shape, this registration plumbing, a
+ * K2 ships ONLY: the connection-config shape, this registration plumbing, and a
  * best-effort TCP-reachability check (no Neo4j driver, no bolt handshake — see
  * `validateNeo4jGraphViewConnection`'s doc comment for exactly what it can and
- * cannot honestly verify). No actual graph-sync client — that is K5's dual-adapter dogfood scope
- * (`docs/design/knowledge-foundation.md`'s "K5 hooks" section). No live Neo4j daemon
+ * cannot honestly verify). No actual graph-sync client — that is K5's
+ * dual-adapter dogfood scope (`docs/design/knowledge-foundation.md`'s "K5 hooks"
+ * section). No live Neo4j daemon
  * dependency exists anywhere in this module's unit tests; the one live-reachability
  * assertion lives behind an explicit env-guard
  * (`KNOWLEDGE_NEO4J_TEST_URL`) in `neo4j-connection.test.ts` and is skipped — not
