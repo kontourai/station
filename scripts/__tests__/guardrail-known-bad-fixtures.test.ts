@@ -1473,24 +1473,32 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
     for (const lane of DOCS_TRUTH_GATE_LANES) {
       expect(root.scripts).toHaveProperty(lane.script);
     }
-    // Arguments change what these node lanes do: a --write turns a check into
-    // a writer, and a path argument narrows check-markdown-links.mjs to that
-    // file. The only argument any of them may take is --check.
-    const nodeLaneCommands = DOCS_TRUTH_GATE_LANES.map(
-      (lane) => root.scripts[lane.script],
-    ).filter((command) => command.startsWith('node '));
-    expect(nodeLaneCommands).toHaveLength(10);
-    for (const command of nodeLaneCommands) {
-      expect(command).toMatch(/^node scripts\/[\w-]+\.mjs(?: --check)?$/);
-    }
-    // These two scripts regenerate their output and exit 0 without --check,
-    // which would turn docs:truth:gate from a drift check into a writer.
-    expect(root.scripts['docs:index:check']).toBe(
-      'node scripts/docs-index.mjs --check',
+    // Each node lane is pinned to its exact command. A pattern is not enough:
+    // repointing a lane at another script (docs-index.mjs without --check
+    // regenerates files and exits 0), adding --write, or passing a path
+    // (check-markdown-links.mjs narrows to that file) would all still match
+    // one. Literal on purpose -- never derive this from package.json.
+    const EXPECTED_NODE_LANE_COMMANDS: Record<string, string> = {
+      'contribution:gate': 'node scripts/public-contribution-surfaces.mjs',
+      'labels:check': 'node scripts/label-manifest.mjs',
+      'docs:issue-lifecycle:check':
+        'node scripts/generate-issue-lifecycle-reference.mjs --check',
+      'docs:contributor-commands:check': 'node scripts/just-interface.mjs',
+      'docs:public:hygiene': 'node scripts/public-docs-hygiene.mjs',
+      'docs:hygiene:repo': 'node scripts/repo-docs-hygiene.mjs',
+      'docs:index:check': 'node scripts/docs-index.mjs --check',
+      'docs:cli-parity:check': 'node scripts/cli-doc-parity.mjs',
+      'docs:public:contract-examples':
+        'node scripts/public-doc-contract-examples.mjs',
+      'docs:links:check': 'node scripts/check-markdown-links.mjs',
+    };
+    expect(Object.keys(EXPECTED_NODE_LANE_COMMANDS)).toHaveLength(10);
+    const nodeLaneCommands = Object.fromEntries(
+      DOCS_TRUTH_GATE_LANES.filter((lane) =>
+        root.scripts[lane.script].startsWith('node '),
+      ).map((lane) => [lane.id, root.scripts[lane.script]]),
     );
-    expect(root.scripts['docs:issue-lifecycle:check']).toBe(
-      'node scripts/generate-issue-lifecycle-reference.mjs --check',
-    );
+    expect(nodeLaneCommands).toEqual(EXPECTED_NODE_LANE_COMMANDS);
     // lint:check's roots exclude .github/, so this lane is the only formatter
     // check of the label manifest.
     expect(root.scripts['docs:truth:biome']).toContain(
