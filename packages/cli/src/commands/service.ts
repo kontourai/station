@@ -810,7 +810,7 @@ function redactRegistryForStatus(
  * is where `needs-operator` is visible: in that state the launcher runs no
  * Station, so no client can ask a server about it.
  */
-export function describeServiceUpdate(
+function describeServiceUpdate(
   progress: ServiceUpdateProgress,
   instanceId: string,
 ): string[] {
