@@ -317,7 +317,8 @@ describe('clean Android channel release generation', () => {
     };
     const job = workflow.jobs['stage-android'];
     const buildIndex = job.steps.findIndex(
-      (step) => step.name === 'Build and verify the signed Android staging bytes',
+      (step) =>
+        step.name === 'Build and verify the signed Android staging bytes',
     );
     const build = job.steps[buildIndex];
     const uploadIndex = job.steps.findIndex((step) =>

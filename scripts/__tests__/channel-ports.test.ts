@@ -3,13 +3,13 @@ import { join, resolve } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { STATION_CHANNEL_PORTS_DATA } from '../../packages/shared/src/channel-ports.generated.js';
 import { CHANNEL_VERSION } from '../../packages/shared/src/release-manifest.mjs';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   CHANNEL_PORTS,
   checkGeneratedChannelPorts,
   RELEASE_RINGS,
   syncGeneratedChannelPorts,
 } from '../channel-ports.mjs';
-import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 const root = resolve(import.meta.dirname, '../..');
 type ChannelPortAllocation = {
