@@ -19,7 +19,7 @@ import { reconcile } from '../station-dogfood-reconcile.mjs';
 import {
   reapAllLongRunningFixtureChildren,
   spawnLongRunningFixtureChild,
-} from './helpers/longrunning-fixture-child.js';
+} from '../../packages/cli/src/__tests__/helpers/longrunning-fixture-child.js';
 import { StationFixtureOwner } from './helpers/station-fixture-owner.js';
 
 const workspace = resolve(import.meta.dirname, '..', '..');

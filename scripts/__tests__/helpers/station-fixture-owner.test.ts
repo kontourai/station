@@ -6,7 +6,7 @@ import { inspectProcessFingerprint } from '../../../packages/cli/src/commands/pl
 import {
   reapAllLongRunningFixtureChildren,
   spawnLongRunningFixtureChild,
-} from './longrunning-fixture-child.js';
+} from '../../../packages/cli/src/__tests__/helpers/longrunning-fixture-child.js';
 import {
   observeFixtureCwds,
   runFixtureCwdLsof,
