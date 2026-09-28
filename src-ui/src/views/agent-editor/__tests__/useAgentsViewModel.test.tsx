@@ -334,6 +334,52 @@ describe('AC5 — a created Agent is in the list and selected, with no reload', 
   });
 });
 
+/**
+ * archive#3741: the required marker and the Create gate read one derivation
+ * of "this engine needs an authored prompt", so a field can never be unmarked
+ * and still refuse — nor marked and then accepted as empty.
+ */
+describe('the prompt requirement is one view-model derivation (archive#3741)', () => {
+  test.each([
+    ["Station's engine", 'model', 'helper', true],
+    [
+      "the reserved station Agent on Station's engine",
+      'model',
+      'station',
+      false,
+    ],
+    ['an engine that delivers its own prompt (Claude)', 'cli', 'helper', false],
+  ] as const)(
+    '%s: the marker and the Create gate agree',
+    (_label, start, slug, required) => {
+      const { result } = render();
+      act(() => {
+        result.current.handleNew();
+        if (start === 'model') result.current.handleStartWithModel();
+        else result.current.handleStartWithCli();
+        result.current.setForm((form) => ({
+          ...form,
+          slug,
+          name: 'Helper',
+          prompt: '',
+          execution: {
+            ...form.execution,
+            ...(start === 'cli' ? { agentConnectionId: 'claude' } : {}),
+          },
+        }));
+      });
+
+      expect(result.current.promptIsRequired).toBe(required);
+      expect(result.current.createBlocked).toBe(required);
+
+      act(() => {
+        result.current.setForm((form) => ({ ...form, prompt: 'Be helpful.' }));
+      });
+      expect(result.current.createBlocked).toBe(false);
+    },
+  );
+});
+
 describe('AC5 — a tools read that lands mid-activation is a wait, not an error', () => {
   // A create now returns as soon as its write is durable, so opening the new
   // Agent immediately can outrun its activation and the tools read answers

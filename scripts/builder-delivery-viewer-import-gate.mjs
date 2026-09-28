@@ -466,7 +466,15 @@ export function scopedFiles() {
 }
 
 function main() {
-  const findings = scopedFiles().flatMap((file) =>
+  const files = scopedFiles();
+  // An empty scope is a moved ROOT or a broken pathspec, not a clean plugin.
+  if (files.length === 0) {
+    console.error(
+      `Builder Delivery Viewer import gate failed: no source files under ${ROOT}.`,
+    );
+    process.exit(1);
+  }
+  const findings = files.flatMap((file) =>
     scanFile(file, readFileSync(file, 'utf8')),
   );
   if (findings.length) {
@@ -476,7 +484,7 @@ function main() {
     process.exit(1);
   }
   console.log(
-    `OK: Builder Delivery Viewer uses only published contracts (${scopedFiles().length} files scanned).`,
+    `OK: Builder Delivery Viewer uses only published contracts (${files.length} files scanned).`,
   );
 }
 if (invokedDirectly(import.meta.url)) main();

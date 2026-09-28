@@ -162,7 +162,7 @@ function isCompletionEndpoint(url: string): boolean {
  * not applying. If an ai-sdk bump switches to Request objects, the pinning
  * test ('Request-object inputs pass through…') documents where to extend.
  */
-export function requestBodyDefaultsFetch(
+function requestBodyDefaultsFetch(
   defaults: Record<string, unknown> | undefined,
 ): typeof fetch | undefined {
   const entries = Object.entries(defaults ?? {});

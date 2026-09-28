@@ -148,6 +148,3 @@ export function BuildProvenance({ build }: { build?: Build }) {
     </div>
   );
 }
-
-/** @deprecated import from the shared build-provenance subpath instead. */
-export { formatBuildAge } from '@kontourai/station-shared/build-provenance';

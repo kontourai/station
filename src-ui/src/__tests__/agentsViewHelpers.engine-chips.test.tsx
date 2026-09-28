@@ -37,9 +37,7 @@ describe('buildAgentsViewItems engine chips', () => {
         execution: { agentConnectionId: engineConnectionId('kiro-conn') },
       },
     ];
-    const items = buildAgentsViewItems(agents, [
-      { id: 'kiro-conn', name: 'Kiro CLI', modes: ['default'] },
-    ]);
+    const items = buildAgentsViewItems(agents);
 
     const stationItem = items.find((item) => item.id === 'code-reviewer')!;
     const externalItem = items.find((item) => item.id === 'opencode')!;

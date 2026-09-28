@@ -65,7 +65,7 @@ export function agentFixRoute(
  * `unavailableReason` verbatim — the sentence a person can act on — rather
  * than a category this file invented.
  */
-export function agentReadinessState(agent: ReadinessAgent): {
+function agentReadinessState(agent: ReadinessAgent): {
   label: string;
   tone: 'positive' | 'caution' | 'neutral';
 } {
@@ -97,7 +97,7 @@ export function agentReadinessState(agent: ReadinessAgent): {
  * lockstep a caller re-deriving this decision for itself would otherwise
  * require of every future case.
  */
-export function agentReadinessCompactState(agent: ReadinessAgent): {
+function agentReadinessCompactState(agent: ReadinessAgent): {
   label: string;
   tone: 'positive' | 'caution' | 'neutral';
 } {

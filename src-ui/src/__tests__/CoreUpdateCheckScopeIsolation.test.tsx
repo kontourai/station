@@ -105,6 +105,48 @@ describe('CoreUpdateCheck scope isolation (real query cache)', () => {
     client.clear();
   });
 
+  test('a restart of the same server (new boot) never answers from the pre-restart cache', async () => {
+    const fetchMock = vi.fn();
+    let body = checkoutStatus(2);
+    fetchMock.mockImplementation(async () => Response.json(body));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const tree = (bootId: string) => (
+      <QueryClientProvider client={client}>
+        <CoreUpdateCheck
+          apiBase={API_BASE}
+          enabled
+          context={{
+            ...makeContext('scope-a'),
+            identity: { instanceId: 'instance-a', bootId, sha: 'a'.repeat(40) },
+          }}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(tree('boot-1'));
+    expect(
+      await screen.findByText(
+        'Server checkout is 2 commits behind its configured upstream.',
+      ),
+    ).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Same selection, same URL, but the server restarted: its comparison
+    // must come from a fresh request, not the old boot's cached facts.
+    body = checkoutStatus(5);
+    view.rerender(tree('boot-2'));
+    expect(
+      await screen.findByText(
+        'Server checkout is 5 commits behind its configured upstream.',
+      ),
+    ).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    view.unmount();
+    client.clear();
+  });
+
   test('an accepted background rebuild persists its message, suppresses apply, and marks cached facts historical — through the LIVE wiring', async () => {
     // Real hook, real mutation, real isFetching transitions: the acceptance
     // response drives the genuine onSuccess → setSelfUpdating → refetch path,

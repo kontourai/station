@@ -384,7 +384,7 @@ describe('NotificationService', () => {
     expect(await svc.list()).toHaveLength(0);
   });
 
-  test('clearAll notifies providers before removing notifications', async () => {
+  test('clearAll dismisses every cleared notification at its provider', async () => {
     const handleDismiss = vi.fn();
     svc.addProvider({
       id: 'mock',
@@ -393,12 +393,22 @@ describe('NotificationService', () => {
       handleDismiss,
     } as any);
 
-    await svc.schedule('mock', { title: 'A', body: '', category: 'a' });
-    await svc.schedule('mock', { title: 'B', body: '', category: 'b' });
+    const alpha = await svc.schedule('mock', {
+      title: 'A',
+      body: '',
+      category: 'a',
+    });
+    const bravo = await svc.schedule('mock', {
+      title: 'B',
+      body: '',
+      category: 'b',
+    });
     await svc.clearAll();
     await svc.drainAsyncDispatch();
 
     expect(handleDismiss).toHaveBeenCalledTimes(2);
+    expect(handleDismiss).toHaveBeenCalledWith(alpha.id);
+    expect(handleDismiss).toHaveBeenCalledWith(bravo.id);
   });
 
   test('predicate clearAll retains unreadable rows without dismissing their provider item', async () => {
@@ -1141,10 +1151,6 @@ describe('NotificationService', () => {
     expect(fn).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'notification:dismissed' }),
     );
-  });
-
-  test('listProviders returns empty when none registered', async () => {
-    expect(svc.listProviders()).toEqual([]);
   });
 
   test('addProvider and listProviders', async () => {

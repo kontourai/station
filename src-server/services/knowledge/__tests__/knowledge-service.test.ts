@@ -7,24 +7,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { BUILTIN_KNOWLEDGE_NAMESPACES } from '@kontourai/station-contracts/knowledge';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   knowledgeOps: { add: vi.fn() },
 }));
-vi.mock('@kontourai/station-contracts/knowledge', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('@kontourai/station-contracts/knowledge')
-    >();
-  return {
-    ...actual,
-    BUILTIN_KNOWLEDGE_NAMESPACES: [
-      { id: 'default', label: 'Default', behavior: 'rag' },
-      { id: 'rules', label: 'Rules & Steering', behavior: 'inject' },
-    ],
-  };
-});
 
 const { KnowledgeService } = await import('../knowledge-service.js');
 const { knowledgeOps } = await import('../../../telemetry/metrics.js');
@@ -103,16 +91,18 @@ describe('KnowledgeService — namespace management', () => {
       () => null,
       dir,
     );
-    const ns = svc.listNamespaces('test');
-    expect(ns.some((n) => n.id === 'default')).toBe(true);
-    expect(ns.some((n) => n.id === 'rules')).toBe(true);
+    expect(svc.listNamespaces('test')).toEqual(BUILTIN_KNOWLEDGE_NAMESPACES);
   });
 
-  test('listNamespaces merges builtins with project namespaces', () => {
+  test('listNamespaces merges project namespaces after builtins, which a project entry cannot override', () => {
     const adapter = createMockStorageAdapter();
+    const code = { id: 'code', label: 'Code', behavior: 'rag' };
     adapter.setProject({
       slug: 'test',
-      knowledgeNamespaces: [{ id: 'code', label: 'Code', behavior: 'rag' }],
+      knowledgeNamespaces: [
+        { id: 'default', label: 'Override', behavior: 'inject' },
+        code,
+      ],
     });
     const svc = new KnowledgeService(
       () => null,
@@ -120,9 +110,10 @@ describe('KnowledgeService — namespace management', () => {
       dir,
       adapter as any,
     );
-    const ns = svc.listNamespaces('test');
-    expect(ns.find((n) => n.id === 'default')).toBeDefined();
-    expect(ns.find((n) => n.id === 'code')).toBeDefined();
+    expect(svc.listNamespaces('test')).toEqual([
+      ...BUILTIN_KNOWLEDGE_NAMESPACES,
+      code,
+    ]);
   });
 
   test('registerNamespace adds to project', async () => {
@@ -374,9 +365,13 @@ describe('KnowledgeService — file-first document operations', () => {
       () => embedding as any,
       dir,
     );
-    const meta = await svc.uploadDocument('test', 'test.md', '# Hello');
-    const content = await svc.getDocumentContent('test', meta.id, 'default');
-    expect(content).toBe('# Hello');
+    const content =
+      '# My Notes\n\n- item 1\n- item 2\n\n## Section\n\nSome text here.';
+    const meta = await svc.uploadDocument('test', 'notes.md', content);
+    expect(meta.chunkCount).toBeGreaterThan(0);
+    expect(await svc.getDocumentContent('test', meta.id, 'default')).toBe(
+      content,
+    );
   });
 
   test('legacy metadata without a content hash cannot authorize vector reconstruction', async () => {
@@ -453,6 +448,22 @@ describe('KnowledgeService — file-first document operations', () => {
     const fileContent = readFileSync(filePath, 'utf-8');
     expect(fileContent).toContain('status: enhanced');
     expect(fileContent).toContain('# Updated');
+
+    // Re-indexed: the old chunk is withdrawn and the updated body embedded
+    // and published under the same document id.
+    expect(vectorDb.deleteDocuments).toHaveBeenLastCalledWith(
+      expect.any(String),
+      [`${meta.id}:0`],
+    );
+    expect(embedding.embed).toHaveBeenLastCalledWith([
+      expect.stringContaining('# Updated'),
+    ]);
+    expect(vectorDb.addDocuments).toHaveBeenLastCalledWith(expect.any(String), [
+      expect.objectContaining({
+        id: `${meta.id}:0`,
+        text: expect.stringContaining('# Updated'),
+      }),
+    ]);
   });
 
   test('upload provider failure leaves committed authority available for derived repair', async () => {
@@ -615,24 +626,5 @@ describe('KnowledgeService — file-first document operations', () => {
     expect(allDocs).toHaveLength(1);
     expect(allDocs[0].filename).toBe('readme.md');
     expect(allDocs[0].namespace).toBe('default');
-  });
-
-  test('uploading a .md file stores and retrieves content correctly', async () => {
-    const svc = new KnowledgeService(
-      () => vectorDb as any,
-      () => embedding as any,
-      dir,
-    );
-    const content =
-      '# My Notes\n\n- item 1\n- item 2\n\n## Section\n\nSome text here.';
-    const meta = await svc.uploadDocument('test', 'notes.md', content);
-    expect(meta.chunkCount).toBeGreaterThan(0);
-
-    const retrieved = await svc.getDocumentContent('test', meta.id, 'default');
-    expect(retrieved).toBe(content);
-
-    const docs = await svc.listDocuments('test', 'default');
-    expect(docs).toHaveLength(1);
-    expect(docs[0].id).toBe(meta.id);
   });
 });
