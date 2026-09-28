@@ -24,7 +24,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 
 /** Roots the corpus walk starts from. */
-export const TEST_CORPUS_ROOTS = Object.freeze([
+const TEST_CORPUS_ROOTS = Object.freeze([
   'scripts/__tests__',
   'src-server',
   'src-ui',
@@ -119,7 +119,7 @@ export function collectCorpusTestFiles(repoRoot) {
 }
 
 /** Relative specifiers in `source`; bare package names are not followed. */
-export function relativeImportSpecifiers(source) {
+function relativeImportSpecifiers(source) {
   const found = [];
   for (const match of source.matchAll(IMPORT_SPECIFIER_PATTERN)) {
     const specifier = match[1] ?? match[2] ?? match[3];
@@ -138,7 +138,7 @@ function isFile(path) {
 }
 
 /** The file a relative specifier names, or null when none exists. */
-export function resolveRelativeImport(fromAbsolute, specifier) {
+function resolveRelativeImport(fromAbsolute, specifier) {
   const target = resolve(dirname(fromAbsolute), specifier.split('?')[0]);
   if (isFile(target)) return target;
   // TypeScript ESM names `./x.js` for a `./x.ts` source.
@@ -160,7 +160,7 @@ export function resolveRelativeImport(fromAbsolute, specifier) {
  * are not followed. `cache` (absolute path -> source or null) is shared
  * across calls so a module imported by many scripts is read once.
  */
-export function localImportClosure(
+function localImportClosure(
   root,
   entryAbsolute,
   { readSource = (path) => readFileSync(path, 'utf8'), cache = new Map() } = {},
@@ -199,7 +199,7 @@ export function localImportClosure(
  * The `scripts/<name>.mjs` entry points a test source names: the path form
  * everywhere, and the bare-name form in `scripts/__tests__/` suites.
  */
-export function namedScripts(source, { testPath, scriptExists }) {
+function namedScripts(source, { testPath, scriptExists }) {
   const scripts = new Set();
   for (const match of source.matchAll(SCRIPT_FILE_PATTERN))
     if (scriptExists(match[0])) scripts.add(match[0]);

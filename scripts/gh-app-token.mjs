@@ -43,7 +43,7 @@ const DEFAULT_API_URL = 'https://api.github.com';
  * automation app is granted; a scope the app lacks makes GitHub refuse the
  * mint, which is the right failure.
  */
-export const REQUESTABLE_PERMISSIONS = Object.freeze({
+const REQUESTABLE_PERMISSIONS = Object.freeze({
   actions: Object.freeze(['read']),
   checks: Object.freeze(['read']),
   contents: Object.freeze(['read', 'write']),
@@ -58,7 +58,7 @@ export const DEFAULT_PERMISSIONS = Object.freeze(
   ),
 );
 
-export class GhAppTokenError extends Error {
+class GhAppTokenError extends Error {
   /** @param {string} message @param {number} exitCode */
   constructor(message, exitCode) {
     super(message);
@@ -75,7 +75,7 @@ function unconfigured(message) {
 }
 
 /** `name:level[,name:level]` -> a permissions object, strictly validated. */
-export function parsePermissions(text) {
+function parsePermissions(text) {
   const permissions = {};
   for (const item of String(text).split(',')) {
     const [name, level, extra] = item.trim().split(':');
@@ -95,7 +95,7 @@ export function parsePermissions(text) {
 }
 
 /** `[options..., '--', command...]` */
-export function parseArguments(argv) {
+function parseArguments(argv) {
   const separator = argv.indexOf('--');
   const own = separator === -1 ? argv : argv.slice(0, separator);
   const command = separator === -1 ? [] : argv.slice(separator + 1);
@@ -151,10 +151,7 @@ function insideRepository(path, root) {
  * else `~/.config/station/gh-app.json`). A config or key file inside the
  * repository is refused: a key must never be one `git add` from a commit.
  */
-export function resolveConfiguration({
-  env = process.env,
-  cwd = process.cwd(),
-} = {}) {
+function resolveConfiguration({ env = process.env, cwd = process.cwd() } = {}) {
   const configPath =
     env.STATION_GH_APP_CONFIG ||
     join(
@@ -241,7 +238,7 @@ export function decodeKeychainSecret(value) {
 }
 
 /** The PEM private key, from the key file when one is configured, else the Keychain. */
-export function readPrivateKey(config, { run = spawnSync } = {}) {
+function readPrivateKey(config, { run = spawnSync } = {}) {
   let pem;
   if (config.privateKeyPath) {
     try {
@@ -342,7 +339,7 @@ async function github(config, fetchImpl, path, { method = 'GET', jwt, body }) {
  * `permissions`. The installation is the configured one, or the app's single
  * installation on `config.owner`.
  */
-export async function mintInstallationToken({
+async function mintInstallationToken({
   config,
   permissions,
   privateKey,
@@ -390,7 +387,7 @@ export async function mintInstallationToken({
   return { token: minted.token, expiresAt: minted.expires_at, installationId };
 }
 
-export async function main({
+async function main({
   argv = process.argv.slice(2),
   env = process.env,
   cwd = process.cwd(),

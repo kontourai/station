@@ -132,7 +132,7 @@ export function transferBaselineShaFromPath(path) {
  * requires its HEAD to equal the base exactly and its dependencies to verify.
  * Deleting one is not, so pruning keeps the gate's own prefix.
  */
-export function reusableBaselineShaFromPath(path) {
+function reusableBaselineShaFromPath(path) {
   const name = basename(String(path).replace(/[/]+$/, ''));
   const match = name.match(
     /(?:^|[-_])transfer-baseline-([0-9a-f]{7,40})(?:-[^/]*)?$/,

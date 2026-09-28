@@ -13,7 +13,7 @@
 export const CI_FAST_STEP_MARKER_PATTERN = /^\[ci:fast\] step (\S+)$/;
 
 /** `npm run x` -> `x`; `node scripts/x.mjs --flag` -> `scripts/x.mjs`. */
-export function ciFastStepId(command, args) {
+function ciFastStepId(command, args) {
   if (command === 'npm' && args[0] === 'run' && args[1]) return args[1];
   return args.find((arg) => /\.[cm]?[jt]s$/.test(arg)) ?? command;
 }
