@@ -13,6 +13,7 @@ import {
   useRemoveAnswerSupportMutation,
   useReplaceAnswerSupportMutation,
 } from '../answer-support.js';
+import { useTaskTurnReferencesQuery } from '../query-domains/taskGraph.js';
 
 vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://station.test'),
@@ -134,6 +135,78 @@ describe('answer-support full Task cache revocation', () => {
         expect(query.data).toBeUndefined();
     },
   );
+});
+
+// Revocation has two independent paths. Each test below leaves only one of
+// them able to fire, so deleting either path turns exactly its test red.
+describe('answer-support revocation paths in isolation', () => {
+  function siblingKeys() {
+    return [
+      answerSupportQueries.cards(taskId).queryKey,
+      answerSupportQueries.claims(taskId, referenceA, 'bundle-a').queryKey,
+      answerSupportQueries.bundles(taskId, referenceB).queryKey,
+      answerSupportQueries.claims(taskId, referenceB, 'bundle-a').queryKey,
+    ];
+  }
+
+  it('revokes the Task scope from the fetch itself after its observer unmounts', async () => {
+    let release: (response: Response) => void = () => undefined;
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    seedProtectedScope(client);
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children);
+    const observer = renderHook(
+      () => useAnswerSupportBundlesQuery(taskId, referenceA),
+      { wrapper },
+    );
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    // With no mounted observer left, the post-commit effect cannot run; only
+    // the query function's own catch can revoke the siblings.
+    observer.unmount();
+    await act(async () => release(failure(404, 'Answer support unavailable')));
+    await waitFor(() => {
+      for (const key of siblingKeys())
+        expect(client.getQueryData(key)).toBeUndefined();
+    });
+  });
+
+  it('revokes the Task scope from a mounted observer when an unprotected reader of the shared cards key is refused', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(failure(404, 'Answer support unavailable')),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    seedProtectedScope(client);
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children);
+    // The Task-graph reader shares the cards key but has no revoking catch;
+    // the disabled answer-support observer never runs its own query function,
+    // so only its denied-state effect can revoke the siblings.
+    renderHook(
+      () => ({
+        cards: useAnswerSupportCardsQuery(taskId, { enabled: false }),
+        graph: useTaskTurnReferencesQuery(taskId),
+      }),
+      { wrapper },
+    );
+    await waitFor(() => {
+      for (const key of siblingKeys().slice(1))
+        expect(client.getQueryData(key)).toBeUndefined();
+    });
+  });
 });
 
 describe('answer-support mounted observer withholding', () => {
