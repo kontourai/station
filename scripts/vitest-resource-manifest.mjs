@@ -589,6 +589,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'ops/nightly/macos-build-only-cleanup.test.mjs',
   'ops/nightly/macos-build-only-artifact.test.mjs',
   'ops/nightly/macos-embedded-signing.test.mjs',
+  // Runs the signing-identity CLI as a child process so the installer's
+  // designated-requirement transition refusal is proven by its exit status.
+  'ops/nightly/macos-signing-identity.test.mjs',
   // Uses a real short-lived child that ignores SIGTERM so the notarization
   // runner proves its owned timeout escalation without relying on a mock.
   'ops/release/macos-notarized-artifacts.test.mjs',
@@ -960,6 +963,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // archive#3331: owns Chromium touch emulation for the sidebar reorder
   // handle's coarse-pointer visibility, size and hit testing.
   'src-ui/src/__tests__/ProjectSidebarReorder.coarseGeometry.test.tsx',
+  // #2062: owns Chromium touch emulation for the Boards row menu trigger's
+  // visibility, size, hit testing and clearance from the open menu.
+  'src-ui/src/__tests__/ProjectSidebarBoards.coarseGeometry.test.tsx',
   // Owns Chromium to measure the legacy action-row wrap and touch-target
   // floor against the real index.css cascade at a phone viewport.
   'src-ui/src/__tests__/legacy-action-row.touch-target.test.ts',

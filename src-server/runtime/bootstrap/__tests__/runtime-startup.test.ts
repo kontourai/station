@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   getActiveRuntimeProjectSlug,
-  initializeRuntimeUsageAggregator,
   prepareRuntimeStartup,
   seedRuntimeDefaultProviderConnection,
-  shouldRegisterRuntimeDefaultSkillRegistry,
 } from '../runtime-startup.js';
 
 describe('getActiveRuntimeProjectSlug', () => {
@@ -14,51 +12,6 @@ describe('getActiveRuntimeProjectSlug', () => {
         listProjects: () => [{ slug: 'project-a' }, { slug: 'project-b' }],
       } as any),
     ).toBe('project-a');
-  });
-});
-
-describe('shouldRegisterRuntimeDefaultSkillRegistry', () => {
-  test('honors app config and plugin overrides', () => {
-    expect(shouldRegisterRuntimeDefaultSkillRegistry(false, {})).toBe(true);
-    expect(shouldRegisterRuntimeDefaultSkillRegistry(true, {})).toBe(false);
-    expect(
-      shouldRegisterRuntimeDefaultSkillRegistry(false, {
-        'aws-internal': {
-          settings: { disableDefaultSkillRegistries: true },
-        },
-      }),
-    ).toBe(false);
-  });
-});
-
-describe('initializeRuntimeUsageAggregator', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  test('runs an immediate rescan and schedules a recurring rescan', async () => {
-    const timers: NodeJS.Timeout[] = [];
-    const logger = { info: vi.fn(), warn: vi.fn(), debug: vi.fn() };
-    const fullRescan = vi.fn(async () => {});
-    const usageAggregator = { fullRescan } as any;
-
-    const result = initializeRuntimeUsageAggregator(
-      '/tmp/project',
-      timers,
-      logger,
-      () => usageAggregator,
-    );
-
-    expect(result).toBe(usageAggregator);
-    expect(fullRescan).toHaveBeenCalledTimes(1);
-    expect(timers).toHaveLength(1);
-
-    await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
-    expect(fullRescan).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -247,7 +200,59 @@ describe('prepareRuntimeStartup', () => {
     expect(runStartupMigrations).toHaveBeenCalledWith('/tmp/project');
     expect(result).toBe(usageAggregator);
     expect(timers).toHaveLength(1);
+    // An immediate rescan, then one every 30 minutes.
+    expect(fullRescan).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
+    expect(fullRescan).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fullRescan).toHaveBeenCalledTimes(2);
   });
+
+  test.each([
+    {
+      name: 'app config disables default skill registries',
+      appConfig: { disableDefaultSkillRegistries: true },
+      overrides: {},
+    },
+    {
+      name: 'the aws-internal plugin override disables them',
+      appConfig: {},
+      overrides: {
+        'aws-internal': { settings: { disableDefaultSkillRegistries: true } },
+      },
+    },
+  ])(
+    'skips the default skill registry when $name',
+    async ({ appConfig, overrides }) => {
+      const createDefaultSkillRegistryProvider = vi.fn(async () => ({
+        id: 'default-skill-provider',
+      }));
+      const registerSkillRegistryProvider = vi.fn();
+
+      await prepareRuntimeStartup({
+        projectHomeDir: '/tmp/project',
+        appConfig,
+        storageAdapter: {
+          listProjects: vi.fn(() => []),
+          listProviderConnections: vi.fn(() => [
+            { id: 'existing', capabilities: ['llm'] },
+          ]),
+          saveProviderConnection: vi.fn(),
+        } as any,
+        configLoader: { loadPluginOverrides: vi.fn(async () => overrides) },
+        skillService: { discoverSkills: vi.fn(async () => {}) },
+        logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+        timers: [],
+        createUsageAggregator: () =>
+          ({ fullRescan: vi.fn(async () => {}) }) as any,
+        createDefaultSkillRegistryProvider,
+        registerSkillRegistryProvider,
+      });
+
+      expect(createDefaultSkillRegistryProvider).not.toHaveBeenCalled();
+      expect(registerSkillRegistryProvider).not.toHaveBeenCalled();
+    },
+  );
 
   test('seeds an llm provider after migrations add only vectordb providers', async () => {
     const timers: NodeJS.Timeout[] = [];

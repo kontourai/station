@@ -272,6 +272,46 @@ describe('client execution', () => {
     );
   });
 
+  test('keeps a refusal’s details, so the composer renders its structure (#1796)', async () => {
+    const details = {
+      requested: 'never',
+      requester: { kind: 'device', deviceId: 'c74f5951', deviceName: 'Laptop' },
+      station: {},
+      grant: {
+        by: 'operator',
+        scope: 'approval:full-access',
+        uiSteps: ['Step.'],
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Full access was not applied.',
+            code: 'approval-full-access-not-granted',
+            details,
+          }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+    const error = await sendExecutionMessage('http://station.test', {
+      message: 'hello',
+      target: { environment: { kind: 'current' }, agent: agentId('station') },
+    }).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(ChatHttpError);
+    expect(error).toMatchObject({
+      status: 403,
+      code: 'approval-full-access-not-granted',
+      details,
+    });
+  });
+
   test('preserves a coded orchestration refusal for the composer', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

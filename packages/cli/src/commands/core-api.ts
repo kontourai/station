@@ -465,7 +465,14 @@ export async function requestJson<T>(
     // the rule. The SDK's field-qualified rendering is the one every client
     // shares (#2708), so the CLI and the SDK print the same sentence.
     const fields = envelopeDetailsMessage(payload.details);
-    throw new Error(fields ? `${summary}: ${fields}` : summary);
+    const code = (payload as { code?: unknown }).code;
+    // Keep a stable refusal code (#1796) so a caller branches on it.
+    // `details` rides along untouched; a renderer parses it (#1796).
+    throw Object.assign(new Error(fields ? `${summary}: ${fields}` : summary), {
+      status: response.status,
+      ...(typeof code === 'string' ? { code } : {}),
+      ...(payload.details !== undefined ? { details: payload.details } : {}),
+    });
   }
 
   if (payload.data !== undefined) {

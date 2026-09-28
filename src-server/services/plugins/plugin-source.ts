@@ -516,8 +516,12 @@ export async function fetchPluginSource(
    * operator. A local tree is copied with every `.git` entry left out, and
    * local git is never cloned. An operator's own `station install <path>`
    * keeps its `.git`, which the update route relies on.
+   *
+   * `excludeGitMetadata`: a local source someone other than the operator
+   * proposed (#2719). Copied the same way, and, like a dependency, never a
+   * local git repository.
    */
-  options: { dependency?: boolean } = {},
+  options: { dependency?: boolean; excludeGitMetadata?: boolean } = {},
 ): Promise<{ tempDir: string; tempName: string } | { error: string }> {
   try {
     assertSupportedPluginSource(source);
@@ -570,6 +574,13 @@ export async function fetchPluginSource(
           'A plugin dependency cannot be a local git repository; name it by its remote URL',
       };
     }
+    if (options.excludeGitMetadata && isLocalGitSource(url)) {
+      rmSync(tempDir, { recursive: true, force: true });
+      return {
+        error:
+          'A proposed plugin install cannot be a local git repository; propose a plain folder or a remote git URL',
+      };
+    }
     const cloneArgs = ['clone', '--depth', '1'];
     if (branch) cloneArgs.push('--branch', branch);
     cloneArgs.push(url, tempDir);
@@ -607,7 +618,8 @@ export async function fetchPluginSource(
       // Async on purpose: `cpSync` aborts the process on an unreadable
       // directory (see `copyPluginTree`).
       await copyPluginTree(source, tempDir, {
-        excludeGitMetadata: options.dependency === true,
+        excludeGitMetadata:
+          options.dependency === true || options.excludeGitMetadata === true,
       });
     } catch (error: unknown) {
       // A copy that fails part-way (an unreadable file or directory, a FIFO)

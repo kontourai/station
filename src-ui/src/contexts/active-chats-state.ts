@@ -26,6 +26,7 @@ import {
 export type { UnsentMessageRecord } from '../types';
 
 import {
+  type FullAccessRefusalNotice,
   migratedApprovalPick,
   withoutLegacyApprovalMode,
 } from '../utils/approvalMode';
@@ -166,6 +167,8 @@ export type ChatMessage = {
 export type EphemeralMessage = ChatMessage & {
   action?: { label: string; handler: () => void };
   terminalSession?: boolean;
+  /** #1796: rendered by `FullAccessRefusalCard`, never as Markdown. */
+  fullAccessRefusal?: FullAccessRefusalNotice;
   id?: string;
   timestamp?: number;
   /** archive#1292: the one flag every ephemeral-notice reader checks. Always

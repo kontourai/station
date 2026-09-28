@@ -798,11 +798,12 @@ test('both macOS release paths retain the required signing-readiness topology an
     expect(job.steps[cleanup].run).toContain(
       'test "$helper_status" -eq 0 && test "$rm_status" -eq 0',
     );
-    const attestation = job.steps.findIndex(
-      (step) =>
-        step.uses ===
-        'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
+    // Match the action, not its pinned SHA: action pinning is owned by the
+    // workflow governance gates, and a bump must not break this ordering check.
+    const attestation = job.steps.findIndex((step) =>
+      step.uses?.startsWith('actions/attest-build-provenance@'),
     );
+    expect(attestation).toBeGreaterThan(-1);
     expect(cleanup).toBeLessThan(attestation);
   }
   // Signing lives in the staging phase only; the publishing cohort never

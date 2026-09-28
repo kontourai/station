@@ -101,7 +101,7 @@ import {
   WAIT_MAX_TIMEOUT_SECONDS,
   waitOnDelegatedTask,
 } from './delegate-wait.js';
-import { explainRequestFailure } from './errors.js';
+import { explainFullAccessRefusal, explainRequestFailure } from './errors.js';
 import {
   executionEnvironment,
   rejectRetiredExecutionSelectors,
@@ -585,7 +585,12 @@ function handleDelegateFailure(
 ): never {
   const message = error instanceof Error ? error.message : String(error);
   const transportMessage = explainRequestFailure(error, resolvedApiBase);
-  console.error('Error:', transportMessage ?? message);
+  console.error(
+    'Error:',
+    transportMessage ??
+      explainFullAccessRefusal(error, resolvedApiBase) ??
+      message,
+  );
   process.exit(transportMessage ? 2 : 3);
 }
 
