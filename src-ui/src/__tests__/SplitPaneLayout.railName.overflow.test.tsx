@@ -137,8 +137,6 @@ const READY_STATION_AGENT = {
 function railMarkup(agent: AgentData): string {
   const items = buildAgentsViewItems(
     [agent],
-    [],
-    undefined,
     { onChat: () => {}, onFix: () => {} },
     { readinessKnown: true },
   );

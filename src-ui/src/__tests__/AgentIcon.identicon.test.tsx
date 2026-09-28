@@ -38,20 +38,6 @@ describe('AgentIcon deterministic identicon fallback (station#1424)', () => {
     expect(hueA).not.toBe(hueB);
   });
 
-  test('the same agent always resolves to the same hue across separate renders', () => {
-    const { container: first } = render(
-      <AgentIcon agent={{ name: 'Repeat Agent', slug: 'repeat-agent' }} />,
-    );
-    const { container: second } = render(
-      <AgentIcon agent={{ name: 'Repeat Agent', slug: 'repeat-agent' }} />,
-    );
-    expect(
-      first.querySelector('.brand-icon--identicon')?.getAttribute('style'),
-    ).toBe(
-      second.querySelector('.brand-icon--identicon')?.getAttribute('style'),
-    );
-  });
-
   test('a recognized brand (Claude) never uses the identicon swatch — the real mark still wins', () => {
     const { container } = render(
       <AgentIcon agent={{ name: 'Claude Code', slug: 'claude' }} />,
@@ -61,26 +47,21 @@ describe('AgentIcon deterministic identicon fallback (station#1424)', () => {
   });
 
   describe('station#1424 review fix (S5): seeded only from a committed identifier', () => {
-    test('an agent with neither slug nor id gets NO identicon — the flat fallback, not a name-derived guess', () => {
-      const { container, getByText } = render(
-        <AgentIcon agent={{ name: 'Untitled Agent' }} />,
-      );
-      // Initials still render (the existing plain fallback)...
-      expect(getByText('UA')).toBeTruthy();
-      //...but never colorized from the live-typed name.
-      expect(container.querySelector('.brand-icon--identicon')).toBeNull();
-    });
-
-    test("retyping the name with no committed slug/id never changes the (absent) identicon — reproduces AgentEditorIdentityFields.tsx's live preview during agent creation", () => {
-      const { container: first } = render(<AgentIcon agent={{ name: 'A' }} />);
-      const { container: second } = render(
-        <AgentIcon agent={{ name: 'A Longer Typed Name' }} />,
-      );
-      // Both are the flat fallback — neither is a hue swatch of any kind —
-      // so there is nothing to cycle keystroke to keystroke.
-      expect(first.querySelector('.brand-icon--identicon')).toBeNull();
-      expect(second.querySelector('.brand-icon--identicon')).toBeNull();
-    });
+    // Retyping during creation (AgentEditorIdentityFields.tsx's live
+    // preview) must never colorize from the live-typed name.
+    test.each([
+      ['Untitled Agent', 'UA'],
+      ['A Longer Typed Name', 'AL'],
+    ])(
+      'an agent named %j with neither slug nor id gets NO identicon — the flat fallback, not a name-derived guess',
+      (name, initials) => {
+        const { container, getByText } = render(<AgentIcon agent={{ name }} />);
+        // Initials still render (the existing plain fallback)...
+        expect(getByText(initials)).toBeTruthy();
+        //...but never colorized from the live-typed name.
+        expect(container.querySelector('.brand-icon--identicon')).toBeNull();
+      },
+    );
 
     test('a committed slug seeds the identicon even when name keeps changing (post-commit stability)', () => {
       const { container: renamed } = render(
@@ -89,11 +70,16 @@ describe('AgentIcon deterministic identicon fallback (station#1424)', () => {
       const { container: original } = render(
         <AgentIcon agent={{ name: 'Original Name', slug: 'stable-slug' }} />,
       );
-      expect(
-        renamed.querySelector('.brand-icon--identicon')?.getAttribute('style'),
-      ).toBe(
-        original.querySelector('.brand-icon--identicon')?.getAttribute('style'),
-      );
+      const expectedHue = String(identiconHue('stable-slug'));
+      for (const container of [renamed, original]) {
+        const swatch = container.querySelector<HTMLElement>(
+          '.brand-icon--identicon',
+        );
+        expect(swatch).not.toBeNull();
+        expect(swatch?.style.getPropertyValue('--identicon-hue')).toBe(
+          expectedHue,
+        );
+      }
     });
   });
 });
