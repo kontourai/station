@@ -589,6 +589,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'ops/nightly/macos-build-only-cleanup.test.mjs',
   'ops/nightly/macos-build-only-artifact.test.mjs',
   'ops/nightly/macos-embedded-signing.test.mjs',
+  // Runs the signing-identity CLI as a child process so the installer's
+  // designated-requirement transition refusal is proven by its exit status.
+  'ops/nightly/macos-signing-identity.test.mjs',
   // Uses a real short-lived child that ignores SIGTERM so the notarization
   // runner proves its owned timeout escalation without relying on a mock.
   'ops/release/macos-notarized-artifacts.test.mjs',

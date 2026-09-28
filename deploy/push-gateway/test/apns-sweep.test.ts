@@ -2,13 +2,10 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'vitest';
 import { ApnsSender } from '../src/apns.ts';
 import {
-  MAX_SWEEP_DELETES,
-  MAX_SWEEP_SUBREQUESTS,
   parseSweepScopes,
   type SweepScope,
   sweepChannels,
 } from '../src/apns-sweep.ts';
-import { resetProviderTokenCacheForTest } from '../src/apns-token.ts';
 import { UNRECORDED_GRACE_SECONDS } from '../src/channel-ledger.ts';
 import { sweep } from '../src/worker.ts';
 import {
@@ -122,7 +119,6 @@ afterEach(() => {
   console.error = originalError;
 });
 beforeEach(() => {
-  resetProviderTokenCacheForTest();
   errors = [];
   console.error = (...args: unknown[]) => {
     errors.push(args.join(' '));
@@ -216,52 +212,49 @@ test('a run stays within its subrequest and delete caps and leaves the rest', as
     { length: 5 },
     (_, index) => `${String(index).padStart(4, '0')}CCCCCCCCCCCCCCCCCC==`,
   );
-  const { ledger, run, deletes, lists, fetchImpl } = await setup(
-    {
-      [`sandbox:${IOS_BUNDLE}`]: many,
-      [`sandbox:${OTHER_BUNDLE}`]: second,
-    },
-    [sandbox(), sandbox(OTHER_BUNDLE)],
-  );
-  void fetchImpl;
-  await run();
-  const before = {
-    apple: lists.length + deletes.length,
-    ledger: ledger.state.requests,
+  const backlog = () =>
+    setup(
+      { [`sandbox:${IOS_BUNDLE}`]: many, [`sandbox:${OTHER_BUNDLE}`]: second },
+      [sandbox(), sandbox(OTHER_BUNDLE)],
+    );
+  /** One run after the grace-starting run, and the subrequests it spent. */
+  const measured = async (
+    env: Awaited<ReturnType<typeof backlog>>,
+    options?: { maxDeletes?: number; maxSubrequests?: number },
+  ) => {
+    const total = () =>
+      env.lists.length + env.deletes.length + env.ledger.state.requests;
+    const before = total();
+    const report = await env.run(options);
+    return { report, spent: total() - before };
   };
-  const capped = await run();
-  const spent =
-    lists.length +
-    deletes.length -
-    before.apple +
-    ledger.state.requests -
-    before.ledger;
-  assert.ok(spent <= MAX_SWEEP_SUBREQUESTS, `spent ${spent}`);
-  assert.ok(capped.deleted <= MAX_SWEEP_DELETES, `deleted ${capped.deleted}`);
-  assert.equal(capped.deleted, MAX_SWEEP_DELETES);
-  assert.ok(capped.deferred > 0);
+
+  // Literal ceilings: Cloudflare Free allows 50 subrequests per invocation,
+  // and the README documents 45 per run with 40 deletes inside them.
+  const capped = await backlog();
+  await capped.run();
+  const deleteBound = await measured(capped);
+  assert.ok(deleteBound.spent <= 45, `spent ${deleteBound.spent}`);
+  assert.equal(deleteBound.report.deleted, 40);
+  assert.ok(deleteBound.report.deferred > 0);
   // Later runs finish the backlog.
-  await run();
-  await run();
-  assert.equal(new Set(deletes).size, 65);
+  await capped.run();
+  await capped.run();
+  assert.equal(new Set(capped.deletes).size, 65);
+
+  // With the delete cap lifted, the subrequest ceiling alone stops the run.
+  const wide = await backlog();
+  await wide.run();
+  const subrequestBound = await measured(wide, { maxDeletes: 1000 });
+  assert.equal(subrequestBound.spent, 45);
 
   // A tighter budget: nothing past it, scopes left whole for the next run.
-  const tight = await setup(
-    { [`sandbox:${IOS_BUNDLE}`]: many, [`sandbox:${OTHER_BUNDLE}`]: second },
-    [sandbox(), sandbox(OTHER_BUNDLE)],
-  );
+  const tight = await backlog();
   await tight.run();
-  const beforeTight =
-    tight.lists.length + tight.deletes.length + tight.ledger.state.requests;
-  const report = await tight.run({ maxSubrequests: 5 });
-  const tightSpent =
-    tight.lists.length +
-    tight.deletes.length +
-    tight.ledger.state.requests -
-    beforeTight;
-  assert.equal(tightSpent, 5);
+  const tightRun = await measured(tight, { maxSubrequests: 5 });
+  assert.equal(tightRun.spent, 5);
   // One purge, one list and one triage, then two deletes.
-  assert.equal(report.deleted, 2);
+  assert.equal(tightRun.report.deleted, 2);
 });
 
 test('purges expired records once per run, not once per scope', async () => {
