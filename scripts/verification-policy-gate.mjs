@@ -10,6 +10,7 @@ import {
   LANES,
   renderFullRegressionPhaseSchedule,
   renderLaneCatalogTable,
+  validateLaneCatalog,
 } from './verification-lanes.mjs';
 import {
   discoverVitestResourceGroups,
@@ -219,7 +220,7 @@ export const VERIFICATION_SCHEDULING_SECTION_END =
 export const VERIFICATION_SCHEDULING_DOCS = Object.freeze([
   'docs/guides/testing.md',
 ]);
-export const E2E_LATEST_GUIDANCE_MARKERS = Object.freeze([
+const E2E_LATEST_GUIDANCE_MARKERS = Object.freeze([
   'ignored latest E2E projection',
   '.kontourai/e2e-latest/index.html',
   '.kontourai/e2e-latest/manifest.json',
@@ -249,8 +250,6 @@ export function renderVerificationSchedulingSection(lanes = LANES) {
     VERIFICATION_SCHEDULING_SECTION_END,
   ].join('\n');
 }
-export const VERIFICATION_SCHEDULING_SECTION =
-  renderVerificationSchedulingSection();
 
 /**
  * Marker-bounded canonical policy section in AGENTS.md. Unlike the loose
@@ -439,6 +438,7 @@ export function verificationPolicyErrors({
 } = {}) {
   const errors = [];
   errors.push(...instructionGateErrors());
+  errors.push(...validateLaneCatalog(lanes).errors);
   for (const lane of lanes.filter((lane) => lane.id !== 'test-changed')) {
     const expected = `node scripts/run-verification.mjs request ${lane.id}`;
     if (manifest.scripts?.[lane.publicScript] !== expected)

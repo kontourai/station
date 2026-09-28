@@ -1,5 +1,5 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { stationTempRoot } from '@kontourai/station-shared/temp-dir';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -35,10 +35,14 @@ describe('vitest run root', () => {
     return dir;
   }
 
-  it('is unique per call, so concurrent runs cannot share one', () => {
+  // Unique and siblings: one run's teardown deletes its root wholesale, so a
+  // second root nested inside the first would be deleted with it.
+  it('is a unique sibling per call, so concurrent runs cannot share one', () => {
     const first = track(createVitestRunRoot());
     const second = track(createVitestRunRoot());
     expect(first).not.toBe(second);
+    expect(dirname(first)).toBe(stationTempRoot());
+    expect(dirname(second)).toBe(stationTempRoot());
   });
 
   it('lives under the Station temp root so the day-old sweep reclaims it', () => {
@@ -46,19 +50,5 @@ describe('vitest run root', () => {
     expect(
       root.startsWith(join(stationTempRoot(), VITEST_RUN_ROOT_PREFIX)),
     ).toBe(true);
-  });
-
-  // The whole point is that one run's teardown cannot reach another's homes.
-  // Deleting a run root must therefore leave a sibling run root untouched.
-  it('keeps a sibling run root intact when one is removed', () => {
-    const mine = track(createVitestRunRoot());
-    const theirs = track(createVitestRunRoot());
-    const theirHome = mkdtempSync(join(theirs, 'home-'));
-    const theirFile = join(theirHome, 'jobs.json');
-    writeFileSync(theirFile, '[]');
-
-    rmSync(mine, { recursive: true, force: true });
-
-    expect(() => rmSync(theirFile, { recursive: false })).not.toThrow();
   });
 });
