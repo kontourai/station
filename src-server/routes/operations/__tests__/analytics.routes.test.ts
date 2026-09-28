@@ -23,11 +23,15 @@ function createMockAggregator() {
 }
 
 describe('Analytics Routes', () => {
-  test('GET /usage returns stats', async () => {
+  test('GET /usage without a range returns the aggregator stats unchanged', async () => {
     const agg = createMockAggregator();
     const app = createAnalyticsRoutes(agg as any);
     const body = await json(await app.request('/usage'));
-    expect(body.data).toBeDefined();
+    expect(body).toEqual({
+      success: true,
+      data: { byDate: {}, totalMessages: 0, totalCost: 0 },
+    });
+    expect(agg.loadStats).toHaveBeenCalledOnce();
   });
 
   test('GET /usage returns 500 when not initialized', async () => {

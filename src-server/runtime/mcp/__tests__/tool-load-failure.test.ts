@@ -6,16 +6,16 @@ import {
 } from '../../../services/plugins/tool-server-oauth.js';
 import {
   describeLoaderFailure,
-  isLoaderMessageDataDerived,
   isLoaderProgrammingFailure,
-  LOADER_FAILURE_CLASS_LIMIT,
-  LOADER_FAILURE_DETAIL_LIMIT,
-  LOADER_WITHHELD_STATUS_REASON,
   loaderErrorClass,
-  loaderErrorName,
-  loaderFailureLabel,
   loaderStackFrames,
 } from '../tool-load-failure.js';
+
+// Pinned literals: a change to the surfaced reason or a bound must fail here.
+const LOADER_WITHHELD_STATUS_REASON =
+  'Tool load failed before any connection; detail withheld';
+const LOADER_FAILURE_CLASS_LIMIT = 60;
+const LOADER_FAILURE_DETAIL_LIMIT = 300;
 
 /**
  * These cover the pure classification only. The decision that matters in
@@ -25,22 +25,15 @@ import {
  * (#1486), including the arms an integration test can only reach one at a time.
  */
 describe('shared tool-load failure classification', () => {
-  test('separates the raw name used for matching from the bounded display class', () => {
-    expect(loaderErrorName(new TypeError('x'))).toBe('TypeError');
+  test('names the class for display, flattened and bounded', () => {
     expect(loaderErrorClass(new TypeError('x'))).toBe('TypeError');
-    // A non-Error has no name to match on; only the display form describes it.
-    expect(loaderErrorName('boom')).toBe('');
     expect(loaderErrorClass('boom')).toBe('non-error:string');
-    expect(loaderFailureLabel('boom')).toBe('Non-Error thrown (string)');
 
-    // `name` is a writable own property, so the DISPLAY form is flattened and
-    // bounded like any other surfaced text — while the RAW form, which the
-    // decision sets look up, is left exactly as thrown. Bounding the matching
-    // form would silently stop it matching a set entry.
+    // `name` is a writable own property, so the display form is flattened and
+    // bounded like any other surfaced text.
     const hostile = Object.assign(new Error('m'), {
-      name: `Evil\nName ${'x'.repeat(200)}`,
+      name: `Evil\nName ${'x'.repeat(200)}`,
     });
-    expect(loaderErrorName(hostile)).toBe(hostile.name);
     const displayed = loaderErrorClass(hostile);
     expect(displayed).toHaveLength(LOADER_FAILURE_CLASS_LIMIT);
     expect(displayed.endsWith('… (truncated)')).toBe(true);
@@ -94,11 +87,11 @@ describe('shared tool-load failure classification', () => {
   });
 
   test('withholds the message of classes AND codes whose text is composed from the data examined', () => {
-    expect(isLoaderMessageDataDerived(new SyntaxError('x'))).toBe(true);
+    const withheld = (error: unknown) =>
+      describeLoaderFailure(error).messageWithheld;
+    expect(withheld(new SyntaxError('x'))).toBe(true);
     expect(
-      isLoaderMessageDataDerived(
-        Object.assign(new Error('x'), { name: 'AssertionError' }),
-      ),
+      withheld(Object.assign(new Error('x'), { name: 'AssertionError' })),
     ).toBe(true);
     for (const code of [
       'ERR_ASSERTION',
@@ -106,17 +99,15 @@ describe('shared tool-load failure classification', () => {
       'ERR_INVALID_ARG_VALUE',
       'ERR_OUT_OF_RANGE',
     ]) {
-      expect(
-        isLoaderMessageDataDerived(Object.assign(new TypeError('x'), { code })),
-      ).toBe(true);
+      expect(withheld(Object.assign(new TypeError('x'), { code }))).toBe(true);
     }
-    expect(isLoaderMessageDataDerived('thrown string')).toBe(true);
+    expect(withheld('thrown string')).toBe(true);
 
-    expect(isLoaderMessageDataDerived(new TypeError('x'))).toBe(false);
-    expect(isLoaderMessageDataDerived(new ReferenceError('x'))).toBe(false);
-    expect(isLoaderMessageDataDerived(new RangeError('x'))).toBe(false);
-    expect(isLoaderMessageDataDerived(new EvalError('x'))).toBe(false);
-    expect(isLoaderMessageDataDerived(new URIError('x'))).toBe(false);
+    expect(withheld(new TypeError('x'))).toBe(false);
+    expect(withheld(new ReferenceError('x'))).toBe(false);
+    expect(withheld(new RangeError('x'))).toBe(false);
+    expect(withheld(new EvalError('x'))).toBe(false);
+    expect(withheld(new URIError('x'))).toBe(false);
   });
 
   test("withholds a real Node argument-validation TypeError's inspected value", () => {
@@ -132,7 +123,7 @@ describe('shared tool-load failure classification', () => {
     } catch (error) {
       thrown = error;
     }
-    expect(loaderErrorName(thrown)).toBe('TypeError');
+    expect((thrown as Error).name).toBe('TypeError');
     expect((thrown as { code?: string }).code).toBe('ERR_INVALID_ARG_TYPE');
     expect((thrown as Error).message).toContain(String(canary));
 

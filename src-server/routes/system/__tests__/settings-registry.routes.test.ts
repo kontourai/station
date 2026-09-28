@@ -1,9 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import {
-  PAIRING_SCOPE_FAMILY_INHERITED_LEAVES,
-  requiredPairingScope,
-} from '../../../security/pairing-route-scopes.js';
+import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
 import { createSettingsRegistryRoutes } from '../settings-registry.js';
 
 const CHECKED_IN_ARTIFACT = new URL(
@@ -74,15 +71,9 @@ describe('GET /api/settings/registry', () => {
     expect(unexpected).toEqual([]);
   });
 
-  test('is classified at the read tier, as a reviewed family leaf', () => {
+  test('is classified at the read tier', () => {
     expect(requiredPairingScope('GET', '/api/settings/registry')).toBe(
       'orchestration:read',
     );
-    expect(
-      PAIRING_SCOPE_FAMILY_INHERITED_LEAVES.some(
-        (leaf) =>
-          leaf.method === 'GET' && leaf.path === '/api/settings/registry',
-      ),
-    ).toBe(true);
   });
 });

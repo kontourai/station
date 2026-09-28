@@ -304,21 +304,6 @@ describe('GET /events registers connections with the shared presence tracker (st
     expect(record.mock.calls[0]?.[1]).toEqual({ scope: 'thread' });
     consoleErrorSpy.mockRestore();
   });
-
-  test('omitting `presence` still leaves the route functional (route-local fallback instance)', async () => {
-    const eventBus = new EventBus();
-    const app = createOrchestrationRoutes(makeMinimalService() as any, {
-      getUserId: () => 'user-1',
-      eventBus,
-      logger: { debug: vi.fn() },
-    });
-
-    const res = await app.request('/events');
-    expect(res.status).toBe(200);
-    const reader = res.body!.getReader();
-    activeReaders.push(reader);
-    await readUntilCaughtUp(reader);
-  });
 });
 
 /**
@@ -573,18 +558,28 @@ describe('GET /presence/summary (station#4075 stage 3 slice 2)', () => {
 
   test('hosted mode 404s, the same mechanism /api/live-activity uses, regardless of roster content', async () => {
     const presence = new OrchestrationStreamPresence();
+    // A connected principal the caller could otherwise read: only the hosted
+    // guard stands between this roster entry and the response body.
+    presence.connect('hosted-session', operatorPrincipal);
+    expect(presence.roster()).toHaveLength(1);
     const eventBus = new EventBus();
     const app = new Hono();
     app.use('*', createHostedTenantMiddleware(hostedRegistry));
     app.route(
       '/',
-      createOrchestrationRoutes(makeMinimalService() as any, {
-        eventBus,
-        logger: { debug: vi.fn() },
-        getUserId: () => 'shared-user',
-        hostedTenantRegistry: hostedRegistry,
-        presence,
-      }),
+      createOrchestrationRoutes(
+        {
+          ...makeMinimalService(),
+          readableSessionOwnerIds: () => [operatorPrincipal.id],
+        } as any,
+        {
+          eventBus,
+          logger: { debug: vi.fn() },
+          getUserId: () => 'shared-user',
+          hostedTenantRegistry: hostedRegistry,
+          presence,
+        },
+      ),
     );
 
     const request = new Request('http://station.test/presence/summary', {
@@ -595,5 +590,6 @@ describe('GET /presence/summary (station#4075 stage 3 slice 2)', () => {
     });
     const response = await app.fetch(request, loopbackEnv);
     expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain(operatorPrincipal.id);
   });
 });

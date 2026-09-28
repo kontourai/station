@@ -31,5 +31,13 @@ describe('developer service command probes', () => {
         true,
       ),
     ).toBe('error');
+    // A plain probe (`git --version`) has no sign-in to ask for: a nonzero
+    // exit is a failure, not a missing sign-in.
+    expect(
+      classifyCommandProbe(
+        Object.assign(new Error('exited 1'), { code: 1 }),
+        false,
+      ),
+    ).toBe('error');
   });
 });

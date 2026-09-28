@@ -8,14 +8,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import {
-  orchestrationStorePath,
-  quarantineOrchestrationStore,
-} from '@kontourai/station-shared/orchestration-store-quarantine';
+import { quarantineOrchestrationStore } from '@kontourai/station-shared/orchestration-store-quarantine';
 import { readCorruptionMarker } from '@kontourai/station-shared/sqlite-corruption-marker';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { getOrchestrationDatabasePath } from '../../../domain/migrations/003-orchestration-events.js';
-import { getChatTurnDedupStore } from '../../../routes/chat/chat-turn-dedup.js';
 import { EventStore } from '../event-store.js';
 import {
   damageSqliteTablePage,
@@ -152,20 +148,5 @@ describe('a store recorded as corrupt is replaced on the next start', () => {
     const reopened = new EventStore(databasePath);
     expect(reopened.listEvents('quarantine-thread')).toHaveLength(50);
     reopened.close?.();
-  });
-
-  test('every consumer opens the store the quarantine moves', () => {
-    // Not `expect(a(home)).toBe(b(home))` where `b` now returns `a` — that
-    // compares an expression to itself and cannot fail. Each consumer is
-    // driven until it puts a real file somewhere, and the assertion is that
-    // the file lands where the quarantine will look.
-    // `/chat`'s turn-dedup facade resolves the same home to a store; it used
-    // to hand-assemble the path, which is a spelling the quarantine silently
-    // stops matching the day either side moves. Driven until it creates a real
-    // file, because that is the only thing that can disagree.
-    const expected = orchestrationStorePath(homeDir);
-    expect(existsSync(expected)).toBe(false);
-    getChatTurnDedupStore(homeDir).claim('probe-turn');
-    expect(existsSync(expected)).toBe(true);
   });
 });

@@ -11,13 +11,7 @@
  * the same shape in the VoltAgent loader reported as "Could not connect to
  * integration 'x'" (#1486).
  *
- * ONLY `loadAgentTools` CONSUMES THIS MODULE TODAY. The Strands loader carries
- * its own copy of these decisions, in flight as #1489/#1485 — the two were
- * developed in parallel and this module is the extraction of that branch's
- * final state, so the loaders agree on the rule before they agree on the code.
- * Folding the Strands loader onto this module is the follow-up that makes the
- * vocabulary literally shared rather than merely identical; until it lands, a
- * change here must be mirrored there.
+ * Both loaders consume this module, so the redaction decision has one copy.
  *
  * These are pure functions over the thrown value. The PHASE — whether this
  * iteration had already attempted a connection — is the caller's to track, and
@@ -123,9 +117,9 @@ const LOADER_DATA_DERIVED_MESSAGE_CODES = new Set([
  * reaches a status map an HTTP response renders. The limit is the TOTAL
  * length, truncation marker included.
  */
-export const LOADER_FAILURE_DETAIL_LIMIT = 300;
+const LOADER_FAILURE_DETAIL_LIMIT = 300;
 /** A class name is an identifier; nothing legitimate needs more than this. */
-export const LOADER_FAILURE_CLASS_LIMIT = 60;
+const LOADER_FAILURE_CLASS_LIMIT = 60;
 const LOADER_FAILURE_TRUNCATION_MARK = '… (truncated)';
 /** Enough frames to locate the failing call without unbounded log growth. */
 const LOADER_STACK_FRAME_LIMIT = 20;
@@ -138,7 +132,7 @@ const LOADER_STACK_FRAME_LIMIT_CHARS = 200;
  * withheld) — both derived here — and nothing about WHY the throw happened,
  * which is the part this branch has determined it cannot safely quote.
  */
-export const LOADER_WITHHELD_STATUS_REASON =
+const LOADER_WITHHELD_STATUS_REASON =
   'Tool load failed before any connection; detail withheld';
 
 /**
@@ -161,7 +155,7 @@ function boundText(text: string, limit: number): string {
  * matters because the display form is flattened and bounded, and a bounded
  * label would silently stop matching a set entry.
  */
-export function loaderErrorName(error: unknown): string {
+function loaderErrorName(error: unknown): string {
   return error instanceof Error
     ? error.name || error.constructor?.name || 'Error'
     : '';
@@ -184,7 +178,7 @@ export function loaderErrorClass(error: unknown): string {
 }
 
 /** How the surfaced detail names the throw. */
-export function loaderFailureLabel(error: unknown): string {
+function loaderFailureLabel(error: unknown): string {
   return error instanceof Error
     ? loaderErrorClass(error)
     : boundText(
@@ -220,7 +214,7 @@ export function isLoaderProgrammingFailure(error: unknown): boolean {
 }
 
 /** Decision 2: is the throw's message composed from data rather than program text? */
-export function isLoaderMessageDataDerived(error: unknown): boolean {
+function isLoaderMessageDataDerived(error: unknown): boolean {
   if (!(error instanceof Error)) return true;
   return (
     LOADER_DATA_DERIVED_MESSAGE_NAMES.has(loaderErrorName(error)) ||

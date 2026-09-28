@@ -212,6 +212,12 @@ describe('bounded ci:fast runner', () => {
       [process.execPath, ['scripts/test-realtime-wait-gate.mjs']],
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
+      // #2922: verify:static gates that otherwise first fail in the queue.
+      ['npm', ['run', 'gate:evidence-check-execution']],
+      ['npm', ['run', 'install-script:check']],
+      ['npm', ['run', 'mobile:permissions:gate']],
+      ['npm', ['run', 'agent-plugin:validators:gate']],
+      ['npm', ['run', 'settings:registry:gate']],
       ['npm', ['run', 'content:integrity']],
       ['npm', ['run', 'content:excluded-names']],
       // CLI help ↔ docs/reference/cli.md parity: a help topic without a
