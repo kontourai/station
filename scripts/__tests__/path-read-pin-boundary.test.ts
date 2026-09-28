@@ -489,6 +489,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture directory',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  'packages/cli/src/__tests__/profile.test.ts':
+    'lists the saved Station store directory under its temporary STATION_HOME',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts':
     'walks packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
