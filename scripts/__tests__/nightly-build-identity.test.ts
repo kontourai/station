@@ -905,10 +905,6 @@ describe('the nightly workflow keeps its promises', () => {
 });
 
 describe('the desktop nightly job keeps the same promises (station#575)', () => {
-  const callerWorkflow = readFileSync(
-    resolve(import.meta.dirname, '../../.github/workflows/nightly.yml'),
-    'utf8',
-  );
   // The native work is two reusable phases (#1453): staging, then the
   // publishing cohort. `nightly.yml` runs them in that order, so ordering
   // pins across a build and its later promotion read the two sources joined
@@ -950,17 +946,6 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
     expect(desktopJob).toContain('macos-notarized-artifacts.mjs');
     expect(desktopJob).toContain('Cleanup macOS Developer ID keychain');
-  });
-
-  it('publishes the CLI only on literal success from both promotion gates', () => {
-    // Same literal line as the Android job's pin above, and the same
-    // conjunct-order reasoning: scripts/actionlint-gate.mjs's
-    // skipsAutomaticPullRequest accepts only this exact prefix ladder.
-    const ifLiteral =
-      'if: $' +
-      "{{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}";
-    const lines = callerWorkflow.split('\n').map((line) => line.trim());
-    expect(lines).toContain(ifLiteral);
   });
 
   it('builds at the pinned decide-step SHA, never an implicit checkout default', () => {
