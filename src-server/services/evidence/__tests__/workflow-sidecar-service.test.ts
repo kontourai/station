@@ -57,6 +57,17 @@ function validState(taskSlug: string): WorkflowState {
   };
 }
 
+/**
+ * Schema-invalid only under the package schema, which forbids unknown
+ * top-level fields; the structural fallback does not check for them.
+ */
+function packageOnlyViolation(taskSlug: string): WorkflowState {
+  return {
+    ...validState(taskSlug),
+    unknown_field: true,
+  } as unknown as WorkflowState;
+}
+
 describe('WorkflowSidecarService', () => {
   let cwd: string;
   let service: InstanceType<typeof WorkflowSidecarService>;
@@ -99,10 +110,6 @@ describe('WorkflowSidecarService', () => {
         .sort(),
     ).toEqual(['three', 'two']);
     expect(flowAgentsArtifactRoot).toHaveBeenCalledTimes(2);
-  });
-
-  test('loads the schema files from the installed package', () => {
-    expect(service.schemaAvailable).toBe(true);
   });
 
   test('round-trips a schema-valid state through the Flow Agents writer', () => {
@@ -272,20 +279,16 @@ describe('WorkflowSidecarService', () => {
     ).toThrow(WorkflowSidecarInvalidError);
   });
 
-  test('rejects writes that violate the package schema (status enum)', () => {
-    const bad = {
-      ...validState('demo'),
-      status: 'bogus',
-    } as unknown as WorkflowState;
-    expect(() => service.writeState(cwd, 'demo', bad)).toThrow(
-      WorkflowSidecarInvalidError,
-    );
+  test('rejects writes that only the package schema forbids', () => {
+    expect(() =>
+      service.writeState(cwd, 'demo', packageOnlyViolation('demo')),
+    ).toThrow(WorkflowSidecarInvalidError);
     expect(
       existsSync(join(cwd, '.kontourai', 'flow-agents', 'demo', 'state.json')),
     ).toBe(false);
   });
 
-  test('rejects writes that violate the package schema (missing next_action.summary)', () => {
+  test('rejects writes missing next_action.summary', () => {
     const bad = {
       ...validState('demo'),
       next_action: { status: 'continue' },
@@ -542,7 +545,9 @@ describe('WorkflowSidecarService', () => {
       packageRoot: join(cwd, 'nowhere'),
       logger,
     });
-    expect(fallback.schemaAvailable).toBe(false);
+    // Only the package schema refuses this, so the fallback admitting it
+    // proves the package schemas were not discovered.
+    fallback.writeState(cwd, 'demo', packageOnlyViolation('demo'));
 
     // Structural fallback still enforces the documented shape…
     fallback.writeState(cwd, 'demo', validState('demo'));
