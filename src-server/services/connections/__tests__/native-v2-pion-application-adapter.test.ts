@@ -429,15 +429,21 @@ describe('native v2 Pion application adapter', () => {
     expect(carried?.peerNonce).toBe(h.offer.nonce);
     expect(carried?.peerNonce).not.toBe(requestNonce);
 
+    const forgedNonce = randomBytes(32).toString('base64url');
+    expect(forgedNonce).not.toBe(requestNonce);
+    const forgedHeaders = new Headers(observed.headers);
+    forgedHeaders.set('x-station-peer-nonce', forgedNonce);
     const forged = new Request(observed.url, {
       method: observed.method,
-      headers: {
-        ...Object.fromEntries(observed.headers),
-        'x-station-peer-nonce': requestNonce,
-      },
-      body: JSON.stringify({ peerNonce: requestNonce }),
+      headers: forgedHeaders,
+      body: new Blob([JSON.stringify({ peerNonce: requestNonce })]),
       duplex: 'half',
     });
+    const withoutReportedNonce = (headers: Headers) =>
+      [...headers].filter(([name]) => name !== 'x-station-peer-nonce');
+    expect(withoutReportedNonce(forged.headers)).toEqual(
+      withoutReportedNonce(observed.headers),
+    );
     expect(
       transferVerifiedNativeVirtualApplicationRequest(observed, forged),
     ).toBe(false);
