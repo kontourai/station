@@ -15,8 +15,10 @@ runtime claims. Unlisted documents remain unreviewed.
 
 A record states its review scope, supporting source files, checks, and limits.
 It binds the reviewed Markdown and code to content hashes. If either changes,
-the reader shows **Review out of date** and the documentation checks require the
-record to be revisited. Refresh those hashes only after reviewing the changed
+the reader shows **Review out of date**. The documentation checks require the
+change that touched those bytes to revisit the record; see
+[keeping reviews fresh](../guides/documentation.md#keep-reviews-fresh). Refresh
+the hashes with `npm run docs:review:record` only after reviewing the changed
 claim and evidence; changing a hash by itself is not a review.
 
 The deploy ledger has a narrower generated-output contract. Its current data
@@ -76,15 +78,19 @@ not autoplay. Keep a written explanation of the steps alongside a video.
 `media.json` admits tracked PNG screenshots and WebM recordings under
 `docs/learn/media/`. It records the asset digest, source dependencies and owning
 documents. The builder uses local immutable URLs, preserves original capture
-provenance, and warns when supporting code has changed; the strict check refuses
-stale reviews. Unlisted or remote images remain links and are not fetched inline.
+provenance, and warns when supporting code has changed. The check refuses a
+stale capture when the current change touched it, its sources or its manifest
+entry. Unlisted or remote images remain links and are not fetched inline.
 
 When adding a capture, inspect it for private data, record the actual fixture or
 service used, and add its asset and source dependencies to each owning document's
 review record. This connects UI changes to the impact/catch-up report. Re-capture
 when behavior or presentation changes; if a reviewed code delta leaves the image
 accurate, retain its capture revision and record the new review revision and
-source hashes. Never relabel old media as a new capture.
+source hashes with `npm run docs:review:record -- docs/learn/media/<file> --note
+"<what you checked>"`. The note is kept in the capture's `reviewNotes`. The
+command refuses a capture whose image bytes changed. Never relabel old media as
+a new capture.
 
 ## Reading branches
 

@@ -5,10 +5,20 @@ import { dirname, join } from 'node:path';
 import { expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { buildLearningGuide } from '../build-learning-guide.mjs';
+import {
+  freshnessRequirement,
+  resolveDocumentationFreshness,
+} from '../lib/documentation-freshness.mjs';
 import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 import { renderLearningDocument } from '../lib/learning-markdown.mjs';
 import { compileLearningMedia } from '../lib/learning-media.mjs';
 import { createLearningSourceReader } from '../lib/learning-source-reader.mjs';
+import {
+  forbidAmbientFreshnessMode,
+  JOB_ENV,
+} from './helpers/freshness-env.js';
+
+forbidAmbientFreshnessMode();
 
 const image = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII=',
@@ -158,8 +168,10 @@ it('the real builder publishes immutable media bytes and its strict entry detect
     ...capture,
     path: 'docs/learn/media/task capture.png',
   };
-  write('guide.md', `# Guide\n\n![Task](<${localCapture.path}>)\n`);
+  const guide = `# Guide\n\n![Task](<${localCapture.path}>)\n`;
+  write('guide.md', guide);
   write('code.ts', source);
+  write('owner.ts', 'export const owner = 1;\n');
   write(localCapture.path, image);
   write(
     'docs/architecture/module-map.md',
@@ -181,9 +193,28 @@ it('the real builder publishes immutable media bytes and its strict entry detect
       ],
     }),
   );
+  const digest = (bytes: string) =>
+    createHash('sha256').update(bytes).digest('hex');
   write(
     'docs/learn/review-ledger.json',
-    JSON.stringify({ version: 1, records: [] }),
+    JSON.stringify({
+      version: 1,
+      records: [
+        {
+          path: 'guide.md',
+          documentDigest: digest(guide),
+          sourceRevision: 'a'.repeat(40),
+          kind: 'current',
+          state: 'source-reviewed',
+          summary: 'Checked the owner.',
+          limits: 'Fixture only.',
+          sources: [
+            { path: 'owner.ts', digest: digest('export const owner = 1;\n') },
+          ],
+          checks: ['Fixture evidence.'],
+        },
+      ],
+    }),
   );
   write(
     'docs/learn/media.json',
@@ -224,9 +255,40 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   expect(
     result.documents.find((doc) => doc.path === 'guide.md')?.html,
   ).toContain(url);
+  git(['branch', 'fixture-base']);
   write('code.ts', 'changed UI');
-  await expect(buildLearningGuide({ root, check: true })).rejects.toThrow(
-    'Learning capture needs review',
+  // #2923: docs:learn:check follows the shared freshness policy. Each check
+  // pins its environment; the ambient mode is forbidden in this file (#2934).
+  const check = (env: NodeJS.ProcessEnv) =>
+    buildLearningGuide({
+      root,
+      check: true,
+      freshness: resolveDocumentationFreshness({ root, env }),
+    });
+  const pr = { STATION_DOCS_FRESHNESS_BASE: 'fixture-base' };
+  const queue = { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'merge_group' };
+  // No base resolves in this repository, so the scope is unknown: strict.
+  await expect(check({})).rejects.toThrow('Learning capture needs review');
+  // The change owns its stale capture; the merge queue only reports it.
+  await expect(check(pr)).rejects.toThrow('Learning capture needs review');
+  const queued = await check(queue);
+  expect(queued.captures[0].changed).toEqual(['code.ts']);
+  // The same decision governs review records in the builder.
+  write('code.ts', source);
+  write('owner.ts', 'export const owner = 2;\n');
+  const reviewed = await check(queue);
+  expect(
+    reviewed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
+  ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
+  // A source removed by another change is a stale input in the queue,
+  // not a malformed ledger.
+  git(['rm', '-qf', 'owner.ts']);
+  const removed = await check(queue);
+  expect(
+    removed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
+  ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
+  await expect(check(pr)).rejects.toThrow(
+    'Documentation review needs refresh: guide.md; changed: owner.ts',
   );
   expect(
     readFileSync(
@@ -249,11 +311,20 @@ it('checks the actual capture manifest and recorded source bytes in the required
   const manifest = JSON.parse(
     reader.read('docs/learn/media.json').toString('utf8'),
   );
+  // #2923: the same scoped/advisory/strict decision as the review ledger.
   const captures = await compileLearningMedia(
     manifest,
     files,
     async (path: string) => reader.read(path),
-    { requireFresh: true },
+    {
+      // The real manifest runs in the job's own mode: scoped on a pull
+      // request, advisory in the merge queue and repo-scans job.
+      requireFresh: freshnessRequirement(
+        resolveDocumentationFreshness({ root: process.cwd(), env: JOB_ENV }),
+        'capture',
+      ),
+      reportMissing: true,
+    },
   );
   expect(captures.size).toBeGreaterThan(0);
   expect(captures.size).toBe(manifest.captures.length);

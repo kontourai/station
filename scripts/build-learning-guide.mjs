@@ -8,6 +8,11 @@ import {
   assertMarkdownLinks,
   findBrokenRenderedMarkdownLinks,
 } from './check-markdown-links.mjs';
+import {
+  formatFreshnessAdvisory,
+  freshnessRequirement,
+  resolveDocumentationFreshness,
+} from './lib/documentation-freshness.mjs';
 import { extractModules, validateCatalog } from './lib/documentation-model.mjs';
 import { compileDocumentationReviews } from './lib/documentation-review.mjs';
 import { publishImmutableSnapshot } from './lib/immutable-snapshot.mjs';
@@ -69,9 +74,16 @@ export function learningClientData(data) {
   };
 }
 
+/**
+ * @param {{ check?: boolean, root?: string, freshness?: ReturnType<typeof resolveDocumentationFreshness> }} [options]
+ * `check` refuses stale reviews and captures under the shared freshness
+ * policy (scoped to the change by default); a normal build marks them
+ * `needs-review` instead.
+ */
 export async function buildLearningGuide({
   check = false,
   root: inputRoot = root,
+  freshness,
 } = {}) {
   const reader = createLearningSourceReader(inputRoot);
   const tracked = git(['ls-files', '-z'], inputRoot)
@@ -94,6 +106,9 @@ export async function buildLearningGuide({
       capturedSources.set(file, reader.read(file));
     return capturedSources.get(file);
   }
+  const policy = check
+    ? (freshness ?? resolveDocumentationFreshness({ root: inputRoot }))
+    : undefined;
   const media = sourceFiles.has(LEARNING_MEDIA_MANIFEST)
     ? await compileLearningMedia(
         JSON.parse(
@@ -101,7 +116,10 @@ export async function buildLearningGuide({
         ),
         sourceFiles,
         captureSource,
-        { requireFresh: check },
+        {
+          requireFresh: policy && freshnessRequirement(policy, 'capture'),
+          reportMissing: Boolean(policy),
+        },
       )
     : new Map();
   const catalog = JSON.parse(
@@ -171,8 +189,27 @@ export async function buildLearningGuide({
     new Map(documents.map((doc) => [doc.path, doc.digest])),
     sourceFiles,
     captureSource,
-    { requireFresh: check },
+    {
+      requireFresh: policy && freshnessRequirement(policy, 'review'),
+      reportMissing: Boolean(policy),
+    },
   );
+  if (policy) {
+    const advisory = formatFreshnessAdvisory(
+      policy,
+      [
+        ...[...media.values()].map((capture) => ({
+          ...capture,
+          kind: 'capture',
+        })),
+        ...[...reviews.values()].map((review) => ({
+          ...review,
+          kind: 'review',
+        })),
+      ].filter((entry) => entry.changed.length),
+    );
+    if (advisory) console.warn(advisory);
+  }
   const renderedModules = modules.map(({ text, ...module }) => {
     const { html, headings } = renderLearningDocument(
       text,
@@ -195,11 +232,17 @@ export async function buildLearningGuide({
       ...(sourceFiles.has(LEARNING_MEDIA_MANIFEST)
         ? [LEARNING_MEDIA_MANIFEST]
         : []),
+      // A check reports untracked recorded sources as stale; they have no
+      // bytes to snapshot.
       ...[...media.values()].flatMap((capture) =>
-        capture.sources.map((source) => source.path),
+        capture.sources
+          .map((source) => source.path)
+          .filter((file) => sourceFiles.has(file)),
       ),
       ...[...reviews.values()].flatMap((review) =>
-        review.sources.map((source) => source.path),
+        review.sources
+          .map((source) => source.path)
+          .filter((file) => sourceFiles.has(file)),
       ),
       ...[...documents, ...renderedModules].flatMap((doc) =>
         [...doc.html.matchAll(/href="sources\/([^"#]+)\.txt"/g)].map((match) =>

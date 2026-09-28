@@ -96,14 +96,75 @@ describe('MCP Apps sandbox proxy', () => {
       'cross-origin',
     );
     expect(response.headers.get('set-cookie')).toBeNull();
+  });
 
-    const html = await response.text();
-    expect(html).toContain('ui/notifications/sandbox-proxy-ready');
-    expect(html).toContain('ui/notifications/sandbox-resource-ready');
-    expect(html).toContain('event.source === window.parent');
-    expect(html).toContain('event.source === inner.contentWindow');
-    expect(html).toContain("startsWith('ui/notifications/sandbox-')");
-    expect(html).toContain('replaceChildren(frame)');
+  test('relays only between the bound parent and the mounted app, never reserved lifecycle methods', () => {
+    const origin = 'https://station.example.test';
+    const harness = runProxyDocument([origin]);
+    const resource = (html: string) => ({
+      jsonrpc: '2.0',
+      method: 'ui/notifications/sandbox-resource-ready',
+      params: { html },
+    });
+
+    // An allowed origin is not enough: the resource must come from the parent.
+    harness.dispatch({
+      data: resource('<main>sibling payload</main>'),
+      origin,
+      source: {},
+    });
+    expect(harness.mountedFrame()).toBeUndefined();
+
+    harness.dispatch({
+      data: resource('<main>parent payload</main>'),
+      origin,
+      source: harness.parent,
+    });
+    const frame = harness.mountedFrame();
+    expect(frame?.srcdoc).toContain('parent payload');
+    const readyCalls = harness.parent.postMessage.mock.calls.length;
+
+    const appMessage = { jsonrpc: '2.0', method: 'tools/call', params: {} };
+    // A window that is neither the parent nor the mounted app is not relayed.
+    harness.dispatch({ data: appMessage, origin, source: {} });
+    // The app cannot speak the proxy's reserved lifecycle upward...
+    harness.dispatch({
+      data: {
+        jsonrpc: '2.0',
+        method: 'ui/notifications/sandbox-proxy-ready',
+        params: {},
+      },
+      origin: 'null',
+      source: frame?.contentWindow,
+    });
+    expect(harness.parent.postMessage).toHaveBeenCalledTimes(readyCalls);
+    // ...nor can the host push one down into the app.
+    harness.dispatch({
+      data: {
+        jsonrpc: '2.0',
+        method: 'ui/notifications/sandbox-proxy-ready',
+        params: {},
+      },
+      origin,
+      source: harness.parent,
+    });
+    expect(frame?.contentWindow.postMessage).not.toHaveBeenCalled();
+
+    // Positive controls: the same channels do relay ordinary messages.
+    harness.dispatch({
+      data: appMessage,
+      origin: 'null',
+      source: frame?.contentWindow,
+    });
+    expect(harness.parent.postMessage).toHaveBeenLastCalledWith(
+      appMessage,
+      origin,
+    );
+    harness.dispatch({ data: appMessage, origin, source: harness.parent });
+    expect(frame?.contentWindow.postMessage).toHaveBeenCalledWith(
+      appMessage,
+      '*',
+    );
   });
 
   test('allows a configured opaque Tauri parent with a blank referrer', () => {
@@ -288,21 +349,20 @@ describe('MCP Apps sandbox proxy', () => {
           'https://remote.example.test/path',
           'not an origin',
           'javascript:alert(1)',
+          'tauri://attacker.example.test',
         ],
       }),
-    ).toEqual(
-      expect.arrayContaining([
-        'http://localhost:3141',
-        'http://127.0.0.1:3141',
-        'http://[::1]:3141',
-        'tauri://localhost',
-        'https://tauri.localhost',
-        'http://tauri.localhost',
-        'http://station.example.test:3141',
-        'https://station.example.test:3141',
-        'https://remote.example.test',
-      ]),
-    );
+    ).toEqual([
+      'https://remote.example.test',
+      'http://localhost:3141',
+      'http://127.0.0.1:3141',
+      'http://[::1]:3141',
+      'tauri://localhost',
+      'https://tauri.localhost',
+      'http://tauri.localhost',
+      'http://station.example.test:3141',
+      'https://station.example.test:3141',
+    ]);
   });
 
   test('serves nothing else from the sandbox origin', async () => {

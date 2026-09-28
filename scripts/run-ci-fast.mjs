@@ -138,6 +138,22 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
+  // #2922: verify:static gates that were composed only by the merge queue and
+  // Nightly, so their failures dequeued PRs about 30 minutes after queueing.
+  // The evidence-check gate rejected #2886's unregistered documentation-truth
+  // check. Source reads with no build: 3-4s for the evidence-check gate, well
+  // under 1s for the rest (measured at load ~15; #2621 tracks the budget).
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'gate:evidence-check-execution']),
+  ]),
+  Object.freeze(['npm', Object.freeze(['run', 'install-script:check'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'mobile:permissions:gate'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'agent-plugin:validators:gate']),
+  ]),
+  Object.freeze(['npm', Object.freeze(['run', 'settings:registry:gate'])]),
   CONTENT_INTEGRITY_FAST_COMMAND,
   // Names Station must not reference, in any tracked file.
   Object.freeze(['npm', Object.freeze(['run', 'content:excluded-names'])]),

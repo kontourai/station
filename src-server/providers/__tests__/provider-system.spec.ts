@@ -4,8 +4,11 @@ import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
+import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
+import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import { BedrockAdapter } from '../adapters/bedrock-adapter.js';
+import { DefaultBrandingProvider } from '../llm/defaults.js';
 import {
   clearAll,
   createProviderAdapterRegistry,
@@ -19,9 +22,9 @@ import {
   listProviders,
   pluginProviderSourceGeneration,
   providerAdapterLaunchabilitySource,
-  registerBrandingProvider,
   registerProvider,
   registerProviderAdapter,
+  registerPullRequestProvider,
   replacePluginProviders,
   replacePluginProvidersForSource,
   replacePluginProvidersForSourceGeneration,
@@ -281,18 +284,60 @@ describe('Provider System', () => {
       expect(getProvider('auth', 'other-ws')).toBe(globalProvider);
     });
 
-    it('listProviders returns all entries for additive types', () => {
-      const provider1 = { id: 1 };
-      const provider2 = { id: 2 };
-
-      registerProvider('pluginRegistry', provider1, { source: 'plugin1' });
-      registerProvider('pluginRegistry', provider2, { source: 'plugin2' });
-
-      const entries = listProviders('pluginRegistry');
-      expect(entries).toHaveLength(2);
-      expect(entries[0].provider).toBe(provider1);
-      expect(entries[1].provider).toBe(provider2);
-    });
+    // Each row pins that PROVIDER_TYPE_META routes the type to the additive
+    // store: a singleton type would keep only the second registration.
+    it.each([
+      [
+        'pluginRegistry',
+        () => {
+          const providers = [{ id: 1 }, { id: 2 }];
+          registerProvider('pluginRegistry', providers[0], {
+            source: 'plugin1',
+          });
+          registerProvider('pluginRegistry', providers[1], {
+            source: 'plugin2',
+          });
+          return providers;
+        },
+      ],
+      [
+        'acpConnections',
+        () => {
+          const providers = [
+            { getConnections: () => [{ id: 'kiro' }] },
+            { getConnections: () => [{ id: 'cursor' }] },
+          ];
+          registerProvider('acpConnections', providers[0], {
+            source: 'plugin1',
+          });
+          registerProvider('acpConnections', providers[1], {
+            source: 'plugin2',
+          });
+          return providers;
+        },
+      ],
+      [
+        'pullRequest',
+        () => {
+          // The production registration (runtime-routes.ts).
+          const providers = [
+            new GitHubPullRequestProvider(),
+            new GitLabPullRequestProvider(),
+          ];
+          for (const provider of providers)
+            registerPullRequestProvider(provider);
+          return providers;
+        },
+      ],
+    ] as const)(
+      'listProviders keeps every %s registration in order',
+      (type, register) => {
+        const providers = register();
+        expect(listProviders(type).map((entry) => entry.provider)).toEqual(
+          providers,
+        );
+      },
+    );
 
     it('includes plugin singleton and additive provider prerequisites in system status', async () => {
       registerProvider(
@@ -496,19 +541,6 @@ describe('Provider System', () => {
           description: 'boom',
         }),
       ]);
-    });
-
-    it('uses provider metadata for additive types such as acpConnections', () => {
-      const provider1 = { getConnections: () => [{ id: 'kiro' }] };
-      const provider2 = { getConnections: () => [{ id: 'cursor' }] };
-
-      registerProvider('acpConnections', provider1, { source: 'plugin1' });
-      registerProvider('acpConnections', provider2, { source: 'plugin2' });
-
-      const entries = listProviders('acpConnections');
-      expect(entries).toHaveLength(2);
-      expect(entries[0].provider).toBe(provider1);
-      expect(entries[1].provider).toBe(provider2);
     });
 
     it('registers and resolves provider adapters by provider kind', () => {
@@ -1030,18 +1062,17 @@ describe('Provider System', () => {
       expect(listProviders('pluginRegistry')).toHaveLength(0);
     });
 
-    it('backward-compat: registerBrandingProvider + getBrandingProvider', () => {
+    it('getBrandingProvider returns a registered branding provider', () => {
       const mockBranding = { getAppName: () => Promise.resolve('Test App') };
-      registerBrandingProvider(mockBranding);
+      registerProvider('branding', mockBranding);
 
-      const retrieved = getBrandingProvider();
-      expect(retrieved).toBe(mockBranding);
+      expect(getBrandingProvider()).toBe(mockBranding);
     });
 
-    it('getBrandingProvider returns DefaultBrandingProvider when nothing registered', () => {
+    it('getBrandingProvider falls back to DefaultBrandingProvider when nothing is registered', async () => {
       const defaultBranding = getBrandingProvider();
-      expect(defaultBranding).toBeDefined();
-      expect(typeof defaultBranding.getAppName).toBe('function');
+      expect(defaultBranding).toBeInstanceOf(DefaultBrandingProvider);
+      await expect(defaultBranding.getAppName()).resolves.toBe('Station');
     });
   });
 

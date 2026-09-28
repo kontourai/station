@@ -1195,6 +1195,22 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'generated contributor command Interface',
   },
   {
+    // Spawned as child processes, outside the import graph (#2923, #2924).
+    pattern: 'scripts/check-documentation-freshness.mjs',
+    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    reason: 'scoped documentation freshness CLI and its exit status',
+  },
+  {
+    pattern: 'scripts/record-documentation-review.mjs',
+    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    reason: 'review-ledger record command and its refusals',
+  },
+  {
+    pattern: '.github/workflows/docs-freshness-sweep.yml',
+    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    reason: 'Nightly freshness sweep schedule and permissions',
+  },
+  {
     pattern: 'scripts/lib/learning-media.mjs',
     tests: ['scripts/__tests__/learning-media.test.ts'],
     reason:
@@ -1204,6 +1220,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     pattern: 'scripts/documentation-impact.mjs',
     tests: [
       'scripts/__tests__/documentation-impact.test.ts',
+      'scripts/__tests__/documentation-freshness.test.ts',
       'scripts/__tests__/gate-for.test.ts',
     ],
     reason: 'source-to-document guidance and incremental catch-up',

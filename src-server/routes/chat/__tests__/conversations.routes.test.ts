@@ -2579,6 +2579,40 @@ describe('Conversation Routes', () => {
     );
   });
 
+  test('GET /:slug/conversations/:id/messages serves a conversation stored under its owning userId, not the agent identity', async () => {
+    // The resolver's fallback, reached through the route: nothing under
+    // `agent:default`, so the conversation record names the real owner and
+    // the route reads that owner's transcript.
+    const adapter = createMockAdapter();
+    adapter.getConversation.mockResolvedValue({ id: 'c1', userId: 'u2' });
+    adapter.getMessages.mockImplementation(async (userId: string) =>
+      userId === 'u2'
+        ? [
+            {
+              id: 'm-u2',
+              role: 'user',
+              parts: [{ type: 'text', text: 'owned by u2' }],
+            },
+          ]
+        : [],
+    );
+    const app = createConversationRoutes(
+      new Map([['default', adapter]]) as any,
+      mockLogger,
+    );
+    const body = await json(
+      await app.request('/station/conversations/c1/messages'),
+    );
+    expect(body.success).toBe(true);
+    expect(body.data).toEqual([
+      {
+        id: 'm-u2',
+        role: 'user',
+        parts: [{ type: 'text', text: 'owned by u2' }],
+      },
+    ]);
+  });
+
   // archive#1399 fix round 2, B2 (independent review) — the FileMemory
   // bypass reproduction: `memory-adapter-messages.ts` serializes and reads
   // back a message's `parts` VERBATIM, with no equivalent write-time seam

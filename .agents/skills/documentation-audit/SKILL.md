@@ -19,7 +19,9 @@ work, run `npm run docs:impact -- --catch-up --json`: review the changed inputs
 against each page's recorded source revision, not just its last edit date.
 Account for unmapped changes and preserve the coverage baseline until they are
 resolved. The report is advisory and cannot establish semantic correctness.
-
+The documentation checks block only stale records that your change touched;
+re-review those in the same PR. See
+[keep reviews fresh](../../../docs/guides/documentation.md#keep-reviews-fresh).
 
 Trace the changed behavior from its user entry point through contract,
 authorization, implementation, persistence, event projection, and visible
@@ -38,6 +40,10 @@ design and a test file that exists do not establish shipped behavior.
 
 ## Repository-wide pass
 
+Split the pass into subsystem PRs of roughly 20 to 40 documents, and land
+each one before starting the next. A branch that carries hundreds of reviews
+must re-review every record that later merges from `main` make stale.
+
 Inventory every tracked Markdown file with NUL-delimited `git ls-files` output,
 including hidden directories, package/example/fixture READMEs, agent instructions,
 changesets, and historical records. Record each file's purpose and disposition:
@@ -51,7 +57,9 @@ a complete semantic review. Preserve useful historical records with their
 status and successor rather than making old evidence appear current.
 
 Update the [review ledger](../../../docs/learn/review-ledger.json) after the
-review, recording scope, code/test owners, checks, and limits. Keep document
+review, recording scope, code/test owners, checks, and limits. Refresh an
+existing record with `npm run docs:review:record -- <path> --note "<what you
+checked>"` rather than editing its hashes. Keep document
 classification separate from source review. A changed document or supporting
 source invalidates the recorded review; inspect that change before replacing
 its hashes. Do not turn a hash refresh into automatic approval of the prose.

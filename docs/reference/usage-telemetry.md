@@ -52,7 +52,7 @@ below, this event is not proof every startup step completed. It is also not
 replayed when disclosure is first acknowledged after that startup call.
 
 [Service tests](../../src-server/services/__tests__/usage-telemetry-service.test.ts)
-and [disclosure route tests](../../src-server/routes/operations/__tests__/usage-telemetry-disclosure.routes.test.ts)
+and the [disclosure route test](../../src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts)
 cover activation, inventory rejection, buffering and disclosure. They use
 controlled endpoints; a live ingestion deployment needs its own delivery evidence.
 

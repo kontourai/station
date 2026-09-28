@@ -65,22 +65,6 @@ describe('Attention Routes', () => {
     expect(acknowledge).toHaveBeenCalledWith('session-failed:thread-1');
   });
 
-  test('POST /:id/ack 404s for an item that does not resolve', async () => {
-    const acknowledge = vi.fn().mockResolvedValue(false);
-    const app = createAttentionRoutes({
-      list: vi.fn(),
-      acknowledge,
-    } as never);
-
-    const response = await app.request('/no-such-item/ack', {
-      method: 'POST',
-    });
-    const body = await json(response);
-
-    expect(response.status).toBe(404);
-    expect(body).toEqual(expect.objectContaining({ success: false }));
-  });
-
   /**
    * Contract pin (#890 review). The SDK's `acknowledgeAttentionItem` treats a
    * 404 carrying THIS EXACT message as a no-op — the item left the projection
@@ -99,6 +83,7 @@ describe('Attention Routes', () => {
 
     const response = await app.request('/no-such-item/ack', { method: 'POST' });
 
+    expect(response.status).toBe(404);
     expect(await json(response)).toEqual({
       success: false,
       error: 'Attention item is not acknowledgeable',

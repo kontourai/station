@@ -126,6 +126,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'scripts/__tests__/verification-reporter.test.ts',
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
   'src-server/providers/__tests__/claude-adapter.test.ts',
+  // The adapter inventory reads adapter sources through a helper whose
+  // argument is a walked or listed name, never a literal; the suite is in
+  // REPO_SCAN_SUITES, so the repo-scans job runs it on every PR anyway.
+  'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
   'src-server/routes/__tests__/smart-routing-plugin.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',
   'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',
