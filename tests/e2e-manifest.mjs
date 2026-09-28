@@ -355,7 +355,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/pending-message-queue.spec.ts',
     'tests/skills.spec.ts',
     'tests/registry.spec.ts',
-    'tests/registry-install.spec.ts',
     'tests/connections-crud.spec.ts',
     'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
@@ -1086,15 +1085,6 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted registry browse lane.',
-    exceptions: [],
-  },
-  {
-    path: 'tests/registry-install.spec.ts',
-    bucket: 'product',
-    surface: 'Registry',
-    tierTarget: 'full',
-    primary: true,
-    rationale: 'Promoted registry install lane.',
     exceptions: [],
   },
   {

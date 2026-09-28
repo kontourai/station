@@ -329,9 +329,20 @@ test.describe('Root route restore (#223, product, mocked)', () => {
       page.getByRole('heading', { name: 'What do you want to work on?' }),
     ).toBeVisible({ timeout: 5000 });
     await expect(page).toHaveURL(/\/$/);
+    // Priority 2: with nothing persisted, the continuation is the first
+    // project, named by its record rather than its slug.
+    await expect(
+      page.getByRole('button', { name: /Open last project/i }),
+    ).toContainText('Dev');
 
     expect(await wasModalEverMounted(page)).toBe(false);
     expect(await getPushedPaths(page)).not.toContain('/projects/new');
+
+    // Positive control for the negatives above: the same watcher, on the same
+    // page, reports the modal once the user actually asks for it.
+    await page.getByRole('button', { name: /Open local project/i }).click();
+    await expect(newProjectModalOverlay(page)).toHaveCount(1);
+    expect(await wasModalEverMounted(page)).toBe(true);
   });
 
   test('stale lastProject (deleted project): falls through to priority 2, no modal flash, never resolves to project-new while other projects exist', async ({

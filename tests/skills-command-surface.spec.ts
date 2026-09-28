@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type Request } from '@playwright/test';
 import {
   deleteAgent,
   openChatWithAgent,
@@ -211,20 +211,28 @@ test.describe('Skill commands', () => {
     // schema and this field, so the refusal now happens at the field: Save
     // sends nothing, and the 400 this test used to wait for is unreachable
     // from here. The claim is unchanged — the person is told what they broke.
-    const writes: number[] = [];
-    page.on('response', (response) => {
-      if (
-        response.request().method() === 'PUT' &&
-        new URL(response.url()).pathname === `/api/skills/${SKILL}`
-      ) {
-        writes.push(response.status());
-      }
+    // Requests, not responses, and recorded before the click: a refused Save
+    // that still sent a PUT is caught however late its response would land.
+    const isSkillWrite = (request: Request) =>
+      request.method() === 'PUT' &&
+      new URL(request.url()).pathname === `/api/skills/${SKILL}`;
+    const writes: string[] = [];
+    page.on('request', (request) => {
+      if (isSkillWrite(request)) writes.push(request.postData() ?? '');
     });
     await detailSave(page).click();
     await expect(page.getByText(NAMING_MESSAGE).first()).toBeVisible({
       timeout: 10_000,
     });
-    expect(writes).toEqual([]);
+
+    // A deterministic settle: a typable word's Save is the NEXT write, so a
+    // PUT sent by the refused Save would already be recorded ahead of it.
+    await page.locator('#skill-command-name').fill(COMMAND);
+    const typableWrite = page.waitForRequest(isSkillWrite);
+    await detailSave(page).click();
+    await typableWrite;
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0]).command).toMatchObject({ name: COMMAND });
   });
 });
 

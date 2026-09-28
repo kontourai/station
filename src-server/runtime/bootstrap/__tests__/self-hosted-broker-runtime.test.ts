@@ -7,7 +7,13 @@ import {
 } from '../self-hosted-broker-runtime.js';
 
 type ConnectorMock = {
-  [K in keyof BrokerConnectorLifecycle]: Mock<BrokerConnectorLifecycle[K]>;
+  [K in keyof BrokerConnectorLifecycle as undefined extends BrokerConnectorLifecycle[K]
+    ? never
+    : K]: Mock<NonNullable<BrokerConnectorLifecycle[K]>>;
+} & {
+  [K in keyof BrokerConnectorLifecycle as undefined extends BrokerConnectorLifecycle[K]
+    ? K
+    : never]?: Mock<NonNullable<BrokerConnectorLifecycle[K]>>;
 };
 
 function fixture() {

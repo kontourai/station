@@ -57,7 +57,7 @@ export const DENIAL_TOOL_NAME_MAX_LENGTH = 64;
  * `BLOCKED: …` line, short enough that a subprocess cannot fill the
  * transcript (or the model's next prompt) with an unbounded stream.
  */
-export const DENIAL_QUOTED_TEXT_MAX_LENGTH = 240;
+const DENIAL_QUOTED_TEXT_MAX_LENGTH = 240;
 
 /** Appended when either cap truncates. */
 const DENIAL_TRUNCATION_MARK = '…';
@@ -179,7 +179,7 @@ export function toolNameForDenialMessage(toolName: string): string {
  * Flatten and cap a foreign fragment. Returns `''` when nothing survives, so
  * the caller renders no empty quotation.
  */
-export function boundQuotedDenialText(text: string): string {
+function boundQuotedDenialText(text: string): string {
   const flattened = text
     .replace(CONTROL_AND_FORMAT_CHARACTERS, ' ')
     .replaceAll(QUOTE_OPEN, '"')

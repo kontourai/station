@@ -85,7 +85,6 @@ vi.mock('../contexts/NavigationContext', () => {
 });
 
 import { deviceSettingsStore } from '../lib/device-settings-store';
-import { resetModelPickerPreferencesCacheForTests } from '../settings/modelPickerPreferences';
 import { ProviderSettingsView } from '../views/ProviderSettingsView';
 
 // The device projection this page now reads. `undefined` is the honest
@@ -109,7 +108,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     modelConnectionsError = null;
     refetchModelConnections.mockReset();
     window.localStorage.clear();
-    resetModelPickerPreferencesCacheForTests();
+    deviceSettingsStore.reloadFromStorage();
     window.history.replaceState({}, '', '/connections/providers');
   });
 

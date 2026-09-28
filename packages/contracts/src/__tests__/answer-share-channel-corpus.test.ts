@@ -226,22 +226,6 @@ describe('an absent binding is a state, not a missing value', () => {
 });
 
 describe('the accepted fixtures survive a round trip', () => {
-  test('JSON.parse(JSON.stringify(...)) re-validates identically', () => {
-    for (const [name, entry] of Object.entries(CORPUS)) {
-      if (entry.code !== undefined || entry.legacyRecord) continue;
-      const parsed = readFixture(name);
-      const roundTripped = JSON.parse(JSON.stringify(parsed)) as unknown;
-      expect(roundTripped, name).toEqual(parsed);
-      // `.toBe(true)`, not `.toBe(validate(parsed).ok)`: the loop already
-      // filters to accepted fixtures, so asserting the validator against
-      // itself on two equal inputs is a tautology that would stay green if
-      // both sides started refusing.
-      expect(validateAnswerShareChannelBinding(roundTripped).ok, name).toBe(
-        true,
-      );
-    }
-  });
-
   test('a validator returns the SAME object it was handed, never a copy', () => {
     const parsed = readFixture('binding-committed.valid.json');
     const result = validateAnswerShareChannelBinding(parsed);

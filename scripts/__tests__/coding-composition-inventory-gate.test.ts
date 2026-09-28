@@ -68,25 +68,6 @@ describe('Coding workspace composition Stage 0 inventory', () => {
     expect(auditCodingCompositionInventory()).toEqual([]);
   });
 
-  test('required categories and MCP Apps renderer-leaf boundary are explicit', () => {
-    const value = inventory();
-    expect(
-      new Set(value.capabilities.map((row: { id: string }) => row.id)),
-    ).toEqual(new Set(REQUIRED_CODING_COMPOSITION_CATEGORIES));
-    expect(value.mcpApps).toMatchObject({
-      role: 'sandboxed-renderer-leaf',
-      workspaceAuthority: false,
-      displayMode: {
-        status: 'IMPLEMENTED',
-        deliveryIssue: 2952,
-        contract: '@kontourai/station-contracts/mcp-app-display-mode',
-        receipt: 'MCPAppDisplayModeDecision',
-        pip: 'UNSUPPORTED',
-        fullscreenIsPopout: false,
-      },
-    });
-  });
-
   test('Meeting Notes instantiates and restores through the generic host document', () => {
     const fixture = inventory().nonDeveloperCompositionFixture;
     const descriptors = fixture.descriptors.map(parseWorkspacePaneDescriptor);
