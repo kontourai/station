@@ -1109,13 +1109,17 @@ describe('FilePreviewPane', () => {
       },
     });
     const { container } = renderPane();
-    const tokens = [...container.querySelectorAll('[data-file-preview-token]')];
-    // Proves the highlighted path ran and the markup sat inside a token.
-    expect(tokens.map((node) => node.textContent)).toContain(
-      '"<img src=x onerror=alert(1)>"',
-    );
+    // Proves the highlighted path ran, so the negatives below are not vacuous.
+    expect(
+      container.querySelectorAll('[data-file-preview-token]').length,
+    ).toBeGreaterThan(0);
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('b')).toBeNull();
+    expect(
+      [...container.querySelectorAll('[data-file-preview-token]')].map(
+        (node) => node.textContent,
+      ),
+    ).toContain('"<img src=x onerror=alert(1)>"');
     expect(container.textContent).toContain(line);
   });
 
