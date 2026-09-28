@@ -1591,7 +1591,7 @@
         },
         {
           "path": "docs/guides/nightly.md",
-          "digest": "21f86bbb1fd45c9f678f549627c1b9ad95229d3b80e487c2005996b300261c1d"
+          "digest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a"
         },
         {
           "path": "docs/privacy-policy.md",
@@ -1658,7 +1658,8 @@
         "Integration source review through d72f79b08: #2904 added the cli.md entries for `station environment access devices|scope|scopes`, and in cli.ts describeCliError now prints explainFullAccessRefusal for approval-full-access-not-granted. The README's 'scoped, revocable access' device claims and its CLI/distribution entry points remain accurate. The README lists no per-command CLI output. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage in packages/cli/src/distribution.ts module-private. The change only removes an export: command admission and message behavior are unchanged. The README's CLI, distribution and installer claims do not depend on that export. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds a 'Recorded versus acknowledged decisions' subsection to docs/reference/cli.md under station delegate. The auto-merged cli.md reads coherently with the branch text. The README still correctly points to the CLI reference for target and credential setup. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence.",
+        "Delta review (2026-09-28, portable Nightly signing): the only change is `secrets: inherit` on the portable-nightly caller in nightly.yml and one nightly.md sentence explaining it (only the publish job reads a secret; the key otherwise arrives empty). No claim on this page depends on that wiring."
       ]
     },
     {
@@ -15429,7 +15430,7 @@
         },
         {
           "path": ".github/workflows/nightly.yml",
-          "digest": "9de7c453d42f3d454a24e2081a99ec3c0ca639691d3a8b698cfa6fd3ede3d400"
+          "digest": "555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801"
         },
         {
           "path": ".github/workflows/publish-release.yml",
@@ -15648,7 +15649,8 @@
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through d1e0facc2: Update evidence now exercises the owning component; no physical update receipt inferred. Version/feed helpers are private; native update validation is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: lib.rs removed the notification_watch host poller, and the Cargo.toml rustls comment now names the native request agent. install.sh/install-macos.zsh/package.json changes do not touch mobile claims. Corrected the remote-push paragraph by dropping the reference to a 'Rust watcher' that no longer exists. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2914) native-update-feed.mjs removes the validateUpdateConfig alias (tests call resolveNativeUpdateAuthority), publish-mobile-feed-transaction tests drop helper-only fixture cases, install-macos.zsh adds `--` to print; (#2881) install.sh changes are archive-service only; publisher/wrapper behavior described is unchanged; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2914) native-update-feed.mjs removes the validateUpdateConfig alias (tests call resolveNativeUpdateAuthority), publish-mobile-feed-transaction tests drop helper-only fixture cases, install-macos.zsh adds `--` to print; (#2881) install.sh changes are archive-service only; publisher/wrapper behavior described is unchanged; prose accurate. Source review is separate from executed test evidence.",
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret. Claims here re-read against that delta."
       ]
     },
     {
@@ -15766,7 +15768,7 @@
         },
         {
           "path": ".github/workflows/nightly.yml",
-          "digest": "9de7c453d42f3d454a24e2081a99ec3c0ca639691d3a8b698cfa6fd3ede3d400"
+          "digest": "555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801"
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
@@ -16088,7 +16090,8 @@
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through d1e0facc2: Update evidence now exercises the owning component; no physical update receipt inferred. Version/feed helpers are private; native update validation is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: install.sh gained #2867 archive-service switching (stop, switch current, restart, identity rollback) and recorded install ports; install-macos.zsh now calls the signing-identity helper's designated-requirement transition check; the dead createExclusiveDirectory and DMG_CREATION_COMMAND_TIMEOUT_MS exports were dropped; lifecycle.ts upgrade no longer blocks on an archive service of its own install root; lib.rs removed the dormant notification watch; package.json dropped bearing/forage. None of these touch the guide's cohort, notarization-overlap, AppImage resource-path or portable-archive claims, and the guide sends upgrade and service behavior to release-channel-ports.md, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and a launcher handoff. When a running launcher-run service owns the install, install.sh stages versions/<v>, writes runtime/update-request.json and waits for the launcher instead of promoting current. portable-server-archive.mjs now ships bin/station-launcher.mjs. #2914 only drops the dead validateUpdateConfig alias, adds a `--` to install-macos.zsh print calls, and reshapes feed/cohort/build-only tests. Corrected the unconditional 'then promotes the active link' with one sentence: under a running launcher-run service the installer only stages and the launcher trials the switch. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and a launcher handoff. When a running launcher-run service owns the install, install.sh stages versions/<v>, writes runtime/update-request.json and waits for the launcher instead of promoting current. portable-server-archive.mjs now ships bin/station-launcher.mjs. #2914 only drops the dead validateUpdateConfig alias, adds a `--` to install-macos.zsh print calls, and reshapes feed/cohort/build-only tests. Corrected the unconditional 'then promotes the active link' with one sentence: under a running launcher-run service the installer only stages and the launcher trials the switch. Source review is separate from executed test evidence.",
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret. Claims here re-read against that delta."
       ]
     },
     {
@@ -16276,7 +16279,7 @@
     },
     {
       "path": "docs/guides/nightly.md",
-      "documentDigest": "21f86bbb1fd45c9f678f549627c1b9ad95229d3b80e487c2005996b300261c1d",
+      "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
       "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
       "kind": "current",
       "state": "source-reviewed",
@@ -16301,7 +16304,7 @@
         },
         {
           "path": ".github/workflows/nightly.yml",
-          "digest": "9de7c453d42f3d454a24e2081a99ec3c0ca639691d3a8b698cfa6fd3ede3d400"
+          "digest": "555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801"
         },
         {
           "path": ".github/workflows/publish-release.yml",
@@ -16537,7 +16540,7 @@
         },
         {
           "path": "scripts/__tests__/portable-nightly-publish-workflow.test.ts",
-          "digest": "fb6c30bc81b659d67325e21684117134ea6e689fe8a879df9bebeea519058d18"
+          "digest": "ae4fa2d2359a269c1716c241aab3f2884f6203e85059b17cadd39a488d640859"
         }
       ],
       "checks": [
@@ -16564,7 +16567,8 @@
         "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Archives now include their executable install.sh for owned upgrades/removal; host-native build, bundled runtime and isolated archive layout retain their existing boundaries. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through e0314c727: the inputs changed in four ways. install.sh gained archive-service stop/switch/restart and recorded ports (#2867). The build-only exclusive output directory moved from a JS helper into the zsh installer's `mkdir` refusal, which still exits with 'already exists'. The designated-requirement check moved into the macos-signing-identity CLI. The notification watch, DMG_CREATION timeout alias and bearing/forage deps were removed. The guide's install, build-only, notarization and archive claims are still accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds install.sh STATION_INSTALL_STAGE_ONLY and hand-off to a running launcher service, and copies bin/station-launcher.mjs in portable-server-archive.mjs. lifecycle.ts now passes STATION_SERVICE_LAUNCHER only to the supervised server. 'Check for server updates' (GET /api/system/core-update) now checks an archive's signed public manifest and can apply the update through the fixed launcher. 8b48e2b35 (#2914) only adds `--` to print calls in install-macos.zsh and changes tests. The 'Server source check' bullet said the route only compares source and build stamps and never shows an update as available, which is now wrong for archives. Corrected it: added the archive exception (verified manifest, running and newest versions, apply only when the launcher runs the server, otherwise station upgrade or reinstall) with a link to the cli.md#service section. The install, build-only and rollback prose is still accurate. The route source (src-server/routes/system/archive-update.ts) is not a recorded input; the ledger owner may add it. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds install.sh STATION_INSTALL_STAGE_ONLY and hand-off to a running launcher service, and copies bin/station-launcher.mjs in portable-server-archive.mjs. lifecycle.ts now passes STATION_SERVICE_LAUNCHER only to the supervised server. 'Check for server updates' (GET /api/system/core-update) now checks an archive's signed public manifest and can apply the update through the fixed launcher. 8b48e2b35 (#2914) only adds `--` to print calls in install-macos.zsh and changes tests. The 'Server source check' bullet said the route only compares source and build stamps and never shows an update as available, which is now wrong for archives. Corrected it: added the archive exception (verified manifest, running and newest versions, apply only when the launcher runs the server, otherwise station upgrade or reinstall) with a link to the cli.md#service section. The install, build-only and rollback prose is still accurate. The route source (src-server/routes/system/archive-update.ts) is not a recorded input; the ledger owner may add it. Source review is separate from executed test evidence.",
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret. Claims here re-read against that delta."
       ]
     },
     {
@@ -17488,7 +17492,7 @@
         },
         {
           "path": ".github/workflows/nightly.yml",
-          "digest": "9de7c453d42f3d454a24e2081a99ec3c0ca639691d3a8b698cfa6fd3ede3d400"
+          "digest": "555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801"
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
@@ -17639,7 +17643,8 @@
         "Landing review through d0d9d33f7: Installer input now triggers archive builds. Added missing documentation compiler and all four declared data inputs to both push/PR filters; the actual import/data coverage guard catches omissions. Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Golden vectors now also execute the real shell verifier with fixture keys and refused downloads; v1 source fallback and v2 platform semantics stay explicit. This is verifier evidence, not publication or installed runtime proof. Archives now include their executable install.sh for owned upgrades/removal; host-native build, bundled runtime and isolated archive layout retain their existing boundaries. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through e0314c727: install.sh (#2867) now records resolved ports in schema-3/4 state, validates ports, and stops, switches and restarts archive services that run `current`, rolling back on identity failure. install-macos.zsh moved its designated-requirement check into the helper; package.json dropped bearing/forage; lib.rs removed the dormant notification watch. Attestation, public-manifest, channel, downgrade/freshness and restore-on-failed-start prose stays accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh (and so station upgrade) no longer switches current under a running launcher-run service. It stages the version with STATION_INSTALL_STAGE_ONLY semantics, queues an update request, and the launcher trials it, restoring its home backup and the previous version on failure. The install-macos.zsh and portable-server-archive.mjs deltas are cosmetic or ship the launcher. Corrected 'Upgrade and rollback behavior' with one sentence on the launcher-run path, linking the service reference. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh (and so station upgrade) no longer switches current under a running launcher-run service. It stages the version with STATION_INSTALL_STAGE_ONLY semantics, queues an update request, and the launcher trials it, restoring its home backup and the previous version on failure. The install-macos.zsh and portable-server-archive.mjs deltas are cosmetic or ship the launcher. Corrected 'Upgrade and rollback behavior' with one sentence on the launcher-run path, linking the service reference. Source review is separate from executed test evidence.",
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret. Claims here re-read against that delta."
       ]
     },
     {
@@ -18866,7 +18871,7 @@
         },
         {
           "path": ".github/workflows/nightly.yml",
-          "digest": "9de7c453d42f3d454a24e2081a99ec3c0ca639691d3a8b698cfa6fd3ede3d400"
+          "digest": "555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801"
         },
         {
           "path": ".github/workflows/publish-release.yml",
@@ -19060,7 +19065,8 @@
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through d1e0facc2: Update evidence now exercises the owning component; no physical update receipt inferred. Version/feed helpers are private; native update validation is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: install.sh gained the archive install, service restart and rollback path; the Nightly installer moved its signing-requirement check into the helper; package.json dropped bearing/forage; lib.rs removed notification_watch. The guide makes no claims about these store-publication inputs, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: #2881 adds the install.sh launcher handoff and stage-only mode. #2914 adds `print --` in install-macos.zsh, removes the validateUpdateConfig alias in favor of resolveNativeUpdateAuthority, and drops runBoundedFixture tests. None touches TestFlight/Play authority, secrets, tagging or the out-of-scope list; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2881 adds the install.sh launcher handoff and stage-only mode. #2914 adds `print --` in install-macos.zsh, removes the validateUpdateConfig alias in favor of resolveNativeUpdateAuthority, and drops runBoundedFixture tests. None touches TestFlight/Play authority, secrets, tagging or the out-of-scope list; prose accurate. Source review is separate from executed test evidence.",
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret. Claims here re-read against that delta."
       ]
     },
     {
@@ -19090,7 +19096,7 @@
         },
         {
           "path": ".github/workflows/nightly.yml",
-          "digest": "9de7c453d42f3d454a24e2081a99ec3c0ca639691d3a8b698cfa6fd3ede3d400"
+          "digest": "555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801"
         },
         {
           "path": ".github/workflows/publish-release.yml",
@@ -19226,7 +19232,8 @@
         "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through e0314c727: install.sh archive-service and port handling, the install-macos.zsh designated-requirement helper, the bearing/forage dependency removal and lib.rs notification-watch deletion all changed, but the draft listing copy makes no installer, signing or notification claim, so it is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d install.sh wraps itself in a brace group and adds archive-service staging and hand-off (#2881); install-macos.zsh only adds `--` to print (#2914); neither touches store-listing claims; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d install.sh wraps itself in a brace group and adds archive-service staging and hand-off (#2881); install-macos.zsh only adds `--` to print (#2914); neither touches store-listing claims; prose accurate. Source review is separate from executed test evidence.",
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret. Claims here re-read against that delta."
       ]
     },
     {
