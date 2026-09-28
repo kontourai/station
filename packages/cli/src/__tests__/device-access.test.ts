@@ -6,6 +6,8 @@
  * a real Station are exercised in the isolated-instance verification.
  */
 import { createHmac } from 'node:crypto';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import {
   buildStationProofMessage,
   PAIRING_SCOPE_DESCRIPTIONS,
@@ -278,6 +280,70 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
     ).rejects.toThrow(
       /access changed since it was read.*Nothing was overwritten/,
     );
+  });
+
+  test('a concurrent change answered by a real HTTP Station keeps its code through the default request path', async () => {
+    const posts: unknown[] = [];
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => (raw += chunk));
+      req.on('end', () => {
+        const reply = (status: number, body: unknown) => {
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(body));
+        };
+        if (req.url === '/.well-known/station/v1')
+          return reply(200, { environmentId: HOME.environmentId });
+        if (req.url === PUBLIC_STATION_PROOF_PATH)
+          return reply(200, proofResponse({ body: raw }));
+        if (req.url === '/api/pairing/devices')
+          return reply(200, { devices: DEVICES });
+        if (req.url?.endsWith('/scope') && req.method === 'POST') {
+          posts.push(JSON.parse(raw));
+          return reply(409, { error: 'scope_changed' });
+        }
+        return reply(404, { error: 'not_found' });
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    try {
+      await expect(
+        runEnvironmentCommand(
+          [
+            'access',
+            'scope',
+            'aaaa1111',
+            '--add=approval:full-access',
+            `--api-base=http://127.0.0.1:${port}`,
+          ],
+          {
+            createService: () => makeService(),
+            projectHome: '/tmp/station-home',
+            stdout,
+            stderr,
+            isInteractive: false,
+          },
+        ),
+      ).rejects.toThrow(
+        /access changed since it was read.*Nothing was overwritten/,
+      );
+      expect(posts).toEqual([
+        {
+          scope: [
+            'orchestration:read',
+            'orchestration:operate',
+            'terminal:operate',
+            'approval:full-access',
+          ],
+          expectedScope: DEVICES[0]!.scope,
+        },
+      ]);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 
   test('a non-loopback Station (a paired remote CLI) is refused before any credential is read', async () => {
