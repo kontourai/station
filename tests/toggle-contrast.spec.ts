@@ -32,7 +32,7 @@
  */
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { build } from 'esbuild';
 import { contrastRatio } from './helpers/color-contrast';
 
@@ -190,6 +190,28 @@ async function mount(page: Page, theme: (typeof THEMES)[number]) {
       name: "Let agents run JavaScript in this Project's pages",
     }),
   ).toBeVisible();
+}
+
+/**
+ * Hit-tests the real touch target: points 20px out from the switch's centre on
+ * each axis land on the switch only if its `::before` target reaches them
+ * unclipped and unoccluded, which a computed `::before` size cannot show.
+ */
+function hitAreaReach(sw: Locator) {
+  return sw.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    return [
+      [cx, cy - 20],
+      [cx, cy + 20],
+      [cx - 20, cy],
+      [cx + 20, cy],
+    ].map(([x, y]) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit === el || el.contains(hit);
+    });
+  });
 }
 
 async function setBackdrop(page: Page, token: string) {
@@ -441,15 +463,10 @@ test.describe('shared Toggle track contrast (#2441)', () => {
       const box = await sw.boundingBox();
       expect(box, 'switch is laid out').not.toBeNull();
       expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390);
-      const hit = await sw.evaluate((el) => {
-        const before = getComputedStyle(el, '::before');
-        return {
-          width: Number.parseFloat(before.width),
-          height: Number.parseFloat(before.height),
-        };
-      });
-      expect(hit.width, 'mobile hit area width').toBeGreaterThanOrEqual(44);
-      expect(hit.height, 'mobile hit area height').toBeGreaterThanOrEqual(44);
+      expect(
+        await hitAreaReach(sw),
+        'Browser pane switch 44px hit area around the track',
+      ).toEqual([true, true, true, true]);
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -476,28 +493,10 @@ test.describe('shared Toggle track contrast (#2441)', () => {
         const box = await sw.boundingBox();
         expect(box?.width, `${name} track width at 390px`).toBe(36);
         expect(box?.height, `${name} track height at 390px`).toBe(20);
-        // Hit-test the real target: points 20px out from the centre on each
-        // axis land on the switch only if its ::before target reaches them.
-        const hits = await sw.evaluate((el) => {
-          const r = el.getBoundingClientRect();
-          const cx = r.left + r.width / 2;
-          const cy = r.top + r.height / 2;
-          return [
-            [cx, cy - 20],
-            [cx, cy + 20],
-            [cx - 20, cy],
-            [cx + 20, cy],
-          ].map(([x, y]) => {
-            const hit = document.elementFromPoint(x, y);
-            return hit === el || el.contains(hit);
-          });
-        });
-        expect(hits, `${name} 44px hit area around the track`).toEqual([
-          true,
-          true,
-          true,
-          true,
-        ]);
+        expect(
+          await hitAreaReach(sw),
+          `${name} 44px hit area around the track`,
+        ).toEqual([true, true, true, true]);
       }
     }
   });

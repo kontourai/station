@@ -6,13 +6,12 @@
  *
  * Coverage:
  *  - Settings › Settings shows STT/TTS provider dropdowns
- *  - Default WebSpeech provider is pre-selected
+ *  - Default WebSpeech provider is pre-selected among several
  *  - Provider selection persists to localStorage
  *  - Context provider toggles (geolocation, timezone) render and toggle
  *  - Exactly one floating mic (the S2S pill) on mobile when voice is enabled
  *  - VoiceOrb is still rendered inside the chat input area
  *  - /api/system/capabilities response populates provider dropdowns
- *  - Visual: screenshot of Advanced tab voice section (desktop + mobile)
  */
 import { expect, test } from '@playwright/test';
 import {
@@ -66,6 +65,36 @@ const CAPABILITIES_RESPONSE = JSON.stringify({
     ],
   },
 });
+
+/**
+ * A capabilities response whose STT list is WebSpeech plus the given
+ * server-backed (not client-only) providers.
+ */
+function capabilitiesWithServerSTT(
+  ...servers: { id: string; name: string; configured: boolean }[]
+) {
+  const webspeech = {
+    id: 'webspeech',
+    name: 'WebSpeech (Browser)',
+    clientOnly: true,
+    visibleOn: ['all'],
+    configured: true,
+  };
+  return JSON.stringify({
+    voice: {
+      stt: [
+        webspeech,
+        ...servers.map((server) => ({
+          ...server,
+          clientOnly: false,
+          visibleOn: ['all'],
+        })),
+      ],
+      tts: [webspeech],
+    },
+    context: { providers: [] },
+  });
+}
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -148,10 +177,23 @@ test.describe('Voice Providers — Settings UI', () => {
       window.localStorage.removeItem('station-stt-provider');
       window.localStorage.removeItem('station-tts-provider');
     `);
+    // A second configured provider, so the default is a CHOICE: a <select>
+    // holding only WebSpeech reports it whatever the default logic says.
+    await page.route('**/api/system/capabilities', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: capabilitiesWithServerSTT({
+          id: 'elevenlabs',
+          name: 'ElevenLabs Scribe',
+          configured: true,
+        }),
+      }),
+    );
     await openSettings(page);
     const sttSelect = page.locator('[data-testid="stt-provider-select"]');
-    const selected = await sttSelect.inputValue();
-    expect(selected).toBe('webspeech');
+    await expect(sttSelect).toContainText('ElevenLabs Scribe');
+    await expect(sttSelect).toHaveValue('webspeech');
   });
 
   test('provider selection persists to the device-settings envelope', async ({
@@ -181,19 +223,20 @@ test.describe('Voice Providers — Settings UI', () => {
     expect(stored).toBe('webspeech');
   });
 
-  test('context provider toggles render', async ({ page }) => {
-    await openSettings(page);
-    await expect(page.locator('text=Message Context')).toBeVisible();
-    // Timezone should always be visible
-    await expect(page.getByText('Timezone', { exact: true })).toBeVisible();
-  });
-
   test('context provider toggle changes enabled state', async ({ page }) => {
     await openSettings(page);
+    await expect(page.locator('text=Message Context')).toBeVisible();
+    // Timezone is visibleOn 'all', so it renders on desktop too.
     const toggle = page.getByRole('switch', { name: 'Timezone' });
-    await expect(toggle).toBeVisible();
-    await expect(toggle).toBeEnabled();
+    const before = await toggle.getAttribute('aria-checked');
+    expect(before === 'true' || before === 'false').toBe(true);
+    const after = before === 'true' ? 'false' : 'true';
+    // In-memory by design (the context registry persists nothing), so the
+    // flip is observed on the switch, and a second click flips it back.
     await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-checked', after);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-checked', before as string);
   });
 
   test('WisprFlow hint is displayed below STT dropdown', async ({ page }) => {
@@ -205,25 +248,10 @@ test.describe('Voice Providers — Settings UI', () => {
     await openSettings(page);
     await expect(page.locator('text=Read replies aloud')).toBeVisible();
   });
-
-  test('screenshot: voice settings section (desktop)', async ({
-    page,
-  }, testInfo) => {
-    await openSettings(page);
-    const voiceSection = page.locator('#section-voice');
-    await expect(
-      voiceSection.getByRole('heading', { name: 'Voice' }),
-    ).toBeVisible();
-    await voiceSection.scrollIntoViewIfNeeded();
-    await page.screenshot({
-      path: testInfo.outputPath('voice-settings-desktop.png'),
-      clip: { x: 0, y: 0, width: 1280, height: 800 },
-    });
-  });
 });
 
 test.describe('Voice Providers — server capability discovery', () => {
-  test('server-backed configured provider appears in STT dropdown', async ({
+  test('only configured server providers are registered in the STT dropdown', async ({
     page,
   }) => {
     await page.addInitScript(SEED_STORAGE);
@@ -237,101 +265,22 @@ test.describe('Voice Providers — server capability discovery', () => {
         body: STATUS_READY,
       }),
     );
-    // Capabilities response includes a server-backed ElevenLabs provider
     await page.route('**/api/system/capabilities', (r) =>
       r.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          voice: {
-            stt: [
-              {
-                id: 'webspeech',
-                name: 'WebSpeech (Browser)',
-                clientOnly: true,
-                visibleOn: ['all'],
-                configured: true,
-              },
-              {
-                id: 'elevenlabs',
-                name: 'ElevenLabs Scribe',
-                clientOnly: false,
-                visibleOn: ['all'],
-                configured: true,
-              },
-            ],
-            tts: [
-              {
-                id: 'webspeech',
-                name: 'WebSpeech (Browser)',
-                clientOnly: true,
-                visibleOn: ['all'],
-                configured: true,
-              },
-            ],
-          },
-          context: { providers: [] },
-        }),
+        body: capabilitiesWithServerSTT(
+          { id: 'elevenlabs', name: 'ElevenLabs Scribe', configured: true },
+          { id: 'nova-sonic', name: 'Nova Sonic', configured: false },
+        ),
       }),
     );
 
     await openSettings(page);
     const sttSelect = page.locator('[data-testid="stt-provider-select"]');
+    // The configured provider arriving proves the capabilities response has
+    // been applied, so the absence below is not read before it lands.
     await expect(sttSelect).toContainText('ElevenLabs Scribe');
-  });
-
-  test('unconfigured server provider is not registered', async ({ page }) => {
-    await page.addInitScript(SEED_STORAGE);
-    await page.route('**/api/**', (r) => {
-      r.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
-    });
-    await page.route('**/api/system/status', (r) =>
-      r.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: STATUS_READY,
-      }),
-    );
-    await page.route('**/api/system/capabilities', (r) =>
-      r.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          voice: {
-            stt: [
-              {
-                id: 'webspeech',
-                name: 'WebSpeech (Browser)',
-                clientOnly: true,
-                visibleOn: ['all'],
-                configured: true,
-              },
-              {
-                id: 'nova-sonic',
-                name: 'Nova Sonic',
-                clientOnly: false,
-                visibleOn: ['mobile'],
-                configured: false,
-              },
-            ],
-            tts: [
-              {
-                id: 'webspeech',
-                name: 'WebSpeech (Browser)',
-                clientOnly: true,
-                visibleOn: ['all'],
-                configured: true,
-              },
-            ],
-          },
-          context: { providers: [] },
-        }),
-      }),
-    );
-
-    await openSettings(page);
-    const sttSelect = page.locator('[data-testid="stt-provider-select"]');
-    // Nova Sonic is configured: false — should NOT appear
     await expect(sttSelect).not.toContainText('Nova Sonic');
   });
 });
@@ -416,17 +365,6 @@ test.describe('Voice Providers — global floating mic', () => {
     await expect(
       page.locator('[data-testid="global-voice-button"]'),
     ).toHaveCount(0);
-  });
-
-  test('screenshot: floating mic on mobile home screen', async ({
-    page,
-  }, testInfo) => {
-    await page.goto('/');
-    await expect(page.locator('[data-testid="voice-pill"]')).toBeVisible();
-    await page.screenshot({
-      path: testInfo.outputPath('global-voice-mobile.png'),
-      fullPage: false,
-    });
   });
 
   test('no floating mic at all when voice-S2S is disabled', async ({
@@ -535,22 +473,5 @@ test.describe('Voice Providers — VoiceOrb in chat input', () => {
 
     await orb.click();
     await expect(orb).toHaveAttribute('title', 'Click to speak');
-  });
-
-  test('screenshot: chat input with VoiceOrb visible', async ({
-    page,
-  }, testInfo) => {
-    await page.goto('/projects/dev/layouts/code?chat=conv-1');
-    // Scroll to bottom so chat input is visible
-    const chatInput = page
-      .locator('.chat-input-area, [class*="chat-input"]')
-      .first();
-    if (await chatInput.isVisible()) {
-      await chatInput.scrollIntoViewIfNeeded();
-    }
-    await page.screenshot({
-      path: testInfo.outputPath('voice-orb-chat-input.png'),
-      fullPage: false,
-    });
   });
 });

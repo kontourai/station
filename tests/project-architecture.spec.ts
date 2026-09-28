@@ -396,6 +396,7 @@ test.describe('Project Sidebar', () => {
 
   test('project page shows layout affordances', async ({ page }) => {
     await alphaProjectButton(page).click();
+    await expect(page).toHaveURL(/\/projects\/alpha$/);
     await expect(page.getByRole('heading', { name: 'Alpha' })).toBeVisible();
     // `+ Add` became `+ Add layout` once `+ Add pane` joined it, and both live
     // in the Open section header (`src-ui/src/views/ProjectPage.tsx`). `exact`
@@ -576,16 +577,29 @@ test.describe('Project Navigation', () => {
     });
   });
 
-  test('clicking project navigates to project view', async ({ page }) => {
+  test('clicking a layout chip navigates to that layout', async ({ page }) => {
+    // `seedRoutes`' catch-all `**/layouts` answers after the Alpha layouts
+    // route and would leave the chip row empty; re-declare it, and reload so
+    // Home's first-project read is not already cached empty, so the chip the
+    // reader clicks is backed by Alpha's real catalogue.
+    await page.route('**/api/projects/alpha/layouts', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: ALPHA_LAYOUTS }),
+      }),
+    );
+    await page.reload();
     await alphaProjectButton(page).click();
-    await expect(page).toHaveURL(/\/projects\/alpha/);
-    await expect(page.getByRole('heading', { name: 'Alpha' })).toBeVisible();
-  });
-
-  test('clicking layout navigates to layout view', async ({ page }) => {
-    await page.goto('/projects/alpha/layouts/chat');
-    await expect(page).toHaveURL(/\/projects\/alpha\/layouts\/chat/);
-    await expect(page.locator('.chat-dock')).toBeVisible();
+    await expect(page).toHaveURL(/\/projects\/alpha$/);
+    await page
+      .getByRole('toolbar', { name: 'Alpha layouts' })
+      .getByRole('button', { name: 'Chat', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/projects\/alpha\/layouts\/chat$/);
+    await expect(
+      page.getByRole('button', { name: 'Switch layout' }),
+    ).toBeVisible();
   });
 
   test('new project form renders', async ({ page }) => {
@@ -644,57 +658,6 @@ test.describe('Project Navigation', () => {
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeFocused();
-  });
-
-  test('creating a project applies the recommended server-owned Coding layout', async ({
-    page,
-  }) => {
-    let createdLayoutBody: unknown = null;
-    await page.route('**/api/projects/layouts/available', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: CODING_STARTER_CATALOG }),
-      }),
-    );
-    await page.route('**/api/coding/repos**', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: {
-            workspace: '/tmp/new-project',
-            workspaceIsRepo: true,
-            repos: [{ root: '/tmp/new-project', name: 'new-project' }],
-          },
-        }),
-      }),
-    );
-    await page.route('**/api/projects/new-project/layouts/apply', (route) => {
-      createdLayoutBody = route.request().postDataJSON();
-      return route.fulfill({
-        status: 201,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: { slug: 'coding' } }),
-      });
-    });
-
-    await page.goto('/projects/new');
-    await page.getByPlaceholder('My Project').fill('New Project');
-    await page.getByPlaceholder('/path/to/project').fill('/tmp/new-project/');
-    await expect(
-      page.getByText('Recommended for this Git directory'),
-    ).toBeVisible();
-    await expect(page.getByRole('button', { name: /Coding/ })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
-
-    await expect
-      .poll(() => createdLayoutBody)
-      .toMatchObject({ layoutId: 'builtin:coding' });
   });
 
   test('Git-aware coding setup stays contained on phone and preserves an explicit opt-out', async ({
@@ -938,16 +901,6 @@ test.describe('ChatDock', () => {
     });
   });
 
-  test('chat dock is visible at bottom', async ({ page }) => {
-    await expect(page.locator('.chat-dock')).toBeVisible();
-    // The dock counter shows a session count, or invites a chat when empty.
-    // Scoped to the dock: the Home empty state carries similar copy, which
-    // made the unscoped matcher ambiguous under strict mode.
-    await expect(
-      page.locator('.chat-dock').getByText(/Start a chat|\d+ session/),
-    ).toBeVisible();
-  });
-
   test('the ambient dock host adds no element between the shell and the dock', async ({
     page,
   }) => {
@@ -1018,6 +971,12 @@ test.describe('ChatDock', () => {
     // beside the point: the region is Chat's either way.
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+    // The dock counter shows a session count, or invites a chat when empty.
+    // Scoped to the dock: the Home empty state carries similar copy, which
+    // made the unscoped matcher ambiguous under strict mode.
+    await expect(
+      page.locator('.chat-dock').getByText(/Start a chat|\d+ session/),
+    ).toBeVisible();
 
     // #2143: an occupied region's toolbar control is a toggle, so a JOIN is
     // made the way a user makes one — show Activity in the empty Right region

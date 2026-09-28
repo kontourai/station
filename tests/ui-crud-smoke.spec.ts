@@ -36,7 +36,10 @@ async function chooseStationEngine(page: import('@playwright/test').Page) {
 }
 
 test.describe('UI CRUD Smoke', () => {
-  test('request-only project maintenance authenticates each protected mutation', async ({
+  // Authentication ENFORCEMENT on these routes is owned server-side
+  // (src-server/runtime/__tests__/runtime-auth-boundary.test.ts); this proves
+  // the live update and delete round trip itself.
+  test('project update and delete round-trip through the live server', async ({
     authenticatedRequest,
   }) => {
     const projectName = `Request Auth Project ${Date.now()}`;
@@ -71,42 +74,30 @@ test.describe('UI CRUD Smoke', () => {
     }
   });
 
-  test('projects CRUD through the live UI', async ({
+  test('creating a project through the live UI lands on it', async ({
     page,
     authenticatedRequest,
   }) => {
     const browserHealth = await monitorBrowserHealth(page);
     const projectName = `Smoke Project ${Date.now()}`;
     const projectSlug = slugify(projectName);
-    const updatedName = `${projectName} Updated`;
-    await page.goto('/projects/new');
-    await page.getByRole('heading', { name: 'New Project' }).waitFor({
-      timeout: 15_000,
-    });
+    try {
+      await page.goto('/projects/new');
+      await page.getByRole('heading', { name: 'New Project' }).waitFor({
+        timeout: 15_000,
+      });
 
-    await page.getByPlaceholder('My Project').fill(projectName);
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
+      await page.getByPlaceholder('My Project').fill(projectName);
+      await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-    await page.waitForURL(new RegExp(`/projects/${projectSlug}$`), {
-      timeout: 10_000,
-    });
-
-    const updateResponse = await authenticatedRequest.put(
-      `/api/projects/${projectSlug}`,
-      { data: { name: updatedName } },
-    );
-    expect(updateResponse.ok()).toBe(true);
-    const update = await updateResponse.json();
-    expect(update.success).toBe(true);
-    expect(update.data.name).toBe(updatedName);
-
-    const deletionResponse = await authenticatedRequest.delete(
-      `/api/projects/${projectSlug}`,
-    );
-    expect(deletionResponse.ok()).toBe(true);
-    const deletion = await deletionResponse.json();
-    expect(deletion.success).toBe(true);
-    browserHealth.assertHealthy();
+      await page.waitForURL(new RegExp(`/projects/${projectSlug}$`), {
+        timeout: 10_000,
+      });
+      browserHealth.assertHealthy();
+    } finally {
+      // Cleanup only; the update and delete round trip is the test above.
+      await authenticatedRequest.delete(`/api/projects/${projectSlug}`);
+    }
   });
 
   test('agents CRUD through the live UI', async ({

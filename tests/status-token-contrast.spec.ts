@@ -414,71 +414,6 @@ test.describe('success token family contrast', () => {
       }
     });
   }
-
-  /**
-   * `ToolCallDisplay` also sets `--success-text` inline in two places: the
-   * result checkmark and the word "Success" in the expanded detail. Both sit
-   * on the tool-call card, whose own inline background is
-   * `--color-bg-secondary` — so that, and not the page, is the backdrop to
-   * measure against. Asserting these against `--bg-tertiary` as well would be
-   * over-strict: the card is never mounted on it.
-   *
-   * The checkmark is a non-text indicator (1.4.11, 3:1) and the word is normal
-   * text (1.4.3, 4.5:1). Both are asserted at the stricter 4.5:1 because both
-   * carry the same token and the token clears it — a genuinely separate
-   * threshold would only be warranted if the icon needed relief the text did
-   * not.
-   *
-   * **What this does and does not cover**, stated because the difference was
-   * measured rather than assumed: this pins `--success-text` itself — that it
-   * resolves, and that it is legible on the card. It does **not** see the two
-   * JSX call sites, because they carry no class for a probe to mount. Putting
-   * `var(--success-primary)` back into `ToolCallDisplay.tsx` leaves this test
-   * green; it fails
-   * `src-ui/src/__tests__/undefined-css-custom-properties.test.ts`, which
-   * reads the source and named both lines when that exact revert was injected.
-   */
-  test('the inline --success-text foregrounds are legible on the tool-call card, both themes', async ({
-    page,
-  }) => {
-    for (const theme of THEMES) {
-      await page.evaluate((value) => {
-        document.documentElement.setAttribute('data-theme', value);
-      }, theme);
-      await page.evaluate(() => {
-        document.getElementById('danger-probe-host')?.remove();
-        const host = document.createElement('div');
-        host.id = 'danger-probe-host';
-
-        host.style.cssText =
-          'position:fixed;top:0;left:0;z-index:2147483647;padding:24px;background:var(--color-bg-secondary);color:var(--text-primary)';
-        host.innerHTML =
-          '<span data-testid="danger-probe-control">Control</span>';
-        const probe = document.createElement('span');
-        probe.setAttribute('data-testid', 'danger-probe');
-        probe.style.color = 'var(--success-text)';
-        probe.textContent = 'Success';
-        host.appendChild(probe);
-        document.body.appendChild(host);
-      });
-      const probe = page.getByTestId('danger-probe');
-      const control = page.getByTestId('danger-probe-control');
-
-      const [probeColor, controlColor] = await Promise.all([
-        probe.evaluate((el) => getComputedStyle(el).color),
-        control.evaluate((el) => getComputedStyle(el).color),
-      ]);
-      expect(
-        probeColor,
-        `--success-text must resolve to a colour of its own in ${theme} theme — an undefined token leaves this inheriting body copy, which is exactly how station#1246 shipped`,
-      ).not.toBe(controlColor);
-
-      expect(
-        await contrastRatio(probe),
-        `--success-text on the tool-call card in ${theme} theme (WCAG 1.4.3, normal text)`,
-      ).toBeGreaterThanOrEqual(4.5);
-    }
-  });
 });
 
 /**
@@ -1001,8 +936,8 @@ test.describe('station#1254 — recovered surfaces and the fill ramps', () => {
    * The binding from `getProgressColor()` to these tokens is JSX with no class
    * to mount, so it is pinned by
    * `src-ui/src/__tests__/undefined-css-custom-properties.test.ts` at source
-   * level — the same division of labour the `--success-text` test above
-   * records for `ToolCallDisplay`.
+   * level — the same gate that pins `ToolCallDisplay`'s inline
+   * `--success-text` foregrounds, which carry no class either.
    */
   for (const token of [
     '--success-text',
