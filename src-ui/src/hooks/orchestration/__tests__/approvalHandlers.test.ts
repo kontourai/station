@@ -353,7 +353,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
     expect(showToolApproval).toHaveBeenCalledTimes(1);
   });
 
-  test('an answer to a request already answered says so, and is not an error', async () => {
+  test('an answer to a request no longer open says so, and is not an error', async () => {
     vi.mocked(resolveOrchestrationRequest).mockRejectedValue(
       new Error('This request was already resolved.'),
     );
@@ -369,7 +369,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
 
     await vi.waitFor(() =>
       expect(showToast).toHaveBeenCalledWith(
-        'Bash: this request was already answered.',
+        'Bash: this request is no longer open.',
         'thread-1',
         5000,
       ),

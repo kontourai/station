@@ -450,6 +450,9 @@ function formatDecisionLine(decision: DelegatedTaskDecision): string {
         : `${recorded}, not yet acknowledged by the engine${waited}; Station has not re-sent it`;
     case 'in-process':
       return `${recorded}, consumed by Station's own engine`;
+    case 'closed-by-engine':
+      // No decision was recorded: the engine closed the request first.
+      return `Request ${decision.requestId}: closed by the engine before Station answered`;
     default:
       return `${recorded}; this engine does not report delivery`;
   }

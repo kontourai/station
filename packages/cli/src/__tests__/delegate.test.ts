@@ -2406,6 +2406,10 @@ describe('station delegate over HTTP', () => {
       'Decision on req-7: approved (recorded), not sent: Station refused a reply the engine would not accept; the engine is still waiting',
     ],
     [
+      { delivery: 'closed-by-engine' },
+      'Request req-7: closed by the engine before Station answered',
+    ],
+    [
       { delivery: 'in-process' },
       "Decision on req-7: approved (recorded), consumed by Station's own engine",
     ],

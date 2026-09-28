@@ -141,7 +141,7 @@ async function answerFromToast(
     });
     if (outcome === 'already-settled') {
       toastStore.show(
-        `${view.toolName}: this request was already answered.`,
+        `${view.toolName}: this request is no longer open.`,
         event.threadId,
         5000,
       );

@@ -372,7 +372,7 @@ function ToolApprovalButtons({
       </button>
       {phase === 'already-settled' && (
         <p className="tool-call__approve-status" role="status">
-          This request was already answered.
+          This request is no longer open.
         </p>
       )}
       {failure && (

@@ -383,9 +383,24 @@ describe('#2880: Codex decision delivery', () => {
     expect(delegatedLastDecision(events)).toEqual({
       requestId,
       status: 'cancelled',
-      delivery: 'not-reported',
+      delivery: 'closed-by-engine',
     });
     await adapter.stopAll();
+  });
+
+  test('a close naming the same digits with another type does not cancel the pending approval', async () => {
+    const harness = await startedAdapter();
+    await emit(harness.process, commandApproval(9));
+    const requestId = await openedRequestId(harness.events);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    await send(harness.process, acknowledgement('9'));
+    expect(of(harness.events, 'request.resolved')).toEqual([]);
+    // Still pending: the user's decision is accepted and written.
+    await harness.adapter.respondToRequest(THREAD, requestId, 'accept');
+    expect(repliesTo(harness.process, 9)).toEqual([
+      expect.objectContaining({ result: { decision: 'accept' } }),
+    ]);
+    await harness.adapter.stopAll();
   });
 
   test('a user decision after Codex closed the request is refused and never reads acknowledged', async () => {
@@ -405,7 +420,7 @@ describe('#2880: Codex decision delivery', () => {
     ).toEqual([]);
     expect(delegatedLastDecision(events)?.delivery).not.toBe('acknowledged');
     // How: the decision is refused and never written.
-    expect(answer).toMatch(/Unknown Codex approval request/);
+    expect(answer).toBe('This Codex approval request is no longer open.');
     expect(repliesTo(process, 9)).toEqual([]);
     expect(of(events, 'request.delivery')).toEqual([]);
     expect(of(events, 'request.resolved').map((event) => event.status)).toEqual(

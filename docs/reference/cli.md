@@ -1009,12 +1009,12 @@ engine reports afterwards is shown separately as `lastDecision` on
 | `acknowledged` | The engine closed the request after Station's well-formed reply. This is not proof it applied the decision as given; `engineStatus` carries the engine's own outcome when it reports one (Muse). |
 | `unacknowledged` | `reason: no-acknowledgement`: nothing arrived within the adapter's window (30 s for Codex), or the session ended first. Station has not re-sent the decision. A late acknowledgement replaces this with `acknowledged`. `reason: invalid-reply`: Station refused to send a reply the engine would not accept, so the engine is still waiting. |
 | `in-process` | Station's own engine consumed the decision. |
+| `closed-by-engine` | Codex closed the request on its own (for example when a turn is interrupted) before Station answered. Station made no decision (`status` is `cancelled`), and a decision sent afterwards is refused, since Codex would never read it. Printed as `Request req-1: closed by the engine before Station answered`. |
 | `not-reported` | The engine's protocol reports no delivery (Claude Code, ACP connections), or the decision predates delivery reporting. This is a capability, not a warning. |
 
-A request Codex closes on its own before Station answers (for example when
-a turn is interrupted) is recorded as `cancelled` with delivery
-`not-reported`: Station made no decision, and a decision sent afterwards is
-refused, since Codex would never read it.
+One race stays open: if Codex closes a request while Station's reply is
+already on its way, the close reads as `acknowledged` even though Codex
+discarded the reply, because Codex's close does not say which came first.
 
 The default output prints it as one line, for example
 `Decision on req-1: approved (recorded), acknowledged by the engine after 42 ms`.

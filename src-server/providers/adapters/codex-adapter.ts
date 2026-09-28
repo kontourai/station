@@ -2766,7 +2766,9 @@ export class CodexAdapter implements ProviderAdapterShape {
     const record = this.transport.requireSession(threadId);
     const pending = record.pendingApprovals.get(requestId);
     if (!pending) {
-      throw new Error(`Unknown Codex approval request: ${requestId}`);
+      // Answered already, closed by Codex, or never opened: in each case
+      // there is nothing left to answer.
+      throw new Error('This Codex approval request is no longer open.');
     }
 
     record.pendingApprovals.delete(requestId);

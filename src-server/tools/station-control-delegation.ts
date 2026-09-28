@@ -1210,6 +1210,9 @@ export function delegatedTaskReason(
  *   within the adapter's window (Station did not re-send) or Station refused
  *   to send a reply that failed the engine's decision vocabulary;
  * - `in-process`: Station's own engine consumed it;
+ * - `closed-by-engine`: the engine closed the request on its own before
+ *   Station answered (`request.resolved` `response.reason`); Station made
+ *   no decision;
  * - `not-reported`: the engine's protocol reports no delivery (Claude, ACP),
  *   or the decision predates delivery reporting.
  */
@@ -1221,6 +1224,7 @@ export interface DelegatedTaskDecision {
     | 'acknowledged'
     | 'unacknowledged'
     | 'in-process'
+    | 'closed-by-engine'
     | 'not-reported';
   reason?: 'no-acknowledgement' | 'invalid-reply';
   engineStatus?: string;
@@ -1281,6 +1285,13 @@ function delegatedDecisionAt(
   const resolved = events[resolvedIndex];
   const requestId = resolved.requestId as string;
   const status = optionalString(resolved.status, 32) ?? 'resolved';
+  if (
+    resolved.response &&
+    typeof resolved.response === 'object' &&
+    (resolved.response as { reason?: unknown }).reason === 'closed-by-engine'
+  ) {
+    return { requestId, status, delivery: 'closed-by-engine' };
+  }
   if (resolved.acknowledgement === 'in-process') {
     return { requestId, status, delivery: 'in-process' };
   }

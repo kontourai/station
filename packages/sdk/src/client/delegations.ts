@@ -330,6 +330,7 @@ export interface DelegatedTaskDecision {
     | 'acknowledged'
     | 'unacknowledged'
     | 'in-process'
+    | 'closed-by-engine'
     | 'not-reported';
   reason?: 'no-acknowledgement' | 'invalid-reply';
   engineStatus?: string;

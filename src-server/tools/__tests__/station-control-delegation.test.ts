@@ -3688,6 +3688,28 @@ describe('observeDelegatedTask reports the last decision apart from its delivery
     ]);
   });
 
+  test('a request the engine closed before Station answered reads closed-by-engine', async () => {
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    // The shape the Codex transport publishes: no acknowledgement, because
+    // Station made no decision.
+    installTaskFetch([
+      {
+        method: 'request.resolved',
+        requestId: 'req-1',
+        status: 'cancelled',
+        response: { reason: 'closed-by-engine' },
+      },
+    ]);
+    const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
+    expect(snapshot.lastDecision).toEqual({
+      requestId: 'req-1',
+      status: 'cancelled',
+      delivery: 'closed-by-engine',
+    });
+  });
+
   test('an earlier request is judged on its latest request.resolved', async () => {
     const { observeDelegatedTask } = await import(
       '../station-control-delegation.js'
