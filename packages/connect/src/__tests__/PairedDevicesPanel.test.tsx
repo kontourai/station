@@ -253,7 +253,9 @@ describe('PairedDevicesPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     const notice = await screen.findByTestId('full-access-revocation');
-    expect(notice.textContent).toContain('Full access removed from “Pixel 9”.');
+    expect(notice.textContent).toContain(
+      '“Pixel 9” was revoked, and so was the full access it had given.',
+    );
     expect(notice.textContent).toContain(
       'conversation:reset-1 (was its full-access decision)',
     );
@@ -265,6 +267,33 @@ describe('PairedDevicesPanel', () => {
     );
     expect(notice.textContent).toContain('…and 1 more (2 in all).');
     expect(notice.querySelector('a')).toBeNull();
+  });
+
+  test('#1796 G3: revoking a device that had put nothing at full access adds no notice', async () => {
+    const { calls } = stubHost({
+      devices: [device({ id: 'abc', name: 'Pixel 9' })],
+      revokeBody: {
+        id: 'abc',
+        fullAccessRevocation: {
+          cause: 'device-revoked',
+          reset: [],
+          stillFullAccess: [],
+          unattributedHostStarts: { sessions: [], total: 0 },
+        },
+      },
+    });
+    renderPanel();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Revoke Pixel 9' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() =>
+      expect(calls.some((call) => call.method === 'DELETE')).toBe(true),
+    );
+    await waitFor(() =>
+      expect(calls.filter((call) => call.method === 'GET').length).toBe(2),
+    );
+    expect(screen.queryByTestId('full-access-revocation')).toBeNull();
   });
 
   test('abandons the revoke when the confirmation is cancelled', async () => {

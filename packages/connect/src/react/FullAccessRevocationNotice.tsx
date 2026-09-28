@@ -1,4 +1,5 @@
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
+import { useEffect, useRef } from 'react';
 
 /**
  * #1796 (G3): what taking a device's full access away did, as the scope and
@@ -23,6 +24,8 @@ const STILL_REASON: Record<string, string> = {
   'station-default': 'the Station’s default approval mode',
 };
 
+const LIST_STYLE = { listStyle: 'disc', paddingLeft: '20px', margin: '4px 0' };
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
@@ -41,6 +44,18 @@ export function readFullAccessRevocation(
     !Array.isArray(report.stillFullAccess)
   )
     return null;
+  const unattributed = isRecord(report.unattributedHostStarts)
+    ? report.unattributedHostStarts.sessions
+    : undefined;
+  // Revoking a device that had put nothing at full access says nothing
+  // here: the revoke itself is the whole story.
+  if (
+    report.cause === 'device-revoked' &&
+    report.reset.length === 0 &&
+    report.stillFullAccess.length === 0 &&
+    (!Array.isArray(unattributed) || unattributed.length === 0)
+  )
+    return null;
   return {
     kind: 'report',
     deviceName,
@@ -55,9 +70,18 @@ export function FullAccessRevocationNotice({
   outcome: FullAccessRevocationOutcome;
   onDismiss: () => void;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  // The notice sits below the device list; bring it into view.
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: 'nearest' });
+  }, []);
   if (outcome.kind === 'failed')
     return (
-      <div role="alert" className="station-connect-row__meta--warning">
+      <div
+        ref={ref}
+        role="alert"
+        className="station-connect-row__meta--warning"
+      >
         Full access was removed from “{outcome.deviceName}”, but Station could
         not reset the conversations it had put at full access. They keep their
         current approval mode until someone changes it.
@@ -74,11 +98,16 @@ export function FullAccessRevocationNotice({
     unattributed.sessions.length === 0;
   return (
     <div
+      ref={ref}
       role="status"
       className="station-connect-panel__intro"
       data-testid="full-access-revocation"
     >
-      <strong>Full access removed from “{outcome.deviceName}”.</strong>
+      <strong>
+        {outcome.report.cause === 'device-revoked'
+          ? `“${outcome.deviceName}” was revoked, and so was the full access it had given.`
+          : `Full access removed from “${outcome.deviceName}”.`}
+      </strong>
       {nothing ? (
         <div>No conversation was at full access through this device.</div>
       ) : null}
@@ -88,7 +117,7 @@ export function FullAccessRevocationNotice({
             Reset to Ask. A turn already running finishes first; the next one
             asks:
           </div>
-          <ul>
+          <ul style={LIST_STYLE}>
             {reset.map((entry) => (
               <li key={`reset-${entry.conversationId}`}>
                 <code>{entry.conversationId}</code> (was{' '}
@@ -101,7 +130,7 @@ export function FullAccessRevocationNotice({
       {stillFullAccess.length > 0 ? (
         <>
           <div>Still at full access, not changed:</div>
-          <ul>
+          <ul style={LIST_STYLE}>
             {stillFullAccess.map((entry) => (
               <li key={`still-${entry.conversationId}`}>
                 <code>{entry.conversationId}</code>, because of{' '}
@@ -118,7 +147,7 @@ export function FullAccessRevocationNotice({
             started before Station recorded who granted full access, so they may
             be this device’s:
           </div>
-          <ul>
+          <ul style={LIST_STYLE}>
             {unattributed.sessions.map((entry) => (
               <li key={`unattributed-${entry.conversationId}`}>
                 <code>{entry.conversationId}</code>, started {entry.startedAt}
