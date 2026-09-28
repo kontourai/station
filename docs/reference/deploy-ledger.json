@@ -1,5 +1,41 @@
 [
   {
+    "timestampUtc": "2026-09-28T15:27:44Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2462.1",
+    "sha": "a30f084b3b93f254337127cb18907d041570f9fc",
+    "artifactBuiltAt": "2026-09-28T13:48:58.795Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36429714384",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36429714384)"
+    ],
+    "changelog": {
+      "previousSha": "ef6e2f0eabdb2c7aea77b4b76a485035f4e0c00a",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2904](https://github.com/kontourai/station/pull/2904) fix(access): actionable full-access refusals, device scope commands, and revocation that resets what a device granted (#1796)",
+          "[#2840](https://github.com/kontourai/station/pull/2840) fix(plugins): strip git metadata from agent-proposed local installs"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2877](https://github.com/kontourai/station/pull/2877) test(server): audit batch 29, runtime bootstrap tests reach their seams",
+          "[#2863](https://github.com/kontourai/station/pull/2863) test: audit batch 25 - pin push-gateway ceilings, prove OTel identity and signing transitions, drop test seams",
+          "[#2891](https://github.com/kontourai/station/pull/2891) test(server): audit batch 33, security, voice, adapter and knowledge tests reach their seams",
+          "[#2890](https://github.com/kontourai/station/pull/2890) test(ui): audit batch 34, shell and sidebar suites reach their owners",
+          "[#2900](https://github.com/kontourai/station/pull/2900) chore: test-audit owner decisions (batch 66)"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-09-28T14:45:05Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2462.36429714384",
