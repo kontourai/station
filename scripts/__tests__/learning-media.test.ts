@@ -276,6 +276,13 @@ it('the real builder publishes immutable media bytes and its strict entry detect
     expect(
       reviewed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
     ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
+    // A source removed by another change is a stale input in the queue,
+    // not a malformed ledger.
+    git(['rm', '-qf', 'owner.ts']);
+    const removed = await buildLearningGuide({ root, check: true });
+    expect(
+      removed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
+    ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
     vi.stubEnv('GITHUB_ACTIONS', '');
     await expect(buildLearningGuide({ root, check: true })).rejects.toThrow(
       'Documentation review needs refresh: guide.md; changed: owner.ts',
