@@ -95,7 +95,7 @@ export type NativeDeviceProofRejectionReason =
   | 'signature_invalid'
   | 'replay_store_unavailable';
 
-export class NativeDeviceProofRejectedError extends Error {
+class NativeDeviceProofRejectedError extends Error {
   readonly reason: NativeDeviceProofRejectionReason;
 
   constructor(
@@ -146,6 +146,30 @@ const base64urlEncode = (bytes: Uint8Array): string => {
     .replace(/=+$/, '');
 };
 
+function decodeCanonicalSegment(segment: string): Uint8Array {
+  if (!BASE64URL_SEGMENT.test(segment))
+    throw new NativeDeviceProofRejectedError(
+      'malformed_proof',
+      'Native Device proof uses invalid base64url.',
+    );
+  let bytes: Uint8Array;
+  try {
+    bytes = base64urlDecode(segment);
+  } catch (cause) {
+    throw new NativeDeviceProofRejectedError(
+      'malformed_proof',
+      'Native Device proof segment cannot be decoded.',
+      { cause },
+    );
+  }
+  if (base64urlEncode(bytes) !== segment)
+    throw new NativeDeviceProofRejectedError(
+      'malformed_proof',
+      'Native Device proof uses non-canonical base64url.',
+    );
+  return bytes;
+}
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -165,6 +189,32 @@ const surfacesEqual = (
   a.channel === b.channel &&
   a.clientInstanceId === b.clientInstanceId &&
   a.keyThumbprint === b.keyThumbprint;
+
+const bindingsEqual = (
+  a: NativeDeviceBindingSnapshot,
+  b: NativeDeviceBindingSnapshot,
+): boolean =>
+  a.stationId === b.stationId &&
+  a.stationAudience === b.stationAudience &&
+  a.deviceId === b.deviceId &&
+  a.bindingId === b.bindingId &&
+  a.deviceProofKeyThumbprint === b.deviceProofKeyThumbprint &&
+  a.peerNonce === b.peerNonce &&
+  surfacesEqual(a.surface, b.surface);
+
+const peersEqual = (
+  a: NonNullable<NativeDeviceProofPeerView['snapshot']>,
+  b: NonNullable<NativeDeviceProofPeerView['snapshot']>,
+): boolean =>
+  a.stationId === b.stationId &&
+  a.stationAudience === b.stationAudience &&
+  a.peerNonce === b.peerNonce &&
+  surfacesEqual(a.surface, b.surface);
+
+const publicKeysEqual = (
+  a: NativeDeviceProofPublicKeyJwk,
+  b: NativeDeviceProofPublicKeyJwk,
+): boolean => a.kty === b.kty && a.crv === b.crv && a.x === b.x && a.y === b.y;
 
 const canonicalAudience = (value: unknown): string | undefined => {
   if (typeof value !== 'string') return undefined;
@@ -226,22 +276,21 @@ function decodeProof(proof: string): DecodedProof {
       'Native Device proof is not a three-segment compact JWS.',
     );
   const [headerSegment, payloadSegment, signatureSegment] = segments;
-  for (const segment of segments)
-    if (!BASE64URL_SEGMENT.test(segment))
-      throw new NativeDeviceProofRejectedError(
-        'malformed_proof',
-        'Native Device proof uses non-canonical base64url.',
-      );
+  const headerBytes = decodeCanonicalSegment(headerSegment);
+  const payloadBytes = decodeCanonicalSegment(payloadSegment);
+  const signature = decodeCanonicalSegment(signatureSegment);
+  if (signature.byteLength !== 64)
+    throw new NativeDeviceProofRejectedError(
+      'malformed_proof',
+      'Native Device proof signature is not 64 bytes.',
+    );
 
   let header: unknown;
   let claims: unknown;
   try {
-    header = JSON.parse(
-      new TextDecoder().decode(base64urlDecode(headerSegment)),
-    );
-    claims = JSON.parse(
-      new TextDecoder().decode(base64urlDecode(payloadSegment)),
-    );
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    header = JSON.parse(decoder.decode(headerBytes));
+    claims = JSON.parse(decoder.decode(payloadBytes));
   } catch (cause) {
     throw new NativeDeviceProofRejectedError(
       'malformed_proof',
@@ -270,7 +319,7 @@ function decodeProof(proof: string): DecodedProof {
   const signedInput = new TextEncoder().encode(
     `${headerSegment}.${payloadSegment}`,
   );
-  return { claims, signedInput, signature: base64urlDecode(signatureSegment) };
+  return { claims, signedInput, signature };
 }
 
 interface ValidatedClaims {
@@ -423,7 +472,7 @@ function validateClaims(
       'not_yet_valid',
       'Native Device proof is dated in the future.',
     );
-  if (now > exp)
+  if (now >= exp)
     throw new NativeDeviceProofRejectedError(
       'expired',
       'Native Device proof is expired.',
@@ -485,9 +534,17 @@ export async function verifyNativeDeviceRequestProof(
   },
   deps: NativeDeviceProofVerifierDeps,
 ): Promise<NativeDeviceProofVerification> {
-  const clock = deps.nowSeconds
-    ? Math.floor(deps.nowSeconds())
-    : Math.floor(Date.now() / 1000);
+  const clockSource = deps.nowSeconds ? deps.nowSeconds() : Date.now() / 1000;
+  const clock = Math.floor(clockSource);
+  if (
+    !Number.isFinite(clockSource) ||
+    !Number.isSafeInteger(clock) ||
+    clock < 0
+  )
+    throw new NativeDeviceProofRejectedError(
+      'invalid_claims',
+      'Native Device proof verification clock is invalid.',
+    );
 
   if (
     !(request.body instanceof Uint8Array) ||
@@ -497,6 +554,7 @@ export async function verifyNativeDeviceRequestProof(
       'oversized_body',
       'Native Device proof request body exceeds the 16 KiB channel pilot bound.',
     );
+  const body = copyBytes(request.body);
 
   const { claims, signedInput, signature } = decodeProof(proof);
   const validated = validateClaims(claims, clock);
@@ -557,12 +615,7 @@ export async function verifyNativeDeviceRequestProof(
       'route_mismatch',
       'The proof does not cover the exact request method and path.',
     );
-  if (
-    !constantTimeEquals(
-      validated.bodySha256,
-      await sha256Base64Url(request.body),
-    )
-  )
+  if (!constantTimeEquals(validated.bodySha256, await sha256Base64Url(body)))
     throw new NativeDeviceProofRejectedError(
       'body_mismatch',
       'The proof body digest does not match the transmitted bytes.',
@@ -571,6 +624,30 @@ export async function verifyNativeDeviceRequestProof(
   let publicKey: CryptoKey;
   const proofKey = initialBinding.deviceProofKey;
   try {
+    if (
+      !isPlainObject(proofKey) ||
+      !exactKeys(proofKey, ['kty', 'crv', 'x', 'y']) ||
+      proofKey.kty !== 'EC' ||
+      proofKey.crv !== 'P-256' ||
+      typeof proofKey.x !== 'string' ||
+      typeof proofKey.y !== 'string' ||
+      !OPAQUE_ID.test(proofKey.x) ||
+      !OPAQUE_ID.test(proofKey.y)
+    )
+      throw new Error('invalid_native_device_public_key');
+    const encodedKey = new TextEncoder().encode(
+      JSON.stringify({
+        crv: proofKey.crv,
+        kty: proofKey.kty,
+        x: proofKey.x,
+        y: proofKey.y,
+      }),
+    );
+    const thumbprint = base64urlEncode(
+      new Uint8Array(await crypto.subtle.digest('SHA-256', encodedKey)),
+    );
+    if (!constantTimeEquals(thumbprint, binding.deviceProofKeyThumbprint))
+      throw new Error('native_device_public_key_thumbprint_mismatch');
     publicKey = await crypto.subtle.importKey(
       'jwk',
       { ...proofKey, ext: true } as unknown as nodeWebcrypto.JsonWebKey,
@@ -613,18 +690,19 @@ export async function verifyNativeDeviceRequestProof(
     recheckedBinding.status !== 'approved' ||
     !recheckedBinding.snapshot ||
     !recheckedBinding.deviceProofKey ||
-    recheckedBinding.snapshot.bindingId !== binding.bindingId ||
-    recheckedBinding.snapshot.deviceProofKeyThumbprint !==
-      binding.deviceProofKeyThumbprint ||
-    recheckedBinding.deviceProofKey.x !== proofKey.x ||
-    recheckedBinding.deviceProofKey.y !== proofKey.y
+    !bindingsEqual(recheckedBinding.snapshot, binding) ||
+    !publicKeysEqual(recheckedBinding.deviceProofKey, proofKey)
   )
     throw new NativeDeviceProofRejectedError(
       'binding_not_approved',
       'The Device proof binding changed or was revoked during verification.',
     );
   const recheckedPeer = await authority.peer();
-  if (recheckedPeer.status !== 'current' || !recheckedPeer.snapshot)
+  if (
+    recheckedPeer.status !== 'current' ||
+    !recheckedPeer.snapshot ||
+    !peersEqual(recheckedPeer.snapshot, peer)
+  )
     throw new NativeDeviceProofRejectedError(
       'peer_not_current',
       'The verified native peer ended during verification.',
@@ -640,6 +718,29 @@ export async function verifyNativeDeviceRequestProof(
       { cause },
     );
   }
+
+  const finalBinding = await authority.binding();
+  const finalPeer = await authority.peer();
+  if (
+    finalBinding.status !== 'approved' ||
+    !finalBinding.snapshot ||
+    !finalBinding.deviceProofKey ||
+    !bindingsEqual(finalBinding.snapshot, binding) ||
+    !publicKeysEqual(finalBinding.deviceProofKey, proofKey)
+  )
+    throw new NativeDeviceProofRejectedError(
+      'binding_not_approved',
+      'Native Device proof authority changed before dispatch.',
+    );
+  if (
+    finalPeer.status !== 'current' ||
+    !finalPeer.snapshot ||
+    !peersEqual(finalPeer.snapshot, peer)
+  )
+    throw new NativeDeviceProofRejectedError(
+      'peer_not_current',
+      'Native Device peer changed before dispatch.',
+    );
 
   return { deviceId: binding.deviceId, bindingId: binding.bindingId };
 }

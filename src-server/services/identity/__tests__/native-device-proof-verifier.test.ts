@@ -290,7 +290,9 @@ describe('verifyNativeDeviceRequestProof', () => {
 
     const forged = await h.buildProof();
     const parts = forged.split('.');
-    parts[2] = `${parts[2].slice(0, -2)}aa`;
+    const signatureBytes = Buffer.from(parts[2]!, 'base64url');
+    signatureBytes[0] ^= 1;
+    parts[2] = signatureBytes.toString('base64url');
     const tampered = parts.join('.');
     await expect(
       verifyNativeDeviceRequestProof(tampered, request(), h.authority, {
@@ -298,6 +300,27 @@ describe('verifyNativeDeviceRequestProof', () => {
         nowSeconds: h.nowSeconds,
       }),
     ).rejects.toMatchObject({ reason: 'signature_invalid' });
+    expect(h.store.consumed).toHaveLength(0);
+  });
+
+  test('rejects an approved-key substitution under an unchanged Device thumbprint', async () => {
+    const h = await harness();
+    const forged = await handBuiltProof(h.otherKey, await baseClaims(h));
+    await expect(
+      verifyNativeDeviceRequestProof(
+        forged,
+        request(),
+        {
+          binding: async () => ({
+            status: 'approved',
+            snapshot: h.snapshot,
+            deviceProofKey: h.otherKey.publicKey,
+          }),
+          peer: h.authority.peer,
+        },
+        { replayStore: h.store, nowSeconds: h.nowSeconds },
+      ),
+    ).rejects.toMatchObject({ reason: 'binding_mismatch' });
     expect(h.store.consumed).toHaveLength(0);
   });
 
@@ -439,6 +462,18 @@ describe('verifyNativeDeviceRequestProof', () => {
 
   test('rejects an expired proof and a proof dated in the future', async () => {
     const h = await harness();
+    await expect(
+      verifyNativeDeviceRequestProof(
+        await h.buildProof(),
+        request(),
+        h.authority,
+        {
+          replayStore: h.store,
+          nowSeconds: () =>
+            h.nowSeconds() + NATIVE_DEVICE_PROOF_LIFETIME_SECONDS,
+        },
+      ),
+    ).rejects.toMatchObject({ reason: 'expired' });
     const proof = await h.buildProof();
     const future = h.nowSeconds() + NATIVE_DEVICE_PROOF_LIFETIME_SECONDS + 1;
     await expect(
@@ -502,6 +537,125 @@ describe('verifyNativeDeviceRequestProof', () => {
     expect(h.store.consumed).toHaveLength(0);
   });
 
+  test('rechecks every binding and peer field after signature verification', async () => {
+    const h = await harness();
+    const proof = await h.buildProof();
+    let bindingReads = 0;
+    await expect(
+      verifyNativeDeviceRequestProof(
+        proof,
+        request(),
+        {
+          binding: async () => {
+            bindingReads += 1;
+            return {
+              status: 'approved',
+              snapshot:
+                bindingReads === 1
+                  ? h.snapshot
+                  : {
+                      ...h.snapshot,
+                      surface: {
+                        ...h.snapshot.surface,
+                        clientInstanceId:
+                          '44444444-4444-4444-8444-444444444444',
+                      },
+                    },
+              deviceProofKey: h.key.publicKey,
+            };
+          },
+          peer: h.authority.peer,
+        },
+        { replayStore: h.store, nowSeconds: h.nowSeconds },
+      ),
+    ).rejects.toMatchObject({ reason: 'binding_not_approved' });
+    expect(h.store.consumed).toHaveLength(0);
+
+    let peerReads = 0;
+    await expect(
+      verifyNativeDeviceRequestProof(
+        await h.buildProof(),
+        request(),
+        {
+          binding: h.authority.binding,
+          peer: async () => {
+            peerReads += 1;
+            return {
+              status: 'current',
+              snapshot:
+                peerReads === 1
+                  ? peerSnapshot()
+                  : peerSnapshot({ peerNonce: opaque('newnonce') }),
+            };
+          },
+        },
+        { replayStore: h.store, nowSeconds: h.nowSeconds },
+      ),
+    ).rejects.toMatchObject({ reason: 'peer_not_current' });
+    expect(h.store.consumed).toHaveLength(0);
+  });
+
+  test('refuses authority retired during replay consumption before returning a Device', async () => {
+    const h = await harness();
+    let bindingRevoked = false;
+    await expect(
+      verifyNativeDeviceRequestProof(
+        await h.buildProof(),
+        request(),
+        {
+          binding: async () =>
+            bindingRevoked ? { status: 'revoked' } : h.makeBinding(),
+          peer: h.authority.peer,
+        },
+        {
+          nowSeconds: h.nowSeconds,
+          replayStore: {
+            async consume() {
+              bindingRevoked = true;
+            },
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ reason: 'binding_not_approved' });
+
+    let peerRetired = false;
+    await expect(
+      verifyNativeDeviceRequestProof(
+        await h.buildProof(),
+        request(),
+        {
+          binding: h.authority.binding,
+          peer: async () =>
+            peerRetired ? { status: 'aborted' } : h.makePeer(),
+        },
+        {
+          nowSeconds: h.nowSeconds,
+          replayStore: {
+            async consume() {
+              peerRetired = true;
+            },
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ reason: 'peer_not_current' });
+  });
+
+  test('rejects an invalid verification clock before consuming a proof', async () => {
+    const h = await harness();
+    await expect(
+      verifyNativeDeviceRequestProof(
+        await h.buildProof(),
+        request(),
+        h.authority,
+        {
+          replayStore: h.store,
+          nowSeconds: () => Number.NaN,
+        },
+      ),
+    ).rejects.toMatchObject({ reason: 'invalid_claims' });
+    expect(h.store.consumed).toHaveLength(0);
+  });
+
   test('rejects an extra claim and an extra header parameter', async () => {
     const h = await harness();
     const claims = await baseClaims(h);
@@ -528,6 +682,36 @@ describe('verifyNativeDeviceRequestProof', () => {
         nowSeconds: h.nowSeconds,
       }),
     ).rejects.toMatchObject({ reason: 'invalid_header' });
+    expect(h.store.consumed).toHaveLength(0);
+  });
+
+  test('rejects a signed but non-canonical base64url JWS segment', async () => {
+    const h = await harness();
+    const headerBytes = Buffer.from(
+      `${JSON.stringify({ alg: 'ES256', typ: NATIVE_DEVICE_PROOF_TYPE })} `,
+    );
+    const canonical = headerBytes.toString('base64url');
+    const alphabet =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const replacement = [...alphabet]
+      .map((last) => `${canonical.slice(0, -1)}${last}`)
+      .find(
+        (candidate) =>
+          candidate !== canonical &&
+          Buffer.from(candidate, 'base64url').equals(headerBytes),
+      );
+    expect(replacement).toBeDefined();
+    const payload = encodeSegment(await baseClaims(h));
+    const input = `${replacement}.${payload}`;
+    const signature = await h.key.sign(new TextEncoder().encode(input));
+    await expect(
+      verifyNativeDeviceRequestProof(
+        `${input}.${Buffer.from(signature).toString('base64url')}`,
+        request(),
+        h.authority,
+        { replayStore: h.store, nowSeconds: h.nowSeconds },
+      ),
+    ).rejects.toMatchObject({ reason: 'malformed_proof' });
     expect(h.store.consumed).toHaveLength(0);
   });
 
