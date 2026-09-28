@@ -321,6 +321,10 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
       name: 'Update server to 0.8.0-preview.2',
     });
     await expect(apply).toBeVisible({ timeout: 10000 });
+    // The offer's resting background, compared against its hovered one below.
+    const offerBackground = await apply.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
     await expect(
       serverCard.getByText(
         'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
@@ -367,6 +371,10 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
     // answers) or live again: never a disabled leftover of the accepted POST.
     const offers = serverCard.getByRole('button', { name: /Update server to/ });
     await expect(offers).toBeEnabled({ timeout: 10000 });
+    // The pointer still rests where it clicked: the hovered offer keeps its
+    // accent, not the global button hover's dark background.
+    await offers.hover();
+    await expect(offers).toHaveCSS('background-color', offerBackground);
     await serverCard.screenshot({
       path: testInfo.outputPath('archive-update-rolled-back.png'),
     });
