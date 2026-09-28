@@ -59,6 +59,7 @@ import {
   PluginPreviewUnsupportedDependencyError,
   resolvePluginDependencies,
 } from '../../services/plugins/plugin-source.js';
+import { PluginSourceStaging } from '../../services/plugins/plugin-source-staging.js';
 import {
   isRegistryAcquisitionRefusal,
   RegistryAcquisitionRefused,
@@ -159,6 +160,9 @@ export function registerPluginInstallRoutes(
     reconcileEngineConnections,
     quiesceEventSubscriptions,
   } = deps;
+  // Sources once installed without their git metadata stay that way after
+  // the proposal that named them resolves (#2719).
+  const sourceStaging = new PluginSourceStaging(projectHomeDir);
 
   app.get('/:name/retained-generations', (c) => {
     const history = deps.packageMcpJournal?.history(c.req.param('name'), {
@@ -487,11 +491,13 @@ export function registerPluginInstallRoutes(
         );
       }
 
-      // #2719: a source an open install proposal names is staged without
-      // its git metadata. The preview says so, and the install's consent
-      // carries it back, so both stage the same bytes.
+      // #2719: a source an open install proposal names, or one already
+      // installed that way, is staged without its git metadata. The preview
+      // says so, and the install's consent carries it back, so both stage
+      // the same bytes.
       const excludeGitMetadata =
-        deps.proposals?.hasOpenInstallProposal(source) === true;
+        deps.proposals?.hasOpenInstallProposal(source) === true ||
+        sourceStaging.excludesGitMetadata(source);
       const result = await fetchPluginSource(source, pluginsDir, logger, {
         excludeGitMetadata,
       });
@@ -874,23 +880,33 @@ export function registerPluginInstallRoutes(
         );
       }
       // #2719: stage as the preview did. An install whose source an open
-      // proposal names, approved on a preview that kept git metadata, is
-      // refused rather than installing bytes nobody previewed. A preview
-      // that excluded it stays excluded even if the proposal has since been
+      // proposal names, or that was installed without its git metadata
+      // before, approved on a preview that kept git metadata, is refused
+      // rather than installing bytes nobody previewed. A preview that
+      // excluded it stays excluded even if the proposal has since been
       // dismissed or completed.
       const proposed = deps.proposals?.hasOpenInstallProposal(source) === true;
+      const stagedStripped =
+        !proposed && sourceStaging.excludesGitMetadata(source);
       const previewExcludedGitMetadata = consent.gitMetadata === 'excluded';
-      if (proposed && !previewExcludedGitMetadata) {
+      if ((proposed || stagedStripped) && !previewExcludedGitMetadata) {
         return c.json(
           {
             success: false,
-            error:
-              'An open proposal names this source, so it installs without its git metadata, and this approval came from a preview that kept it. Preview it again, then install it from that preview.',
+            error: proposed
+              ? 'An open proposal names this source, so it installs without its git metadata, and this approval came from a preview that kept it. Preview it again, then install it from that preview.'
+              : 'This source was installed without its git metadata before, so it installs that way again, and this approval came from a preview that kept it. Preview it again, then install it from that preview.',
             consent: { reason: 'git-metadata' },
           },
           409,
         );
       }
+      const excludeGitMetadata =
+        proposed || stagedStripped || previewExcludedGitMetadata;
+      // Recorded before anything is written, so a reinstall of this source
+      // stays stripped even if this install fails part-way.
+      if (excludeGitMetadata)
+        await sourceStaging.recordGitMetadataExcluded(source);
       const operatorDecision: PluginInstallConsent = {
         kind: 'operator-decision',
         registryTrustRevision: consent.registryTrustRevision,
@@ -929,7 +945,7 @@ export function registerPluginInstallRoutes(
               dataPolicy,
               expectedInstallation,
               activationSession,
-              excludeGitMetadata: proposed || previewExcludedGitMetadata,
+              excludeGitMetadata,
             },
           );
           return installed;
