@@ -10173,7 +10173,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "d55966171a2e29af5a737e0482dd17f19e2d5ab7",
+      "sourceRevision": "348b6b869f2087a1bc46d146f339f073f4ebaa0b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10189,7 +10189,7 @@
         },
         {
           "path": "docs/reference/contracts.md",
-          "digest": "226144f497aaddd1d0dc01db6e8d82cc96d30e79046f06a7178514dafc8ae57d"
+          "digest": "4847117ad93330d8464574883af787cbe37ae02a93efc6f292fe22f092bad3d4"
         },
         {
           "path": "packages/contracts/src/agent-identity.ts",
@@ -10453,7 +10453,8 @@
         "Integration source review through d9aea82e4: docs/reference/contracts.md changed only its Muse serve approval-resolution sentence (#2912 request.delivery acknowledgement). This document names neither Muse nor approval resolution, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports layout constants and helpers; behavior and the glossary's terms are unchanged and the glossary cites none of the removed exports; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Cites contracts/SDK reference only by link; the #2937 additions (branch-mergeability read, refetchOnWindowFocus) change no statement here."
+        "Cites contracts/SDK reference only by link; the #2937 additions (branch-mergeability read, refetchOnWindowFocus) change no statement here.",
+        "Cites the contracts reference only by link; the #2937 review round (100-row bound, sourceOwner, context head) changes no statement here."
       ]
     },
     {
@@ -14413,7 +14414,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "d55966171a2e29af5a737e0482dd17f19e2d5ab7",
+      "sourceRevision": "348b6b869f2087a1bc46d146f339f073f4ebaa0b",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14457,7 +14458,7 @@
         },
         {
           "path": "docs/reference/contracts.md",
-          "digest": "226144f497aaddd1d0dc01db6e8d82cc96d30e79046f06a7178514dafc8ae57d"
+          "digest": "4847117ad93330d8464574883af787cbe37ae02a93efc6f292fe22f092bad3d4"
         },
         {
           "path": "docs/reference/sdk.md",
@@ -14503,7 +14504,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) added the launcher-run service update and the Check for server updates prose to docs/reference/cli.md, and the archive install kinds and requestServiceUpdateProgress/useServiceUpdateProgressQuery to docs/reference/sdk.md. Both merged documents read coherently with the branch text, with no duplicated or contradictory paragraphs. This guide only links to them for task routing. Prose accurate. Source review is separate from executed test evidence.",
         "The documentation maintenance link remains valid; the added freshness section does not change the integration delivery expectations.",
         "The documentation maintenance link remains valid after the mode wording change.",
-        "Cites contracts/SDK reference only by link; the #2937 additions (branch-mergeability read, refetchOnWindowFocus) change no statement here."
+        "Cites contracts/SDK reference only by link; the #2937 additions (branch-mergeability read, refetchOnWindowFocus) change no statement here.",
+        "Cites the contracts reference only by link; the #2937 review round (100-row bound, sourceOwner, context head) changes no statement here."
       ]
     },
     {
@@ -23090,12 +23092,12 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
+      "sourceRevision": "348b6b869f2087a1bc46d146f339f073f4ebaa0b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
       "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
-      "documentDigest": "226144f497aaddd1d0dc01db6e8d82cc96d30e79046f06a7178514dafc8ae57d",
+      "documentDigest": "4847117ad93330d8464574883af787cbe37ae02a93efc6f292fe22f092bad3d4",
       "sources": [
         {
           "path": "packages/cli/src/commands/delegate.ts",
@@ -23159,7 +23161,7 @@
         },
         {
           "path": "packages/contracts/src/pull-request-provider.ts",
-          "digest": "569c14c5c749af1ec770131b795657c124297c7e89911dc37a7889173c5cfc34"
+          "digest": "b922b1c46046528a3f45481c1114710b5030c63a942b870675d12cac1c6a7efa"
         },
         {
           "path": "packages/contracts/src/relay-enrollment.ts",
@@ -23329,7 +23331,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) makes muse-serve-session publish request.resolved (acknowledgement 'engine') when Station records a decision, and Muse's approval/resolved now publishes request.delivery acknowledged with engineStatus. It also adds the ApprovalAcknowledgement and RequestDeliveryEvent contracts and adds lastDecision and earlierUnacknowledgedDecisions to DelegatedTaskSnapshot and to the CLI status formatter. Corrected the Muse serve sentence that said approvals are 'resolved from Muse's own approval/resolved': a decision Station records now resolves on record and is acknowledged through request.delivery, and only requests Muse closes before Station decides still resolve from approval/resolved. The expiry, stall-watchdog and supervision/reason/transitionReason surface prose is still accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Added PullRequestBranchMergeability and the optional listOpenPullRequestMergeability; checked against the contract, the GitHub/GitLab adapters and the route refusal for a provider without it (#2937)."
+        "Added PullRequestBranchMergeability and the optional listOpenPullRequestMergeability; checked against the contract, the GitHub/GitLab adapters and the route refusal for a provider without it (#2937).",
+        "Checked the added 100-row refusal, sourceOwner and PullRequestClientContext.head against the contract, the GitHub adapter and the /context route (#2937 review round)."
       ]
     },
     {
@@ -29156,7 +29159,7 @@
     },
     {
       "path": "packages/contracts/AGENTS.md",
-      "sourceRevision": "d55966171a2e29af5a737e0482dd17f19e2d5ab7",
+      "sourceRevision": "348b6b869f2087a1bc46d146f339f073f4ebaa0b",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to the contracts reference and requires domain-specific imports, explicit compatibility, and focused consumer checks. The prohibition on runtime helpers/parsers is normative, not a claim that the existing package contains none.",
@@ -29165,7 +29168,7 @@
       "sources": [
         {
           "path": "docs/reference/contracts.md",
-          "digest": "226144f497aaddd1d0dc01db6e8d82cc96d30e79046f06a7178514dafc8ae57d"
+          "digest": "4847117ad93330d8464574883af787cbe37ae02a93efc6f292fe22f092bad3d4"
         },
         {
           "path": "packages/contracts/package.json",
@@ -29181,7 +29184,8 @@
         "Integration source review through e0314c727: contracts.md only gained a note that plugin-foreground-work is published ahead of any server implementation, plus orchestration/knowledge owner links. The policy's routing to that reference and its domain-import and compatibility rules are unaffected. Source review is separate from executed test evidence.",
         "Integration source review through d9aea82e4: docs/reference/contracts.md changed only its Muse serve approval-resolution sentence (#2912 request.delivery acknowledgement). This document names neither Muse nor approval resolution, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/reference/contracts.md now names the ServiceUpdateProgress system-status shape. This policy routes to that reference and duplicates none of its shape list, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Cites contracts/SDK reference only by link; the #2937 additions (branch-mergeability read, refetchOnWindowFocus) change no statement here."
+        "Cites contracts/SDK reference only by link; the #2937 additions (branch-mergeability read, refetchOnWindowFocus) change no statement here.",
+        "Cites the contracts reference only by link; the #2937 review round (100-row bound, sourceOwner, context head) changes no statement here."
       ]
     },
     {
