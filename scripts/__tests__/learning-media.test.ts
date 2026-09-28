@@ -162,8 +162,10 @@ it('the real builder publishes immutable media bytes and its strict entry detect
     ...capture,
     path: 'docs/learn/media/task capture.png',
   };
-  write('guide.md', `# Guide\n\n![Task](<${localCapture.path}>)\n`);
+  const guide = `# Guide\n\n![Task](<${localCapture.path}>)\n`;
+  write('guide.md', guide);
   write('code.ts', source);
+  write('owner.ts', 'export const owner = 1;\n');
   write(localCapture.path, image);
   write(
     'docs/architecture/module-map.md',
@@ -185,9 +187,28 @@ it('the real builder publishes immutable media bytes and its strict entry detect
       ],
     }),
   );
+  const digest = (bytes: string) =>
+    createHash('sha256').update(bytes).digest('hex');
   write(
     'docs/learn/review-ledger.json',
-    JSON.stringify({ version: 1, records: [] }),
+    JSON.stringify({
+      version: 1,
+      records: [
+        {
+          path: 'guide.md',
+          documentDigest: digest(guide),
+          sourceRevision: 'a'.repeat(40),
+          kind: 'current',
+          state: 'source-reviewed',
+          summary: 'Checked the owner.',
+          limits: 'Fixture only.',
+          sources: [
+            { path: 'owner.ts', digest: digest('export const owner = 1;\n') },
+          ],
+          checks: ['Fixture evidence.'],
+        },
+      ],
+    }),
   );
   write(
     'docs/learn/media.json',
@@ -248,6 +269,17 @@ it('the real builder publishes immutable media bytes and its strict entry detect
     vi.stubEnv('GITHUB_EVENT_NAME', 'merge_group');
     const queued = await buildLearningGuide({ root, check: true });
     expect(queued.captures[0].changed).toEqual(['code.ts']);
+    // The same decision governs review records in the builder.
+    write('code.ts', source);
+    write('owner.ts', 'export const owner = 2;\n');
+    const reviewed = await buildLearningGuide({ root, check: true });
+    expect(
+      reviewed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
+    ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
+    vi.stubEnv('GITHUB_ACTIONS', '');
+    await expect(buildLearningGuide({ root, check: true })).rejects.toThrow(
+      'Documentation review needs refresh: guide.md; changed: owner.ts',
+    );
   } finally {
     vi.unstubAllEnvs();
   }
