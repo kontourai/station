@@ -390,7 +390,7 @@ function isEmptyElicitationSchema(schema: unknown): boolean {
  * downstream cut (the delegation snapshot keeps 200) can remove the part that
  * matters: a host's registrable domain or a command's tail.
  */
-export const MAX_COMMAND_APPROVAL_TITLE_LENGTH = 200;
+const MAX_COMMAND_APPROVAL_TITLE_LENGTH = 200;
 /**
  * Room for the host in a network title. A longer host keeps its END, where
  * the registrable domain is (`…aaaa.evil.example`), behind a leading "…".
