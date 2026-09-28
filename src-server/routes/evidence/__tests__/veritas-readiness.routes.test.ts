@@ -196,28 +196,20 @@ describe('veritas readiness routes', () => {
     expect(body.data).toEqual({ configured: false, reason: 'no-workspace' });
   });
 
-  test('POST /init scaffolds a workspace via the service', async () => {
-    const { app, service } = createApp();
-    const response = await post(app, '/api/projects/dev/readiness/init');
-    expect(response.status).toBe(200);
-    const body = await readJson(response);
-    expect(body.success).toBe(true);
-    expect(body.data.outcome).toBe('created');
-    expect(service.initWorkspace).toHaveBeenCalledWith('/workspace/dev');
-  });
-
-  test('POST /init is idempotent — already-initialized passes through', async () => {
-    const service = createMockService({
-      initWorkspace: vi
-        .fn()
-        .mockResolvedValue({ outcome: 'already-initialized' }),
-    });
-    const { app } = createApp(service);
-    const response = await post(app, '/api/projects/dev/readiness/init');
-    expect(response.status).toBe(200);
-    const body = await readJson(response);
-    expect(body.data.outcome).toBe('already-initialized');
-  });
+  test.each(['created', 'already-initialized'] as const)(
+    'POST /init passes the service outcome %s through for the project workspace',
+    async (outcome) => {
+      const service = createMockService({
+        initWorkspace: vi.fn().mockResolvedValue({ outcome }),
+      });
+      const { app } = createApp(service);
+      const response = await post(app, '/api/projects/dev/readiness/init');
+      expect(response.status).toBe(200);
+      const body = await readJson(response);
+      expect(body).toEqual({ success: true, data: { outcome } });
+      expect(service.initWorkspace).toHaveBeenCalledWith('/workspace/dev');
+    },
+  );
 
   test('POST /init reports no-cli with a copyable command', async () => {
     const service = createMockService({

@@ -13,7 +13,6 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   assertSkillPackageDirectory,
-  isDirectoryPhysicallyWithin,
   isDirectoryWithin,
   resolveSkillDirectory,
   skillsRootDir,
@@ -55,66 +54,29 @@ afterEach(() => {
   rmSync(outside, { recursive: true, force: true });
 });
 
-describe('isDirectoryPhysicallyWithin', () => {
-  test('a real child is inside', () => {
+describe('resolveSkillDirectory accepts a skills tree that is really there', () => {
+  test('an existing skill directory resolves', () => {
     mkdirSync(join(home, 'skills', 'alpha'), { recursive: true });
-    expect(
-      isDirectoryPhysicallyWithin(
-        join(home, 'skills'),
-        join(home, 'skills', 'alpha'),
-      ),
-    ).toBe(true);
+    expect(resolveSkillDirectory(home, 'alpha')).toBe(
+      join(home, 'skills', 'alpha'),
+    );
   });
 
-  test('a skill directory that does not exist yet is inside', () => {
+  test('a skill directory that does not exist yet resolves', () => {
     mkdirSync(join(home, 'skills'), { recursive: true });
-    expect(
-      isDirectoryPhysicallyWithin(
-        join(home, 'skills'),
-        join(home, 'skills', 'new'),
-      ),
-    ).toBe(true);
-  });
-
-  test('a symlink pointing out of the root is NOT inside, though it looks it', () => {
-    // The exact gap: lexically `<root>/aliased` is a child, so the string
-    // comparison passes while every write to it lands in `outside`.
-    mkdirSync(join(home, 'skills'), { recursive: true });
-    symlinkSync(outside, join(home, 'skills', 'aliased'), 'dir');
-
-    expect(
-      isDirectoryWithin(join(home, 'skills'), join(home, 'skills', 'aliased')),
-    ).toBe(true);
-    expect(
-      isDirectoryPhysicallyWithin(
-        join(home, 'skills'),
-        join(home, 'skills', 'aliased'),
-      ),
-    ).toBe(false);
+    expect(resolveSkillDirectory(home, 'new')).toBe(
+      join(home, 'skills', 'new'),
+    );
   });
 
   test('a symlinked ROOT is fine — the tree itself may legitimately be a link', () => {
     const realSkills = join(outside, 'real-skills');
-    mkdirSync(realSkills, { recursive: true });
     mkdirSync(join(realSkills, 'alpha'), { recursive: true });
-    mkdirSync(home, { recursive: true });
     symlinkSync(realSkills, join(home, 'skills'), 'dir');
 
-    expect(
-      isDirectoryPhysicallyWithin(
-        join(home, 'skills'),
-        join(home, 'skills', 'alpha'),
-      ),
-    ).toBe(true);
-  });
-
-  test('a root that does not exist yet has nothing aliased', () => {
-    expect(
-      isDirectoryPhysicallyWithin(
-        join(home, 'skills'),
-        join(home, 'skills', 'alpha'),
-      ),
-    ).toBe(true);
+    expect(resolveSkillDirectory(home, 'alpha')).toBe(
+      join(home, 'skills', 'alpha'),
+    );
   });
 });
 
@@ -124,6 +86,11 @@ describe('resolveSkillDirectory refuses a symlinked-out skill directory', () => 
     symlinkSync(outside, join(home, 'skills', 'aliased'), 'dir');
     writeFileSync(join(outside, 'canary.txt'), 'untouched', 'utf-8');
 
+    // The exact gap: lexically `<root>/aliased` is a child, so the string
+    // comparison passes while every write to it lands in `outside`.
+    expect(
+      isDirectoryWithin(join(home, 'skills'), join(home, 'skills', 'aliased')),
+    ).toBe(true);
     expect(() => resolveSkillDirectory(home, 'aliased')).toThrow(
       /resolves outside/,
     );
@@ -148,6 +115,7 @@ describe('resolveSkillDirectory refuses a symlinked-out skill directory', () => 
     );
   });
 
+  // Also the absent-root case: nothing has been aliased if nothing is there.
   test('an ordinary name still resolves', () => {
     expect(resolveSkillDirectory(home, 'alpha')).toBe(
       join(home, 'skills', 'alpha'),

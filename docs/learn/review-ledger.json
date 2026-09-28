@@ -1689,7 +1689,7 @@
     {
       "path": "deploy/gcp-dev/README.md",
       "documentDigest": "b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Single-owner GCP development recipe with a retained historical qualification record. Full 170-line baseline read. Bootstrap guard/swap helper, container enrollment boundary and GCP preview source checked; official GCP documentation checked read-only. The 2026-09-05 drill remains historical evidence, not fresh cloud qualification.",
@@ -1825,7 +1825,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/routes/runtime-routes.ts",
@@ -1863,13 +1863,14 @@
         "Integration source review through e0314c727: the lifecycle.ts, service.ts and service-windows.ts changes add archive-aware service code locations and an upgrade guard. The Docker-based recipe makes no `station service` or upgrade claims, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 added the operator-only, loopback-gated `station environment access devices|scope|scopes` verbs by extracting openLocalOperatorChannel in environment.ts. It also added deviceHoldsScope and deviceHoldsFullAccess to the pairing and security services, and added full-access revocation reports to the device scope and revoke routes. The recipe's IAP tunnel, its distinction between browser-bootstrap, local-grant and operator credentials, and its dated 2026-09-05 drill record are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) un-exports contributorCommandMessage (distribution.ts) and cf43e14d0 (#2731) adds the recognizeCredential hook in runtime-routes.ts for a 403 on unadmitted credentials; prose accurate: the recipe makes no claim about either the export or the refusal status. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) passes STATION_SERVICE_LAUNCHER through lifecycle.ts start, adds the service-update status line to service.ts, and adds update backup/restore to station-home-archive.ts. 8b48e2b35 (#2914) drops listeningPidsByPort from station-dogfood-health and a redundant assertion from container-release.test. None of this touches the container/VM recipe, the offline-backup guidance or the verification checklist; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) passes STATION_SERVICE_LAUNCHER through lifecycle.ts start, adds the service-update status line to service.ts, and adds update backup/restore to station-home-archive.ts. 8b48e2b35 (#2914) drops listeningPidsByPort from station-dogfood-health and a redundant assertion from container-release.test. None of this touches the container/VM recipe, the offline-backup guidance or the verification checklist; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
       "path": "deploy/public-ingress/README.md",
       "documentDigest": "713a080bec7e77d77db623d83a52874bb698556e6ddc28bb75eda69b0e864d5b",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Optional Caddy Compose ingress template and its protocol qualification fixture. Full 128-line baseline read. Compose/Caddy files and the synthetic smoke upstream traced; actual Compose model validated read-only. No Caddy/Station startup, public CA issuance, DNS change or smoke execution.",
@@ -2005,7 +2006,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/routes/runtime-routes.ts",
@@ -2043,7 +2044,8 @@
         "Integration source review through e0314c727: lifecycle.ts/service.ts/service-windows.ts changed CLI service code location (source vs prebuilt archive), the Windows service marker, and the archive-aware upgrade guard. The README's Compose service, Caddy proxy and upgrade/rollback volume guidance does not depend on the CLI user-service implementation; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 adds the host-only `environment access devices|scope|scopes` verbs on the existing loopback operator channel, deviceHoldsScope and deviceHoldsFullAccess, the per-request refusal-identity middleware, and full-access reset on device scope removal or revoke. None of this touches the Caddy ingress, TLS, proxy upstream, pairing-enrollment or terminal/voice listener claims. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) stops exporting contributorCommandMessage from packages/cli/src/distribution.ts, with no behavior change. cf43e14d0 (#2731) adds the recognizeCredential wiring in runtime-routes. The README makes claims only about the Caddy/Compose template, protocol qualification and passing through Station's own authorization and cookies, and neither change touches those. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the launcher's context env scrub in lifecycle.ts, the launcher install, `service update-home` and update status in service.ts, and a separate update-backup schema (station.home-update-backup/v1) in station-home-archive.ts. 8b48e2b35 (#2914) removed a redundant assertion in container-release.test.ts and the unused listeningPidsByPort export from station-dogfood-health.mjs. The README's Compose, volume and backup/rollback guidance does not depend on any of these. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the launcher's context env scrub in lifecycle.ts, the launcher install, `service update-home` and update status in service.ts, and a separate update-backup schema (station.home-update-backup/v1) in station-home-archive.ts. 8b48e2b35 (#2914) removed a redundant assertion in container-release.test.ts and the unused listeningPidsByPort export from station-dogfood-health.mjs. The README's Compose, volume and backup/rollback guidance does not depend on any of these. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -2533,7 +2535,7 @@
     },
     {
       "path": "docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "historical",
       "state": "classified",
       "summary": "A top status note points to ADR0014 and distinguishes the superseded flag/rollback mechanism from the retained orchestration/private-adapter/no-migration decisions. Current interactive route composition supplies the foreground orchestration seam.",
@@ -2554,7 +2556,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/runtime/bootstrap/station-features.ts",
@@ -2573,7 +2575,8 @@
         "Landing delta 622565ef7: The updated Session API remains the current successor; added wire-ID details do not change the historical cutover classification or ADR rationale. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed.",
         "Reviewed landing deltas through 111744681: Added the actual queued-send and Agent-handoff recovery behavior; API receipt, uncertain-outcome and no-blind-resubmission contracts remain unchanged. Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: in useActiveChatSessionMessaging, #2904 only changes how a full-access refusal is handled: idle state, restored draft, structured refusal card and an explicit resend without full access. The status note pointing to ADR 0014, and its split between the superseded flag mechanism and the retained orchestration decisions, are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c added the recorded-vs-acknowledged section to session-api.md. The ADR's claim that approvals ride request.opened/request.resolved still holds (request.resolved is still published on every engine); prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c added the recorded-vs-acknowledged section to session-api.md. The ADR's claim that approvals ride request.opened/request.resolved still holds (request.resolved is still published on every engine); prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -3016,7 +3019,7 @@
     },
     {
       "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "design",
       "state": "classified",
       "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work. Browser/Device tranche: Full read; unchanged. Current viewer is per-visible-viewer, not the planned multiplex owner; no actual pool-starvation measurement. Current repo issue935 is the original ADR task, not archive935.",
@@ -3081,7 +3084,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/runtime/routes/runtime-routes.ts",
@@ -3263,7 +3266,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: in runtime-routes, #2904 adds an app-wide middleware that binds full-access refusal identity (environment id and paired device name) and makes the device scope and revoke routes return revocation reports. SSE, Last-Event-ID replay and the live-surface routes are unchanged, so the reading note and design constraints hold. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to the runtime-routes.ts security options, used for 403 versus 401 on unadmitted credentials. It touches no SSE, Last-Event-ID, replay or live-surface route. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout and the DEVICE_PLACEHOLDER_ASPECT/deviceCornerRadius re-export; the ADR names none of them and its transport claims are untouched; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout and the DEVICE_PLACEHOLDER_ASPECT/deviceCornerRadius re-export; the ADR names none of them and its transport claims are untouched; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -3498,7 +3502,7 @@
     {
       "path": "docs/architecture.md",
       "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
@@ -3566,7 +3570,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/runtime/agents/agent-engine-classification.ts",
@@ -3606,7 +3610,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/routes/runtime-routes.ts",
@@ -3682,7 +3686,8 @@
         "Integration source review through e0314c727: telemetry.ts inlined resolveOtelResourceAttributes and removed its injection seam without changing the exported attributes or endpoint-gated startup. plugin-install-transaction.ts added git-metadata exclusion for agent-proposed installs (#2719). The overview's optional OTel and plugin boundary claims remain accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 wires the live full-access grantor check (runtime-initialize) and adds refusal-identity middleware plus device-revocation reset wiring (runtime-routes). resetFullAccessGrantedBy now records a new Ask approval-mode decision in orchestration-service. The overview's diagrams and its claims on durable versus live events, the dispatch receipt, and approval and authority separation still hold. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage module-private in packages/cli/src/distribution.ts, and cf43e14d0 (#2731) adds recognizeCredential (runtime-routes.ts) plus a 403 insufficient_scope answer for a live but unadmitted credential (runtime-http.ts); prose accurate: distribution.ts still defines the published-CLI versus checkout boundary, and the HTTP-composition and credential/scope admission descriptions don't name a refusal status. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery and shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the doc defers the surface to package exports and explicit subpaths; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery and shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the doc defers the surface to package exports and explicit subpaths; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -3796,7 +3801,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
@@ -3862,13 +3867,14 @@
         "Integration source review through 84d56b9a8: e1af43c2c added a 'Recorded versus acknowledged decisions' section (lastDecision delivery values) to cli.md. It does not address the stale pendingRequest retention the review tracks as #2741, and nothing else in the cited CLI reference claims changed; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) docs/reference/cli.md changes only its service section (fixed launcher, self-update, Check for server updates); the doc links cli.md only as the command-availability reference; prose accurate. Source review is separate from executed test evidence.",
         "Links to the learning atlas and to documentation.md#turn-findings-into-maintained-improvements remain valid after the added freshness text.",
-        "Links into documentation.md remain valid after the mode wording change."
+        "Links into documentation.md remain valid after the mode wording change.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "5f7f0c65c8562548d628e9854e4232d2a0160e3133f7bf326b452b3f3c615429",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4176,7 +4182,7 @@
         },
         {
           "path": "src-server/domain/config-loader-app.ts",
-          "digest": "a67de24132721b01798cb756d7577554072e9c60e1b75338752ef5e5da583e64"
+          "digest": "6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b"
         },
         {
           "path": "src-server/domain/config-loader-storage.ts",
@@ -4292,7 +4298,7 @@
         },
         {
           "path": "src-server/providers/registries/registry.ts",
-          "digest": "082e2501d5db499450846c3c101fb73af024ad03de20f70975af5c8da8b4cdcf"
+          "digest": "039ffa95b635e8f6202d7789bbc2437560094680b0fca15b4273abaf297b3f4a"
         },
         {
           "path": "src-server/providers/resolver.ts",
@@ -4332,7 +4338,7 @@
         },
         {
           "path": "src-server/routes/chat/chat.ts",
-          "digest": "c06f13a9c20da383365050bd5383fe626e88868e5de9592c57c05ee0b35a77e2"
+          "digest": "530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a"
         },
         {
           "path": "src-server/routes/connections/acp.ts",
@@ -4380,7 +4386,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/orchestration/project-task-rooms.ts",
@@ -4468,7 +4474,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/mcp/mcp-ui-frame-server.ts",
@@ -4880,7 +4886,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "2a49e160f0c302d028565dc026b856e00bb2c92cd57a348fcbe0564ea4f0b18f"
+          "digest": "649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872"
         },
         {
           "path": "src-server/services/orchestration/flow-policy-sidecar.ts",
@@ -5613,7 +5619,8 @@
         "Integration source review through d72f79b08: #2904 stamps a grantor (stationConfinementGrantor) beside host starts and adoptions, records the starter's clientOrigin on the startSession receipt, passes the request's server-derived origin through Task dispatch (TaskGraphService) and Starter Work launches, wires isFullAccessGrantorCurrent in runtime-initialize, adds EventStore approval-actor queries and the device revoke/scope reset in runtime-routes, and turns a full-access refusal into an idle chat with the draft restored in useActiveChatSessionMessaging. The module sections that depend on these inputs are SessionCommandModule receipt/outcome semantics, AdoptionLedger, StarterWorkRegistry, TaskDispatcher/TaskGraph and OutboundDispatchModule, and #2904 changes none of their claims; the Starter origin is server-derived, not supplied by the client. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 adds a branch to runtime-http.ts. After admission fails, a credential that recognizeCredential accepts gets 403 insufficient_scope. runtime-routes.ts wires recognizeCredential to environmentSecurityService.verifyCredential. The DeploymentAuthentication section only says that runtime-http.ts composes account authentication before personal-device admission, and it makes no claim about the refusal status. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds 'request.delivery' to UI_FOLDED_ORCHESTRATION_METHODS in replay/observe.ts and gives StationAgentAdapter approvalAcknowledgement 'in-process' on request.resolved. The map claims only that the replay observer can report unbound extension tuples, and that still holds. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: #2881 adds a separate station.home-update-backup/v1 schema to station-home-archive.ts, with createStationHomeUpdateBackup/restoreStationHomeUpdateBackup. It omits external registry paths, records symlinks and uses 250,000-file/1 TiB caps. It also adds the service launcher env passthrough in lifecycle.ts and service status 'update' lines plus an internal update-home action in service.ts. #2914 drops the coordinator's line-count ratchets and keeps only the no-import-back check. The startup-readiness test refactor, the pairing-scope leaf and the UI export narrowing change no claims. Corrected the StationHomeArchive purpose to disclose the separate update-backup schema and scope the traversal and caps to home backup. Corrected 'Size/import ratchets' to an import-direction check. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2881 adds a separate station.home-update-backup/v1 schema to station-home-archive.ts, with createStationHomeUpdateBackup/restoreStationHomeUpdateBackup. It omits external registry paths, records symlinks and uses 250,000-file/1 TiB caps. It also adds the service launcher env passthrough in lifecycle.ts and service status 'update' lines plus an internal update-home action in service.ts. #2914 drops the coordinator's line-count ratchets and keeps only the no-import-back check. The startup-readiness test refactor, the pairing-scope leaf and the UI export narrowing change no claims. Corrected the StationHomeArchive purpose to disclose the separate update-backup schema and scope the traversal and caps to home backup. Corrected 'Size/import ratchets' to an import-direction check. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; registry.ts only deleted the caller-less registerBrandingProvider (getBrandingProvider default unchanged); chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -5741,7 +5748,7 @@
     {
       "path": "docs/contexts/agent-runtime/CONTEXT.md",
       "documentDigest": "65e814615ee79543753261e413d46c6eef26dd2ac6f8d664fc37daaa70908164",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Agent identity and engine ownership; startup adoption policy; start-session vs turn boundary; Task/command/provider/event distinctions; lifecycle/continuation; capability delivery limitations.",
@@ -5749,7 +5756,7 @@
       "sources": [
         {
           "path": "src-server/domain/agent-registry.ts",
-          "digest": "9693e47fbbe5492489e40d56138b46983f6c4b34218c6d7101055c8d5edb0724"
+          "digest": "b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50"
         },
         {
           "path": "src-server/runtime/agents/runtime-agent-registry.ts",
@@ -5776,13 +5783,14 @@
         "331 focused tests across 24 files passed; local source/caller and persistence evidence.",
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
-        "Integration source review through d72f79b08: #2904 wires isFullAccessGrantorCurrent in runtime-initialize, records clientOrigin on the startSession receipt, and adds grantor stamping and revocation reset in orchestration-service. The context's identity, adoption-policy, start-versus-turn, Task/command/receipt and delegation distinctions are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 wires isFullAccessGrantorCurrent in runtime-initialize, records clientOrigin on the startSession receipt, and adds grantor stamping and revocation reset in orchestration-service. The context's identity, adoption-policy, start-versus-turn, Task/command/receipt and delegation distinctions are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
       "path": "docs/contexts/evidence-governance/CONTEXT.md",
       "documentDigest": "976207569e04724170b807f2585f4b93359a37107399fd0f81072217384b153c",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Definitions reconciled with actual storage, scheduling, notification, telemetry, review and governance interfaces; receipts and declarations distinguished from evaluated proof.",
@@ -5858,7 +5866,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "2a49e160f0c302d028565dc026b856e00bb2c92cd57a348fcbe0564ea4f0b18f"
+          "digest": "649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872"
         },
         {
           "path": "src-server/services/orchestration/flow-policy-sidecar.ts",
@@ -5894,7 +5902,8 @@
         "Integration source review through e0314c727: service.ts now records an archive or source kind and the install root in service manifests and resolves the service code location (#2867); plugin install gained excludeGitMetadata for proposed installs. The context's receipt, review and gate vocabulary depends on neither, so it is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 adds event-store queries that read the actor recorded on approval-mode decisions, find host starts by device grantor, look up conversation titles and find unattributed never-decisions. The `startSession` receipt now records `clientOrigin`, approval decisions can carry a `revocation` reason, and runtime-routes returns revocation reports. The glossary definitions of receipt, approval, review and gate, and the distinction between receipt and proof, do not change. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds the recognizeCredential hook in runtime-routes.ts (identity without admission, for a 403 answer); prose accurate: the receipt/governance definitions don't depend on HTTP refusal status. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the service update-home action, a launcher install step and a service-update status line to service.ts. None of that bears on the evidence-governance glossary terms, which do not describe service commands; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the service update-home action, a launcher install step and a service-update status line to service.ts. None of that bears on the evidence-governance glossary terms, which do not describe service commands; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -5973,7 +5982,7 @@
     {
       "path": "docs/contexts/operations/CONTEXT.md",
       "documentDigest": "ecec943113be3307ec644a418883c4ea8a172cd156a57ba0bb58c8b21f3cd73b",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Definitions reconciled with actual storage, scheduling, notification, telemetry, review and governance interfaces; receipts and declarations distinguished from evaluated proof.",
@@ -6049,7 +6058,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "2a49e160f0c302d028565dc026b856e00bb2c92cd57a348fcbe0564ea4f0b18f"
+          "digest": "649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872"
         },
         {
           "path": "src-server/services/orchestration/flow-policy-sidecar.ts",
@@ -6085,7 +6094,8 @@
         "Integration source review through e0314c727: service.ts gained archive service units (#2867), and plugin-install-transaction.ts gained excludeGitMetadata staging for proposed installs (#2840). Neither changes the storage, scheduling, notification, telemetry or governance definitions, which remain accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 added reads to event-store for approval-decision actors and start-confinement grantors, used by resetFullAccessGrantedBy. The startSession receipt now records clientOrigin, orchestration-service gained full-access reset logic, and runtime-routes gained the revocation and refusal wiring. The glossary definitions (receipts versus evaluated proof, notification versus approval request, scheduled-job outputs) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to runtime-routes.ts. No storage, scheduling, notification, telemetry, review or governance definition in the document is affected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds launcher install, a hidden update-home action and status `update` rendering. This context names no CLI service or upgrade behavior (its owner table covers server services); prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds launcher install, a hidden update-home action and status `update` rendering. This context names no CLI service or upgrade behavior (its owner table covers server services); prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -7002,7 +7012,7 @@
     {
       "path": "docs/design/chat-composer.md",
       "documentDigest": "aeb418f15c683c45acf0d100105617212985aaa7f34c61410d860ca6f4e5af7b",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "policy",
       "state": "classified",
       "summary": "Composer interaction and navigability policy with dated audit evidence and corrected current public HTTP entry points.",
@@ -7014,11 +7024,11 @@
         },
         {
           "path": "src-server/routes/chat/chat.ts",
-          "digest": "c06f13a9c20da383365050bd5383fe626e88868e5de9592c57c05ee0b35a77e2"
+          "digest": "530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
@@ -7035,7 +7045,8 @@
         "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
-        "Integration source review through d72f79b08: #2904 adds the refusal-details contract, parser and sanitizer to contracts orchestration.ts. In useActiveChatSessionMessaging, a full-access refusal now returns the chat to idle with the draft restored, a FullAccessRefusalCard, and an explicit 'Send without full access' action. The policy's public HTTP entry points, composer layout and navigation claims do not describe the refusal path and remain correct. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 adds the refusal-details contract, parser and sanitizer to contracts orchestration.ts. In useActiveChatSessionMessaging, a full-access refusal now returns the chat to idle with the draft restored, a FullAccessRefusalCard, and an explicit 'Send without full access' action. The policy's public HTTP entry points, composer layout and navigation claims do not describe the refusal path and remain correct. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -7346,7 +7357,7 @@
     {
       "path": "docs/design/connections-onboarding.md",
       "documentDigest": "dc33fe48b286ac9111bfb09c095a1c85ac62665eb89ec9e77a8637d28c3126ed",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7354,7 +7365,7 @@
       "sources": [
         {
           "path": "src-server/domain/config-loader-app.ts",
-          "digest": "a67de24132721b01798cb756d7577554072e9c60e1b75338752ef5e5da583e64"
+          "digest": "6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b"
         },
         {
           "path": "src-server/providers/adapters/acp-mcp-passthrough.ts",
@@ -7467,7 +7478,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: claude-adapter.ts removed the unused stdio `mintStationControlCallerToken` fallback and kept in-process station-control. The document makes no stdio caller-token claim for Claude, and its spawn-environment, ACP station-control header-token and capability-matrix statements remain accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904's orchestration-service changes cover the full-access grantor: it refuses unattributed grants in prepareStart and in adoption, records the grantor metadata beside host stamps, applies a stamp whose device grantor is no longer current as workspace, and resets full access on revocation. The documented spawn environment, app-home profile selection, source-affinity resumes, first-run persistence and ACP/skills passthrough are untouched. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 changed Claude/Codex adapter approval acknowledgement and Codex transport reply/acknowledgement handling only. spawnCodexProcess, env layering and app-home wiring are untouched; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 changed Claude/Codex adapter approval acknowledgement and Codex transport reply/acknowledgement handling only. spawnCodexProcess, env layering and app-home wiring are untouched; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -7569,7 +7581,7 @@
     {
       "path": "docs/design/event-store-ledger-migration.md",
       "documentDigest": "6aff5fb02eed6dbab5e770c36852398841c1b0d6eab95bb7a9f00ad5fc6f0452",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed extraction dispositions, durable turn/recovery/credential owners and their actual EventStore/module composition. Added reserved/commit-pending states and the startup-scan unavailable-as-empty limitation tracked in #2823.",
@@ -7597,7 +7609,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "2a49e160f0c302d028565dc026b856e00bb2c92cd57a348fcbe0564ea4f0b18f"
+          "digest": "649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872"
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
@@ -7627,7 +7639,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map removed the CollaborativeEditorPane and PluginForegroundRuns entries. The document's recovery-ledger/credential anchor still resolves, and it references neither removed module, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 added read-only EventStore queries: latestApprovalModeDecision now also returns the actor, plus approvalModeDecisionThreadsByDevice, hostStartThreadsGrantedByDevice, conversationTitle and unattributedFullAccessDecisionThreads. attached-session-adoption now takes an AdoptionConfinement {stamp, grantor} and writes the grantor metadata. orchestration-service uses both for the revocation reset. Adoption still commits through AdoptionLedger with the receipt coupling unchanged. The doc explicitly does not claim every EventStore method has moved, so the new query methods fit its dispositions, and the RecoveryLedger/credential claims are untouched. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -8102,7 +8115,7 @@
     {
       "path": "docs/design/mcp-ui-host.md",
       "documentDigest": "060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete MCP Apps host design through metadata collection, real tool/resource routes, integration and visibility pinning, package admission and local process custody, render grants, React host and dedicated proxy/static fallback. Corrected nested-string precedence, secure-scheme rules, proxy listener endpoints and navigation/credential claims; separated policy construction from complete source-expression and browser containment assurance.",
@@ -8130,11 +8143,11 @@
         },
         {
           "path": "src-server/runtime/mcp/__tests__/mcp-ui-frame-server.test.ts",
-          "digest": "23240165a2711132a488947a9782df8e438faeea497174a4726f74e10a9ae9ca"
+          "digest": "39ff600f9f63a20156f48681bbd83a26107b2c1dfad931f523ef97ff4a3950d2"
         },
         {
           "path": "src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts",
-          "digest": "9464915950cb7a846af57622e8508f39f3301078aacaf974b93c17764cd1a34e"
+          "digest": "4244fe6da0b1e7f0eeeb5a5fc928581453a83684ebd48afec9acec3d7e8df6db"
         },
         {
           "path": "src-server/runtime/mcp/mcp-apps-metadata.ts",
@@ -8173,7 +8186,8 @@
         "Source/caller review of all documented claims in this document on 2026-09-27, including explicit history/proposal boundaries; source baseline b79def9ceb04aa645bf565ee7d1b3e8cfba86b9a, prose revision e176f3a62b139043306d9e434f031d0a87ee1640.",
         "EXECUTED: 660 tests passed across 30 focused files: Flow/Conduit 79, installation/trust 86, MCP 188, plugin development/permissions/registry 249, server modules/operational subscriptions 58. One Linux-only filesystem digest case skipped on this macOS host. These local fixtures do not qualify live providers or other platforms.",
         "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
-        "Integration source review through 5731eba07: a290454b4 (#2919) makes mcpUiToolCallDecision private, drops the isDistinctFrameOrigin re-export, and replaces the helper test with a behavioural test. In that test read-only is denied, and undefined or inherit prompt the host and reach the server only on Approve. That matches the documented read-only/require/inherit policy and the distinct-origin fallback; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: a290454b4 (#2919) makes mcpUiToolCallDecision private, drops the isDistinctFrameOrigin re-export, and replaces the helper test with a behavioural test. In that test read-only is denied, and undefined or inherit prompt the host and reach the server only on Approve. That matches the documented read-only/require/inherit policy and the distinct-origin fallback; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: mcp-ui-frame-server.test.ts replaced proxy source greps with behavioural VM negatives and an exact frame-ancestors assertion; mcp-ui-resolver.test.ts folded near-duplicate cases (authoritative-empty catalog fallbacks, flat plus nested Survey keys) into existing tests; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -9040,7 +9054,7 @@
     {
       "path": "docs/design/plugin-installation-lifecycle.md",
       "documentDigest": "e70ae35ea8391f86d8cb26351b3a6cad2e110e042502d0c941910da615069be2",
-      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete lifecycle design against local service/adapter, actual installer, admission custody, grants and route callers: expected revisions, staged code/data selection, unknown commit and compensation, retained generation recovery, withdrawal versus reclamation, reset, bounded journal state and separate legacy behavior. Clarified selected-runtime CLI dependency and package-owned Git discovery.",
@@ -9052,7 +9066,7 @@
         },
         {
           "path": "src-server/domain/config-loader-app.ts",
-          "digest": "a67de24132721b01798cb756d7577554072e9c60e1b75338752ef5e5da583e64"
+          "digest": "6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b"
         },
         {
           "path": "src-server/domain/config-loader.ts",
@@ -9133,7 +9147,8 @@
         "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: plugin-source.ts and plugin-install-transaction.ts add `excludeGitMetadata` for proposed installs (#2719), and registry-supply-chain.ts gained only a not-yet-active comment. Added that a local folder named by an open install proposal is copied without Git metadata, that a local Git URL is refused as a proposed source, and that install refuses an approval whose preview staged it differently. Source review is separate from executed test evidence.",
-        "Integration source review through ed05e6f6c: #2864 records proposal-staged local folders in plugin-source-staging.json (PLUGIN_SOURCE_STAGING_FILE, read by plugin-install-routes.ts), so previews and reinstalls keep stripping Git metadata after the proposal resolves. Added that to the source-check paragraph. Source review is separate from executed test evidence."
+        "Integration source review through ed05e6f6c: #2864 records proposal-staged local folders in plugin-source-staging.json (PLUGIN_SOURCE_STAGING_FILE, read by plugin-install-routes.ts), so previews and reinstalls keep stripping Git metadata after the proposal resolves. Added that to the source-check paragraph. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -9428,7 +9443,7 @@
     {
       "path": "docs/design/project-task-room-history.md",
       "documentDigest": "3f77bb159020d9d6bb2a5f9e8fbebd1326a5ff27a7ff0b960edae7cb2e1726cb",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed durable event projection, worker, route and history adapter review; corrected channel/principal disclosure and bounded JSON counting claims.",
@@ -9448,7 +9463,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "2a49e160f0c302d028565dc026b856e00bb2c92cd57a348fcbe0564ea4f0b18f"
+          "digest": "649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872"
         },
         {
           "path": "src-server/services/orchestration/project-task-room-history-worker.ts",
@@ -9467,13 +9482,14 @@
         "Read the complete document and traced owning implementation, composition and current consumers.",
         "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
         "Reviewed integration deltas: Completed durable event projection, worker, route and history adapter review; corrected channel/principal disclosure and bounded JSON counting claims.",
-        "Integration source review through d72f79b08: #2904 adds EventStore queries for approval-mode decision actors, device-granted host starts, conversation titles and unattributed never decisions. It leaves the Project Task room event projection, worker, route and bounded JSON counting this document describes untouched. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 adds EventStore queries for approval-mode decision actors, device-granted host starts, conversation titles and unattributed never decisions. It leaves the Project Task room event projection, worker, route and bounded JSON counting this document describes untouched. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
       "path": "docs/design/registry-trust-policy.md",
       "documentDigest": "d1bc122bde13d3233aa0b193b7e3f2ee248e07c35b5a87ed2bcea54b9f2cfe11",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete applied-policy design through schema and ConfigLoader persistence, Ed25519 policy identity, applied SQLite compare-and-set, runtime initialization/rebuild publication, preview/consent observation, registry claims, dependencies and retained recovery. Corrected private-key PEM save behavior and distinguished envelope syntax from valid cryptographic key material.",
@@ -9485,7 +9501,7 @@
         },
         {
           "path": "src-server/domain/config-loader-app.ts",
-          "digest": "a67de24132721b01798cb756d7577554072e9c60e1b75338752ef5e5da583e64"
+          "digest": "6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b"
         },
         {
           "path": "src-server/domain/config-loader.ts",
@@ -9529,13 +9545,14 @@
         "EXECUTED: 660 tests passed across 30 focused files: Flow/Conduit 79, installation/trust 86, MCP 188, plugin development/permissions/registry 249, server modules/operational subscriptions 58. One Linux-only filesystem digest case skipped on this macOS host. These local fixtures do not qualify live providers or other platforms.",
         "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Integration source review through e0314c727: plugin-install-transaction.ts now stages proposed local installs without git metadata (#2840). The canonical station-plugin-tree/v2 digest still skips only root .git, and the new digestWithout observation is additive. registry-supply-chain.ts only marks RegistryLastKnownGoodStore as not yet active. The digest and retained-recovery prose is accurate. Source review is separate from executed test evidence; no tests were rerun."
+        "Integration source review through e0314c727: plugin-install-transaction.ts now stages proposed local installs without git metadata (#2840). The canonical station-plugin-tree/v2 digest still skips only root .git, and the new digestWithout observation is additive. registry-supply-chain.ts only marks RegistryLastKnownGoodStore as not yet active. The digest and retained-recovery prose is accurate. Source review is separate from executed test evidence; no tests were rerun.",
+        "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
       "path": "docs/design/revision-bound-evidence.md",
       "documentDigest": "02e65ecf6fbd4fadabfc175d3d685df58ad453004079716d4011585c829d10cf",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed exact-revision and persistence contract review; optional proposed-change lookup is not supplied by the production room bridge, which provides attribution only.",
@@ -9551,7 +9568,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "2a49e160f0c302d028565dc026b856e00bb2c92cd57a348fcbe0564ea4f0b18f"
+          "digest": "649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872"
         },
         {
           "path": "src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts",
@@ -9566,7 +9583,8 @@
         "Read the complete document and traced owning implementation, composition and current consumers.",
         "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
         "Reviewed integration deltas: Completed exact-revision and persistence contract review; optional proposed-change lookup is not supplied by the production room bridge, which provides attribution only.",
-        "Integration source review through d72f79b08: in event-store.ts, #2904 adds `actor` to `latestApprovalModeDecision` and adds read-only queries for device decision threads, device-granted host starts, conversation titles and unattributed never-decisions. No revision-bound evidence receipt, persistence, restore or proposed-change lookup code changed. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: in event-store.ts, #2904 adds `actor` to `latestApprovalModeDecision` and adds read-only queries for device decision threads, device-granted host starts, conversation titles and unattributed never-decisions. No revision-bound evidence receipt, persistence, restore or proposed-change lookup code changed. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -9749,8 +9767,8 @@
     },
     {
       "path": "docs/design/shared-working-state.md",
-      "documentDigest": "edf888328c6a79fa7db4ff32537b999949b27c5df8522959ab0f0a22d5ab275c",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "documentDigest": "1934cf0e1e341c669f57f475a1ae4ecd3a3077dd70720190a23070776f0d71b0",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed shared state ordering, resync, compaction, authority and editing adapter review; retained local sealSource is not called by the production controller.",
@@ -9770,7 +9788,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "2a49e160f0c302d028565dc026b856e00bb2c92cd57a348fcbe0564ea4f0b18f"
+          "digest": "649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872"
         },
         {
           "path": "src-server/services/orchestration/project-task-room-working-state.ts",
@@ -9782,7 +9800,8 @@
         "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
         "Reviewed integration deltas: Completed shared state ordering, resync, compaction, authority and editing adapter review; retained local sealSource is not called by the production controller.",
         "Integration source review through e0314c727: shared-working-state.ts now documents that no production caller composes createSharedWorkingState() recovery and points to this record's 'Ordering and outcomes'. That section described adapter-owned recovery as current, and a grep confirmed only tests call it while the room runtime and workers construct the live-only SharedWorkingState. Added that disclosure. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904 added read-only EventStore approval-decision and host-start-grantor queries, a conversation-title read, and an actor on latestApprovalModeDecision. Shared-state ordering, resync, compaction, authority and the retained sealSource are untouched. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 added read-only EventStore approval-decision and host-start-grantor queries, a conversation-title read, and an actor on latestApprovalModeDecision. Shared-state ordering, resync, compaction, authority and the retained sealSource are untouched. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: the page itself dropped its paragraph on the deleted assertion-free shared-working-state-benchmark.test.ts (batch 59); event-store.ts only deleted the caller-less readChatTurn; claims corrected in-branch: the removed benchmark paragraph was the only claim affected. Source review only; no new executed evidence."
       ]
     },
     {
@@ -10048,7 +10067,7 @@
         },
         {
           "path": "src-server/routes/evidence/__tests__/flow-runs.routes.test.ts",
-          "digest": "b8a14782931fb5aa55a7e9cd3caf9f1f2a3fc42daa4e98703dc9f9f5c55a66a6"
+          "digest": "d2f3333ad7943728535581e04e9561eddc5a0dd3ff146852878af0b7acd1b070"
         },
         {
           "path": "src-server/routes/evidence/flow-runs.ts",
@@ -10077,7 +10096,8 @@
         "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: package.json and pnpm-lock.yaml only removed the unused @kontourai/bearing and @kontourai/forage dependencies. The review-composition document names neither and relies on flow-agents, which is unchanged. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "2026-09-28 test-audit refresh: flow-runs.routes.test.ts only renamed one POST /init test; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -10147,7 +10167,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10203,7 +10223,7 @@
         },
         {
           "path": "src-server/domain/agent-registry.ts",
-          "digest": "9693e47fbbe5492489e40d56138b46983f6c4b34218c6d7101055c8d5edb0724"
+          "digest": "b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50"
         },
         {
           "path": "src-server/routes/browser-agent.ts",
@@ -10425,13 +10445,14 @@
         "Integration source review through d72f79b08: #2904's runtime-routes changes are the full-access refusal identity middleware, which reads names from the pairing service's own records, and revocation reports on `/api/pairing/devices/:id` and its scope route. No vocabulary entry, including the Device and `/api/pairing/devices` naming, changes meaning. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential in runtime-routes.ts. As a result, an ordinary device refused on /api/pairing gets 403, not 401. The glossary names /api/pairing/devices only as vocabulary, and it points to runtime-routes.ts only as the live-surface composition owner. Neither reference makes a status claim. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through d9aea82e4: docs/reference/contracts.md changed only its Muse serve approval-resolution sentence (#2912 request.delivery acknowledgement). This document names neither Muse nor approval resolution, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports layout constants and helpers; behavior and the glossary's terms are unchanged and the glossary cites none of the removed exports; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports layout constants and helpers; behavior and the glossary's terms are unchanged and the glossary cites none of the removed exports; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
       "path": "docs/guides/acp.md",
       "documentDigest": "a902573fcf2c8caab6097af31941a73700df2906868bbbef1f2f13a97de5e02c",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current ACP Agent binding, canonical execution seam, guarded cursor restoration, credentials/refusal behavior, extension notifications, and current probe outcomes.",
@@ -10447,7 +10468,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/services/acp/acp-probe.ts",
@@ -10465,13 +10486,14 @@
         "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through e0314c727: extension-notification-bindings.ts deleted the unused EXTENSION_NOTIFICATION_PROMOTIONS and EVIDENCE_GAPS tables and the reset helper, and moved the unobserved _kiro gap into a comment. The bound tuples, including _kiro.dev/error/rate_limit with acp.turn-error-cause, are unchanged, and the guide never described the removed tables, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement 'none' to AcpAdapter metadata and stamps it on request.resolved. ACP emits no request.delivery. The guide's request.opened/request.resolved row, its pointer to runtime-events as the shape source, and the requestPermission to allow_once/reject_once flow are all still accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement 'none' to AcpAdapter metadata and stamps it on request.resolved. ACP emits no request.delivery. The guide's request.opened/request.resolved row, its pointer to runtime-events as the shape source, and the requestPermission to allow_once/reject_once flow are all still accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "8d66f17c9ab72933cf26109e5b989a9d5c1669d0e64f89d77786d45ed79b3fe1",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10587,7 +10609,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/system/system-status-routes.ts",
@@ -10635,7 +10657,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/plugins/runtime-provider-resolution.ts",
@@ -10791,7 +10813,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: ClaudeAdapter lost its unused stdio mintStationControlCallerToken fallback, native-engine adoption inlined its suppression helper with the same behavior, runtime-startup made two helpers non-exported, and ApiBaseContext dropped a comment. None of the guide's claims depend on these, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 wires isFullAccessGrantorCurrent into OrchestrationService in runtime-initialize. ApprovalPosture now exposes each decision's threadId and actor, plus fullAccessDefaultSource. Attached-session adoption stamps a host grantor beside the host confinement stamp. The startSession receipt now records clientOrigin, and orchestration-service adds resetFullAccessGrantedBy. These are session approval-mode and confinement mechanics. The guide's Agent configuration, autoApprove/unattendedAutoApprove, tool approval flow, lifecycle and Inbox claims do not depend on them. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata to the acp, claude and codex adapters, adds Codex replyToApproval and serverRequest/resolved acknowledgement watching in codex-adapter-transport.ts, and adds lastDecision/earlierUnacknowledgedDecisions to delegation snapshots in station-control-delegation.ts. 7cd4892e5 routes Codex cancel and answer replies through replyToApproval and replaces the unknown-request error with 'This Codex approval request is not open.' The guide's Station-engine approval flow, autoApprove patterns and external-engine delivery limits are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata to the acp, claude and codex adapters, adds Codex replyToApproval and serverRequest/resolved acknowledgement watching in codex-adapter-transport.ts, and adds lastDecision/earlierUnacknowledgedDecisions to delegation snapshots in station-control-delegation.ts. 7cd4892e5 routes Codex cancel and answer replies through replyToApproval and replaces the unknown-request error with 'This Codex approval request is not open.' The guide's Station-engine approval flow, autoApprove patterns and external-engine delivery limits are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -11699,7 +11722,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11879,7 +11902,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/system/relay-enrollment-routes.ts",
@@ -11939,7 +11962,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/plugins/runtime-provider-resolution.ts",
@@ -12203,7 +12226,8 @@
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) makes runtime-http.ts answer 403 insufficient_scope, not 401, to a recognized but unadmitted credential, through the new optional recognizeCredential hook in runtime-request-security.ts. The guide's pairing-scope, loopback terminal/voice and CLI refusal claims state no 401 or 403 outcome for this case, and they remain true. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement metadata to the ACP, Claude and Codex adapters and adds Codex replyToApproval and acknowledgement watching in codex-adapter-transport. It also adds lastDecision folding in station-control-delegation. 7cd4892e5 touches only codex-adapter-events, which is not an input here. The guide makes no claim about engine approval delivery or delegation status, and its Engine and connection configuration prose is unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds one inherited /api/system read leaf, GET /api/system/core-update/service-update, in pairing-route-scopes.ts. The guide's pairing-scope description (read/operate/access scopes, and Origin checks as separate from scope) is unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds one inherited /api/system read leaf, GET /api/system/core-update/service-update, in pairing-route-scopes.ts. The guide's pairing-scope description (read/operate/access scopes, and Origin checks as separate from scope) is unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -12324,7 +12348,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -12415,7 +12439,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only the recognizeCredential gate wiring in runtime-routes.ts. The delegation claim route schema, lookup, reservation and dedup paths are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds the DelegatedTaskDecision type and the lastDecision/earlierUnacknowledgedDecisions snapshot fields in packages/sdk delegations.ts and station-control-delegation.ts. The attemptId claim, the lookup route and the claim state meanings are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports. The guide's receiver claim/lookup claims do not depend on them; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -12749,7 +12774,7 @@
     {
       "path": "docs/guides/deployment.md",
       "documentDigest": "1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Operating paths for checkout/container deployments, hosted foundations, and the legacy macOS dogfood supervisor. Full 920-line baseline and parent working bytes read. Source checks cover Docker, CLI/proxy/auth, home archive/schema/migration, hosted preflight, channel homes, supervisor staging/timing/health and cleanup. Detailed installer rollback, tenant carriers and lifecycle journal failure matrices were not fully re-executed; runtime qualification is partial. Follow-up: Changed pre-provisioning paragraphs checked against real schema-gate/lifecycle/server/migration ordering. Windows issue-link addition preserves the already disclosed staging limitation.",
@@ -12897,7 +12922,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/routes/runtime-routes.ts",
@@ -12937,7 +12962,8 @@
         "Integration source review through e0314c727: #2867 added prebuilt-archive service units (service-command.ts; `kind`/`installRoot` in the manifest; the Windows wrapper sets STATION_SERVICE_MANAGED=1). It also added installer-owned archive resolution in lifecycle-code-root.ts, and packaged upgrade now accepts a service running this install root's `current`. Corrected the Windows headless section: service install/removal is no longer checkout-only; it also runs from a prebuilt server archive's lifecycle CLI, with a pointer to the service reference. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 moves the local access verbs in environment.ts onto a shared loopback-proved operator channel and adds `access devices|scope|scopes`. Bare pairing errors now keep their code and status. device-pairing-service and environment-security-service gain `deviceHoldsScope` and `deviceHoldsFullAccess`, and runtime-routes appends revocation reports to the scope and revoke answers. The guide's statements about access list/approve/deny, the loopback proof, the Paired devices revoke path and environment reset are still true; the new verbs extend them without contradicting anything. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) deletes the unused parseGitSource/extractPluginName from packages/cli/src/commands/helpers.ts and un-exports contributorCommandMessage in distribution.ts; cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401; prose accurate: the guide does not describe those helpers or the 401/403 split, the distribution-boundary link still holds, and the unauthenticated `authentication_required` curl check is unchanged. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds createStationHomeUpdateBackup/restoreStationHomeUpdateBackup to station-home-archive.ts, moves packaged-release parsing from lifecycle-code-root.ts to shared prebuilt-archive, adds a hidden service update-home action, service status `update` output and the launcher install. #2914 removes the listeningPidsByPort alias and one tautological container-release assertion. home backup/restore, published-CLI service status|start|stop control, and install needing a checkout or prebuilt archive are unchanged; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds createStationHomeUpdateBackup/restoreStationHomeUpdateBackup to station-home-archive.ts, moves packaged-release parsing from lifecycle-code-root.ts to shared prebuilt-archive, adds a hidden service update-home action, service status `update` output and the launcher install. #2914 removes the listeningPidsByPort alias and one tautological container-release assertion. home backup/restore, published-CLI service status|start|stop control, and install needing a checkout or prebuilt archive are unchanged; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -14216,7 +14242,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -14368,7 +14394,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential wiring in runtime-routes.ts, which changes only the outer device-gate status for recognized but unadmitted credentials. The guide's 403 for denied caller authority comes from the controller's own routes. Its pairing, admission and control-session claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the DelegatedTaskDecision type and the lastDecision and earlierUnacknowledgedDecisions snapshot fields to the SDK delegations client and to station-control-delegation. The guide's home-transfer and delegation-credential claims do not depend on delegation decision reporting. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) only dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry.tsx. The guide makes no claim about them. Prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -16621,7 +16648,7 @@
     {
       "path": "docs/guides/plugins.md",
       "documentDigest": "168d3d4847dfdd234f3bbaa6b6f57190a96a3ca03612642b9f3808386633f8cd",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the complete guide against manifest/scaffold, public CLI, build and runtime externals, catalog/provider loading, SDK calls, grants, dependency installation, managed lifecycle, registry policy, MCP frame host, server-module request hooks and operational-event callers. Corrected inactive-MCP and inactive-trust claims, stored Agent IDs versus qualified references, tool-call return shape, dev dependency attempt/readiness, local-catalog/build prerequisites and historical bundle metrics.",
@@ -16681,7 +16708,7 @@
         },
         {
           "path": "src-server/domain/config-loader-app.ts",
-          "digest": "a67de24132721b01798cb756d7577554072e9c60e1b75338752ef5e5da583e64"
+          "digest": "6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b"
         },
         {
           "path": "src-server/domain/config-loader.ts",
@@ -16800,7 +16827,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: #2840 added the proposed-local-install paragraph, and it matches plugin-source.ts, plugin-install-routes.ts and plugin-install-transaction.ts: `.git` is excluded at any depth, proposed local git repos are refused, preview reports `gitMetadata: \"excluded\"` and consent echoes it, and an operator's own path keeps `.git`. registry-supply-chain.ts gained only a comment saying RegistryLastKnownGoodStore is not active yet, which is consistent with the guide's 'separate archive utility' prose. Source review is separate from executed test evidence.",
         "Integration source review through abfc7a889: #2864's edit to the git-metadata paragraph auto-merged cleanly into the branch's rewrite. The branch's proposed-folder text is followed once by main's text: Station records the folder in plugin-source-staging.json in the Station home, later previews and installs keep stripping it after the proposal resolves and after an uninstall, use the remote URL for git updates, and an install from your own path that no proposal has named keeps its .git. The addition appears only once and does not conflict with the registry `.git` refusal rules or the API consent section. It matches plugin-source-staging.ts: records are keyed by acquisition origin, never removed, and written before the install. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: #2914 un-exports mcpUiToolCallDecision and drops the isDistinctFrameOrigin re-export from MCPToolUIFrame. The approvalPolicy deny, server-gate and prompt behavior is unchanged, so the guide's MCP app approvalPolicy claims hold; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2914 un-exports mcpUiToolCallDecision and drops the isDistinctFrameOrigin re-export from MCPToolUIFrame. The approvalPolicy deny, server-gate and prompt behavior is unchanged, so the guide's MCP app approvalPolicy claims hold; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -16910,7 +16938,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -17001,7 +17029,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only recognizeCredential security wiring in runtime-routes.ts. The guide's claims cover runner labels, workflows and capacity routing, and nothing in this delta affects them. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds decision-delivery snapshot fields in packages/sdk delegations.ts and station-control-delegation.ts. The document covers CI runner labels and makes no claim about delegation code, so these inputs look unrelated to its prose. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused re-exports of canonical descriptor predicates; the doc cites none of them; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -17111,7 +17140,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -17203,7 +17232,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds the recognizeCredential hook to runtime-routes.ts; prose accurate: the product-law manifest, observation and result-classification rules don't depend on it. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added DelegatedTaskDecision/lastDecision to the SDK delegations client and station-control-delegation.ts. The guide makes no claim about delegation snapshots; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) trims unused re-exports from builtinWorkspacePaneRegistry. The guide makes no claim about those exports; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -17857,7 +17887,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -17948,7 +17978,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds five lines (recognizeCredential) inside runtime-routes.ts. No directory, file location or routing convention changed. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds decision-delivery types and fields to the SDK delegations.ts and to station-control-delegation.ts. No package or directory moved, and the layout table is unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) only dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry.tsx. The file and its role are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -18112,7 +18143,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "897111efa688f89ef5dfa4fbedbbf3dddc9fa65b00bee53bcaacacb5b9b6b2b2",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18212,7 +18243,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/system/system-status-routes.ts",
@@ -18248,7 +18279,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/plugins/runtime-provider-resolution.ts",
@@ -18403,7 +18434,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: ClaudeAdapter dropped the unused stdio mintStationControlCallerToken fallback and keeps only the in-process credential and its revocation. Native-engine adoption folded its detection helper back in with the same suppression conjunction, runtime-startup un-exported two helpers, and ApiBaseContext lost a comment. The guide's credential, attestation and root-context rules still match, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 records the actor and thread on approval-posture decisions and adds `fullAccessDefaultSource`. orchestration-service stamps the grantor and refuses anonymous grants. runtime-initialize wires `isFullAccessGrantorCurrent`, so a `host` stamp whose device grantor lost `approval:full-access` applies as workspace. The station-control dispatch scope reads `sessionRunsHost` 'as its next turn reads it', so the guide's 'cannot reach a conversation that runs unconfined (host)' still holds. The delegation, posture and approval-model claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added approvalAcknowledgement metadata to the adapters and Codex acknowledgement watching, and added lastDecision/earlierUnacknowledgedDecisions plus request.delivery projection in station-control-delegation.ts. Nothing changed the respond_to_task_request or dispatch-authority rules the guide describes; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added approvalAcknowledgement metadata to the adapters and Codex acknowledgement watching, and added lastDecision/earlierUnacknowledgedDecisions plus request.delivery projection in station-control-delegation.ts. Nothing changed the respond_to_task_request or dispatch-authority rules the guide describes; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -19458,7 +19490,7 @@
         },
         {
           "path": "scripts/__tests__/path-read-pin-boundary.test.ts",
-          "digest": "401815fcfef95ebdb0bb462d3e6ef7d8768974f2410528cace2b967270b6a277"
+          "digest": "c07e3e1ab3e7a9654b68316e817e95fe7a403ea5b1f9f643ea26e5d7c3a242ac"
         },
         {
           "path": "scripts/__tests__/portable-server-archive.test.ts",
@@ -19525,7 +19557,8 @@
         "Integration source review through 5731eba07: #2914 adds Android NDK, PR-smoke bound and no-child-process tests to ci-workflow-contract; the Playwright image version vs pnpm-lock assertion remains. It repoints the path-read-pin fixtures, drops the native-recovery-docs impact rules and adds the store-registry test in test-impact-manifest. It also makes verification-policy-gate run validateLaneCatalog and un-export its E2E latest markers, which are still enforced. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed deltas: ci:fast adds five fixed verify:static gates (the guide describes a fixed bounded static invariant set, still accurate); test-impact-manifest maps the freshness CLIs and sweep workflow to documentation-freshness.test.ts; the ledger test now uses the shared scoped policy. No generated schedule or claim here changes.",
         "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
-        "Reviewed the reportMissing option added to the review compiler; no claim in this guide changes."
+        "Reviewed the reportMissing option added to the review compiler; no claim in this guide changes.",
+        "2026-09-28 test-audit refresh: path-read-pin-boundary.test.ts only added one justified entry to the unreported path-read suite list; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -19962,7 +19995,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -20053,7 +20086,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to runtime-routes.ts. Work Board rendering, Home eligibility and reference-storage boundaries are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added DelegatedTaskDecision/lastDecision to the SDK delegations client and station-control-delegation.ts. The Work Board boundary claims do not depend on it; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx removes unused canonical-descriptor re-exports only. It is still the built-in registry that selects the trusted Work Board renderer; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -20175,7 +20209,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -20271,7 +20305,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 adds recognizeCredential wiring in runtime-routes.ts, which changes the status for a recognized but unadmitted credential from 401 to 403. The guide's envelope, snapshot, import and authentication-owner claims do not depend on the refusal status. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds decision-delivery types and fields to the SDK delegations.ts and to station-control-delegation.ts. The guide's package boundaries and cloud-move or CLI delegation claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2919 trims unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports from builtinWorkspacePaneRegistry. The guide does not reference those exports; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -21409,7 +21444,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -21650,7 +21685,7 @@
         },
         {
           "path": "src-server/routes/chat/chat.ts",
-          "digest": "c06f13a9c20da383365050bd5383fe626e88868e5de9592c57c05ee0b35a77e2"
+          "digest": "530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a"
         },
         {
           "path": "src-server/routes/chat/conversations.ts",
@@ -21706,7 +21741,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/orchestration/runs.ts",
@@ -21826,7 +21861,7 @@
         },
         {
           "path": "src-server/routes/system/install-provenance.ts",
-          "digest": "7b5a454d4240bbd66a25be116a802c1560fb12abf6cfd4b27dfbc09352f6e34d"
+          "digest": "0c09b22299f50a7af1b3cb590e10ea5868d5d1e664102866f6cfe14cfec5abc2"
         },
         {
           "path": "src-server/routes/system/self-update-restart-state.ts",
@@ -21842,7 +21877,7 @@
         },
         {
           "path": "src-server/routes/system/system-update-routes.ts",
-          "digest": "d9c65a4051152e8b98da1309fdfe50b5fd7deaee393fb0d20d6afb5e43de09c8"
+          "digest": "e141cd4e91d3b415f9c9d81a57a36d920fecf66a3865537f9f590b07af065494"
         },
         {
           "path": "src-server/routes/system/system.ts",
@@ -22109,7 +22144,8 @@
         "Integration source review through abfc7a889: #2864's plugin-install-routes.ts now also strips git metadata from any source recorded in plugin-source-staging.json. Preview reports gitMetadata: excluded for it, the install records the source before writing anything, and the install returns 409 consent.reason git-metadata for a recorded source approved from a preview that kept git metadata. An unreadable record fails closed. Corrected the preview paragraph, which described only the open-proposal case, and the install 409 sentence, which now covers previously stripped installs. Not reviewed here: docs/design/plugin-installation-lifecycle.md has the same proposal-only framing but is outside this record set. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 changes one case. An ordinary paired-device credential that authorizeCredential refuses on /api/pairing, including POST /api/pairing/requests/:id/confirm without access:approve, now gets 403 insufficient_scope instead of 401. The section on binding a paired device to its verified person already says insufficient authority returns 403, so it is now matched on this path too. No other route claims depend on the refusal status. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the request.delivery event and the acknowledgement field to runtime-events, adds ACP approvalAcknowledgement 'none', and adds delegation lastDecision. It changes only a comment in useToolApproval (already-settled now covers requests closed by the engine, cancelled or expired). The /tool-approval routing, /events payload-vocabulary pointer, continuation-caller and ACP model-apply claims are unchanged by the delta. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) install-provenance.ts adds installKind 'archive'; system-update-routes.ts branches GET/POST /api/system/core-update on archives (signed-manifest releaseCheck, applyMethod service-update/station-upgrade/reinstall, installKind archive-service; POST queues an update request and returns 202 with serviceUpdate.requestId or 409/500) and adds GET /api/system/core-update/service-update; pairing scopes add that read leaf; SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery; lifecycle.ts forwards STATION_SERVICE_LAUNCHER only to the supervised server; ChatDock only un-exports a helper (#2919). Corrected the Check/Apply Core App Update sections, which listed only source/desktop/unknown provenance: they now cover the archive branch, the 202 service-update request, its 409 refusals and the service-update progress route. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) install-provenance.ts adds installKind 'archive'; system-update-routes.ts branches GET/POST /api/system/core-update on archives (signed-manifest releaseCheck, applyMethod service-update/station-upgrade/reinstall, installKind archive-service; POST queues an update request and returns 202 with serviceUpdate.requestId or 409/500) and adds GET /api/system/core-update/service-update; pairing scopes add that read leaf; SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery; lifecycle.ts forwards STATION_SERVICE_LAUNCHER only to the supervised server; ChatDock only un-exports a helper (#2919). Corrected the Check/Apply Core App Update sections, which listed only source/desktop/unknown provenance: they now cover the archive branch, the 202 service-update request, its 409 refusals and the service-update progress route. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; system-update-routes.ts only made coreUpdateSupervision module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -22533,7 +22569,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -22578,7 +22614,7 @@
         },
         {
           "path": "src-server/domain/config-loader-app.ts",
-          "digest": "a67de24132721b01798cb756d7577554072e9c60e1b75338752ef5e5da583e64"
+          "digest": "6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b"
         },
         {
           "path": "src-server/domain/validator.ts",
@@ -22626,7 +22662,7 @@
         },
         {
           "path": "src-server/routes/chat/chat.ts",
-          "digest": "c06f13a9c20da383365050bd5383fe626e88868e5de9592c57c05ee0b35a77e2"
+          "digest": "530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a"
         },
         {
           "path": "src-server/routes/orchestration/attachments.ts",
@@ -22634,7 +22670,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/system/config.ts",
@@ -22690,7 +22726,7 @@
         },
         {
           "path": "src-server/runtime/frameworks/strands-tool-loader.ts",
-          "digest": "a13c2fcbb72ce9ad197b45097e3465c5f4822934a16b90cd234e2fe845b124ac"
+          "digest": "8c98e38000a34ed2ab459e478da8c085f15bcf9cfc885d136fd8a02a06f99815"
         },
         {
           "path": "src-server/runtime/frameworks/voltagent-adapter.ts",
@@ -22698,7 +22734,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/plugins/runtime-provider-resolution.ts",
@@ -22738,7 +22774,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "2a49e160f0c302d028565dc026b856e00bb2c92cd57a348fcbe0564ea4f0b18f"
+          "digest": "649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872"
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
@@ -22806,7 +22842,8 @@
         "Integration source review through d72f79b08: #2904 makes the config route answer a refused full-access Station default with the structured fullAccessRefusal body, and main added a `defaultApprovalMode` row. Checked that row against config.ts (mayGrantFullAccess, checked only when a write raises the default to `never`), approval-authority.ts and full-access-refusal.ts. Corrected the row: the grant can come from any authenticated caller whose granted scope carries approval:full-access, not only a device, and the refusal names a device and the host grant command only when a paired device made the request. Other inputs (device-pairing deviceHoldsScope, event-store, orchestration reset, runtime wiring) do not affect the page's other claims. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds an optional RuntimeHttpSecurityOptions.recognizeCredential, wired to verifyCredential in runtime-routes. With it, the runtime-http gate answers 403 insufficient_scope, not 401, for a live credential that route admission refuses. The document's auth claims are the 403 approval-full-access-not-granted write refusal, home-possession locality minting and the diagnostics pairing-scope tier. None of them depends on the 401-versus-403 gate outcome. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds a chat-stream-status notice to ChatDockBody for unacknowledged or not-sent decisions. It adds no setting and changes no attachment re-send behavior. The chat-dock claims in config.md (attachment re-send refusal) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read leaf to pairing-route-scopes. a290454b4 (#2919) makes ChatDock's agentIdentityFromSession private. Neither changes the config fields, the diagnostics-logs scope tier or the chat-dock re-send claims; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read leaf to pairing-route-scopes. a290454b4 (#2919) makes ChatDock's agentIdentityFromSession private. Neither changes the config fields, the diagnostics-logs scope tier or the chat-dock re-send claims; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); strands-tool-loader.ts now imports the shared tool-load-failure classifier instead of its private copy of the same redaction decision; mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -23028,7 +23065,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -23169,7 +23206,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts",
@@ -23181,7 +23218,7 @@
         },
         {
           "path": "src-server/routes/system/install-provenance.ts",
-          "digest": "7b5a454d4240bbd66a25be116a802c1560fb12abf6cfd4b27dfbc09352f6e34d"
+          "digest": "0c09b22299f50a7af1b3cb590e10ea5868d5d1e664102866f6cfe14cfec5abc2"
         },
         {
           "path": "src-server/routes/system/system-status-routes.ts",
@@ -23265,7 +23302,8 @@
         "Integration source review through e0314c727: the page's merged edit says the plugin-foreground-work subpath is published ahead of a server implementation and Station does not admit or list plugin foreground runs. That matches the deletion of plugin-foreground-runs.ts and the RunService/runs-route `plugin` source, and the subpath still exists in packages/contracts. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 added exports to the orchestration subpath: ApprovalFullAccessRequester, ApprovalFullAccessRefusalDetails, parseApprovalFullAccessRefusalDetails and the sanitize helpers. It added an optional `revocation` to SessionApprovalModeSetEvent in runtime-events. The delegate CLI now prints explainFullAccessRefusal for that code, while exit codes 2/3 and the status formatting are unchanged. orchestration-service gained the confinement grantor and revocation reset. No new export subpath was added. The module-ownership rows and the documented supervision, quota, delegation-status and native-push claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) makes muse-serve-session publish request.resolved (acknowledgement 'engine') when Station records a decision, and Muse's approval/resolved now publishes request.delivery acknowledged with engineStatus. It also adds the ApprovalAcknowledgement and RequestDeliveryEvent contracts and adds lastDecision and earlierUnacknowledgedDecisions to DelegatedTaskSnapshot and to the CLI status formatter. Corrected the Muse serve sentence that said approvals are 'resolved from Muse's own approval/resolved': a decision Station records now resolves on record and is acknowledged through request.delivery, and only requests Muse closes before Station decides still resolve from approval/resolved. The expiry, stall-watchdog and supervision/reason/transitionReason surface prose is still accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -23803,7 +23841,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24304,7 +24342,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/orchestration/tasks.ts",
@@ -24797,13 +24835,14 @@
         "Integration source review through abfc7a889: #2864's plugin-install-routes.ts reports and requires gitMetadata: excluded both for an open-proposal source and for one Station previously installed without its git metadata (recorded in plugin-source-staging.json). Corrected the install consent paragraph and the usePluginPreviewMutation description, which covered only the open-proposal case. The mutate example already echoes preview.gitMetadata. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 removes the ambient boot helpers fetchBootPayload, seedBootPayload and fetchAndSeedBootPayload from packages/sdk/src/boot.ts, and makes the matching comment edits in client/agents.ts and cli/src/dev/http.ts. Main also rewrote the boot paragraph in this doc; the merge kept the branch's version (around line 859). That version already says the boot module is internal and not in the package export map, names only fetchBootPayloadAt and seedBootPayloadGuarded (both still exported), and no longer mentions the removed ambient helper, so the merged text is consistent and has no duplicate. cf43e14d0 adds recognizeCredential, so a live but unadmitted credential now gets 403 insufficient_scope instead of 401. usePairedDevicesQuery still says an authorization failure is a query error, and the knowledge-route 401/403 split is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added approvalAcknowledgement 'in-process' to StationAgentAdapter, and conversationOpenPatch now also clears unacknowledgedDecisions alongside the other local approval state. That is consistent with the doc's statement that predecessor local approval state is not carried over; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds archive/archive-service installKind, the station-upgrade/service-update applyMethod values, releaseCheck, serviceUpdate, requestServiceUpdateProgress and useServiceUpdateProgressQuery (root exports), and the service-update pairing leaf. The parser now checks installKind and releaseCheck against known values and still passes applyMethod through unchecked. a290454b4 (#2919) only removes internal UI exports. Main's merged paragraph fits the branch text: it has no duplicate and does not bring back the /queries subpath claim. Corrected the stale sentence that said installKind and applyMethod both pass through without enum validation; it now says installKind and releaseCheck are checked (an unknown value is left out) and applyMethod is still unchecked. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds archive/archive-service installKind, the station-upgrade/service-update applyMethod values, releaseCheck, serviceUpdate, requestServiceUpdateProgress and useServiceUpdateProgressQuery (root exports), and the service-update pairing leaf. The parser now checks installKind and releaseCheck against known values and still passes applyMethod through unchecked. a290454b4 (#2919) only removes internal UI exports. Main's merged paragraph fits the branch text: it has no duplicate and does not bring back the /queries subpath claim. Corrected the stale sentence that said installKind and applyMethod both pass through without enum validation; it now says installKind and releaseCheck are checked (an unknown value is left out) and applyMethod is still unchecked. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
       "path": "docs/reference/session-api.md",
       "documentDigest": "9682fc55f0f8d89811a1c467cf86b9872abfdd37a3483734bd18a90df98c680e",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection.",
@@ -24835,7 +24874,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/services/flow/survey-flow-review-service.ts",
@@ -24932,7 +24971,8 @@
         "Reviewed landing deltas through 111744681:  Read the changed document in context; its purpose and prior evidence limits remain.",
         "Integration source review through e0314c727: claude-adapter.ts removed the unused mintStationControlCallerToken stdio fallback, so revocation now covers only the in-process credential. The reference does not describe that fallback, and its foreground, receipt, history and authority claims remain accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 makes attached-session-adoption stamp the grant's grantor beside `host` confinement. session-command-module adds `clientOrigin` to the `startSession` receipt. In useActiveChatSessionMessaging, a full-access-refused send now returns the chat to idle with the draft restored and a structured refusal card. The documented command set, setApprovalMode basis, adoption idempotency, receipt envelope fields and retry guidance are unchanged. startSession is not in the documented envelope's command list, and the documented shape never listed clientOrigin. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added the recorded-vs-acknowledged respondToRequest paragraph (approvalAcknowledgement engine/in-process/none, request.delivery, closed-by-engine), added approvalAcknowledgement metadata and acknowledgement stamping to the Codex/Claude/ACP adapters, routed Codex replies through transport.replyToApproval, and moved the rpc-id test fakes into codex-adapter-wire-harness.ts. The auto-merged main paragraph sits coherently after the branch's #562 wire-ID text. The rpc-id suite still covers accept/decline, session grants, interrupt cancellation (#2316) and unsupported requests over a simulated FakeCodexProcess stream; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added the recorded-vs-acknowledged respondToRequest paragraph (approvalAcknowledgement engine/in-process/none, request.delivery, closed-by-engine), added approvalAcknowledgement metadata and acknowledgement stamping to the Codex/Claude/ACP adapters, routed Codex replies through transport.replyToApproval, and moved the rpc-id test fakes into codex-adapter-wire-harness.ts. The auto-merged main paragraph sits coherently after the branch's #562 wire-ID text. The rpc-id suite still covers accept/decline, session grants, interrupt cancellation (#2316) and unsupported requests over a simulated FakeCodexProcess stream; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -24978,7 +25018,7 @@
     },
     {
       "path": "docs/reference/shared.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review, including compatibility declarations, legacy JSON readers, integration copier admission/rollback, build externals/containment/preparation, host lazy namespace publication and actual CLI/install callers. Reused earlier MCP/notification review after inspecting the only source delta (two package export additions). Clarified unchecked JSON/path inputs, Agent parse failures, specific credential-key rejection, skipped nondirectories, and page-level shared-runtime readiness. API/config review supplies adjacent provider/status/Project producer boundaries. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25147,7 +25187,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/mcp/mcp-ui-frame-server.ts",
@@ -25202,13 +25242,14 @@
         "Integration source review through e0314c727: pnpm-lock.yaml dropped the bearing/forage root entries, and plugin install gained an excludeGitMetadata option that stages proposed installs without .git entries. The documented compatibility, copier, build and MCP contracts are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 adds `STATION_CONFINEMENT_GRANTOR_METADATA_KEY` ('stationConfinementGrantor') to packages/contracts/src/provider.ts and to `RESERVED_ORCHESTRATION_METADATA_KEYS`. The shared reference does not document provider.ts confinement or reserved metadata keys, and none of its compatibility, copier, build or host-namespace claims depend on them. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes getOpenFileMime and isAllowedOpenFilePath private in packages/cli/src/dev/http.ts. The open-file route still uses them, with the same behavior. The document does not name them as exports. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: #2881 adds the ./prebuilt-archive and ./service-launcher-protocol .ts subpaths to the packages/shared export map. #2914 stops re-exporting isDistinctFrameOrigin from MCPToolUIFrame and un-exports mcpUiToolCallDecision. The doc's 'mostly .ts with a few .mjs' export-map description and the mcp-ui-csp claims still hold; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2881 adds the ./prebuilt-archive and ./service-launcher-protocol .ts subpaths to the packages/shared export map. #2914 stops re-exporting isDistinctFrameOrigin from MCPToolUIFrame and un-exports mcpUiToolCallDecision. The doc's 'mostly .ts with a few .mjs' export-map description and the mcp-ui-csp claims still hold; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "52d3c088aed1ecaa9eaf65a68eaeedee361d9390ffcd8cf6d5cbcedd846c20a0",
-      "sourceRevision": "e464b70652dade22324fda9d6111f49082e80df3",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25288,7 +25329,7 @@
         },
         {
           "path": "src-server/domain/agent-registry.ts",
-          "digest": "9693e47fbbe5492489e40d56138b46983f6c4b34218c6d7101055c8d5edb0724"
+          "digest": "b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50"
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
@@ -25452,7 +25493,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts. The document's statements about ACP as an external-engine protocol and about approval policy boundaries are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) made mcpUiToolCallDecision private and removed the isDistinctFrameOrigin re-export from MCPToolUIFrame.tsx without changing behavior. The sandboxed-frame and mcp-tool-ui renderer claims still hold. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: the regenerated MCP content changes only the StationHomeArchive and verification-coordinator module topics, carrying reviewed module-map corrections. The manual's catalog and credential-free claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -25513,8 +25555,8 @@
     },
     {
       "path": "docs/reference/usage-telemetry.md",
-      "documentDigest": "0cefabb2ce8fca5eeed8f3f3556573e970d56e99c095f0adae80b7594da02d47",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "documentDigest": "34b601ece3b7647bf54b64ad183e7d78f57e819eb0f4b4946fd7ad164f453e55",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Actual activation, precedence, caller order, persistence repair, queue and shutdown semantics traced; generated inventory preserved exactly. Captured premature station_started description as separate recommendation.",
@@ -25554,7 +25596,8 @@
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Integration source review through d72f79b08: #2904's orchestration-service changes cover approval-posture confinement, the grantor and the revocation reset, with no telemetry emission, activation, precedence, queue or shutdown changes. The documented caller order and generated inventory still hold. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904's orchestration-service changes cover approval-posture confinement, the grantor and the revocation reset, with no telemetry emission, activation, precedence, queue or shutdown changes. The documented caller order and generated inventory still hold. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: the page itself changed only its test-evidence link; claims corrected: dead link to the deleted usage-telemetry-disclosure.routes.test.ts now points to runtime-routes-usage-telemetry-late-binding.test.ts, which owns the disclosure route envelope and call. Source review only; no new executed evidence."
       ]
     },
     {
@@ -26453,7 +26496,7 @@
     {
       "path": "docs/user/concepts.md",
       "documentDigest": "9d922716b0ad931258a83c905179d2626aa673eb45a03f875558a2faeb9cb23c",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the complete concept guide against work/session, engine, pairing, terminal-readiness, evidence and telemetry owners. Corrected continued-turn identity, reserved Station Agent engine choice and startup/background network limits.",
@@ -26489,11 +26532,11 @@
         },
         {
           "path": "src-server/domain/agent-registry.ts",
-          "digest": "9693e47fbbe5492489e40d56138b46983f6c4b34218c6d7101055c8d5edb0724"
+          "digest": "b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -26512,7 +26555,8 @@
         "Integration source review through e0314c727: module-map.md replaced CollaborativeEditorPane with ProjectTaskRoom and dropped PluginForegroundRuns. The concepts guide neither links module-map nor mentions those modules, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904's session-command-module change only adds the starter's clientOrigin to the startSession receipt. The guide's continued-turn identity, engine choice, receipt and startup-network claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes parseTsxVersion in packages/cli/src/commands/lifecycle-doctor.ts module-private. The change only removes an export: doctor output is unchanged. The guide's `station doctor` and terminal-readiness claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -26880,7 +26924,7 @@
     {
       "path": "docs/user/workspace-checkpoints.md",
       "documentDigest": "283e1c7e932c678bfc114407ffe72c9398b498020cb5a125426c5f7a4562a35a",
-      "sourceRevision": "42491ca6bab31b1365b33e3190c171819881eb72",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced queued capture, snapshot scope, settle-only chat visibility, preview truncation, caller/workspace/target checks, uncertain effects, and the separate CLI authentication/preview gaps.",
@@ -26900,7 +26944,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/runtime/routes/runtime-routes.ts",
@@ -26942,7 +26986,8 @@
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: in cli.ts, #2904 only routes describeCliError through explainFullAccessRefusal first. runtime-routes and orchestration-service gained the full-access refusal, revocation and reset logic. None of these touch checkpoint capture, restore preview and refusal, or the `station checkpoints restore` authentication and preview gaps the page describes. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 42491ca6b: cf43e14d0 adds recognizeCredential in runtime-routes.ts, which changes the status for a recognized but unadmitted credential from 401 to 403. The checkpoint capture, preview and CLI authentication-gap claims do not depend on that status. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 42491ca6b: cf43e14d0 adds recognizeCredential in runtime-routes.ts, which changes the status for a recognized but unadmitted credential from 401 to 403. The checkpoint capture, preview and CLI authentication-gap claims do not depend on that status. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -27695,7 +27740,7 @@
     {
       "path": "examples/mcp-ui-demo/README.md",
       "documentDigest": "edac8e8ab2aa5125990f11157af06392b96fb00b7e837be65c6feba746088f1a",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README and example-server claim review through stdio tool/resource registration, actual integration resolve/read routes and runtime mount, browser MCPToolUIFrame resolver/resource/bridge caller and shared CSP. Corrected web-only native refusal, default host enablement, script cwd prerequisite, credential requirement and require-versus-inherit approval behavior. Static demo sends no interactive messages; dedicated proxy versus opaque srcdoc boundary stated.",
@@ -27719,7 +27764,7 @@
         },
         {
           "path": "src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts",
-          "digest": "9464915950cb7a846af57622e8508f39f3301078aacaf974b93c17764cd1a34e"
+          "digest": "4244fe6da0b1e7f0eeeb5a5fc928581453a83684ebd48afec9acec3d7e8df6db"
         },
         {
           "path": "src-server/runtime/mcp/mcp-ui-frame-server.ts",
@@ -27752,7 +27797,8 @@
         "Integration source review through e0314c727: pnpm-lock.yaml only removed the root bearing/forage importer entries, and the example's own dependencies are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904's runtime-routes changes are the full-access refusal identity middleware and the device revoke/scope-change full-access reset. The integration resolve/read routes, runtime mount, MCP UI resource handling, CSP and approvalPolicy require-versus-inherit behavior are untouched. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential wiring in runtime-routes.ts. The integration resolve and read routes, the runtime mount and the README's instruction to include the Station's required credentials are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2919) MCPToolUIFrame.tsx un-exports mcpUiToolCallDecision and the isDistinctFrameOrigin re-export with unchanged require/inherit/read-only behavior; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2919) MCPToolUIFrame.tsx un-exports mcpUiToolCallDecision and the isDistinctFrameOrigin re-export with unchanged require/inherit/read-only behavior; prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: mcp-ui-resolver.test.ts folded near-duplicate cases (authoritative-empty catalog fallbacks, flat plus nested Survey keys) into existing tests; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {
@@ -28194,7 +28240,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28294,7 +28340,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6"
         },
         {
           "path": "src-server/routes/system/system-status-routes.ts",
@@ -28330,7 +28376,7 @@
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
-          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
+          "digest": "c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c"
         },
         {
           "path": "src-server/runtime/plugins/runtime-provider-resolution.ts",
@@ -28485,7 +28531,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: claude-adapter dropped the stdio `mintStationControlCallerToken` fallback and kept in-process station-control. native-engine-adoption and runtime-startup un-exported or inlined helpers with the same behavior. ApiBaseContext removed a legacy notification_watch comment. The README describes a Station-engine Agent's allowlist, approvals and dispatch authority, which these changes do not affect. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 adds decision actor attribution and fullAccessDefaultSource to approval-posture, grantor stamping and revocation reset to orchestration-service, and grantor-check wiring to runtime-initialize. The README's auto-approved metadata reads, approval and caller-authority limits, dispatch authority and 'no unattended grants' claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c and 7cd4892e5 change approval acknowledgement reporting in the acp, claude and codex adapters and the codex transport, and add decision-delivery fields to delegation snapshots. The README's claims (the auto-approve allowlist, approval still required for delegation, dispatch authority, no delegation JSON field) are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c and 7cd4892e5 change approval acknowledgement reporting in the acp, claude and codex adapters and the codex transport, and add decision-delivery fields to delegation snapshots. The README's claims (the auto-approve allowlist, approval still required for delegation, dispatch authority, no delegation JSON field) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
       ]
     },
     {

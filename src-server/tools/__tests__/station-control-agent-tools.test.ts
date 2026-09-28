@@ -58,6 +58,12 @@ describe('station-control agent tools', () => {
       expect(result.error?.issues[0]?.message).toBe(
         authoredArtifactBudgetMessage('Agent system prompt'),
       );
+      const exact = shapes
+        .get(name)
+        ?.systemPrompt.safeParse('x'.repeat(AUTHORED_ARTIFACT_MAX_CHARS)) as {
+        success: boolean;
+      };
+      expect(exact.success).toBe(true);
     }
   });
 });
