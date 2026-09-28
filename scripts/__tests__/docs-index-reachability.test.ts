@@ -22,6 +22,11 @@ import {
   stationDocsDigest,
 } from '../generate-station-docs.mjs';
 import {
+  assertDocumentationFresh,
+  checkDocumentationFreshness,
+  formatFreshnessAdvisory,
+} from '../lib/documentation-freshness.mjs';
+import {
   documentSections,
   extractModules,
   validateCatalog,
@@ -772,27 +777,18 @@ describe('learning atlas', () => {
   });
 
   it('keeps recorded document reviews bound to their actual document and source bytes', async () => {
-    const files = new Set(tracked([]));
+    // #2923: the shared freshness policy decides which stale records block —
+    // those this change's own diff touches (scoped), none in the merge queue
+    // or on main (advisory), all when the scope is unknown (strict).
     const ledger = JSON.parse(
       readFileSync('docs/learn/review-ledger.json', 'utf8'),
     );
-    const documents = new Map(
-      [...files]
-        .filter((file) => /\.(md|mdx|markdown)$/i.test(file))
-        .map((file) => [
-          file,
-          createHash('sha256').update(readFileSync(file)).digest('hex'),
-        ]),
-    );
-    const reviews = await compileDocumentationReviews(
-      ledger,
-      documents,
-      files,
-      async (file: string) => readFileSync(file),
-      { requireFresh: true },
-    );
-    expect(reviews.size).toBe(ledger.records.length);
-    expect(reviews.size).toBeGreaterThan(0);
+    const result = await checkDocumentationFreshness({ root: process.cwd() });
+    const advisory = formatFreshnessAdvisory(result.policy, result.advisory);
+    if (advisory) console.warn(advisory);
+    expect(() => assertDocumentationFresh(result)).not.toThrow();
+    expect(result.reviews.size).toBe(ledger.records.length);
+    expect(result.reviews.size).toBeGreaterThan(0);
   });
 
   it('invalidates review status when either the document or its code changes', async () => {

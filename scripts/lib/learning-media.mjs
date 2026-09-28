@@ -3,6 +3,11 @@ import { isLearningSourcePath } from './learning-source-reader.mjs';
 
 export const LEARNING_MEDIA_MANIFEST = 'docs/learn/media.json';
 
+/** The bytes a capture record vouches for: the capture and its recorded sources. */
+export function captureInputs(capture) {
+  return [capture.path, ...capture.sources.map((source) => source.path)];
+}
+
 export async function compileLearningMedia(
   manifest,
   tracked,
@@ -28,6 +33,14 @@ export async function compileLearningMedia(
     for (const key of ['alt', 'caption', 'scenario', 'evidence'])
       if (typeof capture[key] !== 'string' || !capture[key].trim())
         throw new Error(`Missing capture ${key}: ${path}`);
+    if (
+      capture.reviewNotes !== undefined &&
+      (!Array.isArray(capture.reviewNotes) ||
+        capture.reviewNotes.some(
+          (note) => typeof note !== 'string' || !note.trim(),
+        ))
+    )
+      throw new Error(`Invalid capture reviewNotes: ${path}`);
     for (const key of ['capturedRevision', 'reviewedRevision'])
       if (!/^[a-f0-9]{40}$/.test(capture[key]))
         throw new Error(`Invalid capture ${key}: ${path}`);
@@ -57,7 +70,12 @@ export async function compileLearningMedia(
       )
         changed.push(source.path);
     }
-    if (requireFresh && changed.length)
+    if (
+      changed.length &&
+      (typeof requireFresh === 'function'
+        ? requireFresh({ path, inputs: captureInputs(capture) })
+        : requireFresh)
+    )
       throw new Error(
         `Learning capture needs review: ${path}; changed: ${changed.join(', ')}`,
       );

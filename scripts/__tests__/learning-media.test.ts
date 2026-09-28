@@ -2,9 +2,13 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { buildLearningGuide } from '../build-learning-guide.mjs';
+import {
+  freshnessRequirement,
+  resolveDocumentationFreshness,
+} from '../lib/documentation-freshness.mjs';
 import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 import { renderLearningDocument } from '../lib/learning-markdown.mjs';
 import { compileLearningMedia } from '../lib/learning-media.mjs';
@@ -224,10 +228,29 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   expect(
     result.documents.find((doc) => doc.path === 'guide.md')?.html,
   ).toContain(url);
+  git(['branch', 'fixture-base']);
   write('code.ts', 'changed UI');
+  // No base resolves in this repository, so the scope is unknown: strict.
   await expect(buildLearningGuide({ root, check: true })).rejects.toThrow(
     'Learning capture needs review',
   );
+  // #2923: docs:learn:check follows the shared freshness policy. The change
+  // owns its stale capture; the merge queue only reports it.
+  vi.stubEnv('STATION_CI_FAST_BASE', '');
+  vi.stubEnv('STATION_DOCS_FRESHNESS', '');
+  try {
+    vi.stubEnv('GITHUB_ACTIONS', '');
+    vi.stubEnv('STATION_DOCS_FRESHNESS_BASE', 'fixture-base');
+    await expect(buildLearningGuide({ root, check: true })).rejects.toThrow(
+      'Learning capture needs review',
+    );
+    vi.stubEnv('GITHUB_ACTIONS', 'true');
+    vi.stubEnv('GITHUB_EVENT_NAME', 'merge_group');
+    const queued = await buildLearningGuide({ root, check: true });
+    expect(queued.captures[0].changed).toEqual(['code.ts']);
+  } finally {
+    vi.unstubAllEnvs();
+  }
   expect(
     readFileSync(
       join(root, '.kontourai/docs-learning', decodeURIComponent(url)),
@@ -249,11 +272,17 @@ it('checks the actual capture manifest and recorded source bytes in the required
   const manifest = JSON.parse(
     reader.read('docs/learn/media.json').toString('utf8'),
   );
+  // #2923: the same scoped/advisory/strict decision as the review ledger.
   const captures = await compileLearningMedia(
     manifest,
     files,
     async (path: string) => reader.read(path),
-    { requireFresh: true },
+    {
+      requireFresh: freshnessRequirement(
+        resolveDocumentationFreshness({ root: process.cwd() }),
+        'capture',
+      ),
+    },
   );
   expect(captures.size).toBeGreaterThan(0);
   expect(captures.size).toBe(manifest.captures.length);

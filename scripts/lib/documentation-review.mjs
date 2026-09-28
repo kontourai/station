@@ -78,7 +78,16 @@ function absentReleaseNote(record, documents, tracked) {
   );
 }
 
-/** Shared interpretation for strict builds and advisory catch-up reporting. */
+/** The bytes a review record vouches for: its document and recorded sources. */
+export function reviewInputs(record) {
+  return [record.path, ...record.sources.map((source) => source.path)];
+}
+
+/**
+ * Shared interpretation for strict builds and advisory catch-up reporting.
+ * `requireFresh` is a boolean or the scoped decision from
+ * `freshnessRequirement` in documentation-freshness.mjs.
+ */
 export async function evaluateDocumentationReview(
   record,
   documents,
@@ -184,7 +193,12 @@ export async function evaluateDocumentationReview(
       };
     }
   }
-  if (requireFresh && changed.length)
+  if (
+    changed.length &&
+    (typeof requireFresh === 'function'
+      ? requireFresh({ path: record.path, inputs: reviewInputs(record) })
+      : requireFresh)
+  )
     throw new Error(
       `Documentation review needs refresh: ${record.path}; changed: ${changed.join(', ')}`,
     );

@@ -91,10 +91,69 @@ missing relationships. Run `docs:truth:gate` after reviewing and updating the
 ledger; the impact report does not change evidence or grant approval.
 
 Veritas selects this command as required `documentation-truth` evidence,
-including for source-only changes. A stale recorded review blocks readiness;
+including for source-only changes. A stale recorded review that the change
+touched blocks readiness (see [keep reviews fresh](#keep-reviews-fresh));
 unmapped dependencies and prose accuracy still require review. The
 [activation record](../../.veritas/init-plans/documentation-maintenance.md)
 retains the owner approval and failure/restoration controls.
+
+## Keep reviews fresh
+
+Staleness is caught once, in the pull request that caused it. One decision in
+[`documentation-freshness.mjs`](../../scripts/lib/documentation-freshness.mjs)
+serves every consumer: the ledger test in `docs:truth:gate` (and so Veritas
+readiness, pre-push and `ci:fast`), `docs:learn:check`, the capture check and
+`npm run docs:freshness:check`. It has three modes:
+
+- **Scoped** (local runs, pre-push, `ci:fast` and pull request checks): a stale
+  review or capture blocks when this change's own diff against its merge base
+  with `origin/main` touches its document, capture or a recorded source, or
+  edits its ledger or `media.json` entry. Other stale entries are printed as
+  advisory. The base is `STATION_DOCS_FRESHNESS_BASE`, then
+  `STATION_CI_FAST_BASE` (the PR check sets it to the pull request base), then
+  `origin/main`. If the scope cannot be computed, every stale entry blocks.
+- **Advisory** (merge queue, pushes to `main`, Nightly and other non-PR
+  workflow events): stale entries are reported and never fail. A queue
+  candidate contains other pull requests' changes, and each pull request already
+  passed the scoped check on its own head, so another PR's change cannot dequeue
+  yours. The repository-scan job also reports rather than judges: its one-commit
+  checkout cannot compute a pull request's scope.
+- **Strict**: every stale entry blocks. Set `STATION_DOCS_FRESHNESS=strict` to
+  audit the whole ledger locally.
+
+A long branch therefore does not re-review records after merging `main`: only
+entries its own changes touch are in scope. Fetch before checking, because an
+old `origin/main` makes the scope larger, not smaller.
+
+After reviewing the changed claims, record the review instead of editing hashes:
+
+```sh
+npm run docs:review:record -- docs/guides/example.md --note "Checked the new retry limit against its caller."
+npm run docs:review:record -- docs/guides/example.md --note "..." --drop-source src-server/removed.ts --add-source src-server/new-owner.ts
+npm run docs:review:record -- --batch reviews.json   # [{ "path", "note", "removedSources"?, "addedSources"? }]
+```
+
+The command binds `sourceRevision` to the full `HEAD` commit, recomputes the
+document and source hashes from current bytes, and appends the note to the
+record's checks. A capture path under `docs/learn/media/` updates its review
+revision, source hashes and `reviewNotes`, but never its capture identity. It
+refuses an empty note, an unknown path, an unresolvable `HEAD`, an untracked
+or duplicate source and a capture whose image changed, and writes nothing unless every entry
+in the batch is valid. New records still need their kind, summary and limits
+written by hand. It then lists records that remain stale on inputs the batch
+touched, such as a page that cites a document you just changed.
+
+Staleness that no single pull request owns, such as two merges that combine,
+is collected by the Nightly
+[freshness sweep](../../.github/workflows/docs-freshness-sweep.yml). It runs
+the catch-up report on `main` and keeps one tracking issue, titled
+"Documentation freshness sweep", current. The issue is open while anything is
+stale and closed when nothing is. The sweep never fails a required check.
+
+Land a repository-wide audit in subsystem slices of roughly 20 to 40
+documents, and merge each one before starting the next. A long audit branch
+otherwise accumulates source changes from `main` faster than it can re-review
+them.
 
 ## Generated release records and removed notes
 
