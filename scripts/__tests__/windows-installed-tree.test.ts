@@ -40,7 +40,9 @@ it('detects changed runtime bytes and refuses a missing server entry', () => {
     clean.runtimeSha256,
   );
   rmSync(join(root, 'dist-server/command-station.js'));
-  expect(() => inspectWindowsInstalledTree(root)).toThrow();
+  expect(() => inspectWindowsInstalledTree(root)).toThrow(
+    'Missing runtime file: dist-server/command-station.js',
+  );
 });
 it('excludes only the installer-owned uninstaller from comparisons', () => {
   const root = fixture();

@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
   cargoDependencyVersion,
@@ -5,21 +7,24 @@ import {
   exactSemver,
   extractDocumentationSection,
   mergeJsonPatch,
-  parseArgs,
   TAURI_CONTEXT_USAGE,
 } from '../tauri-context.mjs';
 
 describe('tauri context', () => {
-  test('offers discoverable help without collecting host state', () => {
-    expect(parseArgs(['--help'])).toEqual(
-      expect.objectContaining({ help: true }),
-    );
-    expect(parseArgs(['-h'])).toEqual(expect.objectContaining({ help: true }));
-    expect(TAURI_CONTEXT_USAGE).toContain(
-      '--platform <all|macos|windows|linux|android|ios>',
-    );
-    expect(TAURI_CONTEXT_USAGE).toContain('--list-topics');
-  });
+  test.each(['--help', '-h'])(
+    '%s prints usage and exits without a report',
+    (flag) => {
+      const result = spawnSync(
+        process.execPath,
+        [fileURLToPath(new URL('../tauri-context.mjs', import.meta.url)), flag],
+        { encoding: 'utf8', timeout: 30_000, windowsHide: true },
+      );
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
+      // Exactly the usage text: no host report was built or printed.
+      expect(result.stdout).toBe(TAURI_CONTEXT_USAGE);
+    },
+  );
 
   test('applies RFC 7396 configuration overlays without mutating the base', () => {
     const base = {

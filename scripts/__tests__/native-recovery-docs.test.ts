@@ -99,12 +99,8 @@ describe('native recovery documentation', () => {
     const systemd = read('packages/cli/src/commands/service-systemd.ts');
 
     for (const { config, identifier } of CHANNELS) {
-      const parsed = JSON.parse(read(config)) as {
-        app: { windows: Array<{ visible?: boolean }> };
-        identifier: string;
-      };
+      const parsed = JSON.parse(read(config)) as { identifier: string };
       expect(parsed.identifier).toBe(identifier);
-      expect(parsed.app.windows[0]?.visible).toBe(false);
 
       const paths = desktopPaths(identifier);
       for (const path of Object.values(paths))

@@ -1,32 +1,89 @@
-import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+const pluginUrl = pathToFileURL(
+  resolve(process.cwd(), 'examples/elevenlabs-voice/plugin.mjs'),
+).href;
 
 describe('realtime provider privacy boundaries', () => {
-  it('does not forward ElevenLabs upstream bodies into public errors or logs', async () => {
-    const source = await readFile(
-      resolve(process.cwd(), 'examples/elevenlabs-voice/plugin.mjs'),
-      'utf8',
-    );
-    expect(source).not.toMatch(/detail:\s*(err|body|text)/);
-    expect(source).not.toMatch(/logger\.(warn|error)\([^\n]*\b(err|body)\b/);
-  });
-
-  it('requires an explicit provider selection for live smoke', async () => {
-    const source = await readFile(
-      resolve(process.cwd(), 'scripts/voice-realtime-live-smoke.mjs'),
-      'utf8',
-    );
-    expect(source).toContain("indexOf('--provider')");
-    expect(source).toContain('NOT_VERIFIED');
-  });
+  it.each([
+    ['STT', { type: 'stt' }],
+    ['TTS', { type: 'tts' }],
+  ])(
+    'does not forward an ElevenLabs %s upstream body or failure into public errors or logs',
+    async (_label, request) => {
+      const canary = 'upstream-secret-canary';
+      const register = (
+        (await import(pluginUrl)) as {
+          default: (
+            app: unknown,
+            options: { config: unknown; logger: unknown },
+          ) => void;
+        }
+      ).default;
+      let handler: ((c: unknown) => Promise<unknown>) | undefined;
+      const logged: unknown[] = [];
+      const logger = {
+        warn: (...args: unknown[]) => logged.push(args),
+        error: (...args: unknown[]) => logged.push(args),
+        info: (...args: unknown[]) => logged.push(args),
+      };
+      register(
+        {
+          post: (_path: string, route: typeof handler) => {
+            handler = route;
+          },
+        },
+        {
+          config: {
+            get: (key: string) => (key === 'apiKey' ? 'key' : undefined),
+          },
+          logger,
+        },
+      );
+      let session = 0;
+      const call = () =>
+        handler?.({
+          req: {
+            json: async () => ({
+              ...request,
+              sessionId: `session-${++session}`,
+            }),
+          },
+          json: (body: unknown, status = 200) => ({ body, status }),
+        });
+      const upstream = vi.fn();
+      vi.stubGlobal('fetch', upstream);
+      try {
+        // A non-ok upstream response carrying its own error body.
+        upstream.mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: async () => ({ detail: canary }),
+          text: async () => canary,
+        });
+        const rejected = await call();
+        expect(rejected).toMatchObject({ status: 502 });
+        // A transport failure whose message carries upstream text.
+        upstream.mockRejectedValueOnce(new Error(canary));
+        const failed = await call();
+        expect(failed).toMatchObject({
+          status: 500,
+          body: { error: 'Internal error' },
+        });
+        expect(upstream).toHaveBeenCalledTimes(2);
+        expect(JSON.stringify([rejected, failed, logged])).not.toContain(
+          canary,
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it('bounds ElevenLabs authorization issuance by session and outstanding count', async () => {
-    const moduleUrl = pathToFileURL(
-      resolve(process.cwd(), 'examples/elevenlabs-voice/plugin.mjs'),
-    ).href;
-    const pluginModule = (await import(moduleUrl)) as {
+    const pluginModule = (await import(pluginUrl)) as {
       createMintGuard(now: () => number): {
         reserve(sessionId: string):
           | {

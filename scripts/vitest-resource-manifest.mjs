@@ -629,6 +629,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Executes the release compensation shell transaction in isolated fixture
   // directories to verify its real exit codes and rollback behavior.
   'scripts/__tests__/publish-mobile-feed-transaction.test.ts',
+  // Runs the Tauri context CLI's --help path as a child process to prove it
+  // prints usage and exits 0 before any host probe or report.
+  'scripts/__tests__/tauri-context.test.ts',
+  // Runs short-lived bash fixtures through the owned-process fixture runner
+  // to prove its launch, truncation, deadline and descendant-reaping refusals.
+  'scripts/__tests__/bounded-fixture-process.test.ts',
   // station#2299: runs the repo-guardrail proof itself as a real child
   // process against a mutated copy, because the defect was that the proof
   // died before producing any verdict — only a real exit status can prove it

@@ -224,8 +224,8 @@ function boundedProbeReason(tool, error) {
 
 /**
  * Observe listener ownership without conflating a missing host probe with an
- * empty listener set.  Callers that need only the historic Map contract can
- * use listeningPidsByPort; health reporting uses the source/reason envelope.
+ * empty listener set: `owners` is the port-to-pid Map, and health reporting
+ * uses the source/reason envelope.
  */
 export function observeListeningPidsByPort(
   ports,
@@ -316,10 +316,6 @@ export function observeListeningPidsByPort(
       authoritative: false,
     };
   }
-}
-
-export function listeningPidsByPort(ports, deadline, runSync = execFileSync) {
-  return observeListeningPidsByPort(ports, deadline, runSync).owners;
 }
 
 function parseLsofOwners(output, ports) {

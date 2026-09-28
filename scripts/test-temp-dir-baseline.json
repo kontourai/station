@@ -164,7 +164,7 @@
     "scripts/__tests__/project-resource-shadow-report.test.ts": 1,
     "scripts/__tests__/proof-family-lane-governance.test.ts": 1,
     "scripts/__tests__/public-docs-admission.test.ts": 2,
-    "scripts/__tests__/publish-mobile-feed-transaction.test.ts": 2,
+    "scripts/__tests__/publish-mobile-feed-transaction.test.ts": 1,
     "scripts/__tests__/publish-nightly-desktop.test.ts": 1,
     "scripts/__tests__/random-uuid-guard.test.ts": 1,
     "scripts/__tests__/release-artifacts.test.ts": 4,

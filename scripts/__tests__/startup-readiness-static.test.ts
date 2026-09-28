@@ -41,6 +41,17 @@ function replaceInRustBlock(
   )}`;
 }
 
+/** Every direct main-window reveal site: the single-authority invariant. */
+function mainWindowActions(lib: string) {
+  return [
+    ...lib.matchAll(
+      /get_webview_window\("main"\)[\s\S]{0,320}?(?:\.show\(\)|\.unminimize\(\)|\.set_focus\(\))/g,
+    ),
+  ];
+}
+
+const DEEP_LINK_ACTIVATION = 'app.handle().deep_link().on_open_url';
+
 describe('desktop startup readiness static boundary', () => {
   it('keeps release main windows hidden in every desktop channel config', () => {
     for (const path of [
@@ -61,17 +72,8 @@ describe('desktop startup readiness static boundary', () => {
     const platformBootstrap = read(
       'src-ui/src/platform/PlatformProfileContext.tsx',
     );
-    const rendererLiveness = read(
-      'src-ui/src/platform/native/rendererLiveness.tsx',
-    );
-    const readiness = read('src-desktop/src/startup_readiness.rs');
     const main = read('src-ui/src/main.tsx');
-    const mainWindowActions = [
-      ...lib.matchAll(
-        /get_webview_window\("main"\)[\s\S]{0,320}?(?:\.show\(\)|\.unminimize\(\)|\.set_focus\(\))/g,
-      ),
-    ];
-    expect(mainWindowActions).toHaveLength(1);
+    expect(mainWindowActions(lib)).toHaveLength(1);
     expect(lib).toContain('fn reveal_main_window');
     const nativeStart = lib.indexOf('fn with_native_startup_cover');
     const nativeEnd = lib.indexOf('fn reveal_main_window');
@@ -119,16 +121,9 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('fn commit_renderer_mount');
     expect(lib).toContain('commit_renderer_mount,');
     expect(lib).toContain('renderer_mount_label_admitted(window.label())');
-    expect(rendererLiveness).toContain('useLayoutEffect');
-    expect(rendererLiveness).toContain('adapter.commitRendererMount()');
-    expect(rendererLiveness).toContain("['linux', 'macos', 'windows']");
-    expect(rendererLiveness).not.toContain('setTimeout');
-    expect(rendererLiveness).not.toContain('localStorage');
-    expect(readiness).toContain('NativeIdentityCommitted(StartupTicket)');
-    expect(readiness).toContain('RendererMounted');
-    expect(readiness).toContain(
-      'next.identity_committed && next.renderer_mounted',
-    );
+    // The reveal prerequisites themselves are owned by startup_readiness.rs's
+    // own Rust tests, and the renderer's single layout-mount commit by
+    // src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx.
     const renderApp = main.slice(main.indexOf('function renderApp'));
     expect(renderApp.indexOf('<NativeRendererMountCommit />')).toBeLessThan(
       renderApp.indexOf('<PlatformBootstrap>'),
@@ -185,10 +180,7 @@ describe('desktop startup readiness static boundary', () => {
     expect([
       ...lib.matchAll(/\.name\("station-native-cover-dispatcher"\.into\(\)\)/g),
     ]).toHaveLength(1);
-    const deepLinkActivation = rustBlock(
-      lib,
-      'app.handle().deep_link().on_open_url',
-    );
+    const deepLinkActivation = rustBlock(lib, DEEP_LINK_ACTIVATION);
     expect(deepLinkActivation).not.toContain('with_native_startup_cover');
     const trayFocus = rustBlock(tray, 'fn focus_station_window');
     expect(trayFocus).toContain('crate::ensure_main_window(app)?');
@@ -286,18 +278,18 @@ describe('desktop startup readiness static boundary', () => {
 
   it('fails its structural probes when a direct reveal or Apple-event route is removed', () => {
     const lib = read('src-desktop/src/lib.rs');
-    const injected = `${lib}\nfn injected() { app.get_webview_window("main").unwrap().show().unwrap(); }`;
-    expect([
-      ...injected.matchAll(
-        /get_webview_window\("main"\)[\s\S]{0,320}?\.show\(\)/g,
-      ),
-    ]).toHaveLength(2);
-    const noAppleRoute = lib.replace(
-      'request_or_defer_main_window_activation(\n                        &activation_app,',
-      '/* route removed */',
+    for (const action of ['show', 'unminimize', 'set_focus']) {
+      const injected = `${lib}\nfn injected() { app.get_webview_window("main").unwrap().${action}().unwrap(); }`;
+      expect(mainWindowActions(injected)).toHaveLength(2);
+    }
+    const noAppleRoute = replaceInRustBlock(
+      lib,
+      DEEP_LINK_ACTIVATION,
+      'request_or_defer_main_window_activation(',
+      '/* route removed */(',
     );
-    expect(noAppleRoute).not.toMatch(
-      /deep_link\(\)\.on_open_url[\s\S]{0,700}request_or_defer_main_window_activation/,
+    expect(rustBlock(noAppleRoute, DEEP_LINK_ACTIVATION)).not.toContain(
+      'request_or_defer_main_window_activation',
     );
     const noReopenRoute = replaceInRustBlock(
       lib,
