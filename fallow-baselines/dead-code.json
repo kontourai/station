@@ -354,8 +354,6 @@
     "src-ui/src/platform/native/index.ts:triggerHaptic",
     "src-ui/src/platform/native/index.ts:MAX_NATIVE_SHARE_TEXT_BYTES",
     "src-ui/src/platform/native/index.ts:validateNativeShareText",
-    "src-ui/src/platform/native/notify.ts:watchNotificationsNatively",
-    "src-ui/src/platform/native/notify.ts:stopWatchingNotificationsNatively",
     "src-ui/src/platform/native/stationProfileStorage.ts:nativeStationProfileStorage",
     "src-ui/src/settings/modelPickerPreferences.ts:readModelPickerPreferences",
     "src-ui/src/utils/answerability.ts:isUnanswerableView",

@@ -723,7 +723,6 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-ui/src/__tests__/dock-bottom-clearance.test.ts',
   'src-ui/src/__tests__/home-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
-  'src-ui/src/__tests__/native-notification-watch.test.ts',
   'src-ui/src/__tests__/package-css-fork.test.ts',
   'src-ui/src/__tests__/placement-vocabulary.test.ts',
   'src-ui/src/__tests__/plain-language-policy.test.ts',
