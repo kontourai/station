@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  'd4f6a6a59e6bb04ad9dbb6a733847dd394094d32841adb995fc5b9599f194477';
+  'd0379c34a68bf87f1d8e1ad6c0c6bc49ada993c233610359c0b52b3cf254dc1e';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -722,7 +722,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Identity, Devices, and connection paths',
     summary:
       'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.',
-    body: 'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- What does an account prove that a paired Device does not?\n- Does the same authorization run over direct and relayed requests?\n- Who owns a secret, its reference, and the authority to rotate it?\n\nRead module topics with get_station_docs_topic:\n- architecture-deploymentauthentication: DeploymentAuthentication\n- architecture-virtualapplicationingress: VirtualApplicationIngress\n- architecture-nativerelaygrantrenewalsupervisor: NativeRelayGrantRenewalSupervisor\n- architecture-pendingpairingcompletion: PendingPairingCompletion\n- architecture-connectioninspector: ConnectionInspector\n- architecture-secretbindingadministration-and-integrationsecretresolver: SecretBindingAdministration and IntegrationSecretResolver\n- architecture-stationcontroldispatchscope: StationControlDispatchScope\n\nCanonical reading:\n- docs/design/station-topology.md\n- docs/guides/connections.md\n- docs/guides/deployment-authentication.md\n- docs/guides/self-hosted-broker.md\n- docs/security/remote-access-threat-model.md\n- docs/learn/walkthroughs.md#connections',
+    body: 'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- What does an account prove that a paired Device does not?\n- Does the same authorization run over direct and relayed requests?\n- Who owns a secret, its reference, and the authority to rotate it?\n\nRead module topics with get_station_docs_topic:\n- architecture-deploymentauthentication: DeploymentAuthentication\n- architecture-virtualapplicationingress: VirtualApplicationIngress\n- architecture-nativerelaygrantrenewalsupervisor: NativeRelayGrantRenewalSupervisor\n- architecture-nativeapplicationsignaling: NativeApplicationSignaling\n- architecture-pendingpairingcompletion: PendingPairingCompletion\n- architecture-connectioninspector: ConnectionInspector\n- architecture-secretbindingadministration-and-integrationsecretresolver: SecretBindingAdministration and IntegrationSecretResolver\n- architecture-stationcontroldispatchscope: StationControlDispatchScope\n\nCanonical reading:\n- docs/design/station-topology.md\n- docs/guides/connections.md\n- docs/guides/deployment-authentication.md\n- docs/guides/self-hosted-broker.md\n- docs/security/remote-access-threat-model.md\n- docs/learn/walkthroughs.md#connections',
     tags: ['architecture', 'connections'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -760,6 +760,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-connections',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'nativerelaygrantrenewalsupervisor',
+  },
+  {
+    id: 'architecture-nativeapplicationsignaling',
+    title: 'NativeApplicationSignaling',
+    summary:
+      'Interface, composition, invariants, and documented evidence for NativeApplicationSignaling.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## NativeApplicationSignaling\n\nDesktop clients need to exchange connection offers and answers through a broker\nwithout exposing routing credentials to their renderer. The native shell's\n[owner](../../src-desktop/src/native_relay_redemption.rs) exposes\n`station_native_relay_application_binding`, `station_native_relay_application_open`\nand `station_native_relay_application_read`. [lib.rs](../../src-desktop/src/lib.rs)\nregisters these desktop Tauri commands; the main-window guard restricts their\ncaller. They reuse the service behind the existing diagnostic signaling commands.\n\n**Interface and custody.** Each command names a saved profile and its exact\nrevision. Opening adds a nonce and bounded offer SDP (the connection's session\ndescription); reading names an existing\noffer nonce. The host loads the approved Station trust and keyring-held routing\ngrant, then rechecks that custody after broker I/O. Callers cannot supply a\nbearer, private key, broker URL or Project authority in these envelopes.\n\n**Results and recovery.** Binding returns public host-derived metadata. Opening\nreturns expiry; reading can return answer SDP and opaque Station proof. An\nuncertain open may already have created the offer, so retain its nonce and read\nthat offer within its window before considering another open.\n\n**Integration boundary.** No ordinary renderer or SDK caller currently invokes\nthese commands. They do not create a DataChannel, verify the returned Station\nproof, carry application requests, select a route, sign in or enroll a Device.\nThe account proof-key vault remains separate. The browser/Node diagnostic lab\ndoes not exercise this Tauri interface. Source and service tests do not establish\nexecuted IPC, native keyring behavior or a packaged/device journey. See the\n[native command contract](../design/native-capabilities.md#desktop-application-signaling-commands).",
+    tags: ['architecture', 'connections', 'NativeApplicationSignaling'],
+    parentId: 'architecture-connections',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'nativeapplicationsignaling',
   },
   {
     id: 'architecture-pendingpairingcompletion',

@@ -104,6 +104,7 @@
         "DeploymentAuthentication",
         "VirtualApplicationIngress",
         "NativeRelayGrantRenewalSupervisor",
+        "NativeApplicationSignaling",
         "PendingPairingCompletion",
         "ConnectionInspector",
         "SecretBindingAdministration and IntegrationSecretResolver",

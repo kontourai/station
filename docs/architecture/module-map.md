@@ -15,7 +15,7 @@ This is the contributor map for code that changes behaviour across a seam. Read 
 | **Implementation** | Code inside a Module. An Implementation may have private seams without widening the caller Interface. |
 | **Seam** | The place where a Module's Interface lives and behaviour can change without editing its callers. |
 | **Adapter** | A concrete thing that satisfies an Interface at a Seam. It names a role, not how much code it contains. |
-| **Depth** | Leverage at the Interface: behaviour callers can exercise for the facts they must learn. Depth gives callers leverage and maintainers locality. |
+| **Depth** | How much useful behaviour an Interface offers compared with what callers must understand. A deeper Module hides more implementation detail behind a small, clear contract. |
 
 Prefer an intent-shaped Interface over storage-shaped operations. Compose required Adapters at an external Seam; do not construct hidden dependencies, export raw storage keys, or mutate a Module with post-construction setters. A second real Adapter proves a seam; a hypothetical alternative does not.
 
@@ -35,6 +35,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while Desktop is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
+| [NativeApplicationSignaling](#nativeapplicationsignaling) | Exchange a native offer and answer through host-owned routing credentials, without claiming an application data transport. | `src-desktop/src/native_relay_redemption.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
 | [ConversationSessionLineage](#conversationsessionlineage) | Establish and inspect durable conversation-to-execution-session lineage. | `src-server/services/orchestration/conversation-session-lineage.ts` |
@@ -721,6 +722,36 @@ real IPC or packaged behavior. The [native verification guide](../guides/native-
 and [recovery guide](../user/native-recovery.md) keep those platform checks
 separate.
 
+
+## NativeApplicationSignaling
+
+Desktop clients need to exchange connection offers and answers through a broker
+without exposing routing credentials to their renderer. The native shell's
+[owner](../../src-desktop/src/native_relay_redemption.rs) exposes
+`station_native_relay_application_binding`, `station_native_relay_application_open`
+and `station_native_relay_application_read`. [lib.rs](../../src-desktop/src/lib.rs)
+registers these desktop Tauri commands; the main-window guard restricts their
+caller. They reuse the service behind the existing diagnostic signaling commands.
+
+**Interface and custody.** Each command names a saved profile and its exact
+revision. Opening adds a nonce and bounded offer SDP (the connection's session
+description); reading names an existing
+offer nonce. The host loads the approved Station trust and keyring-held routing
+grant, then rechecks that custody after broker I/O. Callers cannot supply a
+bearer, private key, broker URL or Project authority in these envelopes.
+
+**Results and recovery.** Binding returns public host-derived metadata. Opening
+returns expiry; reading can return answer SDP and opaque Station proof. An
+uncertain open may already have created the offer, so retain its nonce and read
+that offer within its window before considering another open.
+
+**Integration boundary.** No ordinary renderer or SDK caller currently invokes
+these commands. They do not create a DataChannel, verify the returned Station
+proof, carry application requests, select a route, sign in or enroll a Device.
+The account proof-key vault remains separate. The browser/Node diagnostic lab
+does not exercise this Tauri interface. Source and service tests do not establish
+executed IPC, native keyring behavior or a packaged/device journey. See the
+[native command contract](../design/native-capabilities.md#desktop-application-signaling-commands).
 
 ## NativeRelayGrantRenewalSupervisor
 
