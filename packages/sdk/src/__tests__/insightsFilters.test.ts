@@ -54,19 +54,6 @@ describe('insights filters reach the server (station#3075)', () => {
     expect(params.has('engine')).toBe(false);
     expect(params.has('limit')).toBe(false);
   });
-
-  test('different filters produce different requests', async () => {
-    // This is what keys the query cache. If two filter sets serialised the
-    // same, switching agent would render the previous agent's numbers under
-    // the new label — the rollup and its heading disagreeing about who they
-    // describe.
-    await fetchInsights(14, { agent: 'alpha' });
-    await fetchInsights(14, { agent: 'beta' });
-
-    const first = String(authenticatedFetch.mock.calls[0]?.[0]);
-    const second = String(authenticatedFetch.mock.calls[1]?.[0]);
-    expect(first).not.toBe(second);
-  });
 });
 
 describe('filters key the query cache, not just the URL', () => {

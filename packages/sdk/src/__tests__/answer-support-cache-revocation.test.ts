@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -9,6 +9,9 @@ import {
   useAnswerSupportBundlesQuery,
   useAnswerSupportCardsQuery,
   useAnswerSupportClaimsQuery,
+  useCreateAnswerSupportMutation,
+  useRemoveAnswerSupportMutation,
+  useReplaceAnswerSupportMutation,
 } from '../answer-support.js';
 
 vi.mock('../api', () => ({
@@ -43,6 +46,7 @@ describe('answer-support full Task cache revocation', () => {
     ['candidate 503', 503, 'bundles' as const],
     ['card 404', 404, 'cards' as const],
     ['card 503', 503, 'cards' as const],
+    ['claim 404', 404, 'claims' as const],
   ])(
     'removes all reference A/B protected observers and cache entries after %s',
     async (_label, status, failureSurface) => {
@@ -75,7 +79,7 @@ describe('answer-support full Task cache revocation', () => {
             enabled: failureSurface === 'bundles' ? enabled : false,
           }),
           aClaims: useAnswerSupportClaimsQuery(taskId, referenceA, 'bundle-a', {
-            enabled: false,
+            enabled: failureSurface === 'claims' ? enabled : false,
           }),
           bBundles: useAnswerSupportBundlesQuery(taskId, referenceB, {
             enabled: false,
@@ -91,7 +95,10 @@ describe('answer-support full Task cache revocation', () => {
         queryKey:
           failureSurface === 'cards'
             ? answerSupportQueries.cards(taskId).queryKey
-            : answerSupportQueries.bundles(taskId, referenceA).queryKey,
+            : failureSurface === 'claims'
+              ? answerSupportQueries.claims(taskId, referenceA, 'bundle-a')
+                  .queryKey
+              : answerSupportQueries.bundles(taskId, referenceA).queryKey,
       });
       observer.rerender({ enabled: true });
       await waitFor(() => expect(fetch).toHaveBeenCalled());
@@ -127,4 +134,124 @@ describe('answer-support full Task cache revocation', () => {
         expect(query.data).toBeUndefined();
     },
   );
+});
+
+function protectedKeys() {
+  return [
+    answerSupportQueries.cards(taskId).queryKey,
+    ...[referenceA, referenceB].flatMap((referenceId) => [
+      answerSupportQueries.bundles(taskId, referenceId).queryKey,
+      answerSupportQueries.claims(taskId, referenceId, 'bundle-a').queryKey,
+    ]),
+  ];
+}
+
+const mutations = [
+  [
+    'attach',
+    () => {
+      const mutation = useCreateAnswerSupportMutation();
+      return () =>
+        mutation.mutateAsync({
+          taskId,
+          referenceId: referenceA,
+          bundleId: 'bundle-a',
+          claimId: 'claim-a',
+        });
+    },
+  ],
+  [
+    'replace',
+    () => {
+      const mutation = useReplaceAnswerSupportMutation();
+      return () =>
+        mutation.mutateAsync({
+          taskId,
+          referenceId: referenceA,
+          bundleId: 'bundle-a',
+          claimId: 'claim-a',
+          expectedRevision: 1,
+        });
+    },
+  ],
+  [
+    'remove',
+    () => {
+      const mutation = useRemoveAnswerSupportMutation();
+      return () =>
+        mutation.mutateAsync({
+          taskId,
+          referenceId: referenceA,
+          expectedRevision: 1,
+        });
+    },
+  ],
+] as const;
+
+async function runMutation(
+  useMutate: () => () => Promise<unknown>,
+  response: Response,
+): Promise<QueryClient> {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof globalThis.fetch>().mockResolvedValue(response),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  seedProtectedScope(client);
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client }, children);
+  const { result } = renderHook(() => useMutate(), { wrapper });
+  await act(async () => {
+    await result.current().catch(() => undefined);
+  });
+  return client;
+}
+
+function failure(status: number, error: string): Response {
+  return new Response(JSON.stringify({ success: false, error }), { status });
+}
+
+describe('answer-support mutation cache effects', () => {
+  it.each(mutations)(
+    'removes every protected Task entry when %s loses answer authority',
+    async (_label, useMutate) => {
+      const client = await runMutation(
+        useMutate,
+        failure(503, 'Answer support temporarily unavailable'),
+      );
+      for (const key of protectedKeys())
+        expect(client.getQueryState(key)).toBeUndefined();
+    },
+  );
+
+  it.each(mutations)(
+    'keeps and invalidates every Task selector after a %s compare-and-swap conflict',
+    async (_label, useMutate) => {
+      const client = await runMutation(
+        useMutate,
+        failure(409, 'Answer support conflicts'),
+      );
+      for (const key of protectedKeys())
+        expect(client.getQueryState(key)).toMatchObject({
+          isInvalidated: true,
+        });
+      expect(
+        client.getQueryData(answerSupportQueries.cards(taskId).queryKey),
+      ).toEqual([{ id: 'card-a' }]);
+    },
+  );
+
+  it('invalidates cards and Task-wide selections after attach', async () => {
+    const client = await runMutation(
+      mutations[0][1],
+      new Response(
+        JSON.stringify({ success: true, data: { id: 'association-a' } }),
+        { status: 200 },
+      ),
+    );
+    for (const key of protectedKeys())
+      expect(client.getQueryState(key)).toMatchObject({ isInvalidated: true });
+  });
 });

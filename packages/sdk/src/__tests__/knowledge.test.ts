@@ -29,6 +29,8 @@ import {
  * `validateKnowledgeRoot`/`listKnowledgeAdapters`/`deleteKnowledgeRoot`),
  * each covered for both its success path and its error-body passthrough.
  */
+const BASE = 'http://example.test';
+
 describe('client/knowledge', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
@@ -79,21 +81,6 @@ describe('client/knowledge', () => {
     );
   });
 
-  it('rebuildKnowledgeIndex surfaces the server error body on a non-2xx response (e.g. no embedder configured)', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({
-        success: false,
-        error: 'No embedding provider connection is configured',
-      }),
-    } as Response);
-
-    await expect(rebuildKnowledgeIndex('http://example.test')).rejects.toThrow(
-      'No embedding provider connection is configured',
-    );
-  });
-
   it('migratePreIndexKnowledge posts to /api/knowledge/migrate and returns migration counts', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
@@ -124,21 +111,6 @@ describe('client/knowledge', () => {
         body: JSON.stringify({ projectSlug: 'acme' }),
       }),
     );
-  });
-
-  it('migratePreIndexKnowledge surfaces the server error body on a non-2xx response', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: async () => ({
-        success: false,
-        error: 'migration failed unexpectedly',
-      }),
-    } as Response);
-
-    await expect(
-      migratePreIndexKnowledge('http://example.test'),
-    ).rejects.toThrow('migration failed unexpectedly');
   });
 
   it('listKnowledgeRoots gets /api/knowledge/roots and returns the root list', async () => {
@@ -173,21 +145,6 @@ describe('client/knowledge', () => {
     expect(fetch).toHaveBeenCalledWith(
       'http://example.test/api/knowledge/roots',
       expect.objectContaining({ method: 'GET' }),
-    );
-  });
-
-  it('listKnowledgeRoots surfaces the server error body on a non-2xx response', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: async () => ({
-        success: false,
-        error: 'root registry unavailable',
-      }),
-    } as Response);
-
-    await expect(listKnowledgeRoots('http://example.test')).rejects.toThrow(
-      'root registry unavailable',
     );
   });
 
@@ -233,24 +190,6 @@ describe('client/knowledge', () => {
     );
   });
 
-  it('createKnowledgeRoot surfaces the server error body on a non-2xx response (e.g. unknown adapterId)', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({
-        success: false,
-        error: "Unknown adapterId 'bogus-adapter'",
-      }),
-    } as Response);
-
-    await expect(
-      createKnowledgeRoot('http://example.test', {
-        scope: { kind: 'personal' },
-        adapterId: 'bogus-adapter',
-      }),
-    ).rejects.toThrow("Unknown adapterId 'bogus-adapter'");
-  });
-
   it('validateKnowledgeRoot posts to /api/knowledge/roots/validate and returns the honest ok/reason result', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
@@ -286,24 +225,6 @@ describe('client/knowledge', () => {
     );
   });
 
-  it('validateKnowledgeRoot surfaces the server error body on a non-2xx response', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: async () => ({
-        success: false,
-        error: 'validation crashed unexpectedly',
-      }),
-    } as Response);
-
-    await expect(
-      validateKnowledgeRoot('http://example.test', {
-        adapterId: 'kit-obsidian-store',
-        storeRoot: '/tmp/not-a-vault',
-      }),
-    ).rejects.toThrow('validation crashed unexpectedly');
-  });
-
   it('listKnowledgeAdapters gets /api/knowledge/adapters and returns id/displayName summaries', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
@@ -329,21 +250,6 @@ describe('client/knowledge', () => {
     );
   });
 
-  it('listKnowledgeAdapters surfaces the server error body on a non-2xx response', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: async () => ({
-        success: false,
-        error: 'adapter registry unavailable',
-      }),
-    } as Response);
-
-    await expect(listKnowledgeAdapters('http://example.test')).rejects.toThrow(
-      'adapter registry unavailable',
-    );
-  });
-
   it('deleteKnowledgeRoot deletes /api/knowledge/roots/:id', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
@@ -356,21 +262,6 @@ describe('client/knowledge', () => {
       'http://example.test/api/knowledge/roots/root%3Aproject-acme',
       expect.objectContaining({ method: 'DELETE' }),
     );
-  });
-
-  it('deleteKnowledgeRoot surfaces the server error body on a non-2xx response', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 404,
-      json: async () => ({
-        success: false,
-        error: 'root not found',
-      }),
-    } as Response);
-
-    await expect(
-      deleteKnowledgeRoot('http://example.test', 'root:missing'),
-    ).rejects.toThrow('root not found');
   });
 
   it('createKnowledgeRecord posts to /api/knowledge/roots/:rootId/records and returns the created record', async () => {
@@ -407,24 +298,6 @@ describe('client/knowledge', () => {
     );
   });
 
-  it('createKnowledgeRecord surfaces the server error body on a non-2xx response', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({ success: false, error: 'Invalid type' }),
-    } as Response);
-
-    await expect(
-      createKnowledgeRecord('http://example.test', 'root:personal', {
-        type: 'raw',
-        title: 't',
-        body: 'b',
-        category: 'c',
-        provenance: { agent: 'test' },
-      }),
-    ).rejects.toThrow('Invalid type');
-  });
-
   it('getKnowledgeRecord gets /api/knowledge/roots/:rootId/records/:id', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
@@ -444,18 +317,6 @@ describe('client/knowledge', () => {
       'http://example.test/api/knowledge/roots/root%3Apersonal/records/rec-1',
       expect.objectContaining({ method: 'GET' }),
     );
-  });
-
-  it('getKnowledgeRecord surfaces a 404 not-found error body', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 404,
-      json: async () => ({ success: false, error: 'Record not found' }),
-    } as Response);
-
-    await expect(
-      getKnowledgeRecord('http://example.test', 'root:personal', 'missing'),
-    ).rejects.toThrow('Record not found');
   });
 
   it('listKnowledgeRecordsByType gets /api/knowledge/roots/:rootId/records?type=', async () => {
@@ -577,21 +438,6 @@ describe('client/knowledge', () => {
     );
   });
 
-  it('searchKnowledgeIndex surfaces the NO_EMBEDDER_ERROR 400 body', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({
-        success: false,
-        error: 'No embedding provider connection is configured',
-      }),
-    } as Response);
-
-    await expect(
-      searchKnowledgeIndex('http://example.test', { query: 'anything' }),
-    ).rejects.toThrow('No embedding provider connection is configured');
-  });
-
   /**
    * `s203-knowledge-meeting-notes` Wave 3 cleanup (plan item 1c) — the
    * Neo4j-backed graph-view read/sync fetchers.
@@ -619,22 +465,6 @@ describe('client/knowledge', () => {
       'http://example.test/api/knowledge/roots/root%3Apersonal/graph/neo4j',
       expect.objectContaining({ method: 'GET' }),
     );
-  });
-
-  it('getKnowledgeGraphNeo4j surfaces the honest 503 "not configured" body verbatim', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 503,
-      json: async () => ({
-        success: false,
-        error:
-          'Neo4j graph-view connection is not configured — register one before syncing or reading the graph view',
-      }),
-    } as Response);
-
-    await expect(
-      getKnowledgeGraphNeo4j('http://example.test', 'root:personal'),
-    ).rejects.toThrow('Neo4j graph-view connection is not configured');
   });
 
   it('syncKnowledgeGraphNeo4j posts to /api/knowledge/roots/:rootId/graph/neo4j-sync and returns sync stats', async () => {
@@ -674,19 +504,98 @@ describe('client/knowledge', () => {
     );
   });
 
-  it('syncKnowledgeGraphNeo4j surfaces the honest 503 "not configured" body verbatim', async () => {
+  const failingCalls: Array<[string, () => Promise<unknown>]> = [
+    ['rebuildKnowledgeIndex', () => rebuildKnowledgeIndex(BASE)],
+    ['migratePreIndexKnowledge', () => migratePreIndexKnowledge(BASE)],
+    ['listKnowledgeRoots', () => listKnowledgeRoots(BASE)],
+    [
+      'createKnowledgeRoot',
+      () =>
+        createKnowledgeRoot(BASE, {
+          scope: { kind: 'personal' },
+          adapterId: 'bogus-adapter',
+        }),
+    ],
+    [
+      'validateKnowledgeRoot',
+      () =>
+        validateKnowledgeRoot(BASE, {
+          adapterId: 'kit-obsidian-store',
+          storeRoot: '/tmp/not-a-vault',
+        }),
+    ],
+    ['listKnowledgeAdapters', () => listKnowledgeAdapters(BASE)],
+    ['deleteKnowledgeRoot', () => deleteKnowledgeRoot(BASE, 'root:missing')],
+    [
+      'createKnowledgeRecord',
+      () =>
+        createKnowledgeRecord(BASE, 'root:personal', {
+          type: 'raw',
+          title: 't',
+          body: 'b',
+          category: 'c',
+          provenance: { agent: 'test' },
+        }),
+    ],
+    [
+      'getKnowledgeRecord',
+      () => getKnowledgeRecord(BASE, 'root:personal', 'missing'),
+    ],
+    [
+      'listKnowledgeRecordsByType',
+      () => listKnowledgeRecordsByType(BASE, 'root:personal', 'raw'),
+    ],
+    [
+      'linkKnowledgeRecord',
+      () =>
+        linkKnowledgeRecord(BASE, 'root:personal', 'rec-2', {
+          links: [{ target_id: 'rec-1', kind: 'source' }],
+          evidence: { agent: 'test' },
+        }),
+    ],
+    ['getKnowledgeGraph', () => getKnowledgeGraph(BASE, 'root:personal')],
+    [
+      'searchKnowledgeIndex',
+      () => searchKnowledgeIndex(BASE, { query: 'anything' }),
+    ],
+    [
+      'getKnowledgeGraphNeo4j',
+      () => getKnowledgeGraphNeo4j(BASE, 'root:personal'),
+    ],
+    [
+      'syncKnowledgeGraphNeo4j',
+      () => syncKnowledgeGraphNeo4j(BASE, 'root:personal'),
+    ],
+  ];
+
+  it.each(failingCalls)(
+    '%s surfaces the server error body on a non-2xx response',
+    async (_name, call) => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: async () => ({ success: false, error: 'server said no' }),
+      } as Response);
+
+      await expect(call()).rejects.toMatchObject({
+        status: 503,
+        message: 'server said no',
+      });
+    },
+  );
+
+  it('falls back to the status when a failure body is not JSON', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: false,
-      status: 503,
-      json: async () => ({
-        success: false,
-        error:
-          'Neo4j graph-view connection is not configured — register one before syncing or reading the graph view',
-      }),
-    } as Response);
+      status: 502,
+      json: async () => {
+        throw new SyntaxError('Unexpected token <');
+      },
+    } as unknown as Response);
 
-    await expect(
-      syncKnowledgeGraphNeo4j('http://example.test', 'root:personal'),
-    ).rejects.toThrow('Neo4j graph-view connection is not configured');
+    await expect(listKnowledgeRoots(BASE)).rejects.toMatchObject({
+      status: 502,
+      message: 'Knowledge API error: 502',
+    });
   });
 });

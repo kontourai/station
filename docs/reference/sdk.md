@@ -726,12 +726,12 @@ unverified identity. Mutations are neither saved nor hydrated from these snapsho
 This does not make connection evidence a substitute for account authentication or
 qualify every legacy query, mutation, draft or queue path.
 
-`@kontourai/station-sdk/boot` exports `fetchBootPayloadAt(apiBase)` and
-`seedBootPayloadGuarded(queryClient, payload, startedAt, isCurrent)`. Capture the
-origin and request authority before fetching; the guard must verify both that
-captured authority and the destination client. Seeding checks it before every
-cache write and preserves newer individual reads. The ambient legacy boot helper
-remains available for existing callers; it is not the multi-home host path.
+The Station shell's boot seeding uses `fetchBootPayloadAt(apiBase)` and
+`seedBootPayloadGuarded(queryClient, payload, startedAt, isCurrent)` from the
+SDK's internal `boot` module, which is not a published package export. Capture
+the origin and request authority before fetching; the guard must verify both
+that captured authority and the destination client. Seeding checks it before
+every cache write and preserves newer individual reads.
 
 ### `useProjectLayoutsQuery(projectSlug: string, config?)`
 
