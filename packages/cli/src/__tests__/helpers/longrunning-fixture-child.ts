@@ -5,7 +5,8 @@ import { type ChildProcess, spawn } from 'node:child_process';
  * that idles forever, as a stand-in for a real long-running background
  * service (the station server/UI process) in tests that exercise
  * process-tree lifecycle logic (killProcessTree, lifecycle stop/upgrade
- * guards, dogfood recovery).
+ * guards, dogfood recovery). It is the one copy: scripts/__tests__ imports it
+ * across the package boundary like its other packages/cli/src imports.
  *
  * `detached: true` is required: production code that manages a real,
  * backgrounded station process signals it via `process.kill(-pid, ...)`
@@ -79,9 +80,14 @@ function installAbnormalExitReaper(): void {
 /** Spawns and tracks the fixture child. Registers the abnormal-exit reaper
  * (idempotent) so it is reaped even if the caller never runs its own
  * cleanup. */
-export async function spawnLongRunningFixtureChild(): Promise<ChildProcess> {
+export async function spawnLongRunningFixtureChild({
+  cwd,
+}: {
+  cwd?: string;
+} = {}): Promise<ChildProcess> {
   installAbnormalExitReaper();
   const proc = spawn(process.execPath, ['-e', 'setInterval(() => {}, 10000)'], {
+    cwd,
     detached: true,
     stdio: 'ignore',
     windowsHide: true,

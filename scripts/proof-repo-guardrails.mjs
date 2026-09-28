@@ -667,7 +667,6 @@ const feedbackAnalysis = readRequiredSource(
   '../src-server/services/feedback/feedback-analysis.ts',
 );
 for (const requiredHelper of [
-  'export function extractJson',
   'export async function runMiniFeedbackAnalysis',
   'export async function runFullFeedbackAnalysis',
 ]) {
@@ -2019,8 +2018,6 @@ const runtimeStartup = readRequiredSource(
 );
 for (const requiredHelper of [
   'export function getActiveRuntimeProjectSlug',
-  'export function shouldRegisterRuntimeDefaultSkillRegistry',
-  'export function initializeRuntimeUsageAggregator',
   'export async function seedRuntimeDefaultProviderConnection',
   'export async function prepareRuntimeStartup',
   "pluginOverrides['aws-internal']?.settings?.disableDefaultSkillRegistries",

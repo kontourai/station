@@ -339,9 +339,26 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     // shipping `/home/...` example paths only because nothing in PR CI
     // selected the sweep for a reference-doc change — the entry used to
     // name docs/conformance/** alone.
+    //
+    // #2803: this is also every doc path's evidence, so a docs change no
+    // longer defers the rest of the diff (the `prepush` lane it routed to ran
+    // no doc gate, and in ci:fast a lane only deferred). Each suite exercises
+    // the real docs tree: the privacy sweep, the live-docs reference check
+    // (docs:reference:gate's own logic), index reachability, compile-checked
+    // guide blocks, and the public-docs sources and vocabulary. The link
+    // check and the reference gate also run as ci:fast statics
+    // (run-ci-fast.mjs), so a code change that breaks a doc is caught too.
     pattern: 'docs/**',
-    tests: ['scripts/__tests__/repo-docs-hygiene.test.ts'],
-    reason: 'public repository documentation privacy boundary',
+    tests: [
+      'scripts/__tests__/repo-docs-hygiene.test.ts',
+      'scripts/__tests__/docs-reference-gate.test.ts',
+      'scripts/__tests__/docs-index-reachability.test.ts',
+      'scripts/__tests__/docs-snippets.test.ts',
+      'scripts/__tests__/product-docs-source-links.test.ts',
+    ],
+    reason:
+      'documentation: evidence is the live-docs suites here plus the ' +
+      'docs:reference:gate and docs:links:check ci:fast statics (#2803)',
   },
 
   Object.freeze({
@@ -664,7 +681,6 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
 export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
-  'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
@@ -687,6 +703,9 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Walks src-server/knowledge-store and src-server/services/knowledge for raw
+  // fs mutations that bypass the file-transaction seam.
+  'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
   'src-server/providers/__tests__/child-work-conformance.test.ts',
   'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',
@@ -706,7 +725,6 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-ui/src/__tests__/dock-bottom-clearance.test.ts',
   'src-ui/src/__tests__/home-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
-  'src-ui/src/__tests__/native-notification-watch.test.ts',
   'src-ui/src/__tests__/package-css-fork.test.ts',
   'src-ui/src/__tests__/placement-vocabulary.test.ts',
   'src-ui/src/__tests__/plain-language-policy.test.ts',
@@ -758,12 +776,6 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     pattern: 'scripts/test-realtime-wait-gate.mjs',
     related: true,
     tests: Object.freeze(['scripts/__tests__/test-realtime-wait-gate.test.ts']),
-    reason: EXECUTED_SCRIPT_EDGE_REASON,
-  }),
-  Object.freeze({
-    pattern: 'scripts/literal-swap-gate.mjs',
-    related: true,
-    tests: Object.freeze(['scripts/__tests__/literal-swap-gate.test.ts']),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
@@ -1366,7 +1378,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'packages/contracts/src/__tests__/workspace-file-preview.test.ts',
       'packages/sdk/src/__tests__/workspace-file-preview-query.integration.test.tsx',
-      'packages/sdk/src/__tests__/workspace-file-preview-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
     ],
     reason: 'Workspace file preview public contract',
@@ -1410,7 +1422,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
     pattern: 'packages/sdk/package.json',
     tests: [
-      'packages/sdk/src/__tests__/workspace-file-preview-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
     ],
     reason: 'Workspace file preview SDK subpath export',
@@ -1419,7 +1431,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     pattern: 'packages/sdk/src/workspace-file-preview.ts',
     tests: [
       'packages/sdk/src/__tests__/workspace-file-preview-query.integration.test.tsx',
-      'packages/sdk/src/__tests__/workspace-file-preview-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
     ],
     reason: 'Workspace file preview SDK opt-in subpath',
@@ -1455,7 +1467,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'packages/contracts/src/__tests__/workspace-pane-layout-adapter.test.ts',
       'packages/sdk/src/__tests__/workspacePaneConformance.test.ts',
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
-      'packages/sdk/src/__tests__/workspace-pane-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
     ],
     reason: 'Workspace Pane public contract',
   },
@@ -1464,7 +1476,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'packages/contracts/src/__tests__/workspace-pane.test.ts',
       'packages/sdk/src/__tests__/workspacePaneConformance.test.ts',
-      'packages/sdk/src/__tests__/workspace-pane-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
     ],
     reason: 'Workspace Pane declared renderer selection contract',
   },
@@ -1494,7 +1506,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'packages/sdk/src/__tests__/workspacePaneConformance.test.ts',
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
-      'packages/sdk/src/__tests__/workspace-pane-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
     ],
     reason: 'Workspace Pane SDK opt-in subpath',
   },
@@ -1654,11 +1666,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     pattern: 'tests/**',
     lanes: ['verify-e2e-full'],
     reason: 'E2E manifest/spec boundary',
-  },
-  {
-    pattern: 'docs/**',
-    lanes: ['prepush'],
-    reason: 'documentation bounded gate',
   },
   {
     pattern: 'src-desktop/**',

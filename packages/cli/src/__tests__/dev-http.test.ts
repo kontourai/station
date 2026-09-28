@@ -4,12 +4,7 @@ import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import {
-  createDevHttpServer,
-  getOpenFileMime,
-  isAllowedOpenFilePath,
-  parseToolCallResponse,
-} from '../dev/http.js';
+import { createDevHttpServer, parseToolCallResponse } from '../dev/http.js';
 import type { DevFetchDependencies } from '../dev/security.js';
 import { MAX_JSON_BODY_BYTES } from '../dev/security.js';
 
@@ -57,6 +52,7 @@ async function requestServer(
   const result = await new Promise<{
     allow?: string;
     body: string;
+    contentType?: string;
     cors?: string;
     status: number;
   }>((resolve, reject) => {
@@ -76,6 +72,7 @@ async function requestServer(
           resolve({
             allow: res.headers.allow,
             body,
+            contentType: res.headers['content-type'],
             cors: res.headers['access-control-allow-origin'],
             status: res.statusCode || 0,
           }),
@@ -104,27 +101,6 @@ describe('dev http helpers', () => {
         ],
       }),
     ).toEqual({ ok: true, count: 2 });
-  });
-
-  test('getOpenFileMime maps known extensions and falls back to plain text', () => {
-    expect(getOpenFileMime('notes.md')).toBe('text/markdown');
-    expect(getOpenFileMime('config.json')).toBe('application/json');
-    expect(getOpenFileMime('other.xyz')).toBe('text/plain');
-  });
-
-  test('isAllowedOpenFilePath only allows cwd and plugin tree access', () => {
-    expect(
-      isAllowedOpenFilePath('/repo/src/file.ts', '/repo', '/plugins'),
-    ).toBe(true);
-    expect(
-      isAllowedOpenFilePath('/plugins/demo/plugin.json', '/repo', '/plugins'),
-    ).toBe(true);
-    expect(isAllowedOpenFilePath('/etc/passwd', '/repo', '/plugins')).toBe(
-      false,
-    );
-    expect(
-      isAllowedOpenFilePath('/repo-secret/token', '/repo', '/plugins'),
-    ).toBe(false);
   });
 
   test('rejects a hostile Host before reading privileged files', async () => {
@@ -223,6 +199,22 @@ describe('dev http helpers', () => {
       path: `/api/open-file?path=${encodeURIComponent('/etc/hosts')}`,
     });
     expect(outside.status).toBe(404);
+  });
+
+  test.each([
+    ['notes.md', 'text/markdown'],
+    ['config.json', 'application/json'],
+    ['other.xyz', 'text/plain'],
+  ])('serves %s from the workspace as %s', async (name, contentType) => {
+    const response = await requestServer({
+      setup: (cwd) => writeFileSync(join(cwd, name), 'contents'),
+      path: `/api/open-file?path=${name}`,
+    });
+    expect(response).toMatchObject({
+      status: 200,
+      body: 'contents',
+      contentType,
+    });
   });
 
   test('reads a real file under the installed-plugin root', async () => {

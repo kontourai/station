@@ -210,6 +210,9 @@ function createHarness(
         credential === MASTER_CREDENTIAL ||
         (!request?.path.startsWith('/api/pairing') &&
           pairing.verifyCredential(credential)),
+      recognizeCredential: (credential) =>
+        credential === MASTER_CREDENTIAL ||
+        pairing.verifyCredential(credential),
       // The master credential carries every scope; a real paired device
       // resolves through the same service `verifyCredential` above uses.
       resolveGrantedScope: (credential) =>
@@ -1729,7 +1732,7 @@ describe('device pairing routes', () => {
           ),
         )
       ).status,
-    ).toBe(401);
+    ).toBe(403);
 
     const revoked = await harness.request(
       `/api/pairing/devices/${first.device.id}`,
@@ -1926,11 +1929,55 @@ describe('device pairing routes', () => {
 
   test('never records challenge or issued credential in request logs', async () => {
     const harness = createHarness();
-    const paired = await pairDevice(harness, 'Private phone');
-    const logs = JSON.stringify(
-      (harness.logger.info as ReturnType<typeof vi.fn>).mock.calls,
+    const offerResponse = await harness.request(
+      '/api/pairing/offers',
+      harness.json(
+        { endpoint: 'https://station.example.test' },
+        MASTER_CREDENTIAL,
+      ),
     );
-    expect(logs).not.toContain(paired.credential);
+    const offer = (await offerResponse.json()) as DevicePairingOffer;
+    const pending = (await (
+      await harness.request(
+        '/.well-known/station/v1/pairing/request',
+        harness.json({
+          deviceName: 'Private phone',
+          offerId: offer.offerId,
+          proof: offer.challenge,
+        }),
+      )
+    ).json()) as DevicePairingRequest;
+    await harness.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      harness.json({}, MASTER_CREDENTIAL),
+    );
+    const exchange = await harness.request(
+      '/.well-known/station/v1/pairing/exchange',
+      harness.json({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+      }),
+    );
+    const { credential } = (await exchange.json()) as { credential: string };
+    // Present the issued credential too: a routine read logs at debug.
+    const read = await harness.request('/api/projects', {
+      headers: { Authorization: `Bearer ${credential}` },
+    });
+    expect(read.status).toBe(200);
+
+    const logs = JSON.stringify(
+      (['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const).map(
+        (level) =>
+          (harness.logger[level] as ReturnType<typeof vi.fn>).mock.calls,
+      ),
+    );
+    // Positive control: the offer that returned the challenge and the read
+    // that presented the credential were both logged.
+    expect(logs).toContain('POST /api/pairing/offers 201');
+    expect(logs).toContain('GET /api/projects 200');
+    expect(logs).not.toContain(offer.challenge);
+    expect(logs).not.toContain(credential);
     expect(logs).not.toContain('Private phone');
   });
 
@@ -2021,13 +2068,13 @@ describe('device pairing routes', () => {
         })
       ).status,
     ).toBe(403);
-    expect(
-      (
-        await harness.request('/api/pairing/devices', {
-          headers: { Cookie: cookie },
-        })
-      ).status,
-    ).toBe(401);
+    const devices = await harness.request('/api/pairing/devices', {
+      headers: { Cookie: cookie },
+    });
+    expect(devices.status).toBe(403);
+    expect(await devices.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
 
     const device = result.device as PairedDevice;
     expect(
@@ -2218,7 +2265,10 @@ describe('device scope change (station#3816)', () => {
       `/api/pairing/devices/${paired.device.id}/scope`,
       harness.json({ scope: ['orchestration:read'] }, paired.credential),
     );
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
     expect(harness.pairing.identifyDevice(paired.credential)?.scope).toBe(
       paired.device.scope,
     );

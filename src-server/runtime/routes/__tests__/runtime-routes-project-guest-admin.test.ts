@@ -1310,12 +1310,11 @@ describe('project guest administration over the production composition', () => {
       error: { code: 'insufficient_scope' },
     });
 
-    // Pairing/device management stays operator-only at the FIRST boundary
-    // (archive#1887): `authorizeCredential` admits no device credential to
-    // `/api/pairing*` outside the approval leaves, so runtime-http answers
-    // 401 `authentication_required` before the pairing-scope middleware
-    // (which would 403 on the missing `access:manage`) or the handler's
-    // operator check is reached.
+    // Pairing/device management stays operator-only at the first boundary
+    // (archive#1887). This live device is not admitted to `/api/pairing*`,
+    // so runtime-http answers 403 `insufficient_scope` before the
+    // pairing-scope middleware or handler is reached. The browser keeps the
+    // live session instead of treating the denial as expired credentials.
     const pairingAdmin = await h.request(
       '/api/pairing/offers',
       guest({
@@ -1324,9 +1323,9 @@ describe('project guest administration over the production composition', () => {
         body: JSON.stringify({ endpoint: ORIGIN }),
       }),
     );
-    expect(pairingAdmin.status, await pairingAdmin.clone().text()).toBe(401);
+    expect(pairingAdmin.status, await pairingAdmin.clone().text()).toBe(403);
     expect(await pairingAdmin.json()).toEqual({
-      error: { code: 'authentication_required' },
+      error: { code: 'insufficient_scope' },
     });
 
     // The guest cannot escalate its own grant through the operator
@@ -1340,10 +1339,10 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(selfEscalation.status, await selfEscalation.clone().text()).toBe(
-      401,
+      403,
     );
     expect(await selfEscalation.json()).toEqual({
-      error: { code: 'authentication_required' },
+      error: { code: 'insufficient_scope' },
     });
 
     // Operator accounts require `access:manage`: the pairing-scope

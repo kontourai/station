@@ -1477,23 +1477,6 @@ describe('BuiltinScheduler', () => {
     expect(await scheduler.getJobLogs('no-logs')).toEqual([]);
   });
 
-  test('previewSchedule returns ISO strings', async () => {
-    // `new Date(x)` throws for NOTHING -- `new Date('garbage')` is an Invalid
-    // Date -- so the previous `expect(() => new Date(p)).not.toThrow()` passed
-    // for any string this method could return. Parse it instead, and pin the
-    // schedule the expression names: two consecutive noons, 24h apart.
-    const previews = await scheduler.previewSchedule('0 12 * * *', 2);
-    expect(previews).toHaveLength(2);
-    for (const preview of previews) {
-      expect(preview).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-      expect(Number.isNaN(Date.parse(preview))).toBe(false);
-      expect(new Date(preview).getUTCHours()).toBe(12);
-    }
-    expect(Date.parse(previews[1]) - Date.parse(previews[0])).toBe(
-      24 * 60 * 60 * 1000,
-    );
-  });
-
   test('subscribe / unsubscribe manages SSE clients', async () => {
     const messages: string[] = [];
     const unsub = scheduler.subscribe((d) => messages.push(d));
@@ -2229,10 +2212,21 @@ describe('SchedulerService', () => {
     expect(status.providers['built-in'].running).toBe(true);
   });
 
-  test('previewSchedule returns ISO strings', async () => {
+  test('previewSchedule returns the requested count of consecutive UTC fire times', async () => {
+    // Parse each preview rather than pattern-match it, and pin the schedule the
+    // expression names: consecutive noons, 24h apart.
     const previews = await service.previewSchedule('0 12 * * *', 3);
     expect(previews).toHaveLength(3);
-    previews.forEach((p) => expect(p).toMatch(/^\d{4}-\d{2}-\d{2}T/));
+    for (const preview of previews) {
+      expect(preview).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(preview).getUTCHours()).toBe(12);
+    }
+    expect(Date.parse(previews[1]) - Date.parse(previews[0])).toBe(
+      24 * 60 * 60 * 1000,
+    );
+    expect(Date.parse(previews[2]) - Date.parse(previews[1])).toBe(
+      24 * 60 * 60 * 1000,
+    );
   });
 
   test('previewSchedule projects in the zone it is given', async () => {
@@ -2334,6 +2328,10 @@ describe('Scheduler Routes', () => {
     app = createSchedulerRoutes(service, mockLogger);
   });
 
+  async function jobNamed(name: string) {
+    return (await service.listJobs()).find((job) => job.name === name);
+  }
+
   afterEach(() => {
     (service as any).builtin.stop();
   });
@@ -2357,6 +2355,10 @@ describe('Scheduler Routes', () => {
     });
     const body = await json(res);
     expect(body.success).toBe(true);
+    expect(await jobNamed('route-job')).toMatchObject({
+      prompt: 'test',
+      cron: '0 * * * *',
+    });
   });
 
   test('GET /jobs lists jobs', async () => {
@@ -2383,6 +2385,7 @@ describe('Scheduler Routes', () => {
       body: JSON.stringify({ prompt: 'updated' }),
     });
     expect((await json(res)).success).toBe(true);
+    expect((await jobNamed('edit-route'))?.prompt).toBe('updated');
   });
 
   test('DELETE /jobs/:target removes a job', async () => {
@@ -2391,8 +2394,10 @@ describe('Scheduler Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'del-route', prompt: 'bye' }),
     });
+    expect(await jobNamed('del-route')).toBeDefined();
     const res = await app.request('/jobs/del-route', { method: 'DELETE' });
     expect((await json(res)).success).toBe(true);
+    expect(await jobNamed('del-route')).toBeUndefined();
   });
 
   test('DELETE /jobs/:target returns 500 for missing job', async () => {
@@ -2407,8 +2412,11 @@ describe('Scheduler Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'enable-me', prompt: 'test' }),
     });
+    await service.disableJob('enable-me');
+    expect((await jobNamed('enable-me'))?.enabled).toBe(false);
     const res = await app.request('/jobs/enable-me/enable', { method: 'PUT' });
     expect((await json(res)).success).toBe(true);
+    expect((await jobNamed('enable-me'))?.enabled).toBe(true);
   });
 
   test('PUT /jobs/:target/disable disables a job', async () => {
@@ -2417,10 +2425,12 @@ describe('Scheduler Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'disable-me', prompt: 'test' }),
     });
+    expect((await jobNamed('disable-me'))?.enabled).toBe(true);
     const res = await app.request('/jobs/disable-me/disable', {
       method: 'PUT',
     });
     expect((await json(res)).success).toBe(true);
+    expect((await jobNamed('disable-me'))?.enabled).toBe(false);
   });
 
   test('GET /stats returns stats', async () => {
@@ -2464,12 +2474,18 @@ describe('Scheduler Routes', () => {
   });
 
   test('POST /webhook broadcasts event', async () => {
+    const received: string[] = [];
+    const unsubscribe = service.subscribe((data) => received.push(data));
     const res = await app.request('/webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event: 'job.completed', job: 'test' }),
     });
+    unsubscribe();
     expect((await json(res)).success).toBe(true);
+    expect(received.map((data) => JSON.parse(data))).toEqual([
+      { event: 'job.completed', job: 'test' },
+    ]);
   });
 
   test('POST /jobs/:target/run returns 500 for missing job', async () => {

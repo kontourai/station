@@ -135,16 +135,62 @@ interface ApiEnvelope<T> {
   session?: unknown;
 }
 
-/** A local execution view uses the same binding owner as engine admission. */
+/**
+ * #2708: read the selected Station through an SDK fetcher that keeps a
+ * refusal's `code`, and rethrow its words only. A route that finds a typed
+ * `code` on an error relays it as its own (the delegate route's
+ * `delegationRefusal` and receiver-refusal mapping), and a peer can send any
+ * string. So only THIS Station's refusal keeps its code, and only as a
+ * `LocalStationRefusal` cause; a peer's code is dropped. Any other failure
+ * (a transport error, a protocol error) passes through unchanged.
+ */
+export async function readRelayingLocalRefusal<T>(
+  target: { readonly kind: string },
+  read: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    if (!(error instanceof StationHttpError)) throw error;
+    const cause =
+      target.kind === 'current' && error.code
+        ? new LocalStationRefusal(error.code, error.message)
+        : undefined;
+    throw new Error(error.message, cause ? { cause } : undefined);
+  }
+}
+
+/**
+ * The selected Station's Agent, its refusal rethrown as words only
+ * (`readRelayingLocalRefusal`, #2708). Today only the current Station is read
+ * here: a peer target forwards before resolution.
+ */
+function readTargetAgent(
+  access: EnvironmentAccess,
+  id: AgentId,
+): Promise<ExecutionTargetAgentView> {
+  return readRelayingLocalRefusal(
+    access,
+    async () =>
+      (await getAgent(
+        access.apiBase,
+        id,
+        access.requestOptions,
+      )) as ExecutionTargetAgentView,
+  );
+}
+
+/**
+ * A local execution view uses the same binding owner as engine admission.
+ * The Project read's refusal is rethrown as words only, like the Agent's.
+ */
 async function readExecutionProject(
   access: EnvironmentAccess,
   slug: string,
   orchestrationService: OrchestrationService,
 ) {
-  const project = (await getProject(
-    access.apiBase,
-    slug,
-    access.requestOptions,
+  const project = (await readRelayingLocalRefusal(access, () =>
+    getProject(access.apiBase, slug, access.requestOptions),
   )) as
     | {
         workingDirectory?: string;
@@ -2029,6 +2075,10 @@ async function connectSshTarget(
     `${currentControlApiBase()}/api/environments/ssh`,
     trustedRequest(),
     'Saved SSH environments are unavailable',
+    // This Station's own control API, and the first leaf every saved
+    // Environment resolves through: its typed refusal (#2377 slice C2a, a
+    // remote target needs a bound operator) reaches the agent.
+    { kind: 'current' },
   );
   if (!list.success || !Array.isArray(list.data)) {
     throw new Error(list.error || 'Saved SSH environments are unavailable');
@@ -4698,12 +4748,7 @@ export async function delegateTask(
             : {}),
         } satisfies EnvironmentAccess;
       },
-      getAgent: async (access, id) =>
-        (await getAgent(
-          access.apiBase,
-          id,
-          access.requestOptions,
-        )) as ExecutionTargetAgentView,
+      getAgent: (access, id) => readTargetAgent(access, id),
       getConnection: async (access, id) =>
         readConnection(access as DelegationTarget, id),
       getProject: (access, slug) =>
@@ -5339,11 +5384,7 @@ export async function executeExecutionTargetMessage(
           throw new ForegroundInvocationUnavailableError();
         return structuredClone(capturedAgent);
       }
-      return (await getAgent(
-        access.apiBase,
-        id,
-        access.requestOptions,
-      )) as ExecutionTargetAgentView;
+      return readTargetAgent(access, id);
     },
     getConnection: async (access: EnvironmentAccess, id) =>
       readConnection(access as DelegationTarget, id),

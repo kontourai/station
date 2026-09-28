@@ -48,6 +48,11 @@ import {
   secondaryBtnStyle,
 } from './connection-manager-modal/styles';
 import {
+  FullAccessRevocationNotice,
+  type FullAccessRevocationOutcome,
+  readFullAccessRevocation,
+} from './FullAccessRevocationNotice';
+import {
   HttpConnectionConsent,
   useHttpConnectionConsent,
 } from './HttpConnectionConsent';
@@ -1132,6 +1137,9 @@ export function HostDevicePairingPanel({
       : new Set<string>();
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // #1796 (G3): what the last access change or revoke did to full access.
+  const [revocation, setRevocation] =
+    useState<FullAccessRevocationOutcome | null>(null);
   // True only when `error` came from an authentication rejection of THIS
   // device's own access (401 class) — the state `onReconnect` addresses.
   const [authBlocked, setAuthBlocked] = useState(false);
@@ -1347,6 +1355,12 @@ export function HostDevicePairingPanel({
         );
         return;
       }
+      setRevocation(
+        readFullAccessRevocation(
+          await response.json().catch(() => null),
+          device.name,
+        ),
+      );
       await refresh();
     } catch {
       setError(
@@ -1372,6 +1386,12 @@ export function HostDevicePairingPanel({
         setError(deviceRevokeError(response.status));
         return;
       }
+      setRevocation(
+        readFullAccessRevocation(
+          await response.json().catch(() => null),
+          device.name,
+        ),
+      );
       await refresh();
     } catch {
       setError(
@@ -2022,6 +2042,12 @@ export function HostDevicePairingPanel({
             busyIds={deviceActionIds}
           />
         </section>
+      )}
+      {revocation && (
+        <FullAccessRevocationNotice
+          outcome={revocation}
+          onDismiss={() => setRevocation(null)}
+        />
       )}
       {error && (
         <div className="pairing-error" role="alert">

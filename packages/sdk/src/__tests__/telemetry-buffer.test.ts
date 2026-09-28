@@ -64,10 +64,21 @@ test('drops buffered events when account authority changes at the same Station',
     isCurrent: () => true,
   }));
 
+  // Control: the same direct owner, unchanged, does send its buffered event.
+  telemetry.track('agent:selected', { slug: 'same-authority' });
+  await telemetry.flush();
+  expect(direct).toHaveBeenCalledOnce();
+  expect(JSON.parse(direct.mock.calls[0][1].body).events).toEqual([
+    expect.objectContaining({
+      event: 'agent:selected',
+      attributes: { slug: 'same-authority' },
+    }),
+  ]);
+
   telemetry.track('agent:selected', { slug: 'private-agent' });
   authorityKey = 'account-b';
   await telemetry.flush();
-  expect(direct).not.toHaveBeenCalled();
+  expect(direct).toHaveBeenCalledOnce();
 });
 
 test('bounds a telemetry burst while keeping one scheduled flush', async () => {

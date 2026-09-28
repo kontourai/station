@@ -22,6 +22,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { inspectServiceSchedulingPolicy } from '../commands/service-scheduling.js';
 import {
   installSystemd,
@@ -32,6 +33,7 @@ import {
   uninstallSystemd,
 } from '../commands/service-systemd.js';
 
+const makeTempDir = trackTempDirs();
 let originalHome: string | undefined;
 
 beforeEach(() => {
@@ -86,6 +88,48 @@ afterAll(() => {
 });
 
 describe('systemd service backend', () => {
+  test('records what the unit runs in the manifest it returns (#2675 slice C)', () => {
+    const root = makeTempDir('station-systemd-test-');
+    process.env.HOME = root;
+    const run = vi.fn((command: string, args: string[]) => {
+      if (command === 'loginctl') return { status: 0, stdout: 'yes\n' };
+      if (args.includes('is-active') || args.includes('is-enabled'))
+        return { status: 4, stdout: 'not-found\n' };
+      return { status: 0, stdout: '' };
+    });
+    const installRoot = '/home/u/.station/installs/stable';
+    const manifest = installSystemd('agent', {
+      fs,
+      kind: 'archive',
+      installRoot,
+      lifecycle: lifecycle(join(root, '.station')),
+      nodePath: `${installRoot}/current/runtime/bin/node`,
+      repoPath: `${installRoot}/current`,
+      run,
+      servicePath: `${installRoot}/current/runtime/bin:/usr/bin:/bin`,
+    });
+    expect(manifest).toMatchObject({
+      kind: 'archive',
+      installRoot,
+      nodePath: `${installRoot}/current/runtime/bin/node`,
+      repoPath: `${installRoot}/current`,
+    });
+    expect(readFileSync(manifest.unitPath, 'utf8')).toContain(
+      `ExecStart="${installRoot}/current/runtime/bin/node" "${installRoot}/current/bin/station.mjs" "service" "run"`,
+    );
+    // A caller that predates slice C installs from source.
+    const source = installSystemd('agent', {
+      fs,
+      lifecycle: lifecycle(join(root, '.station')),
+      nodePath: '/opt/node24/bin/node',
+      repoPath: '/opt/station',
+      run,
+      servicePath: '/opt/node24/bin:/usr/bin:/bin',
+    });
+    expect(source.kind).toBe('source');
+    expect(source).not.toHaveProperty('installRoot');
+  });
+
   test('installs a first-time not-found unit and renders a systemd-safe working directory', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-systemd-test-'));
     process.env.HOME = root;
@@ -117,7 +161,7 @@ describe('systemd service backend', () => {
     expect(manifest.unitName).not.toContain('dogfood');
     expect(unit).toContain('Restart=always');
     expect(unit).toContain('RestartSec=5');
-    expect(unit).toContain('TimeoutStopSec=30');
+    expect(unit).toContain('TimeoutStopSec=75');
     expect(unit).toContain('KillMode=mixed');
     expect(unit).toContain('NoNewPrivileges=true');
     expect(unit).toContain('PrivateTmp=true');

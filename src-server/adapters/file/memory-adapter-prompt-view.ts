@@ -50,7 +50,7 @@ function messageTextParts(message: UIMessage): string[] {
 }
 
 /** True when a stored message carries the `[CHAT_ERROR]` failed-turn marker. */
-export function isChatErrorMarkerMessage(message: UIMessage): boolean {
+function isChatErrorMarkerMessage(message: UIMessage): boolean {
   if ((message as { role?: string }).role !== 'user') {
     return false;
   }

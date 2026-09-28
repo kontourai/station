@@ -19,6 +19,12 @@ import { createHash } from 'node:crypto';
 export const FAST_CHECKS_SHARD_COUNT = 4;
 const FAST_CHECKS_MAX_SHARD_COUNT = 16;
 export const FAST_CHECKS_PLAN_KIND = 'station-fast-checks-plan';
+/**
+ * #2855: the plan step's own fence in ci.yml ("Plan the affected-test
+ * selection", timeout-minutes: 5). Related discovery derives its timeout
+ * from what is left of it; ci-workflow-contract.test.ts pins the two equal.
+ */
+export const FAST_CHECKS_PLAN_BUDGET_MS = 5 * 60_000;
 export const FAST_CHECKS_RECEIPT_KIND = 'station-fast-checks-shard-receipt';
 export const FAST_CHECKS_PLAN_FILE = 'fast-checks-plan.json';
 export const FAST_CHECKS_RECEIPT_FILE = 'fast-checks-shard-receipt.json';

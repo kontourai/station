@@ -311,11 +311,9 @@ describe('KnowledgeStoreSection', () => {
     });
 
     // The interception is what this section wires; the resume is not. That the
-    // Discard button settles the deferred navigation to its target is
-    // `useUnsavedGuard`'s own contract, driven end to end in
-    // `src-ui/src/__tests__/useUnsavedGuard.test.tsx` -- 'a real Discard dialog
-    // closes without falsely superseding its own prepared navigation', which
-    // clicks a real Discard and asserts the browser reached the target path.
+    // Discard button completes the deferred navigation is `useUnsavedGuard`'s
+    // own contract, driven in `src-ui/src/__tests__/useUnsavedGuard.test.tsx`
+    // -- 'Discard on an intercepted route change completes that navigation'.
     // The route this link carries is pinned by the clean-page case above.
     test('a dirty page intercepts navigation with the discard-confirmation modal instead of silently navigating away', () => {
       navigationStore.navigate('/guard-origin');
@@ -328,21 +326,6 @@ describe('KnowledgeStoreSection', () => {
 
       expect(window.location.pathname).toBe('/guard-origin');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
-    });
-
-    test('confirming discard from a dirty page completes the deferred navigation', () => {
-      navigationStore.navigate('/guard-origin');
-      navigateMock.mockClear();
-      render(<GuardedHarness dirty />);
-
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Open Knowledge infrastructure' }),
-      );
-      expect(window.location.pathname).toBe('/guard-origin');
-
-      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
-      expect(navigateMock).toHaveBeenCalledWith('/connections/knowledge');
-      expect(window.location.pathname).toBe('/connections/knowledge');
     });
   });
 });

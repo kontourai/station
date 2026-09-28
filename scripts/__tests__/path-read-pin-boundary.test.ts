@@ -104,7 +104,6 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts',
   'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts',
-  'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
   'packages/shared/src/__tests__/plugin-build.test.ts',
   'packages/shared/src/__tests__/plugin-dependency-install.test.ts',
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
@@ -162,6 +161,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-ui/src/__tests__/package-css-fork.test.ts',
   'src-ui/src/__tests__/sessionStatusWordCallers.test.ts',
   'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
+  // A whole-tree copy scan of src-ui sources: it reads every file it walks,
+  // so no single pin could stand for it. test-impact-manifest.mjs routes it
+  // for any src-ui source change.
+  'src-ui/src/__tests__/station-vocabulary.test.ts',
   'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
   'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
   'src-ui/src/views/project-settings/__tests__/ResourcesSection.test.tsx',
@@ -486,6 +489,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture directory',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  'packages/cli/src/__tests__/profile.test.ts':
+    'lists the saved Station store directory under its temporary STATION_HOME',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts':
     'walks packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
@@ -503,8 +508,12 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'incidental: compares the committed icon sets and .icns files it regenerates',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
     'walks its own fixture root',
+  'scripts/__tests__/install-script.test.ts':
+    'walks only the temporary install roots it creates',
   'scripts/__tests__/path-read-pin-boundary.test.ts':
     "this file: the detector's own strings name the calls it looks for; the prepush floor runs it (#1913)",
+  'scripts/__tests__/portable-nightly-publish-workflow.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/release-workflow.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/verification-policy-gate.test.ts':

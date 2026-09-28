@@ -16,7 +16,10 @@ import {
   REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
-import { FAST_CHECKS_SHARD_COUNT } from '../lib/fast-checks-shards.mjs';
+import {
+  FAST_CHECKS_PLAN_BUDGET_MS,
+  FAST_CHECKS_SHARD_COUNT,
+} from '../lib/fast-checks-shards.mjs';
 import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
 import {
   failureDigest,
@@ -1687,6 +1690,27 @@ describe('CI verification workflow contracts', () => {
       CI_FAST_TIMEOUT_MS + boundedMs + 3 * 60_000,
     );
 
+    // The selection can include tests that exec zsh, which ubuntu-22.04
+    // lacks: the shard provisions it exactly as full-regression does, before
+    // the tests run.
+    const zshName =
+      'Provision and preflight zsh for process-heavy installer fixtures';
+    const fullRegressionZsh = (
+      load(workflow('full-regression.yml')) as {
+        jobs: Record<string, Job>;
+      }
+    ).jobs['full-regression'].steps?.find((step) => step.name === zshName);
+    expect(fullRegressionZsh?.run).toContain('apt-get install --yes zsh');
+    const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
+    expect(shardZshIndex).toBeGreaterThan(-1);
+    expect(shardSteps[shardZshIndex].run).toBe(fullRegressionZsh?.run);
+    expect(shardSteps[shardZshIndex]['timeout-minutes']).toBe(
+      fullRegressionZsh?.['timeout-minutes'],
+    );
+    expect(shardZshIndex).toBeLessThan(
+      shardSteps.findIndex((step) => step.name === 'Run fast-checks shard'),
+    );
+
     // The plan is uploaded once and read, by exact name, by the shards and
     // the aggregator; the receipts' upload name matches the aggregator's
     // download pattern.
@@ -1824,6 +1848,19 @@ describe('CI verification workflow contracts', () => {
     ) as { scripts: Record<string, string> };
     expect(pkg.scripts['fast-checks:shard']).toBe(
       'node scripts/fast-checks-shard.mjs',
+    );
+  });
+
+  it('pins the plan step fence to the budget discovery derives from (#2855)', () => {
+    type Step = { name?: string; 'timeout-minutes'?: number };
+    const jobs = (
+      load(workflow('ci.yml')) as { jobs: Record<string, { steps: Step[] }> }
+    ).jobs;
+    const step = jobs['fast-checks-plan'].steps.find(
+      (candidate) => candidate.name === 'Plan the affected-test selection',
+    );
+    expect((step?.['timeout-minutes'] ?? 0) * 60_000).toBe(
+      FAST_CHECKS_PLAN_BUDGET_MS,
     );
   });
 

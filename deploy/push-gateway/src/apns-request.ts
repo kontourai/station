@@ -46,7 +46,7 @@ const COLLAPSE_ID = /^[A-Za-z0-9_-]{16,64}$/;
 const MAX_ALERT_SEALED_CHARS = 3000;
 
 /** APNs refuses a Live Activity payload over 4 KB. */
-export const MAX_APNS_PAYLOAD_BYTES = 4096;
+const MAX_APNS_PAYLOAD_BYTES = 4096;
 const MAX_SEALED_CHARS = 3400;
 // nonce (12) + tag (16) with an empty ciphertext is 28 bytes: 38 characters.
 const MIN_SEALED_CHARS = 38;

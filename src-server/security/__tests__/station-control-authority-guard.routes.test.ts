@@ -1081,6 +1081,10 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
     ['delete_integration', { id: 'x' }],
     ['list_review_receipts', { projectSlug: 'project-a' }],
     ['list_plugins', {}],
+    // #2708 A-3a: every agent CRUD tool's fetcher now reads the envelope
+    // through the helper.
+    ['create_agent', { name: 'A', slug: 'a', systemPrompt: 'p' }],
+    ['update_agent', { slug: 'a', name: 'B' }],
     ['delete_agent', { slug: 'a' }],
     ['update_config', { updates: { theme: 'dark' } }],
     [
@@ -1543,4 +1547,30 @@ describe('a verified forward to a saved Environment (#2601 leaf)', () => {
     expect(peerReceived[0]!.body.delegation).toEqual(DERIVED_LINEAGE);
     expect(refusals).toEqual([]);
   });
+
+  // #2377 slice C2a (decision 3): another Station needs a bound operator.
+  // The tool is refused at the first remote-target leaf, before it holds a
+  // bearer, and the typed code reaches the agent as an MCP error.
+  test.each([
+    ['delegated-custody', 'op-', 'station_control_assurance_insufficient'],
+    ['bearer-exposed', 'op-', 'station_control_assurance_insufficient'],
+    ['bound', 'person-', 'station_control_role_required'],
+  ] as const)(
+    'a %s (%s) caller’s delegate_task to a saved Environment is refused → %s',
+    async (channel, prefix, code) => {
+      peerReceived.length = 0;
+      const { result, isError } = await callTool(
+        channel,
+        nextSession(prefix),
+        'delegate_task',
+        {
+          prompt: 'Draft the plan',
+          agent: 'writer',
+          environmentId: PEER_ENVIRONMENT_ID,
+        },
+      );
+      expect([result?.code, isError]).toEqual([code, true]);
+      expect(peerReceived).toEqual([]);
+    },
+  );
 });

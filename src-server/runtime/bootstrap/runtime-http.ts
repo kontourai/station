@@ -3,6 +3,8 @@ import {
   ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
   APPLICATION_SESSION_BASE_PATH,
   APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_PROOF_HEADER,
 } from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
@@ -52,6 +54,10 @@ import {
   setBudgetPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../security/runtime-request-security.js';
+import {
+  readVerifiedNativeVirtualApplicationRequest,
+  transferVerifiedNativeVirtualApplicationRequest,
+} from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import {
@@ -514,7 +520,9 @@ function configureRuntimeSecurity(
       !security.deploymentAuthentication &&
       !accountOperation &&
       (c.req.raw.headers.has(APPLICATION_SESSION_HEADER) ||
-        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER))
+        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER) ||
+        c.req.raw.headers.has(APPLICATION_SESSION_NATIVE_HEADER) ||
+        c.req.raw.headers.has(APPLICATION_SESSION_NATIVE_PROOF_HEADER))
     ) {
       c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
       return c.json(
@@ -780,6 +788,36 @@ function configureRuntimeSecurity(
       return next();
     }
 
+    // Admission refused a credential the server still recognizes. A 401
+    // tells the browser the device session is dead: it drops the cookie,
+    // remounts the protected tree, and asks again. Settings does that on a
+    // loop because notification delivery reads `/api/pairing/devices` on
+    // desktop and mobile, and an ordinary device credential is not admitted
+    // to that inventory. Answer 403, the same status an authenticated caller
+    // already receives when a route will not serve them.
+    if (
+      credential !== undefined &&
+      (await security.recognizeCredential?.(credential))
+    ) {
+      if (cookieCredential) {
+        deviceSessionAuthorizations.add(1, {
+          outcome: 'denied',
+          reason: 'insufficient_scope',
+        });
+      }
+      emitSecurityAudit(security, c, routeLabeler, {
+        event: 'station.auth.failure',
+        outcome: 'denied',
+        reason: 'insufficient_scope',
+        routeClass,
+        peerClass: effectivePeerClass,
+        transport: 'http',
+        timestamp: security.now?.() ?? Date.now(),
+      });
+      limiter.clear(limiterKey);
+      return c.json({ error: { code: 'insufficient_scope' } }, 403);
+    }
+
     if (cookieCredential) {
       deviceSessionAuthorizations.add(1, {
         outcome: 'denied',
@@ -906,6 +944,7 @@ function configureRuntimeSecurity(
     // adapter and the middleware resolve to different module copies.
     if (bodyResult !== 'no-stream') {
       const raw = c.req.raw;
+      const nativePeer = readVerifiedNativeVirtualApplicationRequest(raw);
       const authenticated = getRuntimeAuthenticatedRequestPrincipal(raw);
       c.req.raw = new Request(raw.url, {
         method: raw.method,
@@ -914,6 +953,14 @@ function configureRuntimeSecurity(
         body: bodyResult,
         duplex: 'half',
       });
+      if (
+        nativePeer &&
+        !transferVerifiedNativeVirtualApplicationRequest(raw, c.req.raw)
+      )
+        return c.json(
+          { error: { code: 'virtual_pion_provenance_invalid' } },
+          403,
+        );
       security.deploymentAuthentication?.transferRequest(raw, c.req.raw);
       // The request was deliberately rewrapped after bounded body buffering.
       // Carry the already middleware-verified principal to that replacement;

@@ -10,7 +10,6 @@
  * `mayGrantFullAccess` (security/coding-authority.ts) is the one derivation;
  * this only reads the request's granted scope and shapes the refusal.
  */
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import type { Context } from 'hono';
 import { isKnownFullAccessAcpModeId } from '../../providers/adapters/acp-session-mode.js';
 import {
@@ -19,17 +18,20 @@ import {
   fullAccessGrantFor,
   mayGrantFullAccess,
 } from '../../security/coding-authority.js';
+import { fullAccessRefusalBody } from '../../security/full-access-refusal.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
 
-export const APPROVAL_FULL_ACCESS_NOT_GRANTED = {
-  success: false as const,
-  code: APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
-  error:
-    "This device is not allowed to give an agent full access. The Station's operator can allow it: Devices, this device's access, Allow full access.",
-};
+/**
+ * The 403 for a refused full-access request (#1796): who asked, which
+ * Station refused, and what only its operator can do about it
+ * (`security/full-access-refusal.ts`).
+ */
+export function fullAccessRefusal(c: Context): Response {
+  return c.json(fullAccessRefusalBody(c.req.raw), 403);
+}
 
 /**
  * The approval posture a `modelOptions` bag asks for, if any. #2569: an ACP
@@ -67,7 +69,7 @@ export function refuseUngrantedFullAccess(
     )
   )
     return undefined;
-  return c.json(APPROVAL_FULL_ACCESS_NOT_GRANTED, 403);
+  return fullAccessRefusal(c);
 }
 
 /**
@@ -105,7 +107,7 @@ export function fullAccessRefusalFor(
   error: unknown,
 ): Response | undefined {
   return error instanceof FullAccessNotGrantedError
-    ? c.json(APPROVAL_FULL_ACCESS_NOT_GRANTED, 403)
+    ? fullAccessRefusal(c)
     : undefined;
 }
 

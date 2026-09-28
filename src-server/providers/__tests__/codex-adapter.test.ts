@@ -289,6 +289,17 @@ async function replayCodexCollabPrefix(
 ): Promise<void> {
   const messages = codexCaptureServerMessagesBeforeClientInterrupt(capture);
   let index = 0;
+  // The capture's client numbered its requests 1, 2, 3; Station sends string
+  // ids and Codex echoes an id with its type (#562). Replay each captured
+  // result as the reply to the request Station actually has in flight.
+  const replyToPending = (message: Record<string, unknown>) => {
+    const record = (adapter as any).transport.requireSession(threadId);
+    const pendingIds = [
+      ...(record.pendingRpcRequests as Map<string, unknown>).keys(),
+    ];
+    expect(pendingIds).toHaveLength(1);
+    writeServerMessage(adapter, threadId, { ...message, id: pendingIds[0] });
+  };
   const replayNotificationsUntilNextResult = () => {
     while (
       index < messages.length &&
@@ -307,17 +318,17 @@ async function replayCodexCollabPrefix(
   });
   await flushIo();
   replayNotificationsUntilNextResult();
-  writeServerMessage(adapter, threadId, messages[index++]); // initialize result
+  replyToPending(messages[index++]); // initialize result
   await flushIo();
   replayNotificationsUntilNextResult();
-  writeServerMessage(adapter, threadId, messages[index++]); // thread/start result
+  replyToPending(messages[index++]); // thread/start result
   await withTimeout(startSessionPromise, 'startSession (replay)');
   await flushIo();
 
   const sendTurnPromise = adapter.sendTurn({ threadId, input: 'go' });
   await flushIo();
   replayNotificationsUntilNextResult();
-  writeServerMessage(adapter, threadId, messages[index++]); // turn/start result
+  replyToPending(messages[index++]); // turn/start result
   await withTimeout(sendTurnPromise, 'sendTurn (replay)');
   await flushIo();
 

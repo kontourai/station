@@ -101,6 +101,19 @@ describe('ConnectionsSectionFrame', () => {
     navigate.mockReset();
   });
 
+  test('the rail offers the five user-facing sections, in order', () => {
+    render(
+      <ConnectionsSectionFrame sectionId="models">
+        <div />
+      </ConnectionsSectionFrame>,
+    );
+    expect(
+      screen
+        .getAllByRole('tab')
+        .map((element) => element.textContent?.match(/^[A-Za-z]+/)?.[0]),
+    ).toEqual(['Models', 'Engines', 'Tools', 'Knowledge', 'Computers']);
+  });
+
   test('the Models count is the Models list, read from the same route', () => {
     // "Models 1" once appeared beside a Models section reading "No model
     // connections yet", because the count read `/api/connections` (which

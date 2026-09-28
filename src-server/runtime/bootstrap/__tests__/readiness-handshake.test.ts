@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 import {
   formatReadinessHandshake,
   installStdoutEpipeGuard,
-  isBrokenPipeError,
   writeReadinessHandshake,
 } from '../readiness-handshake.js';
 
@@ -70,7 +69,6 @@ describe('readiness handshake', () => {
     expect(() => stream.emit('error', epipe)).not.toThrow();
     expect(() => stream.emit('error', epipe)).not.toThrow();
     expect(shutdowns).toBe(1);
-    expect(isBrokenPipeError(epipe)).toBe(true);
   });
 
   it('makes a synchronous handshake EPIPE inert too', () => {
@@ -89,8 +87,12 @@ describe('readiness handshake', () => {
       resolve(import.meta.dirname, '..', '..', '..', 'index.ts'),
       'utf8',
     );
-    expect(
-      index.indexOf('installStdoutEpipeGuard(process.stdout'),
-    ).toBeLessThan(index.indexOf('await runtime.initialize()'));
+    const guardIndex = index.indexOf('installStdoutEpipeGuard(process.stdout');
+    const initializeIndex = index.indexOf('await runtime.initialize()');
+    // Both must be present: a deleted guard reads as -1, which would
+    // otherwise sort "before" initialization and pass.
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(initializeIndex).toBeGreaterThanOrEqual(0);
+    expect(guardIndex).toBeLessThan(initializeIndex);
   });
 });

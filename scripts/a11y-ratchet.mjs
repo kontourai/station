@@ -27,24 +27,38 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const ROOT = process.cwd();
 const BASELINE_PATH = join(ROOT, 'scripts/a11y-baseline.json');
 const BIOME_CONFIG_PATH = join(ROOT, 'biome.json');
+const PACKAGE_JSON_PATH = join(ROOT, 'package.json');
+
+const LINT_ROOT_PATTERN = /^[A-Za-z0-9_.][A-Za-z0-9_./-]*$/;
 
 /**
- * Must stay in step with the `lint:check` script in package.json.
- *
- * Explicit source roots rather than `.`: linting the whole repo also reaches
- * generated output (`src-desktop/gen/`), signed in-toto attestations under
- * `delivery/`, and Veritas Protected Standards — all of which the formatter
- * will happily rewrite.
+ * The ratchet measures exactly what `lint:check` lints, so its roots are read
+ * from that script rather than restated here. `lint:check` names explicit
+ * source roots rather than `.`: linting the whole repo also reaches generated
+ * output (`src-desktop/gen/`), signed in-toto attestations under `delivery/`,
+ * and Veritas Protected Standards, all of which the formatter would rewrite.
+ * A `lint:check` that is not `biome check <roots...>` is refused rather than
+ * guessed at, so the ratchet never silently measures a different tree.
  */
-const SOURCE_ROOTS = [
-  'src-server/',
-  'src-ui/',
-  'packages/',
-  'scripts/',
-  'tests/',
-  'examples/',
-  'src-shared/',
-];
+export function lintCheckRoots(packageJsonText) {
+  const script = JSON.parse(packageJsonText)?.scripts?.['lint:check'];
+  const [tool, verb, ...roots] =
+    typeof script === 'string' ? script.trim().split(/\s+/) : [];
+  // Roots are plain paths. A flag (`--write`, `--diagnostic-level=error`) or a
+  // shell operator (`&&`, `|`) after the roots would otherwise be handed to
+  // `biome lint` as a root, rewriting the tree or quieting the a11y warnings.
+  if (
+    tool !== 'biome' ||
+    verb !== 'check' ||
+    roots.length === 0 ||
+    !roots.every((root) => LINT_ROOT_PATTERN.test(root))
+  ) {
+    throw new Error(
+      `package.json lint:check must be "biome check <roots...>"; found ${JSON.stringify(script)}`,
+    );
+  }
+  return roots;
+}
 
 /** Is the a11y family switched on in the repo's biome config? */
 export function a11yEnabled(configText) {
@@ -104,7 +118,7 @@ export function biomeLintInvocation() {
       fileURLToPath(import.meta.resolve('@biomejs/biome/bin/biome')),
       'lint',
       '--max-diagnostics=5000',
-      ...SOURCE_ROOTS,
+      ...lintCheckRoots(readFileSync(PACKAGE_JSON_PATH, 'utf8')),
     ],
   };
 }

@@ -29,6 +29,7 @@ import {
 } from '../ResponsiveDialogSurface';
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 export interface AcceptedConversationHandoff {
   receipt: ConversationHandoffReceipt;
@@ -103,6 +104,26 @@ function clearPendingIntent(apiBase: string, conversationId: string): void {
   } catch {
     // A cleanup refusal cannot overturn an accepted server receipt.
   }
+}
+
+/**
+ * Did Station definitively refuse the handoff? Only a response Station itself
+ * answered, and not an indeterminate one, clears the retained request. A
+ * failure with no status never reached an answer, and a proxy's page (an
+ * HTML 403 or 502) keeps its status but is not Station's answer (#2708).
+ */
+function isDefiniteHandoffFailure(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { status, outcome, stationEnvelope } = error as {
+    status?: unknown;
+    outcome?: unknown;
+    stationEnvelope?: unknown;
+  };
+  return (
+    typeof status === 'number' &&
+    outcome !== 'indeterminate' &&
+    stationEnvelope !== false
+  );
 }
 
 export function ConversationHandoffDialog({
@@ -272,15 +293,7 @@ export function ConversationHandoffDialog({
         );
       }
     } catch (error) {
-      const status =
-        typeof error === 'object' && error !== null
-          ? (error as { status?: unknown }).status
-          : undefined;
-      const outcome =
-        typeof error === 'object' && error !== null
-          ? (error as { outcome?: unknown }).outcome
-          : undefined;
-      if (typeof status !== 'number' || outcome === 'indeterminate') {
+      if (!isDefiniteHandoffFailure(error)) {
         setState('indeterminate');
         setFeedback(
           'Station did not receive a final response. Check status or retry safely with the retained request.',
@@ -289,7 +302,11 @@ export function ConversationHandoffDialog({
         clearPendingIntent(apiBase, conversationId);
         onDefiniteFailure(clientTurnId);
         setState('error');
-        setFeedback(error instanceof Error ? error.message : String(error));
+        setFeedback(
+          error instanceof Error
+            ? userFacingErrorMessage(error)
+            : String(error),
+        );
       }
     }
   };
@@ -346,7 +363,9 @@ export function ConversationHandoffDialog({
       );
     } catch (error) {
       setState('indeterminate');
-      setFeedback(error instanceof Error ? error.message : String(error));
+      setFeedback(
+        error instanceof Error ? userFacingErrorMessage(error) : String(error),
+      );
     }
   };
 
