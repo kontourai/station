@@ -473,7 +473,15 @@ A session spawned before this change has nothing recorded.
   server-derived. A decision carries its recorder in `clientOrigin.actor`.
   A `host` start stamp carries its grantor in
   `metadata.stationConfinementGrantor`, beside the stamp and carried forward
-  on a respawn. The start's command receipt now also records `clientOrigin`.
+  on a respawn and an adoption. The grantor comes from the grant itself:
+  `fullAccessGrantFor` names the operator in person or the paired device.
+  A caller that may grant but is neither gets no grant. So every path that
+  carries a grant (chat, delegation, Task dispatch, Starter Work, adoption,
+  pane actions) records who granted it. `prepareStart` and adoption refuse a
+  grant that names no grantor (`UnattributedFullAccessGrantError`). No
+  legitimate actor-less grant exists: every grant is minted from a request.
+  The start's command receipt also records `clientOrigin`, and Task dispatch
+  and Starter Work carry the request's server-derived origin to it.
   - A conversation gets a new Ask decision when its standing decision is one
     of that device's: its `never`, its Default that still resolves to
     unconfined `never`, or its Auto on a session its grant unconfined. So
@@ -499,8 +507,13 @@ A session spawned before this change has nothing recorded.
     device; a default-only `never`; a `never` decision with no recorded
     actor; and live `host` sessions with no recorded grantor (at most 50,
     with the total).
-  - The route answer carries the report (`fullAccessRevocation`). A failed
+  - The route answer carries the report (`fullAccessRevocation`). Each entry
+    names the conversation, its title and a session to open it by. A failed
     reset is `fullAccessRevocationError`, and the CLI treats it as an error.
+    The reset is idempotent and can be re-run.
+    `station environment access scope <device> --remove approval:full-access`
+    on a device that no longer holds it sends `resetFullAccess: true`, and the
+    route runs the reset again. `DELETE` on a revoked device does the same.
 - **Who can reach a session at all.** Command authorization
   (`canReadSessionForCommand`) admits only the session owner's own
   principals. There is no multi-user shared session to decide for.

@@ -2022,7 +2022,9 @@ station environment peers remove <environment-id>
   conversation that device had put at full access (a running turn finishes
   first). The command prints what it reset and what stays at full access
   for another reason (the operator's or another device's decision, an Agent or
-  Station default, or a session with no recorded grantor). A paired remote CLI cannot run
+  Station default, or a session with no recorded grantor). If that reset
+  failed, running `--remove approval:full-access` again on the device re-runs
+  it; re-running changes nothing already reset. A paired remote CLI cannot run
   these verbs: they refuse a non-loopback target before reading any
   credential.
 - `environment peers` manages the **outbound** peer-credential store: the
