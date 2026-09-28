@@ -36,6 +36,7 @@ runAdapterContractSuite({
   label: 'kit-default-store',
   createAdapter: (storeRoot) => new KitDefaultStoreAdapter({ storeRoot }),
   findRecordFilePath: (dir, id) => join(dir, 'records', `${id}.md`),
+  loggerWarnSpy,
 });
 
 describe('KitDefaultStoreAdapter — on-disk fixture proof (store-contract.md §9 / §5.1 / Addendum H.5)', () => {
@@ -273,84 +274,5 @@ describe('KitDefaultStoreAdapter — on-disk fixture proof (store-contract.md §
       expect.stringContaining('alias-index.json failed to parse'),
       expect.objectContaining({ path: join(dir, 'alias-index.json') }),
     );
-  });
-
-  // Wave-3 fast-follow (code-review new finding, Wave 2 review pass 4): closes the
-  // gap where `appendUniqueLinks`'s sanitization only fired on link-touching
-  // mutations, so a metadata-only mutation (e.g. `retire()`, which spreads
-  // `...record` untouched) would carry forward an already-bad, legacy/
-  // externally-authored `KitLink.label` on disk indefinitely instead of ever
-  // cleaning it up at rest. `writeRecord` now sanitizes unconditionally on every
-  // persisted write, regardless of which mutation produced the record.
-  test('a legacy newline-label already on disk is sanitized on the very next write, even through a metadata-only mutation (retire) that never touches links itself', async () => {
-    const targetId = await adapter.create({
-      type: 'concept',
-      title: 'Link target',
-      body: 'target body',
-      category: 'engineering',
-      provenance: { agent: 'agent-1' },
-    });
-    const sourceId = await adapter.create({
-      type: 'concept',
-      title: 'Legacy label source',
-      body: 'Original body.',
-      category: 'engineering',
-      links: [
-        {
-          target_id: targetId,
-          kind: 'related',
-          label: 'SAFE_PLACEHOLDER_LABEL',
-        },
-      ],
-      provenance: { agent: 'agent-1' },
-    });
-
-    // Hand-tamper the on-disk frontmatter to simulate a legacy/externally-authored
-    // record whose label predates write-time sanitization — bypasses the adapter's
-    // own sanitize-on-write path entirely (same fixture technique as the
-    // sentinel-collision tests in `obsidian-store.contract.test.ts`).
-    const filePath = join(dir, 'records', `${sourceId}.md`);
-    const maliciousLabel = 'evil\nlabel\nwith\nnewlines';
-    const tampered = readFileSync(filePath, 'utf-8').replace(
-      'label: SAFE_PLACEHOLDER_LABEL',
-      `label: ${JSON.stringify(maliciousLabel)}`,
-    );
-    writeFileSync(filePath, tampered, 'utf-8');
-
-    // Confirm the tamper actually landed on disk with a real embedded newline
-    // before exercising the fix (otherwise this test would pass vacuously).
-    const beforeRaw = readFileSync(filePath, 'utf-8');
-    const beforeFrontmatter = yaml.load(
-      beforeRaw.slice(4, beforeRaw.indexOf('\n---\n', 4)),
-    ) as { links: Array<{ label?: string }> };
-    expect(beforeFrontmatter.links[0].label).toBe(maliciousLabel);
-
-    loggerWarnSpy.mockClear();
-    // retire() is a metadata-only mutation: it spreads `...record` (including the
-    // tampered, unsanitized `links`) untouched except for `status`/`updated_at`/
-    // `mutation_log` — it never calls `appendUniqueLinks`/`mergeLinks` itself.
-    await adapter.retire(sourceId, 'retired', {
-      agent: 'agent-1',
-      rationale: 'no longer relevant',
-    });
-
-    const afterRaw = readFileSync(filePath, 'utf-8');
-    const afterFrontmatter = yaml.load(
-      afterRaw.slice(4, afterRaw.indexOf('\n---\n', 4)),
-    ) as { links: Array<{ label?: string }>; status: string };
-    expect(afterFrontmatter.status).toBe('retired');
-    expect(afterFrontmatter.links[0].label).toBe('evil label with newlines');
-    expect(loggerWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('embedded line break'),
-      expect.objectContaining({
-        original: maliciousLabel,
-        sanitized: 'evil label with newlines',
-      }),
-    );
-
-    // The record's public shape reflects the same sanitized label — not merely the
-    // on-disk bytes.
-    const record = await adapter.get(sourceId);
-    expect(record?.links?.[0].label).toBe('evil label with newlines');
   });
 });

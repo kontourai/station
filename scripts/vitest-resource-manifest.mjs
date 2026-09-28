@@ -545,6 +545,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
   // single-shot children for each golden vector.
   'scripts/__tests__/release-manifest-vectors.test.ts',
+  // #2675 slice E: drives the manifest signer and the Nightly publication
+  // helper CLIs as bounded single-shot children (dry-run sign and verify).
+  'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
@@ -1069,6 +1072,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // declares. jsdom computes no layout and would report the pre-fix
   // edge-to-edge frame and the fixed one identically.
   'src-ui/src/workspace-panes/__tests__/WorkspacePaneRouteView.frame.test.tsx',
+  // #917: launches a real Chromium to measure whether the region fieldset
+  // holds its toggles' width in an over-full phone toolbar. jsdom computes no
+  // layout, and a rule-text check cannot see a cascade override.
+  'src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx',
+  // Same shape: launches a real Chromium to measure the setup-import
+  // stepper's heading action at the 640px breakpoint.
+  'src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx',
   // #765 C1 and the collapsed bottom dock: both render the real region host in
   // jsdom, then launch a real Chromium to lay that DOM out against index.css —
   // whether the dock body scrolls inside the shell, and whether a collapsed

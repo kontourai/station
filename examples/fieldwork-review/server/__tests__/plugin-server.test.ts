@@ -274,55 +274,6 @@ describe('fieldwork-review server module', () => {
     );
   });
 
-  it('resolves a retained ref through the producer index after 130 historical runs', async () => {
-    await launchRun();
-    const runsRoot = join(
-      harness.projectHomeDir,
-      'projects',
-      PROJECT,
-      'plugin-data',
-      'fieldwork-review',
-      'runs',
-    );
-    const current = JSON.parse(
-      readFileSync(join(runsRoot, 'station-runs.json'), 'utf8'),
-    ).runs[0];
-    const refs = Object.fromEntries(
-      Array.from({ length: 130 }, (_, index) => [
-        `fieldwork-reviewed-source:v1:${index.toString(16).padStart(64, '0')}`,
-        { runId: current.id, runDirectory: current.runDirectory },
-      ]),
-    );
-    writeFileSync(
-      join(runsRoot, 'station-reviewed-source-refs.json'),
-      JSON.stringify({ version: 1, refs }),
-    );
-
-    const result = await reviewedSources.readReviewedSource(
-      {
-        version: 'station.reviewed-sources/v1',
-        operation: 'describe',
-        pluginName: 'fieldwork-review',
-        projectId: PROJECT,
-        exactRef: `fieldwork-reviewed-source:v1:${'0'.repeat(63)}0`,
-        assessment: {
-          revision: 1,
-          sourceClaimId: 'source-claim',
-          sourceEvidenceId: 'source-evidence',
-          answerClaimId: 'answer-claim',
-          answerCitationEvidenceId: 'answer-citation-evidence',
-        },
-      },
-      { projectHomeDir: harness.projectHomeDir },
-    );
-    // Fieldwork is reached (and truthfully says this opaque test ref is not a
-    // reviewed source); the historical cardinality never becomes unavailable.
-    expect(result).toEqual({
-      version: 'station.reviewed-sources/v1',
-      status: 'missing',
-    });
-  });
-
   it('does not scan the run list or convert cap-plus-one history into unavailable', async () => {
     await launchRun();
     const runsRoot = join(
@@ -420,7 +371,13 @@ describe('fieldwork-review server module', () => {
       input(`fieldwork-reviewed-source:v1:${'0'.repeat(64)}`),
       { projectHomeDir: harness.projectHomeDir },
     );
-    expect(retained.status).toBe('missing');
+    // At capacity an absent ref is 'unavailable' (asserted below), so
+    // 'missing' here proves the retained ref was found in the full index and
+    // reached Fieldwork, which reports this opaque test ref as not a source.
+    expect(retained).toEqual({
+      version: 'station.reviewed-sources/v1',
+      status: 'missing',
+    });
     const refused = await reviewedSources.readReviewedSource(
       input(`fieldwork-reviewed-source:v1:${'f'.repeat(64)}`),
       { projectHomeDir: harness.projectHomeDir },

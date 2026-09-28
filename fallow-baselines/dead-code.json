@@ -555,7 +555,6 @@
     "src-server/runtime/streaming/handlers/CompletionHandler.ts:CompletionHandler.finalize",
     "src-server/security/pairing-failure-limiter.ts:PairingFailureLimiter.retryAfterSeconds",
     "src-server/security/pairing-failure-limiter.ts:PairingFailureLimiter.clear",
-    "src-server/security/runtime-request-security.ts:RuntimeMutationBudget.clearBudget",
     "src-server/services/acp/acp-manager.ts:ACPManager.isConnected",
     "src-server/services/acp/acp-probe.ts:ACPProbe.getCapabilities",
     "src-server/services/acp/acp-process.ts:ACPProcess.sessionId",

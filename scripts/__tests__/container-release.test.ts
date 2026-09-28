@@ -355,6 +355,53 @@ describe('container release metadata', () => {
     expect(validatePackagedReleaseManifest(manifest)).toEqual(manifest);
   });
 
+  test('derives every release ring from the generated ring table, nightly included', () => {
+    const nightly = createPackagedReleaseManifest({
+      tag: 'v0.1.11-nightly.245600',
+      sha,
+      createdAt,
+    });
+    expect(nightly).toEqual({
+      schemaVersion: 2,
+      sha,
+      ref: 'v0.1.11-nightly.245600',
+      createdAt,
+      channel: 'nightly',
+      releaseChannel: 'nightly',
+      prerelease: true,
+    });
+    expect(validatePackagedReleaseManifest(nightly)).toEqual(nightly);
+    expect(
+      createPackagedReleaseManifest({ tag: 'v1.2.3', sha, createdAt }),
+    ).toMatchObject({
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+    });
+    for (const tag of [
+      'v1.2.3-beta.1',
+      'v1.2.3-nightly.0',
+      'v1.2.3-nightly.1.2',
+      'v1.2.3-preview',
+      '1.2.3',
+    ])
+      expect(
+        () => createPackagedReleaseManifest({ tag, sha, createdAt }),
+        tag,
+      ).toThrow(/tag must be one release ring's version/);
+  });
+
+  test('publishes container images for stable and preview tags only', () => {
+    expect(() =>
+      createContainerReleaseMetadata({
+        tag: 'v0.1.11-nightly.245600',
+        sha,
+        createdAt,
+        repository: 'kontourai/station',
+      }),
+    ).toThrow(/stable and preview tags only, not nightly/);
+  });
+
   test('binds immutable digest promotion to the same release metadata', () => {
     const metadata = createContainerReleaseMetadata({
       tag: 'v1.2.3-preview.4',

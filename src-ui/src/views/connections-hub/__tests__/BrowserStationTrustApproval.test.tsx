@@ -11,23 +11,21 @@ const mocks = vi.hoisted(() => ({
   close: vi.fn(),
 }));
 
-vi.mock('@kontourai/station-connect/connection-trust', () => ({
-  openDeviceConnectionTrustStore: async () => ({
-    read: mocks.read,
-    approve: mocks.approve,
-    revoke: mocks.revoke,
-    close: mocks.close,
+vi.mock(
+  '@kontourai/station-connect/connection-trust',
+  async (importOriginal) => ({
+    // The real `stationRelayRouteTrustStatus` runs; only the device store is faked.
+    ...(await importOriginal<
+      typeof import('@kontourai/station-connect/connection-trust')
+    >()),
+    openDeviceConnectionTrustStore: async () => ({
+      read: mocks.read,
+      approve: mocks.approve,
+      revoke: mocks.revoke,
+      close: mocks.close,
+    }),
   }),
-  stationRelayRouteTrustStatus: (
-    record: { trust: { enrollmentId: string } } | null,
-    candidate: { enrollmentId: string },
-  ) =>
-    !record
-      ? 'untrusted'
-      : record.trust.enrollmentId === candidate.enrollmentId
-        ? 'approved'
-        : 'mismatch',
-}));
+);
 
 vi.mock('@kontourai/station-shared/connection-proof', () => ({
   copyStationConnectionTrust: (value: unknown) => {

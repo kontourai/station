@@ -30,7 +30,7 @@ const BRAND_KEYS = [
 ] as const satisfies readonly BrandKey[];
 
 /** Exact engine-id-to-mark lookup. Engine display names never participate. */
-export function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
+function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
   if (
     engineId === 'station-agent' ||
     engineId === 'bedrock' ||

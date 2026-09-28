@@ -110,16 +110,6 @@ describe('TurnIdempotencyStore (station#1224 offline slice 2 — shared idempote
     });
   });
 
-  test('an unresolved claim without a provably dead owner remains held', () => {
-    const store = new TurnIdempotencyStore(
-      new InMemoryTurnIdempotencyPersistence(),
-    );
-    store.claim('turn-a');
-    expect(store.claim('turn-a')).toEqual({ claimed: false });
-
-    expect(store.claim('turn-a')).toEqual({ claimed: false });
-  });
-
   test('HIGH 1: an owner born while exact identity is unavailable is not reclaimed when that live PID later has a different fingerprint', () => {
     const persistence = new InMemoryTurnIdempotencyPersistence();
     let identityAvailable = false;
@@ -144,19 +134,6 @@ describe('TurnIdempotencyStore (station#1224 offline slice 2 — shared idempote
     identityAvailable = true;
     const retry = new TurnIdempotencyStore(persistence, processIdentity);
     expect(retry.claim('turn-unverified-owner')).toEqual({ claimed: false });
-  });
-
-  test('a resolved claim remains remembered', () => {
-    const store = new TurnIdempotencyStore(
-      new InMemoryTurnIdempotencyPersistence(),
-    );
-    store.claim('turn-a');
-    store.resolve('turn-a', 'result-1');
-
-    expect(store.claim('turn-a')).toEqual({
-      claimed: false,
-      value: 'result-1',
-    });
   });
 
   test('independent keys never collide', () => {

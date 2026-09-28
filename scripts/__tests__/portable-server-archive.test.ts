@@ -140,9 +140,30 @@ describe('buildPortableServerArchive target', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         // Optional at runtime; the JS signature's inferred type lists it.
         nodeDistribution: undefined,
+        expectedRing: undefined,
       }),
     ).rejects.toThrow(
       new RegExp(`cannot build the ${foreign} portable archive on ${host}`),
+    );
+    expect(existsSync(outputDir)).toBe(false);
+  });
+
+  it('refuses a tag from another ring than the caller asked for before writing anything', async () => {
+    const outputDir = join(makeTempDir('station-portable-ring-'), 'out');
+    await expect(
+      buildPortableServerArchive({
+        projectRoot: repoRoot,
+        outputDir,
+        platform: process.platform,
+        arch: process.arch,
+        tag: 'v0.1.11-preview.3',
+        sha: '0'.repeat(40),
+        createdAt: '2026-01-01T00:00:00.000Z',
+        nodeDistribution: undefined,
+        expectedRing: 'nightly',
+      }),
+    ).rejects.toThrow(
+      'v0.1.11-preview.3 is a preview release, not the requested nightly ring',
     );
     expect(existsSync(outputDir)).toBe(false);
   });
@@ -222,7 +243,10 @@ describe('obtainNodeDistribution', () => {
 
 describe('portable server archive workflow', () => {
   type Workflow = {
-    on: Record<string, { branches?: string[]; paths?: string[] } | null>;
+    on: Record<
+      string,
+      { branches?: string[]; paths?: string[]; inputs?: unknown } | null
+    >;
     permissions: Record<string, string>;
     jobs: {
       archive: {
@@ -259,12 +283,45 @@ describe('portable server archive workflow', () => {
     expect(Object.keys(workflow.on).sort()).toEqual([
       'pull_request_target',
       'push',
+      'workflow_call',
       'workflow_dispatch',
     ]);
+    // A caller passes identity only: no secret, and nothing flows back but
+    // the run artifacts every trigger already uploads.
+    expect(workflow.on.workflow_call).toEqual({
+      inputs: {
+        ref: expect.objectContaining({ required: true, type: 'string' }),
+        version: expect.objectContaining({ required: true, type: 'string' }),
+        ring: expect.objectContaining({ required: true, type: 'string' }),
+        non_blocking: expect.objectContaining({
+          required: false,
+          default: false,
+          type: 'boolean',
+        }),
+      },
+    });
     expect(workflow.on.push).toMatchObject({ branches: ['main'] });
     expect(source).not.toMatch(
       /secrets\.|id-token|attest-build-provenance|gh release/,
     );
+  });
+
+  it("builds a caller's version only from the ref it checked out", () => {
+    type Step = { name?: string; if?: string; run?: string; env?: object };
+    const steps = (workflow.jobs.archive as unknown as { steps: Step[] }).steps;
+    const confirm = steps.findIndex(
+      (step) =>
+        step.name === "Confirm a caller's ref is the checked-out commit",
+    );
+    const build = steps.findIndex((step) => step.name === 'Build the archive');
+    expect(confirm).toBeGreaterThanOrEqual(0);
+    expect(confirm).toBeLessThan(build);
+    expect(steps[confirm].if).toBe(`\${{ inputs.ref != '' }}`);
+    expect(steps[confirm].run).toContain(
+      'test "$(git rev-parse HEAD)" = "$CALLER_REF"',
+    );
+    expect(steps[build].run).toContain('--ref "$RELEASE_REF"');
+    expect(steps[build].run).toContain('--ring "$RELEASE_RING"');
   });
 });
 
@@ -341,6 +398,12 @@ describe('portable archive workflow paths filter', () => {
       '.nvmrc',
       'config/portable-server-node-runtime.json',
       'install.sh',
+      // The ring table and version grammar behind .station-release.json,
+      // reached through packages/ where the import walk stops.
+      'config/channel-ports.json',
+      'packages/shared/src/release-manifest.mjs',
+      'packages/shared/src/release-rings.generated.mjs',
+      'packages/shared/src/portable-server-targets.mjs',
       'package.json',
       'packages/cli/src/cli.ts',
       'packaging/portable-server/bin/station.mjs',

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { isGitMetadataName } from '../git-metadata-name.js';
+import { endsAsGitName, isGitMetadataName } from '../git-metadata-name.js';
 
 const ZWNJ = '‌';
 const ZWJ = '‍';
@@ -39,4 +39,25 @@ describe('isGitMetadataName', () => {
   ])('leaves %j alone', (name) => {
     expect(isGitMetadataName(name)).toBe(false);
   });
+});
+
+describe('endsAsGitName', () => {
+  test.each([
+    ['repo.git'],
+    ['repo.GIT'],
+    ['repo.git.'],
+    ['repo.git '],
+    [`repo.g${ZWNJ}it`],
+    ['.git'],
+    ['git~1'],
+  ])('treats %j as git-shaped', (name) => {
+    expect(endsAsGitName(name)).toBe(true);
+  });
+
+  test.each([['repo'], ['repo.github'], ['git'], ['repo.gitx']])(
+    'leaves %j alone',
+    (name) => {
+      expect(endsAsGitName(name)).toBe(false);
+    },
+  );
 });

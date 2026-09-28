@@ -1096,9 +1096,15 @@ if [ -n "$public_manifest_url" ]; then
   manifest_file="$tmp_root/station-ecosystem-manifest.json"
   test_key_file=""
   # A signed manifest is a few kilobytes. curl 8.4.0 and newer stop at
-  # 1 MiB; older curl enforces the cap only on a declared Content-Length.
-  curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize 1048576 -o "$manifest_file" -- "$public_manifest_url" || \
+  # 1 MiB; older curl, and some builds for file:// URLs, enforce the cap only
+  # on a declared Content-Length, so the size is also checked after the fact.
+  curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize 1048576 -o "$manifest_file" -- "$public_manifest_url" || {
+    download_status=$?
+    [ "$download_status" != 63 ] || fail 'the public ecosystem manifest is larger than 1 MiB'
     fail 'could not download public ecosystem manifest'
+  }
+  [ "$(wc -c <"$manifest_file" | tr -d ' ')" -le 1048576 ] || \
+    fail 'the public ecosystem manifest is larger than 1 MiB'
   if [ -n "$test_key_url" ]; then
     test_key_file="$tmp_root/station-ecosystem-manifest-test-key.pem"
     curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$test_key_file" -- "$test_key_url" || \
@@ -1278,6 +1284,8 @@ if [ -n "$public_manifest_url" ]; then
   fi
   if [ "$release_kind" = archive ]; then
     downloaded_size="$(wc -c <"$archive" | tr -d ' ')"
+    [ "$downloaded_size" -le "$archive_size" ] || \
+      fail "$archive_name is larger than the $archive_size bytes the signed manifest says"
     [ "$downloaded_size" = "$archive_size" ] || \
       fail "$archive_name is $downloaded_size bytes; the signed manifest says $archive_size"
   fi
