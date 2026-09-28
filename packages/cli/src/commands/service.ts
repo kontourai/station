@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import * as nodeFs from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
 import {
   claimInstanceEntry,
   entryOwnedByLiveProcess,
@@ -12,6 +13,7 @@ import {
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { assertSupportedNodeVersion } from '@kontourai/station-shared/node-runtime';
 import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import { readServiceUpdateProgress } from '@kontourai/station-shared/service-launcher-protocol';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import {
   CWD,
@@ -802,12 +804,60 @@ function redactRegistryForStatus(
   };
 }
 
+/**
+ * One line (and, when an operator must act, the command) for a launcher-run
+ * archive's update (#2675 D3), from the same reader the server uses. This
+ * is where `needs-operator` is visible: in that state the launcher runs no
+ * Station, so no client can ask a server about it.
+ */
+export function describeServiceUpdate(
+  progress: ServiceUpdateProgress,
+  instanceId: string,
+): string[] {
+  switch (progress.state) {
+    case 'idle':
+      return [];
+    case 'unavailable':
+      return [
+        'unreadable (the launcher state or a request file cannot be read)',
+      ];
+    case 'queued':
+      return ['requested, not yet picked up'];
+    case 'staging':
+      return ['downloading and verifying the release'];
+    case 'updating':
+      return [
+        `${progress.fromVersion} -> ${progress.targetVersion}: ${progress.phase} (trial attempt ${progress.attempts})`,
+      ];
+    case 'committed':
+      return [
+        `updated ${progress.fromVersion} -> ${progress.targetVersion} at ${progress.finishedAt}`,
+      ];
+    case 'rolled-back':
+    case 'failed':
+      return [
+        `update to ${progress.targetVersion} ${progress.state} (${progress.reason}) at ${progress.finishedAt}; runs ${progress.fromVersion}`,
+      ];
+    case 'needs-operator':
+      return [
+        `NEEDS OPERATOR: the update to ${progress.targetVersion} could not be rolled back; restoring the home failed ${progress.restoreAttempts} times (${progress.reason}). No Station runs; the home's backup is kept.`,
+        `fix the cause in the service log, then retry the restore: station service stop --instance=${instanceId} && station service start --instance=${instanceId}`,
+      ];
+    case 'up-to-date':
+      return [`already the newest release (${progress.version})`];
+    case 'staging-failed':
+    case 'rejected':
+      return [`last request ${progress.state}: ${progress.reason}`];
+  }
+}
+
 function renderStatus(
   state: InstanceState,
   scheduling: ServiceSchedulingPolicy,
   servicePath: ServicePathDrift | null,
   remedy: ServiceInstallRemedy | null,
   json: boolean,
+  update: ServiceUpdateProgress | null = null,
 ): void {
   const installed = state.installation !== 'absent';
   const schedulingHealthy = isSchedulingPolicyHealthy(scheduling);
@@ -829,6 +879,7 @@ function renderStatus(
     scheduling,
     ...(servicePath === null ? {} : { servicePath }),
     unit: state.unit,
+    ...(update === null ? {} : { update }),
   };
   if (json) {
     console.log(JSON.stringify(result));
@@ -847,6 +898,14 @@ function renderStatus(
   );
   if (state.allowedOrigins.length) {
     console.log(`origins        ${state.allowedOrigins.join(', ')}`);
+  }
+  if (update !== null) {
+    const [first, ...rest] = describeServiceUpdate(
+      update,
+      state.instance.instanceId,
+    );
+    if (first !== undefined) console.log(`update         ${first}`);
+    for (const line of rest) console.log(`               ${line}`);
   }
   // Scheduling and PATH drift share one remedy; print it once, under the
   // first layer that needs it.
@@ -1661,6 +1720,10 @@ export async function runServiceCommand(
     servicePath,
     remedy,
     args.includes('--json'),
+    // A launcher-run archive's update, read from its install's runtime files.
+    existing?.installRoot
+      ? readServiceUpdateProgress(existing.installRoot)
+      : null,
   );
   if (action === 'start' || action === 'stop') {
     if (observed.supervisor.error !== null) {

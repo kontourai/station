@@ -78,6 +78,11 @@ export function CoreUpdateCheck({
   // a check made after it answers, so the card never shows the pre-update
   // comparison's button beside the outcome.
   const [serviceOutcomeAt, setServiceOutcomeAt] = useState<number | null>(null);
+  // The connection whose followed update ran out of time without an outcome
+  // this card could read. Cleared by a new apply or a manual re-check.
+  const [serviceFollowExpiredOn, setServiceFollowExpiredOn] = useState<
+    string | null
+  >(null);
   const [restartVerification, setRestartVerification] =
     useState<RestartVerificationState>({ state: 'idle' });
   const [selfUpdating, setSelfUpdating] = useState(false);
@@ -302,6 +307,7 @@ export function CoreUpdateCheck({
       if (data.success && data.serviceUpdate) {
         // Queued for the service's launcher (#2675 D3): its progress, not
         // this acceptance, says what happened.
+        setServiceFollowExpiredOn(null);
         setServiceUpdateRequest({
           requestId: data.serviceUpdate.requestId,
           connectionScope,
@@ -373,12 +379,6 @@ export function CoreUpdateCheck({
         SERVICE_UPDATE_IN_FLIGHT.has(reportedServiceUpdate.state)),
     scopeKey: connectionScope,
     refetchInterval: (progress) => {
-      if (
-        trackedServiceUpdate &&
-        Date.now() - trackedServiceUpdate.startedAt > SERVICE_UPDATE_FOLLOW_MS
-      ) {
-        return false;
-      }
       if (!progress || SERVICE_UPDATE_IN_FLIGHT.has(progress.state)) {
         return SERVICE_UPDATE_POLL_INTERVAL_MS;
       }
@@ -415,10 +415,29 @@ export function CoreUpdateCheck({
   }, [trackedOutcome, check, resetApply]);
   const awaitingOutcomeRecheck =
     serviceOutcomeAt !== null && dataUpdatedAt <= serviceOutcomeAt;
-  const serviceFollowExpired =
-    !!trackedServiceUpdate &&
-    serviceUpdateInFlight &&
-    Date.now() - trackedServiceUpdate.startedAt > SERVICE_UPDATE_FOLLOW_MS;
+  // A timer, not a render-time clock read: once polling stops nothing else
+  // re-renders the card, and a followed request that ends in a state it
+  // cannot correlate (idle, unavailable, another request) would otherwise
+  // be followed forever. Expiry stops following whatever the state.
+  useEffect(() => {
+    if (!trackedServiceUpdate) return;
+    const timer = setTimeout(
+      () => {
+        setServiceUpdateRequest(null);
+        setServiceFollowExpiredOn(trackedServiceUpdate.connectionScope);
+      },
+      Math.max(
+        0,
+        trackedServiceUpdate.startedAt + SERVICE_UPDATE_FOLLOW_MS - Date.now(),
+      ),
+    );
+    return () => clearTimeout(timer);
+  }, [trackedServiceUpdate]);
+  const serviceFollowExpired = serviceFollowExpiredOn === connectionScope;
+  // For the host command: the answering server's instance, else the view's.
+  const serviceInstance =
+    status?.serverIdentity?.instanceId ?? context?.identity?.instanceId;
+  const statusCommand = `station service status --instance=${serviceInstance ?? '<instance>'}`;
   const serviceProgressLine = serviceProgress
     ? serviceUpdateProgressLine(
         serviceProgress,
@@ -502,6 +521,7 @@ export function CoreUpdateCheck({
             // behind = the update failed) is visible instead of a frozen
             // "Updating…".
             resetTransientState();
+            setServiceFollowExpiredOn(null);
             check();
           }}
           disabled={checking}
@@ -587,13 +607,16 @@ export function CoreUpdateCheck({
         serviceProgressQuery.isError && (
           <div className="settings__update-msg">
             The server is not answering while it restarts. Still waiting for the
-            update’s outcome…
+            update’s outcome… If it stays unreachable, see the update on the
+            host with "{statusCommand}": a service whose update could not be
+            rolled back runs no Station until an operator acts.
           </div>
         )}
       {serviceFollowExpired && (
         <div className="settings__update-msg settings__update-msg--warning">
-          The Station service has not reported this update’s outcome yet. Check
-          it on the host with "station service status".
+          This card stopped following the update without reading its outcome.
+          See it on the host with "{statusCommand}", then check for server
+          updates again.
         </div>
       )}
       {restarting && (

@@ -171,6 +171,9 @@ async function fetchVerifiedReleaseManifest(
     response = await (options.fetchFn ?? fetch)(manifestUrl, {
       signal: AbortSignal.timeout(MANIFEST_FETCH_TIMEOUT_MS),
       headers: { accept: 'application/json' },
+      // A redirect could leave https; the signature would still verify, but
+      // the check promised the recorded URL, so none is followed.
+      redirect: 'error',
     });
   } catch (error) {
     throw new ReleaseCheckError('unreachable', errorMessage(error));
@@ -331,11 +334,11 @@ function isServiceUpdateInFlight(progress: ServiceUpdateProgress): boolean {
  * the release, and the launcher trials it. Progress and the outcome are read
  * back from the runtime files (`readServiceUpdateProgress`).
  */
-export function applyArchiveUpdate(
+export async function applyArchiveUpdate(
   provenance: ArchiveProvenance,
-  env?: NodeJS.ProcessEnv,
-): ArchiveApplyResult {
-  const method = archiveApplyMethod(provenance, env);
+  options: ArchiveUpdateOptions = {},
+): Promise<ArchiveApplyResult> {
+  const method = archiveApplyMethod(provenance, options.env);
   if (method !== 'service-update' || !provenance.installRoot) {
     const reason = archiveApplyRefusal(
       method === 'service-update' ? 'station-upgrade' : method,
@@ -366,6 +369,24 @@ export function applyArchiveUpdate(
       ok: false,
       status: 409,
       error: `The update to ${progress.targetVersion} could not be rolled back and needs an operator on the host first.`,
+    };
+  }
+  // The same verified check the GET reports: an apply is refused unless it
+  // finds a newer release this host and this launcher can run.
+  const status = await archiveUpdateStatus(provenance, options);
+  if (
+    status.releaseCheck !== 'verified' ||
+    !status.updateAvailable ||
+    status.selfUpdateUnavailableReason
+  ) {
+    return {
+      ok: false,
+      status: 409,
+      error: status.selfUpdateUnavailableReason
+        ? `This Station server cannot update itself: ${status.selfUpdateUnavailableReason}.`
+        : status.releaseCheck === 'verified'
+          ? `There is nothing to update: this server runs the newest ${status.channel} release (${status.currentVersion}).`
+          : (status.message ?? 'The release check did not verify.'),
     };
   }
   try {

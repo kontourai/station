@@ -445,6 +445,64 @@ describe('POST /core-update on a launcher-run archive', () => {
     expect(JSON.parse(readFileSync(paths.request, 'utf8')).id).toBe(requestId);
   });
 
+  test('refuses, writing nothing, when the same verified check finds nothing to apply', async () => {
+    const cases: Array<[string, () => void, Record<string, string>, RegExp]> = [
+      [
+        'up to date',
+        () => serveManifest(signedManifest(releasePayload(RUNNING))),
+        {},
+        /nothing to update/,
+      ],
+      [
+        'no archive for this host',
+        () => serveManifest(signedManifest(releasePayload(NEWER))),
+        { platform: 'freebsd' },
+        /publishes no server archive for freebsd-x64/,
+      ],
+      [
+        'a launcher protocol this service lacks',
+        () =>
+          serveManifest(
+            signedManifest(
+              releasePayload(NEWER, { launcherProtocol: { min: 2, max: 2 } }),
+            ),
+          ),
+        {},
+        /needs a newer service launcher/,
+      ],
+      [
+        'an unverified manifest',
+        () =>
+          serveManifest(
+            signedManifest(
+              releasePayload(NEWER),
+              generateKeyPairSync('ed25519').privateKey,
+            ),
+          ),
+        {},
+        /did not verify/,
+      ],
+    ];
+    for (const [, arrange, overrides, error] of cases) {
+      const install = makeInstall();
+      arrange();
+      const res = await createApp(install, overrides).request('/core-update', {
+        method: 'POST',
+      });
+      expect(res.status).toBe(409);
+      expect((await json(res)).error).toMatch(error);
+      expect(existsSync(serviceUpdatePaths(install.installRoot).request)).toBe(
+        false,
+      );
+    }
+  });
+
+  test('never follows a redirect off the recorded manifest URL', async () => {
+    const install = makeInstall();
+    await createApp(install).request('/core-update');
+    expect(fetchFn.mock.calls[0]?.[1]).toMatchObject({ redirect: 'error' });
+  });
+
   test('refuses while the launcher has an update pending, and without a manifest to update from', async () => {
     const install = makeInstall();
     const paths = serviceUpdatePaths(install.installRoot);

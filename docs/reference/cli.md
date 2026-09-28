@@ -1727,7 +1727,11 @@ restarts the unit); after that the update needs an operator: the launcher
 keeps the backup, starts no Station, and logs the error. Fix its cause, then
 run `station service stop --instance=<name>` and
 `station service start --instance=<name>`: each start tries the restore once
-more. While the launcher that accepted the update runs, the service's
+more. That includes any restart of the launcher, a reboot among them: every
+launcher start in this state runs one restore attempt on its own.
+`station service status` shows the update (`update` in `--json`), and in this
+state names the recovery; it is the place to see it, since no Station runs
+for a client to ask. While the launcher that accepted the update runs, the service's
 registry entry names it, so the desktop app keeps treating the home as owned
 by a live service; a launcher that restarted mid-update does not claim the
 entry again, so from then until a version publishes itself the entry names a
@@ -1752,7 +1756,9 @@ supervises may queue a request: the launcher's context
 must name the server's install and version. An archive that no launcher runs
 reports its newest release and says to update with `station upgrade` on the
 host; an install that records no public manifest cannot be checked from a
-client.
+client. An update that needs an operator is not visible from a client: in that
+state the service runs no Station to answer, so the card keeps waiting and
+names `station service status --instance=<name>` on the host.
 
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse

@@ -1018,7 +1018,7 @@ export function createSystemUpdateRoutes(
       return applyDesktopSelfUpdate(c, eligibility);
     }
     if (provenance.installKind === 'archive') {
-      const result = applyArchiveUpdate(provenance, options.env);
+      const result = await applyArchiveUpdate(provenance, options);
       if (!result.ok) {
         return c.json({ success: false, error: result.error }, result.status);
       }

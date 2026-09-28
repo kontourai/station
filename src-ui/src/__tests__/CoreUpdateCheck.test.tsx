@@ -1291,6 +1291,44 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     ).toBeNull();
   });
 
+  test('following an update expires on a timer whatever the last state, and says where to look', () => {
+    vi.useFakeTimers({ now: new Date('2026-09-27T12:00:00.000Z') });
+    const view = renderWith(archiveService());
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server to 0.8.0-preview.2' }),
+    );
+    act(() => {
+      applyOptions?.onSuccess?.({
+        success: true,
+        serviceUpdate: { requestId: REQUEST_ID },
+      });
+    });
+    // The last read is one this card cannot correlate: it would otherwise be
+    // followed forever.
+    serviceProgressState.data = { state: 'idle' };
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    expect(serviceProgressOptions?.enabled).toBe(true);
+    expect(screen.queryByText(/stopped following the update/)).toBeNull();
+    // 45 minutes (SERVICE_UPDATE_FOLLOW_MS), with nothing else re-rendering.
+    act(() => {
+      vi.advanceTimersByTime(45 * 60 * 1000);
+    });
+    expect(
+      screen.getByText(/stopped following the update/).textContent,
+    ).toContain('station service status --instance=view-instance');
+    expect(serviceProgressOptions?.enabled).toBe(false);
+    // A manual re-check clears it.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
+    expect(screen.queryByText(/stopped following the update/)).toBeNull();
+  });
+
   test('a server that stops answering mid-update says it is restarting, not that the update failed', () => {
     serviceProgressState.data = {
       state: 'updating',
@@ -1307,8 +1345,12 @@ describe('a prebuilt release archive (#2675 D3)', () => {
         'Stopping Station 0.8.0-preview.1 to switch to 0.8.0-preview.2…',
       ),
     ).toBeTruthy();
-    expect(
-      screen.getByText(/The server is not answering while it restarts/),
-    ).toBeTruthy();
+    const waiting = screen.getByText(
+      /The server is not answering while it restarts/,
+    );
+    // It names where the real state is when no server can answer.
+    expect(waiting.textContent).toContain(
+      'station service status --instance=view-instance',
+    );
   });
 });
