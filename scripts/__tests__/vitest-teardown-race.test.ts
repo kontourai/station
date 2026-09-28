@@ -14,21 +14,20 @@ import { removeRunRoot } from '../../vitest.global-setup.js';
  */
 
 function failingRm(code: string) {
-  return vi.fn(async () => {
+  return vi.fn<typeof rm>(async () => {
     throw Object.assign(new Error(`${code}: run root`), { code });
-  }) as unknown as typeof rm & ReturnType<typeof vi.fn>;
+  });
 }
 
 describe('run-root teardown', () => {
   it('asks for retries rather than failing on the first contended rmdir', async () => {
-    const remove = vi.fn(async () => {}) as unknown as typeof rm &
-      ReturnType<typeof vi.fn>;
+    const remove = vi.fn<typeof rm>(async () => {});
     await removeRunRoot('/run-root', remove);
     expect(remove).toHaveBeenCalledWith(
       '/run-root',
       expect.objectContaining({ recursive: true, force: true }),
     );
-    expect(remove.mock.calls[0][1].maxRetries).toBeGreaterThan(0);
+    expect(remove.mock.calls[0][1]?.maxRetries).toBeGreaterThan(0);
   });
 
   // Failing here would report an infrastructure race as a test failure; the
