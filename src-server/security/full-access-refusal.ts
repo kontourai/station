@@ -49,7 +49,7 @@ export function bindFullAccessRefusalIdentity(
 }
 
 /** A device's short id: enough to tell devices apart, and a unique prefix. */
-export function shortDeviceId(deviceId: string): string {
+function shortDeviceId(deviceId: string): string {
   return deviceId.slice(0, 8);
 }
 
@@ -60,12 +60,12 @@ export function shortDeviceId(deviceId: string): string {
  * operator's own session (the Station desktop app on its host); a paired
  * browser cannot list devices, so the host command comes first.
  */
-export function fullAccessGrantUiPath(deviceName: string): string {
+function fullAccessGrantUiPath(deviceName: string): string {
   return `in the Station desktop app on its host, select the Station name (top right) → Paired devices → ${deviceName} → Change access → Allow full access → Apply`;
 }
 
 /** The operator command, run on the Station's own host. */
-export function fullAccessGrantCommand(deviceId: string): string {
+function fullAccessGrantCommand(deviceId: string): string {
   return `station environment access scope ${shortDeviceId(deviceId)} --add approval:full-access`;
 }
 

@@ -153,7 +153,7 @@ function parseDevice(value: unknown): DeviceAccessRow | undefined {
 }
 
 /** The paired devices whose access is a live question (not revoked). */
-export async function listPairedDevices(
+async function listPairedDevices(
   channel: DeviceAccessOperatorChannel,
 ): Promise<DeviceAccessRow[]> {
   const body = await channel.request('/api/pairing/devices');
@@ -182,7 +182,7 @@ function label(device: DeviceAccessRow): string {
  * that order. Ambiguity refuses and names the candidates: a scope change
  * must land on exactly the device the operator meant.
  */
-export function resolveDevice(
+function resolveDevice(
   devices: readonly DeviceAccessRow[],
   selector: string,
 ): DeviceAccessRow {
@@ -207,7 +207,7 @@ export function resolveDevice(
 }
 
 /** The scope a change leaves, in the vocabulary's canonical order. */
-export function nextDeviceScope(
+function nextDeviceScope(
   current: readonly PairingScope[],
   change: DeviceScopeChange,
 ): PairingScope[] {
