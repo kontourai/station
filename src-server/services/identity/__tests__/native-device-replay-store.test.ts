@@ -2,14 +2,11 @@ import type { webcrypto as nodeWebcrypto } from 'node:crypto';
 import {
   chmodSync,
   lstatSync,
-  mkdtempSync,
   readFileSync,
   renameSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -18,7 +15,8 @@ import {
 } from '@kontourai/station-contracts/native-device-proof';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { createNativeDeviceRequestProof } from '@kontourai/station-sdk/native-device-proof';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   type NativeDeviceProofBindingView,
   type NativeDeviceProofPeerView,
@@ -121,18 +119,10 @@ const jwkThumbprint = async (jwk: NativeDeviceProofPublicKeyJwk) => {
     .replace(/=+$/, '');
 };
 
-const tmpDirs: string[] = [];
-
-afterEach(() => {
-  while (tmpDirs.length > 0) {
-    const dir = tmpDirs.pop();
-    if (dir) rmSync(dir, { recursive: true, force: true });
-  }
-});
+const makeTempDir = trackTempDirs();
 
 const tempDbPath = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'native-device-replay-'));
-  tmpDirs.push(dir);
+  const dir = makeTempDir('native-device-replay-');
   return join(dir, 'replay.sqlite');
 };
 

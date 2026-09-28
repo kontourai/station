@@ -1,20 +1,19 @@
 import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
 import {
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   parsePairingScope,
 } from '@kontourai/station-contracts';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import { DevicePairingService } from '../device-pairing-service.js';
 import {
@@ -28,12 +27,11 @@ const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_ENVIRONMENT_ID = '22222222-2222-4222-8222-222222222222';
 const CLIENT_INSTANCE_ID = randomUUID();
 const OPERATOR_APPROVAL = { kind: 'presented-credential' } as const;
-const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 const BINDINGS_FILE = 'native-device-proof-bindings.json';
 
 function harness(environmentId = ENVIRONMENT_ID) {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-proof-binding-'));
-  homes.push(homeDir);
+  const homeDir = makeTempDir('station-proof-binding-');
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const pairing = new DevicePairingService({
     homeDir,
@@ -100,11 +98,6 @@ function thumbprintOf(jwk: { crv: string; kty: string; x: string; y: string }) {
     .update(JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y }))
     .digest('base64url');
 }
-
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
 
 describe('native device proof binding service (station#2893)', () => {
   test('create persists a binding tied to the approved device, station, and client', () => {
@@ -289,7 +282,7 @@ describe('native device proof binding service (station#2893)', () => {
   });
 
   test('key replacement revokes the prior binding and rebinds the new key', () => {
-    const { pairing, bindingService } = harness();
+    const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const first = bindingService.createBinding({
       deviceId,
@@ -317,7 +310,7 @@ describe('native device proof binding service (station#2893)', () => {
       thumbprintOf(secondJwk),
     );
     const reopened = new NativeDeviceProofBindingService({
-      homeDir: homes[homes.length - 1]!,
+      homeDir,
       pairing,
     });
     const reloaded = reopened.requireCurrentBinding({
