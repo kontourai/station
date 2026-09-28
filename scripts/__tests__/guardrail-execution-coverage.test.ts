@@ -147,6 +147,10 @@ const PROCESS_BOUNDARY_ACCEPT_RUNS = [
 const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
   ['cli-doc-parity.mjs', 'scripts/__tests__/cli-doc-parity.test.ts'],
   [
+    'generate-metric-reference.mjs',
+    'scripts/__tests__/metric-reference.test.ts',
+  ],
+  [
     'install-script-generated.mjs',
     'scripts/__tests__/install-script-generated.test.ts',
   ],
