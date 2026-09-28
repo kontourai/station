@@ -28,8 +28,8 @@ export async function createNativeApplicationSignalingBridge(
 }> {
   return createNativeRelaySignalingBridge({
     bindingCommand: 'station_native_relay_application_binding',
-    openCommand: 'station_native_relay_signal_application_open',
-    readCommand: 'station_native_relay_signal_application_read',
+    openCommand: 'station_native_relay_application_open',
+    readCommand: 'station_native_relay_application_read',
     errorPrefix: 'native_application',
     profileName,
     profileRevision,

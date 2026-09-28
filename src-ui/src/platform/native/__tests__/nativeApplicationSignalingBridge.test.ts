@@ -26,8 +26,8 @@ const binding = {
 
 const APPLICATION_COMMANDS = [
   'station_native_relay_application_binding',
-  'station_native_relay_signal_application_open',
-  'station_native_relay_signal_application_read',
+  'station_native_relay_application_open',
+  'station_native_relay_application_read',
 ];
 
 const requestGuard = (args?: Record<string, unknown>) => {
@@ -50,7 +50,7 @@ describe('native application signaling Tauri bridge', () => {
           expect(request).toEqual(bindingRequest);
           return binding;
         }
-        if (command === 'station_native_relay_signal_application_open') {
+        if (command === 'station_native_relay_application_open') {
           expect(request).toEqual({
             ...bindingRequest,
             nonce: 'nonce-01',
@@ -58,7 +58,7 @@ describe('native application signaling Tauri bridge', () => {
           });
           return { expiresAt: Date.now() + 20_000 };
         }
-        if (command === 'station_native_relay_signal_application_read') {
+        if (command === 'station_native_relay_application_read') {
           expect(request).toEqual({ ...bindingRequest, nonce: 'nonce-01' });
           return {
             answerSdp: 'application-answer-sdp',
@@ -210,9 +210,9 @@ describe('native application signaling Tauri bridge', () => {
         requestGuard(args);
         if (command === 'station_native_relay_application_binding')
           return binding;
-        if (command === 'station_native_relay_signal_application_open')
+        if (command === 'station_native_relay_application_open')
           return { expiresAt: 'soon' };
-        if (command === 'station_native_relay_signal_application_read')
+        if (command === 'station_native_relay_application_read')
           return { answerSdp: 7, stationProof: null, expiresAt: 1 };
         throw new Error(`unexpected command ${command}`);
       },
@@ -242,6 +242,52 @@ describe('native application signaling Tauri bridge', () => {
           nonce: 'nonce-01',
         },
         abort,
+      ),
+    ).rejects.toThrow('native_application_answer_invalid');
+  });
+
+  it('refuses extra fields in host signaling results', async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === 'station_native_relay_application_binding')
+        return binding;
+      if (command === 'station_native_relay_application_open')
+        return { expiresAt: Date.now() + 20_000, grantBearer: 'forbidden' };
+      if (command === 'station_native_relay_application_read')
+        return {
+          answerSdp: null,
+          stationProof: null,
+          expiresAt: Date.now() + 20_000,
+          projectId: 'forbidden',
+        };
+      throw new Error(`unexpected command ${command}`);
+    });
+    const bridge = await createNativeApplicationSignalingBridge(
+      'Workstation',
+      12,
+      { invoke },
+    );
+    const signal = new AbortController().signal;
+    await expect(
+      bridge.signaling.open(
+        {
+          version: 'station-broker-native-connection-open/v2',
+          scope: bridge.signaling.scope,
+          surface: bridge.signaling.surface,
+          nonce: 'nonce-01',
+          offerSdp: 'application-offer-sdp',
+        },
+        signal,
+      ),
+    ).rejects.toThrow('native_application_open_receipt_invalid');
+    await expect(
+      bridge.signaling.read(
+        {
+          version: 'station-broker-native-connection-read/v2',
+          scope: bridge.signaling.scope,
+          surface: bridge.signaling.surface,
+          nonce: 'nonce-01',
+        },
+        signal,
       ),
     ).rejects.toThrow('native_application_answer_invalid');
   });

@@ -176,7 +176,7 @@ export async function createNativeRelaySignalingBridge(
         },
       })) as { expiresAt: number };
       signal.throwIfAborted();
-      if (!safeInteger(receipt?.expiresAt))
+      if (!exactKeys(receipt, ['expiresAt']) || !safeInteger(receipt.expiresAt))
         throw new Error(`${errorPrefix}_open_receipt_invalid`);
       return receipt.expiresAt;
     },
@@ -202,7 +202,7 @@ export async function createNativeRelaySignalingBridge(
       };
       signal.throwIfAborted();
       if (
-        !answer ||
+        !exactKeys(answer, ['answerSdp', 'stationProof', 'expiresAt']) ||
         !safeInteger(answer.expiresAt) ||
         (answer.answerSdp !== null && typeof answer.answerSdp !== 'string') ||
         (answer.stationProof !== null &&
