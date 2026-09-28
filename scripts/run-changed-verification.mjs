@@ -1349,27 +1349,39 @@ export function renderChangedVerificationSummary(result) {
   ].join('\n');
 }
 
+/**
+ * #2887: a product-law path ADDS its law's evidence; it does not defer the
+ * diff. Laws used to be routed to a `ci-fast` lane, and any lane defers the
+ * whole affected selection, so a diff touching `queueDrain.ts` ran none of
+ * its ~600 related suites in fast-checks. But ci:fast already runs every
+ * law's observation and fault injection on every change: product-law-gate
+ * (inside the verification:policy:gate static, bounded by
+ * MAX_PRODUCT_LAW_RUNTIME_MS). So the law is named, its observation suites
+ * are selected beside the diff's own, and only genuinely unknown paths and
+ * escalations still defer.
+ */
 function withProductLawDispositions(selection, root, changed) {
   const manifest = loadProductLawManifest({ rootDir: root });
   const productLaws = productLawDispositions(manifest, changed);
   if (productLaws.length === 0) return { selection, productLaws };
-  const laneReasons = new Map(
-    selection.lanes.map(({ id, reasons }) => [id, new Set(reasons)]),
+  const tests = new Map(
+    selection.tests.map(({ path, reasons }) => [path, new Set(reasons)]),
   );
-  laneReasons.set(
-    'ci-fast',
-    new Set([
-      ...(laneReasons.get('ci-fast') ?? []),
-      ...productLaws.map((id) => `product-law disposition: ${id}`),
-    ]),
-  );
+  for (const law of manifest.laws.filter((entry) =>
+    productLaws.includes(entry.id),
+  ))
+    for (const evidence of [law.observation, law.faultInjection])
+      addReason(
+        tests,
+        evidence.testFile,
+        `product law ${law.id}: its observation suite (product-law-gate also runs it in the ci:fast statics)`,
+      );
   return {
     selection: {
       ...selection,
-      lanes: [...laneReasons.keys()]
+      tests: [...tests.keys()]
         .sort()
-        .map((id) => ({ id, reasons: [...laneReasons.get(id)].sort() })),
-      escalated: true,
+        .map((path) => ({ path, reasons: [...tests.get(path)].sort() })),
     },
     productLaws,
   };

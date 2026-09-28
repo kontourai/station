@@ -33,7 +33,10 @@ import {
   validateChangedVerificationReceipt,
   validateSelectedTestFiles,
 } from '../run-changed-verification.mjs';
-import { SELECTOR_DEFERRED_EXIT_CODE } from '../run-ci-fast.mjs';
+import {
+  FAST_STATIC_COMMANDS,
+  SELECTOR_DEFERRED_EXIT_CODE,
+} from '../run-ci-fast.mjs';
 import {
   buildTestImpactManifest,
   E2E_CONTRACT_BOUNDARIES,
@@ -1924,16 +1927,96 @@ setInterval(() => {}, 1000);`,
     expect(result.productLaws).toEqual([
       'station.queue-dispatch.ordered-drain',
     ]);
-    expect(result.selection.lanes).toContainEqual({
-      id: 'ci-fast',
-      reasons: [
-        'product-law disposition: station.queue-dispatch.ordered-drain',
-      ],
+    // #2887: the law adds its evidence; it does not defer the diff.
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.selection.escalated).toBe(false);
+    expect(result.selection.relatedPaths).toEqual([
+      'src-ui/src/hooks/orchestration/queueDrain.ts',
+    ]);
+    expect(result.selection.tests).toContainEqual({
+      path: 'src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts',
+      reasons: expect.arrayContaining([
+        'product law station.queue-dispatch.ordered-drain: its observation suite (product-law-gate also runs it in the ci:fast statics)',
+      ]),
     });
     expect(renderChangedVerificationSummary(result)).toContain(
       'product laws: station.queue-dispatch.ordered-drain',
     );
   });
+  test('a law path runs its related suites and the law observation end to end (#2887)', async () => {
+    const run = reportedRun();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: ['src-ui/src/hooks/orchestration/queueDrain.ts'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    // Related discovery ran (the diff's own selection) ...
+    expect(
+      run.mock.calls.some(([, args]) => (args as string[]).includes('--eval')),
+    ).toBe(true);
+    // ... and the law's observation suite ran beside it.
+    const commands = result.executed.flatMap((execution) => execution.command);
+    expect(commands).toContain(
+      './src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts',
+    );
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.receipt.terminal.status).toBe('completed');
+    expect(result.exitCode).toBe(0);
+  });
+  test('every product law is observed by the ci:fast statics, which is why a law path need not defer', () => {
+    // product-law-gate runs inside verification:policy:gate, a ci:fast
+    // static, and evaluates every law in the manifest.
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts['verification:policy:gate']).toContain(
+      'node scripts/product-law-gate.mjs',
+    );
+    expect(
+      FAST_STATIC_COMMANDS.some(
+        ([command, args]) =>
+          command === 'npm' &&
+          args[0] === 'run' &&
+          args[1] === 'verification:policy:gate',
+      ),
+    ).toBe(true);
+  });
+  test.each([
+    [['docs-private/notes.bin']],
+    [
+      [
+        'src-ui/src/hooks/orchestration/queueDrain.ts',
+        'docs-private/notes.bin',
+      ],
+    ],
+  ])(
+    'a truly unknown path still defers, law path or not: %j',
+    async (paths) => {
+      const result = await runChangedVerification(
+        ['--base=origin/main', '--explain'],
+        {
+          root: process.cwd(),
+          changedPathsFn: () => ({ mergeBase: 'base-sha', paths }),
+          collectProvenance: provenance,
+          writeReceipt: vi.fn(),
+        },
+      );
+      expect(result.selection.escalated).toBe(true);
+      expect(result.selection.lanes).toEqual([
+        expect.objectContaining({
+          id: 'ci-fast',
+          reasons: expect.arrayContaining([
+            'unknown changed path: docs-private/notes.bin',
+          ]),
+        }),
+      ]);
+    },
+  );
   test('renders a bounded terminal handoff while retaining full selection only in the artifact', () => {
     const output = renderChangedVerificationSummary({
       paths: Array.from({ length: 20 }, (_, index) => `src/${index}.ts`),
