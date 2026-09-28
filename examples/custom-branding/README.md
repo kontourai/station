@@ -60,8 +60,9 @@ What Station accepts:
   browser console with a `[branding-theme]` prefix.
 - Flat keys are expanded into both modes before checking, so a flat value must
   pass in both. One value rarely does; prefer the `dark` / `light` objects.
-- A device accent chosen in **Settings → Appearance** still wins over the theme on
-  that device.
+- A device accent chosen in **Settings → Appearance** still colours buttons and
+  links on that device over the theme's action colour. Focus rings follow the
+  theme's `--k-focus` when the theme sets it, and the device accent otherwise.
 
 ## Disable without uninstalling
 

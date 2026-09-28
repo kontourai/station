@@ -700,7 +700,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#2836: the white-label branding theme's first paint. With /api/branding held, the built app must already carry the cached, re-validated theme inline on <html> (main.tsx pre-render path), replace it with the live answer once released (BrandingThemeBridge), and apply nothing from a hostile cached copy. Unit tests cover the helpers; only the built app proves main.tsx calls them.",
+      "#2836: the white-label branding theme's first paint. Both server answers are held — GET /api/branding, and the branding section of GET /api/boot, answered as an error section so its seed cannot stand in. The built app must carry the cached, re-validated theme inline on <html> from before the first render (main.tsx pre-render path), keep it until the live answer is released, then apply that answer (BrandingThemeBridge); a hostile cached copy must never write anything. An in-page MutationObserver records every inline value, so an early clear is an observed failure rather than a timing window. Unit tests cover the helpers; only the built app proves main.tsx calls them.",
     exceptions: [],
   },
   {
