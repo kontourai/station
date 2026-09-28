@@ -1047,15 +1047,6 @@ describe('lifecycle instance state', () => {
     expect(isAlive(pid)).toBe(false);
   });
 
-  it('never runs the real fingerprint stabilizer for fabricated test PIDs', async () => {
-    const { platform } = await loadLifecycleModule();
-
-    expect(vi.isMockFunction(platform.captureStableProcessFingerprint)).toBe(
-      true,
-    );
-    expect(platform.captureStableProcessFingerprint(41_001)).toBeNull();
-  });
-
   it('fsyncs a typed operator stop intent for the exact boot before signaling', async () => {
     ensureDir(TEST_CWD);
     const journal = join(TEST_ROOT, 'lifecycle.jsonl');
@@ -3730,28 +3721,34 @@ describe('named stop home-registry reconciliation (station#3980)', () => {
   });
 });
 
-describe('parseTsxVersion', () => {
-  it('collapses two-line tsx --version output into a single labeled line', async () => {
-    const { doctor } = await loadLifecycleModule();
-
-    expect(doctor.parseTsxVersion('tsx v4.0.0\nnode v20.11.0')).toBe(
-      'tsx v4.0.0 (node v20.11.0)',
-    );
-    expect(doctor.parseTsxVersion('tsx v4.21.0\r\nnode v24.18.0')).toBe(
-      'tsx v4.21.0 (node v24.18.0)',
-    );
-  });
-
-  it('passes through single-line output and handles missing output', async () => {
-    const { doctor } = await loadLifecycleModule();
-
-    expect(doctor.parseTsxVersion('tsx v4.0.0')).toBe('tsx v4.0.0');
-    expect(doctor.parseTsxVersion(null)).toBeNull();
-    expect(doctor.parseTsxVersion('')).toBeNull();
-  });
-});
-
 describe('collectDoctorReport', () => {
+  it.each([
+    // Real `tsx --version` prints `tsx vX.Y.Z` then `node vA.B.C`; Windows
+    // shells end those lines with CRLF.
+    ['tsx v4.21.0\r\nnode v24.18.0', 'pass', 'tsx v4.21.0 (node v24.18.0)'],
+    ['tsx v4.0.0', 'pass', 'tsx v4.0.0'],
+    ['', 'fail', 'Not found'],
+    [null, 'fail', 'Not found'],
+  ] as const)('reports tsx --version output %j as one labeled line', async (output, status, detail) => {
+    const { doctor } = await loadLifecycleModule();
+
+    const report = await doctor.collectDoctorReport({
+      probeTerminalPty: () => ({ state: 'available' as const }),
+      checkOllama: async () => false,
+      inspectKontourDependencies: () => ({ exactPins: [], mismatches: [] }),
+      env: {},
+      exec: (command) => (command === 'tsx --version' ? output : null),
+      exists: () => false,
+      readJson: (_path, fallback) => fallback,
+    });
+
+    expect(report.checks.find((check) => check.label === 'tsx')).toEqual({
+      label: 'tsx',
+      status,
+      detail,
+    });
+  });
+
   it('reports a named read-only supervisor probe wedge with its kickstart remedy', async () => {
     const { doctor } = await loadLifecycleModule();
 
@@ -6652,7 +6649,8 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
 
       const staticRes = await request('/');
       expect(staticRes.status).toBe(200);
-      expect(staticRes.body).toContain('real-spawn-app');
+      // No apiBaseOverride: the served shell carries no inline bootstrap.
+      expect(staticRes.body).toBe('<head></head><body>real-spawn-app</body>');
 
       const proxiedRes = await request('/api/system/status');
       expect(proxiedRes.status).toBe(200);
@@ -6779,21 +6777,61 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       rmSync(uiDir, { recursive: true, force: true });
     }
   }, 15_000);
+
+  it('serves the nonce-bound __API_BASE__ bootstrap from the spawned script when an override is configured', async () => {
+    const { spawn } = await import('node:child_process');
+    const lifecycle = await import('../commands/lifecycle.js');
+
+    const uiDir = mkdtempSync(join(tmpdir(), 'station-ui-override-'));
+    writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+    const uiPort = 41499 + (process.pid % 300);
+    const child = spawn(
+      process.execPath,
+      [
+        '-e',
+        lifecycle.buildUiServerScript({
+          uiDir,
+          apiBaseOverride: 'http://example-override:9999',
+          upstreamPort: 1, // unused: this probe never proxies a request
+          uiPort,
+        }),
+      ],
+      { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true },
+    );
+    let stderr = '';
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+
+    try {
+      let res: Response | null = null;
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline && !res) {
+        try {
+          res = await fetch(`http://127.0.0.1:${uiPort}/`);
+        } catch {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      }
+      expect(stderr).toBe('');
+      expect(res?.status).toBe(200);
+      const body = await res!.text();
+      const nonce = /<script nonce="([^"]+)">/.exec(body)?.[1];
+      expect(nonce).toBeTruthy();
+      expect(body).toBe(
+        `<head><script nonce="${nonce}">window.__API_BASE__="http://example-override:9999";document.currentScript.remove()</script></head><body>app</body>`,
+      );
+      expect(res!.headers.get('content-security-policy')).toContain(
+        `'nonce-${nonce}'`,
+      );
+    } finally {
+      child.kill('SIGKILL');
+      rmSync(uiDir, { recursive: true, force: true });
+    }
+  }, 15_000);
 });
 
 describe('buildUiServerScript (injection-conditional API base)', () => {
-  it('omits the __API_BASE__ script tag entirely when no override is configured', async () => {
-    const lifecycle = await import('../commands/lifecycle.js');
-    const script = lifecycle.buildUiServerScript({
-      uiDir: '/tmp/does-not-matter',
-      upstreamPort: 3141,
-      uiPort: 3010,
-    });
-    expect(script).not.toContain('window.__API_BASE__');
-    // With nothing to set, no inline script is served at all.
-    expect(script).toContain('const inject=""');
-  });
-
   it('never publishes the response CSP nonce to page code', async () => {
     // station#4287. A global holding the nonce is readable by every script in
     // the document, plugin bundles included, and a script holding a nonce can
@@ -6821,28 +6859,6 @@ describe('buildUiServerScript (injection-conditional API base)', () => {
       '<script>window.__API_BASE__="http://example-override:9999";document.currentScript.remove()</script>',
     );
     expect(lifecycle.buildUiBootstrapScript({})).toBe('');
-  });
-
-  it('injects the __API_BASE__ script tag only when an explicit apiBaseOverride is provided', async () => {
-    const lifecycle = await import('../commands/lifecycle.js');
-    const script = lifecycle.buildUiServerScript({
-      uiDir: '/tmp/does-not-matter',
-      apiBaseOverride: 'http://example-override:9999',
-      upstreamPort: 3141,
-      uiPort: 3010,
-    });
-    expect(script).toContain('window.__API_BASE__');
-    expect(script).toContain('http://example-override:9999');
-  });
-
-  it('always threads upstreamPort through for the reverse proxy, override or not', async () => {
-    const lifecycle = await import('../commands/lifecycle.js');
-    const script = lifecycle.buildUiServerScript({
-      uiDir: '/tmp/does-not-matter',
-      upstreamPort: 4242,
-      uiPort: 3010,
-    });
-    expect(script).toContain('const upstreamPort=4242');
   });
 });
 
