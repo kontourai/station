@@ -19335,7 +19335,7 @@
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "98eea5a77a16fcc0e256c11d1f5dbf92710df700a5cbd046e2c1e2451c64d663",
-      "sourceRevision": "a1478b242401c5da824956478bd77fef1f4dfa51",
+      "sourceRevision": "a492cba4e1bec65beda3916a70eed4588e3f85d7",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -19503,11 +19503,11 @@
         },
         {
           "path": "scripts/test-impact-manifest.mjs",
-          "digest": "a16d79677398fc60231240783708d5e2fba0f19cc5b77afe754752abee6c920e"
+          "digest": "ee3e258c916ca3725495c4bcfe06e006cb3b7b6c61c13f7169b973f70d8a7ea5"
         },
         {
           "path": "scripts/__tests__/path-read-pin-boundary.test.ts",
-          "digest": "498d2f31e466316f90c75b4861ae454e94bad8343c01e379b7d50eb240bb0a24"
+          "digest": "5638911fd695344c0aaf5e24464e8e23c236e383da9d38354b0735410b8999bf"
         },
         {
           "path": "scripts/__tests__/portable-server-archive.test.ts",
@@ -19523,7 +19523,7 @@
         },
         {
           "path": "scripts/__tests__/changed-verification.test.ts",
-          "digest": "6ae5cdade4e17693497354b44780f3f712b3e0508efd38be1d333b41d284b77f"
+          "digest": "3cbddd65d8e3d23de2bc72565ccdf0d5f5226319a2f4d182f20d1c66b5bdf2bd"
         },
         {
           "path": "scripts/__tests__/fast-checks-shard-cli.test.ts",
@@ -19578,7 +19578,8 @@
         "2026-09-28 test-audit refresh: path-read-pin-boundary.test.ts only added one justified entry to the unreported path-read suite list; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only path-read-pin-boundary.test.ts, adding turn-started-attachment-projection.test.ts to the unreported path-read suite list (verified with git diff d0ca944c5 062fad816); the guide names neither file; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
         "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes.",
-        "Transfer gate section rewritten for merge-base discovery (#2925); selection section adds derived spawned-script edges and the vitest.setup.ts event-environment scrub (#2922). Other claims re-read against the diff."
+        "Transfer gate section rewritten for merge-base discovery (#2925); selection section adds derived spawned-script edges and the vitest.setup.ts event-environment scrub (#2922). Other claims re-read against the diff.",
+        "Re-read after ci-event-environment.test.ts joined the .github/workflows/** impact edge and walker/path-read classifications; the selection section already describes derived and hand-kept edges."
       ]
     },
     {
@@ -29843,7 +29844,7 @@
     },
     {
       "path": "scripts/__tests__/fixtures/changed-verification/README.md",
-      "sourceRevision": "a1478b242401c5da824956478bd77fef1f4dfa51",
+      "sourceRevision": "a492cba4e1bec65beda3916a70eed4588e3f85d7",
       "kind": "fixture",
       "state": "classified",
       "summary": "One-sentence fixture marker. scenarios.json names this README as a boundary-selection input; it is not a production feature or executable module.",
@@ -29852,7 +29853,7 @@
       "sources": [
         {
           "path": "scripts/__tests__/changed-verification.test.ts",
-          "digest": "6ae5cdade4e17693497354b44780f3f712b3e0508efd38be1d333b41d284b77f"
+          "digest": "3cbddd65d8e3d23de2bc72565ccdf0d5f5226319a2f4d182f20d1c66b5bdf2bd"
         },
         {
           "path": "scripts/__tests__/fixtures/changed-verification/scenarios.json",
@@ -29872,7 +29873,8 @@
         "Reviewed landing deltas through 111744681: Deadline tests cover the actual selector CLI over fixtures. The representative full-checkout test retains all assertions but has a 120s child / 125s outer liveness fence; measured checkout overhead exceeded its former 30s cap. Discovery derives timeout after refinement, keeps a 30s reserve and 60s standalone fallback, refuses insufficient/invalid budgets, and removes the deadline from child environments. Malformed CLI environment is refused before a diagnostic; exhausted valid preparation records infrastructure failure. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
         "Integration source review through e0314c727: changed-verification.test.ts only changed the SPAWNED_SCRIPT_EDGES count from 11 to 10. The README's narrow-diff demo and 120-second liveness claims still match the test (timeout: 120_000). The ledger summary calls this a 'one-sentence' marker, but the file is a 15-line explanation; the summary wording, not the README, is stale. Classification review only.",
         "Integration source review through 42491ca6b: 55cc03451 (#2910) makes a product-law path add its law's observation and fault-injection Vitest suites to the selection (productLawEvidenceTests) instead of adding a ci-fast lane and escalating. The test delta covers that behavior. The representative narrow-diff demo and the 120_000 ms liveness timeout that the README describes are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Fixture semantics unchanged; changed-verification.test.ts only accepts the additional explicit suites derived spawned-script edges add (#2922)."
+        "Fixture semantics unchanged; changed-verification.test.ts only accepts the additional explicit suites derived spawned-script edges add (#2922).",
+        "Fixture semantics unchanged; changed-verification.test.ts only adds the new workflow reader to its governed-reader inventory."
       ]
     },
     {
