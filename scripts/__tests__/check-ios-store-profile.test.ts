@@ -275,7 +275,12 @@ describe('App Store iOS provisioning-profile gate', () => {
     );
   });
 
-  test('fails closed when security is absent', () => {
+  // decodeProvisioningProfile does not branch on why the decoder failed; both
+  // causes must reach the same fail-closed refusal.
+  test.each([
+    ['security is absent', 'spawn security ENOENT'],
+    ['security cms exits non-zero', 'security cms exited 1'],
+  ])('fails closed when %s', (_cause, message) => {
     const profile = resolve(
       import.meta.dirname,
       'fixtures/ios-profiles',
@@ -283,22 +288,7 @@ describe('App Store iOS provisioning-profile gate', () => {
     );
     expect(() =>
       decodeProvisioningProfile(profile, () => {
-        throw new Error('spawn security ENOENT');
-      }),
-    ).toThrow(
-      `Unable to decode embedded.mobileprovision at ${profile} with security cms; cannot verify App Store distribution.`,
-    );
-  });
-
-  test('fails closed when security cms exits non-zero', () => {
-    const profile = resolve(
-      import.meta.dirname,
-      'fixtures/ios-profiles',
-      'app-store.plist',
-    );
-    expect(() =>
-      decodeProvisioningProfile(profile, () => {
-        throw new Error('security cms exited 1');
+        throw new Error(message);
       }),
     ).toThrow(
       `Unable to decode embedded.mobileprovision at ${profile} with security cms; cannot verify App Store distribution.`,

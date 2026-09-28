@@ -11,13 +11,23 @@ Default layout starter for new Station plugins. It demonstrates a small, copyabl
 
 ## Run It
 
-From this repository, install it through the local registry manifest or copy the directory into a Station plugin home:
+From the repository root, preview and install the directory through a running
+local Station. The CLI must select it through automatic active-local discovery
+or its default loopback fallback; explicit/saved targets require a Git source.
 
 ```bash
-station registry install getting-started-starter --manifest examples/registry/manifest.json
+station plugin preview ./examples/getting-started-starter
+station plugin install ./examples/getting-started-starter
 ```
 
-The plugin is intentionally static. Replace the copy and panels first, then add providers only when the layout needs persistent data.
+Review the requested permissions and any separate trusted grants. Add its layout
+to the intended Project after installation is ready. The plugin is intentionally
+static. Replace the copy and panels first, then add providers when the layout
+needs persistent data. The [local registry](../registry/README.md) is another
+discovery path; `registry install` has no per-call `--manifest` option. After
+`./station registry ./examples/registry/manifest.json` selects that catalog,
+`station registry install getting-started-starter` installs this static
+starter.
 
 ## Workspace host action migration
 

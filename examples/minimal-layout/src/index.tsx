@@ -2,14 +2,6 @@ import { useAgents, useNavigation, useToast } from '@kontourai/station-sdk';
 import type { ComponentType } from 'react';
 import './layout.css';
 
-/**
- * Minimal Workspace - Example plugin component
- *
- * Demonstrates basic SDK usage:
- * - Accessing agents via useAgents()
- * - Controlling chat dock via useNavigation()
- * - Showing notifications via useToast()
- */
 function MinimalWorkspace() {
   const agents = useAgents();
   const { setDockState } = useNavigation();

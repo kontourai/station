@@ -23,15 +23,19 @@ set precedence cannot mask the release identity. The TestFlight delivery
 workflow (`testflight-delivery.yml`) deletes `gen/apple` and runs
 `tauri ios init`, which renders `Assets.xcassets/AppIcon.appiconset` from
 Tauri's template with Tauri's own default PNGs, so it calls
-`scripts/ios-channel-icons.mjs apply <channel>` after each init to copy the
+`node scripts/ios-channel-icons.mjs apply <channel>` after each init to copy the
 committed `icons/<channel>/ios/AppIcon-*.png` set (stable, beta, nightly; from
 the square master, because iOS rejects alpha and the generator refuses any
-translucent pixel) over it, and `ios-channel-icons.mjs verify` proves the built
-catalog and the IPA's icon are that set, amending the channel-icon receipt the
+translucent pixel) over it. `ios-channel-icons.mjs verify` compares every PNG
+referenced by the source catalog with that set, then compares the shipped
+`AppIcon60x60@2x.png` pixels with the corresponding input. It does not inspect
+every rendition in the compiled asset catalog. It amends the channel-icon receipt the
 overlay step created (its `desktopBundleIcon*` fields name the desktop master
-from `bundle.icon`, not the shipped icon). Every other iOS build (`build-ios.yml`, the release
-simulator job, local builds) runs init with `gen/apple` present and consumes
-the committed catalog, which is the stable set. Stable keeps the approved
+from `bundle.icon`, not the shipped icon). The ordinary `build-ios.yml` and release simulator jobs run init with
+`gen/apple` present and have no corresponding channel-icon apply/verify step.
+The committed catalog is the stable set; a local or alternate build must check
+its actual output instead of assuming that every init preserves the intended
+icons. Stable keeps the approved
 default artwork; `favicon-dev.png` is swapped into Dev by `is-dev-build` in
 `src-ui/src/index.css`.
 Generate icons only when deliberately changing the artwork:
@@ -64,5 +68,6 @@ If you prefer to manually create icons:
 
 - Use a simple, recognizable symbol
 - Ensure good contrast at small sizes (32x32)
-- Include transparency for rounded corners
+- Use the rounded desktop master where alpha is supported; keep the iOS,
+  Android and Windows tile master opaque and square.
 - Test on both light and dark backgrounds

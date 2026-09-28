@@ -228,6 +228,17 @@ export interface RuntimeHttpSecurityOptions {
       activity?: RuntimeCredentialActivityContext;
     },
   ) => boolean | Promise<boolean>;
+  /**
+   * Whether `credential` is a live Station credential, independent of route
+   * admission. Production `verifyCredential` is admission
+   * (`authorizeCredential`) and returns false for an ordinary paired device
+   * on routes that device may not use. Callers that supply this receive
+   * `403 insufficient_scope` for that case instead of
+   * `401 authentication_required`. The 401 is reserved for a credential the
+   * server does not recognize, because the browser treats it as a dead
+   * device session.
+   */
+  recognizeCredential?: (credential: string) => boolean | Promise<boolean>;
   /** Resolves a verified credential's concrete authority for route handlers. */
   resolveCredentialAuthority?: (
     credential: string,

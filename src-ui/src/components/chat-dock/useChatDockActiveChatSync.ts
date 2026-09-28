@@ -12,22 +12,10 @@ interface UseChatDockActiveChatSyncArgs {
     intent?: { session?: string; focus?: 'evidence' },
   ) => void;
   /**
-   * Whether the agent catalog query has resolved SUCCESSFULLY at least once
-   * — not merely settled (`useAgentsLoaded` deliberately excludes an errored
-   * query; see its doc). `agentCatalogKey` alone cannot carry this: it is
-   * built by joining agent slugs, so an unloaded catalog (`agents === []`
-   * before the query settles) and a genuinely, durably empty catalog
-   * (loaded, zero agents) both stringify to `''` — the same key. Gating the
-   * "was this a real miss" decision on key-emptiness therefore could not
-   * tell "still loading" from "there is truly nothing here," so a
-   * loaded-but-zero-agents catalog could never produce a distinct second key
-   * and the #801 deleted-agent clear would never fire for it (#945 MED
-   * finding). This flag is threaded through explicitly instead so both
-   * cases resolve correctly — and because it specifically requires success
-   * (not just "not loading"), a query that errored or is mid-refetch reports
-   * `false` here too, so it authorizes neither a definitive clear nor a
-   * spent retry budget; it stays in the retry-pending posture until the
-   * catalog actually answers (#945 round-2 MED finding).
+   * A successful catalog observation, not merely a settled query. Unloaded
+   * and confirmed-empty catalogs both have an empty key. Errors/refetches
+   * remain false so they cannot authorize a missing-agent decision or spend
+   * its retry budget (#945).
    */
   agentsLoaded: boolean;
   apiBase: string;
@@ -90,15 +78,8 @@ export function useChatDockActiveChatSync({
       attemptRef.current = { activeChat, attemptKeys: [] };
     }
     const attempt = attemptRef.current;
-    // The loaded-state is folded into the dedup/scheduling key alongside the
-    // catalog contents: an unloaded catalog (`agentsLoaded === false`) and a
-    // loaded-but-empty one both produce `agentCatalogKey === ''`, so without
-    // this prefix the loaded-empty attempt would look identical to the
-    // already-tried unloaded attempt and never actually run — both the
-    // dedup check below and this effect's re-run (React only re-fires an
-    // effect when a dependency's value actually changes) need the loaded
-    // flag as a first-class signal, not folded away inside the string it
-    // controls.
+    // Loading and confirmed-empty catalogs share a key; include successful
+    // load state so the latter gets its own attempt (#945).
     const attemptKey = `${agentsLoaded}:${agentCatalogKey}:${lookupRetryGeneration}`;
     if (
       attempt.attemptKeys.includes(attemptKey) ||
@@ -115,55 +96,28 @@ export function useChatDockActiveChatSync({
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const catalogWasLoadedForThisAttempt = agentsLoaded;
     /**
-     * Drop the URL pointer at a chat this dock could not open. Clearing `chat`
-     * is mandatory, not cosmetic: leaving it would re-seed `activeChat` from
-     * the URL on the very next render (parseUrl() reads `chat` regardless of
-     * pathname) and loop this effect right back into the dead conversation it
-     * just gave up on. Clearing `dock` prevents a stale open Chat dock.
-     * `maximize` is not named here: `updateParams` deletes it on every
-     * `dock: null` write (station#1613), so a reload of a maximized chat whose
-     * session was never persisted closes to a plain closed dock rather than
-     * the closed-plus-maximized pair archive#795 refuses.
+     * Clear the URL or parseUrl reopens the same dead conversation. A
+     * dock:null update also clears maximize in the navigation owner
+     * (#1613, archive#795); this helper does not duplicate that rule.
      */
     const clearDeadChatPointer = () => {
       updateParamsRef.current({ chat: null, dock: null });
     };
     /**
-     * station#1284 (D2c): the clear is not silent — Activity is revealed with
-     * the session, mirroring the pattern ChatDock's own inbox panel uses, so
-     * the user keeps a way back to the conversation.
-     *
-     * Reachable only where the lookup PRODUCED a conversation record. That
-     * record is the evidence there is a session to go and see; without it the
-     * reveal is a claim with no source, and #1582 measured what that costs: a
-     * chat that was never promoted to a conversation leaves `?chat=<sessionId>`
-     * in the URL (`activeChatDurableId`), the reload's lookup 404s because
-     * nothing was ever persisted, and the fallback opened the Activity region
-     * — a region the user never opened, filled with skeletons for a session id
-     * that resolves to nothing. A definitive miss now clears the pointer and
-     * places no surface, so what is on screen after a load stays a derivation
-     * of the persisted arrangement.
+     * Preserve a recovery surface for an existing or unresolved Session
+     * (archive#1284). A definitive missing record must skip this path: #1582
+     * otherwise opened an unrequested region full of nonexistent-session
+     * skeletons after reloading an unpromoted chat.
      */
     const revealActivityForSession = () => {
       clearDeadChatPointer();
       showSurfaceRef.current('activity', { session: activeChat });
     };
     /**
-     * A persisted tab can hydrate at any point while a cold lookup is in
-     * flight. Its durable local identity wins over the lookup either way
-     * (station#3782), on the failure path as much as the resolved one.
-     *
-     * Measured honestly, because #3782 reads this as the failure path routing
-     * away from a restored chat: in every ordering a test can stage, the first
-     * effect above has already bumped `requestGenerationRef` by then (it fires
-     * whenever `sessions` gains this chat) and the generation check discards
-     * the stale attempt before either branch is reached — an injection that
-     * removes this line does not redden. What is left is the window between
-     * `sessionsRef.current = sessions` (assigned during render) and that
-     * effect's passive flush, where the ref is already fresh and the
-     * generation is not. This closes it, and is deliberately the same
-     * belt-and-braces the resolved path carries; it is not covered by a test
-     * that could fail without it, which is why it says so here.
+     * A locally hydrated tab wins over a cold lookup (#3782). The generation
+     * guard covers tested orderings. This additional check covers the window
+     * after the render updates sessionsRef but before the passive effect
+     * advances the generation; removing it did not fail the existing tests.
      */
     const hydratedLocally = () =>
       sessionsRef.current.some(
@@ -203,19 +157,9 @@ export function useChatDockActiveChatSync({
                   projectSlug: conversation.projectSlug ?? undefined,
                 },
               );
-        // The lookup now reports the conversation's true owner, which may be
-        // an agent that no longer exists. Clear the pointer rather than
-        // leaving it aimed at a chat that can never open (#801 review).
-        //
-        // An unloaded catalog for this attempt means `opened === false` here
-        // can mean "the catalog wasn't ready," not "this agent is gone" —
-        // clearing on that reading strands the retry this effect exists to
-        // grant: the pointer is nulled and the `!activeChat` guard above
-        // blocks the very re-run that would have supplied the real catalog.
-        // A LOADED catalog (even a durably empty one) that still misses is a
-        // definitive result — clear it, exactly like #801 intends. Only a
-        // genuinely inconclusive (not-yet-loaded) attempt with budget left
-        // gets to wait.
+        // A loaded catalog that refuses the conversation's owner is a real
+        // miss (#801). Before it loads, the same refusal may only mean the
+        // Agent is not ready; preserve the pointer while a retry remains.
         const retryStillAvailable = attempt.attemptKeys.length < 2;
         const inconclusive = !catalogWasLoadedForThisAttempt;
         if (opened === false && !(inconclusive && retryStillAvailable)) {

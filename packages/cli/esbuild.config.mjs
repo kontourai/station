@@ -23,10 +23,8 @@
  * than transpiled on every run (`docs/design/cli-product.md`).
  *
  * What gets inlined: every `@kontourai/station-*` workspace package. Those
- * publish raw TypeScript deliberately (their consumer is a bundler), and
- * `@kontourai/station-connect` is `private: true` — inlining `device-pairing`
- * at build time means that package never has to be published just to satisfy
- * an import, and no raw-`.ts` resolution ever happens at runtime.
+ * expose source for bundler consumers; inlining keeps the executable from
+ * requiring raw-TypeScript resolution or a workspace checkout at runtime.
  *
  * What stays external: only packages that cannot be inlined, for the reasons
  * `scripts/lib/server-build-config.mjs` already documents for the server
@@ -68,7 +66,7 @@ const bundleMetadata = deriveCliBundleMetadata({
 });
 
 /**
- * The CLI's only unbundleable import. `@kontourai/station-shared/build` calls
+ * One external dependency is esbuild. `@kontourai/station-shared/build` calls
  * esbuild's JS API to build plugins, and esbuild ships a per-platform native
  * binary resolved from its own installed package — the same reason the server
  * build keeps it external. Asserted against the server list so this cannot
@@ -78,7 +76,8 @@ const bundleMetadata = deriveCliBundleMetadata({
  * (`packages/shared/src/build.ts`), which esbuild preserves as a runtime
  * `import()` for an external package, so the three plugin-authoring verbs load
  * it on demand and `packages/cli/package.json` can declare it as an optional
- * peer instead of a dependency every client-verb user downloads.
+ * peer instead of a dependency every client-verb user downloads. The native
+ * keyring is external too; bundle-externals.mjs owns the complete list.
  *
  * The list itself lives in `./bundle-externals.mjs`, shared with
  * `scripts/__tests__/publish-surface.test.ts` — that test asserts every name

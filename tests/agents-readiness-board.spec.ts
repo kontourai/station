@@ -166,6 +166,15 @@ test.describe('Agents readiness board', () => {
     await expect(
       page.getByText(`Not set up: ${reason}`, { exact: true }),
     ).toBeVisible();
+
+    // archive#3742: the reason above is echoed from the server, so matching
+    // it cannot notice an id leaking into it. A connection id is never a user
+    // noun: neither the missing engine's id nor the "engine connection"
+    // phrasing may reach the page. `innerText` applies text-transform, so
+    // compare lowercased.
+    const shell = (await page.locator('body').innerText()).toLowerCase();
+    expect(shell).not.toContain(MISSING_ENGINE_ID);
+    expect(shell).not.toContain('engine connection');
   });
 
   test("a Ready row's Chat action opens a chat with that agent", async ({

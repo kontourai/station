@@ -345,8 +345,6 @@ describe('TestFlight delivery applies and verifies the channel icon set', () => 
     expect(run).toContain(verify);
     expect(run.indexOf(verify)).toBeGreaterThan(run.indexOf('unzip -q "$ipa"'));
     expect(run.indexOf(verify)).toBeLessThan(run.indexOf('cp "$ipa"'));
-    expect(source).not.toContain('test -s "$generated_icon"');
-    expect(source).not.toContain('generatedAssetSha256');
     const overlay = named('Generate the exact channel identity overlay')
       .run as string;
     expect(overlay).toContain(

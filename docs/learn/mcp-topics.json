@@ -1,0 +1,285 @@
+{
+  "version": 1,
+  "source": "docs/reference/station-docs.md",
+  "topics": [
+    {
+      "id": "station-overview",
+      "title": "What Station is",
+      "summary": "Station is a local-first agent workspace for directing execution and inspecting results and evidence. Ordinary turn completion and an explicitly attached workflow's gate verdict are different facts.",
+      "tags": [
+        "overview",
+        "what is station",
+        "mission",
+        "evidence",
+        "local-first",
+        "receipts",
+        "introduction"
+      ],
+      "section": "What Station is"
+    },
+    {
+      "id": "station-docs",
+      "title": "These docs, and what they cannot do",
+      "summary": "station-docs serves static, read-only documentation on supported tool-server delivery paths. Station operations use separate station-control tools and remain subject to caller authority and policy.",
+      "tags": [
+        "station-docs",
+        "capability",
+        "limits",
+        "boundary",
+        "station-control",
+        "cannot",
+        "read-only",
+        "honesty"
+      ],
+      "section": "These docs, and what they cannot do"
+    },
+    {
+      "id": "projects",
+      "title": "Projects",
+      "summary": "A Project organizes durable work, layouts, Agents, knowledge, and settings, with explicit resource and workspace bindings where needed.",
+      "tags": [
+        "project",
+        "projects",
+        "workspace",
+        "layout",
+        "layouts",
+        "directory",
+        "context"
+      ],
+      "section": "Projects"
+    },
+    {
+      "id": "agents-and-engines",
+      "title": "Agents and engines",
+      "summary": "An agent is the actor you pick to do work; an engine is what actually executes it — Station's own engine or an external engine such as Claude Code, Codex, or a custom CLI engine you connect by its command.",
+      "tags": [
+        "agent",
+        "agents",
+        "engine",
+        "engines",
+        "external agent",
+        "claude code",
+        "codex",
+        "acp",
+        "capability matrix"
+      ],
+      "section": "Agents and engines"
+    },
+    {
+      "id": "connections",
+      "title": "Connections",
+      "summary": "Connections separates Model connections used by Station's engine from external Engines that run their own loop.",
+      "tags": [
+        "connection",
+        "connections",
+        "provider",
+        "providers",
+        "model",
+        "ollama",
+        "bedrock",
+        "engine connection",
+        "setup"
+      ],
+      "section": "Connections"
+    },
+    {
+      "id": "builtin-assistant",
+      "title": "The built-in assistant, and what it needs",
+      "summary": "The reserved Station Agent operates the workspace through Station Control. Its selected engine must support control delivery, and delivery alone does not grant operator authority or full access.",
+      "tags": [
+        "built-in assistant",
+        "default agent",
+        "station-control",
+        "engine picker",
+        "capable",
+        "incapable",
+        "credential",
+        "cannot operate"
+      ],
+      "section": "The built-in assistant, and what it needs"
+    },
+    {
+      "id": "sessions-and-runs",
+      "title": "Sessions, turns, and runs",
+      "summary": "A session is one bounded episode of agent work, a turn is one user-to-agent interaction inside it, and a run is the tracked execution accounting for that work.",
+      "tags": [
+        "session",
+        "sessions",
+        "turn",
+        "run",
+        "runs",
+        "events",
+        "orchestration",
+        "lifecycle"
+      ],
+      "section": "Sessions, turns, and runs"
+    },
+    {
+      "id": "tasks",
+      "title": "Tasks and the task workspace",
+      "summary": "A task is a durable work identity owned by a project — it outlives any single session, keeps its workspace binding and references, and can be reopened after a restart.",
+      "tags": [
+        "task",
+        "tasks",
+        "work item",
+        "board",
+        "dispatch",
+        "task workspace",
+        "references"
+      ],
+      "section": "Tasks and the task workspace"
+    },
+    {
+      "id": "scheduled-jobs",
+      "title": "Scheduled jobs and notifications",
+      "summary": "Jobs support cron, fixed-interval and one-time schedules, plus manual runs. Scheduler receipts describe execution outcomes; they do not automatically attach Flow gates. Subsystems and plugins also contribute notifications.",
+      "tags": [
+        "job",
+        "jobs",
+        "schedule",
+        "scheduler",
+        "cron",
+        "interval",
+        "one-time",
+        "notifications"
+      ],
+      "section": "Scheduled jobs and notifications"
+    },
+    {
+      "id": "skills",
+      "title": "Skills",
+      "summary": "A skill is a reusable instruction and behavior bundle. Station-authored skill delivery depends on the selected engine's supported channel; missing delivery must not be confused with activation.",
+      "tags": [
+        "skill",
+        "skills",
+        "capability",
+        "instructions",
+        "command",
+        "commands",
+        "slash command",
+        "registry",
+        "undelivered"
+      ],
+      "section": "Skills"
+    },
+    {
+      "id": "tool-servers",
+      "title": "MCP tool servers, integrations, and tools",
+      "summary": "An integration is an MCP server exposing tools. Station Control and Station Docs are two built-in examples with different authority; other servers, such as Station Browser, have their own delivery boundaries.",
+      "tags": [
+        "mcp",
+        "tool server",
+        "tool servers",
+        "integration",
+        "integrations",
+        "tools",
+        "station-control",
+        "station-docs",
+        "approval",
+        "passthrough"
+      ],
+      "section": "MCP tool servers, integrations, and tools"
+    },
+    {
+      "id": "trust-and-receipts",
+      "title": "Trust, gates, evidence, and receipts",
+      "summary": "Station presents Flow verdicts, Veritas readiness and Surface trust bundles through their owners' contracts, alongside its own execution records. Missing evidence and source authority remain explicit.",
+      "tags": [
+        "trust",
+        "gate",
+        "gates",
+        "evidence",
+        "receipt",
+        "receipts",
+        "flow",
+        "veritas",
+        "surface",
+        "readiness",
+        "exception",
+        "route-back",
+        "not_verified"
+      ],
+      "section": "Trust, gates, evidence, and receipts"
+    },
+    {
+      "id": "fleet",
+      "title": "Fleet inference across Stations",
+      "summary": "Fleet inference lets one Station serve model capacity to another Station you control, with routing and serving receipts — and contribution is opt-in and off by default.",
+      "tags": [
+        "fleet",
+        "inference",
+        "routing",
+        "serve",
+        "capacity",
+        "multiple stations",
+        "monitoring",
+        "receipts",
+        "gpu"
+      ],
+      "section": "Fleet inference across Stations"
+    },
+    {
+      "id": "plugins",
+      "title": "Plugins and the registry",
+      "summary": "Plugins extend Station through published contracts, declared contributions, and admitted capabilities such as layouts, Agents, tools, providers, and knowledge namespaces.",
+      "tags": [
+        "plugin",
+        "plugins",
+        "registry",
+        "install",
+        "extension",
+        "sdk",
+        "layouts",
+        "mcp-ui",
+        "standards"
+      ],
+      "section": "Plugins and the registry"
+    },
+    {
+      "id": "plugin-authoring",
+      "title": "Writing a plugin: manifest, Workspace Panes, SDK hooks, validation and install",
+      "summary": "How to write a Station plugin that adds a Workspace Pane: the Agent Plugins 1.0 manifest with its io.kontourai.station extension, the components export, the SDK hooks a pane can call, how to check it with validate_plugin, and how a person installs it.",
+      "tags": [
+        "plugin authoring",
+        "write a plugin",
+        "create plugin",
+        "plugin.json",
+        "manifest",
+        "agent plugins",
+        "io.kontourai.station",
+        "workspace pane",
+        "workspacepanes",
+        "pane",
+        "renderer",
+        "plugin-component",
+        "mcp-tool-ui",
+        "components",
+        "sdk",
+        "hooks",
+        "usesendtochat",
+        "validate_plugin",
+        "validate",
+        "install",
+        "propose_plugin_install",
+        "proposal",
+        "permissions"
+      ],
+      "section": "Writing a plugin: manifest, Workspace Panes, SDK hooks, validation and install"
+    },
+    {
+      "id": "vocabulary",
+      "title": "Station vocabulary",
+      "summary": "A compact glossary of the words Station uses precisely: Station, device, engine, agent, project, task, session, run, gate, evidence, receipt, and the retired term \"runtime\".",
+      "tags": [
+        "glossary",
+        "vocabulary",
+        "terms",
+        "definitions",
+        "naming",
+        "words",
+        "runtime"
+      ],
+      "section": "Station vocabulary"
+    }
+  ]
+}

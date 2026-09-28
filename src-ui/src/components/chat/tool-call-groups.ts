@@ -27,15 +27,10 @@ import {
   type ToolCallPhase,
   toolCallPhase,
 } from './tool-call-labels';
-import {
-  isToolCallPart,
-  type ToolCallLike,
-  type ToolCallRun,
-} from './tool-call-runs';
+import type { ToolCallLike, ToolCallRun } from './tool-call-runs';
 import { toolDisplayView } from './tool-display-view';
 
 export type { ToolCallKind, ToolCallLike };
-export { classifyToolName, isToolCallPart };
 
 interface KindNouns {
   singularNoun: string;

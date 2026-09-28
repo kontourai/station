@@ -1,5 +1,15 @@
 # Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 
+> **Reading status: shaped design and July 2026 delivery plan.** The problem
+> inventory, sibling package/publish observations, test-hang report, and slice
+> dependencies describe that session's baseline, not current availability or
+> release state. Current Station composition is routed through the
+> [Module map](../architecture/module-map.md#taskdispatcher-and-taskgraph),
+> [Task dispatcher](../../src-server/services/projects/task-dispatcher.ts), and
+> [Console Board placement](../../src-ui/src/views/ConsoleBoardView.tsx).
+> These source owners do not certify the cross-runtime success criteria or
+> current sibling-product behavior; the recorded decisions remain below.
+
 - **Status:** Shaped (builder.shape session `work-plane-composition`, 2026-07-20)
 - **Provenance:** Shaped interactively; decisions below record the calls made during that session.
 

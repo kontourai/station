@@ -1,8 +1,15 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { resolve } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 import { DAILY_DRIVER_PROFILES } from '../daily-driver-profiles.mjs';
 import { runDailyDriverUiQualification } from '../daily-driver-ui-qualification.mjs';
 import { createDailyDriverUiObservation } from '../lib/daily-driver-ui-observation.mjs';
+
+const { spawnSync } = vi.hoisted(() => ({ spawnSync: vi.fn() }));
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  spawnSync,
+}));
 
 const SOURCE_REVISION = 'b'.repeat(40);
 const cleanCheckout = () => {};
@@ -83,20 +90,54 @@ describe('daily-driver UI qualification wrapper', () => {
     ).rejects.toThrow(/wrote no observation/);
   });
 
+  it('launches the focused product run against the owned observation path', async () => {
+    const root = '/checkout';
+    vi.stubEnv('PW_BASE_URL', 'http://inherited.example');
+    spawnSync.mockReturnValue({ status: 0, signal: null });
+    try {
+      await runDailyDriverUiQualification({
+        root,
+        makeTemp: () => '/tmp/station-daily-driver-ui-spawn-test',
+        removeTemp() {},
+        assertCheckoutClean: cleanCheckout,
+        resolveRevision: () => SOURCE_REVISION,
+        fileExists: () => true,
+        readFile: () => JSON.stringify(observation()),
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(spawnSync).toHaveBeenCalledOnce();
+    const [command, args, options] = spawnSync.mock.calls[0];
+    expect([command, args]).toEqual([
+      process.execPath,
+      [
+        resolve(root, 'scripts/run-e2e-suite.mjs'),
+        '--suite=product',
+        '--spec=tests/cross-runtime-chat-switching.spec.ts',
+        '--grep=keeps deterministic Claude and Codex browser turns exact, settled, and project-bound',
+      ],
+    ]);
+    expect(options).toMatchObject({
+      cwd: root,
+      stdio: 'inherit',
+      timeout: 180_000,
+      killSignal: 'SIGTERM',
+    });
+    expect(options.env).not.toHaveProperty('PW_BASE_URL');
+    expect(options.env).toMatchObject({
+      STATION_DAILY_DRIVER_UI_OBSERVATION_PATH:
+        '/tmp/station-daily-driver-ui-spawn-test/observation.json',
+      STATION_DAILY_DRIVER_UI_SOURCE_REVISION: SOURCE_REVISION,
+    });
+  });
+
   it('does not expose a caller-supplied observation path through its public executable', () => {
     const source = readFileSync(
       new URL('../daily-driver-ui-qualification.mjs', import.meta.url),
       'utf8',
     );
     expect(source).not.toContain('process.argv');
-    expect(source).toContain("join(directory, 'observation.json')");
-    expect(source).toContain("'scripts/run-e2e-suite.mjs'");
-    expect(source).toContain('`--suite=$' + '{PRODUCT_SUITE}`');
-    expect(source).toContain('const { PW_BASE_URL: _inheritedBaseUrl');
-    expect(source).not.toContain('node_modules/@playwright/test/cli.js');
-    expect(source).toContain("stdio: 'inherit'");
-    expect(source).toContain('timeout: timeoutMs');
-    expect(source).toContain("killSignal: 'SIGTERM'");
   });
 
   it('fails closed when the checkout revision changes during its isolated run', async () => {

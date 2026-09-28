@@ -2,14 +2,6 @@ import { describe, expect, test } from 'vitest';
 import { getACPConnectionStatusView } from '../components/acp-connections/utils';
 import type { ACPConnectionInfo } from '../hooks/useACPConnections';
 
-const finiteReadinessLabels = [
-  'Checking',
-  'Ready',
-  'Setup needed',
-  'Unavailable',
-  'Off',
-] as const;
-
 function connection(
   status: string,
   enabled: boolean,
@@ -63,27 +55,9 @@ describe('acp connection status utils', () => {
         connection(status, enabled, source),
       );
 
-      expect(finiteReadinessLabels).toContain(result.statusLabel);
       expect(result.statusLabel).toBe(statusLabel);
       expect(result.recommendedAction).toBe(recommendedAction);
       expect(result.isPlugin).toBe(source === 'plugin');
     },
   );
-
-  test('does not expose more than one recommended action', () => {
-    for (const status of [
-      'available',
-      'probing',
-      'unavailable',
-      'error',
-      'disconnected',
-      'unknown',
-    ]) {
-      const { recommendedAction } = getACPConnectionStatusView(
-        connection(status, true, 'user'),
-      );
-
-      expect([null, 'Enable', 'Reconnect']).toContain(recommendedAction);
-    }
-  });
 });

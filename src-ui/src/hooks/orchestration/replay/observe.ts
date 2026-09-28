@@ -25,6 +25,7 @@ const UI_FOLDED_ORCHESTRATION_METHODS = [
   'tool.completed',
   'request.opened',
   'request.resolved',
+  'request.delivery',
   'turn.completed',
   'turn.aborted',
   'runtime.error',

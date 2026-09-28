@@ -20,13 +20,16 @@ import {
 } from '../../../contexts/NavigationContext';
 import { TerminalPanel } from '../TerminalPanel';
 
-const { fetchTerminalPort, credentialProvider, assertRawEgress } = vi.hoisted(
-  () => ({
+const { fetchTerminalPort, credentialProvider, assertRawEgress, station } =
+  vi.hoisted(() => ({
     fetchTerminalPort: vi.fn(),
     assertRawEgress: vi.fn(),
-    credentialProvider: { getCredential: () => null },
-  }),
-);
+    credentialProvider: {
+      getCredential: (): string | undefined => undefined,
+      getProtocolVersion: (): number | undefined => undefined,
+    },
+    station: { apiBase: 'http://localhost' },
+  }));
 
 vi.mock('@kontourai/station-sdk', () => ({
   assertClientRawEgressAllowed: assertRawEgress,
@@ -35,7 +38,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({
-    apiBase: 'http://localhost',
+    apiBase: station.apiBase,
     connectionId: 'direct-1',
     credentialProvider,
   }),
@@ -113,7 +116,10 @@ class FakeWebSocket {
   onclose: ((event: CloseEvent) => void) | null = null;
   static liveCwd = '/workspace/live';
 
-  constructor(_url: string) {
+  constructor(
+    readonly url: string,
+    readonly protocols?: string | string[],
+  ) {
     FakeWebSocket.instances.push(this);
   }
 }
@@ -144,6 +150,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  station.apiBase = 'http://localhost';
+  credentialProvider.getCredential = () => undefined;
   activeChatsStore.removeChat('chat-a');
   chatDraftsStore.clear('chat-a');
   navigationStore.setActiveChat(null);
@@ -323,4 +331,24 @@ test('copies the complete terminal selection', async () => {
   await waitFor(() =>
     expect(writeText).toHaveBeenCalledWith('copy exactly this'),
   );
+});
+
+test('sends a remote Station credential only in the first frame, never in the socket URL or subprotocols', async () => {
+  const credential = 'sentinel-station-credential-7f3a';
+  station.apiBase = 'https://station.example.test';
+  credentialProvider.getCredential = () => credential;
+  renderTerminal();
+
+  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+  const socket = FakeWebSocket.instances[0]!;
+  socket.onopen?.();
+
+  expect(socket.url).toBe('wss://station.example.test:4310');
+  expect(socket.url).not.toContain(credential);
+  expect(JSON.stringify(socket.protocols ?? null)).not.toContain(credential);
+  // The control: the credential did resolve, and went in-band.
+  expect(JSON.parse(socket.send.mock.calls[0]![0])).toMatchObject({
+    type: 'auth',
+    credential,
+  });
 });

@@ -1,77 +1,21 @@
-import { QueryClient } from '@tanstack/react-query';
-import { describe, expect, test } from 'vitest';
-import {
-  parseAnswerNarrativeUpdateEvent,
-  refreshAnswerNarrativeQueries,
-} from '../answer-narrative-events.js';
+import * as narrative from '@kontourai/station-sdk/answer-narrative-events';
+import { describe, expect, it } from 'vitest';
+import * as assessment from '../answer-assessment-events.js';
 
-const scopeA = {
-  apiBase: 'http://station-a.test',
-  authorityKey: 'owner:a',
-  isCurrent: () => true,
-};
-const scopeB = {
-  apiBase: 'http://station-b.test',
-  authorityKey: 'owner:b',
-  isCurrent: () => true,
-};
-
-describe('answer narrative update events', () => {
-  test('refreshes only the direct and Task Basis caches in the receiving scope', () => {
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    const direct = [
-      'answer-basis',
-      'session-a',
-      'turn-a',
-      scopeA.apiBase,
-      scopeA.authorityKey,
-    ];
-    const task = ['task-basis', 'task-a', scopeA.apiBase, scopeA.authorityKey];
-    const otherDirect = [
-      'answer-basis',
-      'session-a',
-      'turn-a',
-      scopeB.apiBase,
-      scopeB.authorityKey,
-    ];
-    const otherTask = [
-      'task-basis',
-      'task-a',
-      scopeB.apiBase,
-      scopeB.authorityKey,
-    ];
-    client.setQueryData(direct, { state: 'old' });
-    client.setQueryData(task, { state: 'old' });
-    client.setQueryData(otherDirect, { state: 'other' });
-    client.setQueryData(otherTask, { state: 'other' });
-
-    expect(
-      refreshAnswerNarrativeQueries(
-        client,
-        { sessionId: 'session-a', turnId: 'turn-a', revision: 1, active: true },
-        scopeA,
-      ),
-    ).toBe(true);
-    expect(client.getQueryData(direct)).toBeNull();
-    expect(client.getQueryData(task)).toBeNull();
-    expect(client.getQueryData(otherDirect)).toEqual({ state: 'other' });
-    expect(client.getQueryData(otherTask)).toEqual({ state: 'other' });
-  });
-
-  test('rejects malformed event payloads before touching a cache', () => {
-    expect(
-      parseAnswerNarrativeUpdateEvent({ sessionId: 'session-a' }),
-    ).toBeUndefined();
-    expect(
-      parseAnswerNarrativeUpdateEvent({
-        sessionId: 'session-a',
-        turnId: 'turn-a',
-        revision: 1,
-        active: true,
-        extra: true,
-      }),
-    ).toBeUndefined();
+// `./answer-narrative-events` is a published subpath that re-exports the
+// assessment implementation under narrative names. Behaviour is proven in
+// answer-assessment-events.test.tsx; this pins the published alias surface.
+describe('answer-narrative-events published subpath', () => {
+  it('exports exactly the narrative aliases of the assessment owners', () => {
+    expect(Object.keys(narrative).sort()).toEqual([
+      'parseAnswerNarrativeUpdateEvent',
+      'refreshAnswerNarrativeQueries',
+    ]);
+    expect(narrative.parseAnswerNarrativeUpdateEvent).toBe(
+      assessment.parseAnswerAssessmentUpdateEvent,
+    );
+    expect(narrative.refreshAnswerNarrativeQueries).toBe(
+      assessment.refreshAnswerAssessmentQueries,
+    );
   });
 });

@@ -581,10 +581,7 @@ function LegacyNeedsInputAction({ item }: { item: NeedsInputAttentionItem }) {
   );
 }
 
-/**
- * The only affordance for `review_pending`: go look at the session. There is
- * nothing to decide here — the decision lives in the session itself.
- */
+/** Without an exact request reference, review continues in the session. */
 function OpenSessionAction({ item }: { item: ReviewPendingAttentionItem }) {
   return (
     <a

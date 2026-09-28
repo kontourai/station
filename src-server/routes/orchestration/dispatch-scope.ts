@@ -33,12 +33,12 @@ export type DispatchTargetFor = (
  * The scope decision for one request: `refused` with the typed 403 when a
  * station-control caller aims outside its scope. Otherwise, for a caller
  * whose new session names a folder, `canonicalCwd` is the canonical path the
- * check decided on; the route dispatches that path (and the session records
- * it), so a symlink swapped after the check cannot move the session.
+ * check decided on; the route dispatches that resolved path rather than the
+ * original alias, and the session records it.
  *
- * `scope` absent (a composition without it) refuses every station-control
- * caller: a dispatch nobody scoped is not allowed by default. A request that
- * is not a station-control caller's is not decided here.
+ * Missing scope refuses non-operator callers. A bound operator remains subject
+ * to the route's ordinary authorization. Non-station-control requests are not
+ * decided here.
  */
 export function scopeDispatch(
   c: Context,

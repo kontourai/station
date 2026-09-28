@@ -41,9 +41,8 @@ import {
 } from '../../tools/station-control-policy.js';
 import { streamSSE } from '../sse-response.js';
 
-/** Hard cap on a historical event query, so a read stays a read. */
+/** Ceiling for an explicitly requested history limit; omission is unbounded. */
 const MAX_EVENT_QUERY_LIMIT = 5000;
-/** Applied when a caller names none — an unbounded default is how a tool call eats a context window. */
 
 export interface MonitoringDeps {
   activeAgents: Map<string, MonitoringAgent>;
@@ -362,16 +361,8 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
 
     // If time range specified, return historical events as JSON
     if (startTime || endTime) {
-      // Accept BOTH an ISO string and epoch milliseconds: the docs promised
-      // epoch-ms and `new Date("1785813308984")` is NaN, so every
-      // `eventTime >= NaN` was false and the query silently returned nothing
-      // (archive#3076 review). A time filter that reads as "no results" is
-      // worse than one that errors.
-      // A SUPPLIED bound that does not parse is an error, not a wider
-      // window. The first version fell back to 0/now, so `start=abc` — or
-      // the far likelier `start=<epoch SECONDS>` that most shells emit —
-      // silently returned the whole retained corpus while looking like a
-      // successful narrow read. Only an ABSENT bound gets a default.
+      // Parse digit strings as epoch milliseconds before ISO dates (archive#3076).
+      // Invalid supplied bounds must fail rather than silently widen the window.
       const parseBound = (value: string | undefined, fallback: number) => {
         if (!value) return fallback;
         const asNumber = /^\d+$/.test(value) ? Number(value) : Number.NaN;

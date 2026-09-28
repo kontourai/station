@@ -348,12 +348,13 @@ describe('desktop build manifest', () => {
     }
   });
 
-  test('the desktop package command enters src-desktop before invoking Tauri', () => {
+  // Argument forwarding is exercised by the spawn tests below, and the root
+  // tauri script's `cd src-desktop` by ci-workflow-contract.test.ts.
+  test('gates the desktop build on the product version and stages Windows resources through --config', () => {
     const pkg = JSON.parse(
       readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
     ) as { scripts: Record<string, string> };
 
-    expect(pkg.scripts.tauri).toBe('cd src-desktop && tauri');
     expect(pkg.scripts['build:desktop']).toBe(
       'npm run product-version:check && node scripts/build-desktop.mjs',
     );
@@ -361,8 +362,6 @@ describe('desktop build manifest', () => {
       new URL('../build-desktop.mjs', import.meta.url),
       'utf8',
     );
-    expect(wrapper).toContain('...process.argv.slice(2)');
-    expect(wrapper.match(/run\(tauriBuildArgs\)/g)).toHaveLength(1);
     // The Windows branch hands the staged resource config to the CLI as a
     // --config argument. The Tauri v2 CLI never reads TAURI_CONFIG as input
     // (it only sets it for tauri-build/codegen), so an env-var assignment
@@ -372,6 +371,9 @@ describe('desktop build manifest', () => {
     );
     expect(wrapper).not.toMatch(/TAURI_CONFIG:/);
     expect(wrapper).toContain('build:desktop:resources');
+    // The Windows argv carries caller text (see the npm-cli test below); no
+    // spawn test on this host reaches the win32 branch, so the spawn options
+    // that keep it inert and hidden are pinned here.
     expect(wrapper).toContain('shell: false');
     expect(wrapper).toContain('windowsHide: true');
   });

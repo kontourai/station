@@ -1150,6 +1150,28 @@ describe('one-line Station installer', {
     expect(existsSync(purged.stationHome)).toBe(false);
   });
 
+  it('reads the whole script before an early exit when piped, as `curl | sh -s uninstall` runs it', () => {
+    // A shell reading the script from a pipe used to run `uninstall` and exit
+    // with the rest unread; past the pipe buffer, the writer's write failed
+    // (curl exits 23) and a pipefail caller saw the uninstall as a failure.
+    const home = join(tempDir('station-installer-'), 'home');
+    mkdirSync(home, { recursive: true });
+    const script = readFileSync(installScript);
+    // The script is well past a 64 KiB pipe buffer after the uninstall case,
+    // which is what made the failure reachable at all.
+    expect(script.length).toBeGreaterThan(100_000);
+    const result = spawnSync('sh', ['-s', 'uninstall'], {
+      input: script,
+      encoding: 'utf8',
+      timeout: INSTALLER_RUN_TIMEOUT_MS,
+      windowsHide: true,
+      env: { ...process.env, HOME: home, STATION_CHANNEL: 'stable' },
+    });
+    // EPIPE here is the shell closing its stdin before the script ended.
+    expect(result.error, result.stderr).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+  });
+
   it('refuses an unrelated launcher during uninstall', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
     roots.push(root);

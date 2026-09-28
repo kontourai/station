@@ -1,5 +1,15 @@
 # Offline outbound queue scope
 
+> **Reading status: queue policy with implementation notes.** Reconnect replay
+> below is not permission to retry a possibly-started turn. Current
+> [OutboundDispatchModule](../architecture/module-map.md#outbounddispatchmodule)
+> distinguishes pending work from non-replayable invocation/effect evidence;
+> [the queue](../../src-ui/src/lib/outboundQueue.ts) and its
+> [send caller](../../src-ui/src/hooks/useActiveChatSessionMessaging.ts) own that decision.
+> Log-level edits use a separate [revisioned service](../../src-server/services/config/log-level-edit-service.ts)
+> and [route](../../src-server/routes/system/config.ts). The exclusion policy
+> below does not certify every current configuration route's concurrency behavior.
+
 Station's durable outbound queue stores user chat turns only. Each stored turn
 keeps its client-generated turn id, and reconnect replays that same id so the
 server can deduplicate a request that landed immediately before disconnect.

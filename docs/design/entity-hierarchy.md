@@ -1,12 +1,20 @@
 # Design: Entity Hierarchy & Navigation Restructure
 
+> **Reading status: historical restructuring proposal with later supersession notes.**
+> The unchecked phases, old tab layouts, and original absence claims are not a
+> live backlog or the current UI contract. [Agents](../guides/agents.md),
+> [Connections](../guides/connections.md), and [Skills](../reference/station-docs.md#skills)
+> own current usage. The [agent editor](../../src-ui/src/views/AgentEditorForm.tsx)
+> is now one scrolling form whose sections follow the engine capability matrix,
+> not the fixed managed/connected tab lists below. This record preserves why
+> the hierarchy changed without certifying every original claim as current.
+
 **Status:** Draft (updated) — **direction superseded in part:** the agent-type taxonomy
 this doc is built on (Station/managed vs External/connected as a *type system*) is being
 dissolved by the agent–engine unification; see
 [`agent-engine-unification.md`](agent-engine-unification.md) (tracking issue #893) for
-the target model. This doc remains the shipped-behavior contract for each boundary until
-the slice that moves that boundary lands, and is revised in the same commits (standing
-rule). **#894 (2026-07-26):** the badge/label reflection of the two-type taxonomy has
+the target model. This record was revised as individual boundaries moved; the
+dated notes below explain that sequence. **#894 (2026-07-26):** the badge/label reflection of the two-type taxonomy has
 already shipped out from under this doc — every agent surface now renders an **engine
 chip** (not a Station/External/ACP badge), the Connections hub has an "Engines" section,
 and the new-chat picker groups by engine. The *type system* itself (the editor's

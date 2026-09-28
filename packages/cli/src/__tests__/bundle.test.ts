@@ -20,7 +20,6 @@ import { resolveNpmCli } from '../../../../scripts/lib/npm-cli.mjs';
 import {
   assertCommandAvailable,
   CONTRIBUTOR_COMMANDS,
-  contributorCommandMessage,
 } from '../distribution.js';
 
 /**
@@ -319,14 +318,10 @@ describe('published CLI bundle', () => {
   it('resolves no TypeScript and inlines no server source', () => {
     expect(bundleSource).not.toMatch(/from\s+["'][^"']+\.tsx?["']/);
     // `src-server` legitimately appears as a *string* in contributor-tier
-    // lifecycle code that inspects a checkout's directories. What must never
-    // appear is server source inlined into the bundle — the class
-    // `scripts/station-cli.ts` injects, which the published entry omits.
-    expect(bundleSource).not.toContain('class EnvironmentSecurityService');
-    // And per-module, from the build's own sourcemap: no bundled source may
-    // live under src-server at all. A `../../../../src-server/...` deep
-    // import once shipped two whole server modules in the published binary;
-    // the class-name probe above cannot see that shape.
+    // lifecycle code that inspects a checkout's directories, so the check is
+    // per-module, from the build's own sourcemap: no bundled source may live
+    // under src-server at all. A `../../../../src-server/...` deep import once
+    // shipped two whole server modules in the published binary.
     // The tarball deliberately omits the map, but the prepack build that
     // produced this tarball wrote it beside the local dist output.
     const map = JSON.parse(
@@ -572,6 +567,12 @@ describe('published CLI bundle', () => {
     },
   );
 
+  it('names the exact contributor command to rerun, arguments included', () => {
+    const result = runBundle(['start', '--port=3242']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('./station start --port=3242');
+  });
+
   it('still answers --help for a contributor verb', () => {
     const result = runBundle(['doctor', '--help']);
     expect(result.status).toBe(0);
@@ -596,11 +597,5 @@ describe('distribution tiers', () => {
     for (const command of CONTRIBUTOR_COMMANDS) {
       expect(() => assertCommandAvailable(command)).not.toThrow();
     }
-  });
-
-  it('names the exact command to rerun', () => {
-    expect(contributorCommandMessage('start', ['--port=3242'])).toContain(
-      './station start --port=3242',
-    );
   });
 });

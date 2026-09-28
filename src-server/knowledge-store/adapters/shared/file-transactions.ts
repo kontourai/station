@@ -3,12 +3,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,
   constants,
+  fstatSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -137,6 +139,7 @@ type Journal = {
 type TransactionContext = {
   journal: Journal;
   observed: Map<string, string>;
+  readLimits: Map<string, number>;
   observedExternal: Map<string, string>;
   observedDirectories: Map<string, string>;
   staged: Map<string, Buffer | null>;
@@ -270,6 +273,7 @@ export class KnowledgeFileTransactions {
           entries: [],
         },
         observed: new Map(),
+        readLimits: new Map(),
         observedExternal: new Map(),
         observedDirectories: new Map(),
         staged: new Map(),
@@ -338,8 +342,8 @@ export class KnowledgeFileTransactions {
     }
   }
 
-  readText(path: string): string | null {
-    const buffer = this.readBuffer(path);
+  readText(path: string, maxBytes?: number): string | null {
+    const buffer = this.readBuffer(path, maxBytes);
     return buffer === null ? null : buffer.toString('utf8');
   }
 
@@ -445,24 +449,71 @@ export class KnowledgeFileTransactions {
     return this.relativePath(join(this.root, path));
   }
 
-  private readBuffer(path: string): Buffer | null {
+  private readBuffer(path: string, maxBytes?: number): Buffer | null {
     const rel = this.relativePath(path);
     const context = this.storage.getStore();
-    if (context?.staged.has(rel)) return context.staged.get(rel) ?? null;
-    const value = this.readPublished(path);
+    if (maxBytes !== undefined) {
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
+        throw new KnowledgeStoreCorruptionError('Invalid knowledge read bound');
+      context?.readLimits.set(
+        rel,
+        Math.min(maxBytes, context.readLimits.get(rel) ?? maxBytes),
+      );
+    }
+    const limit = context?.readLimits.get(rel) ?? maxBytes;
+    if (context?.staged.has(rel)) {
+      const value = context.staged.get(rel) ?? null;
+      if (limit !== undefined && value && value.byteLength > limit)
+        throw new KnowledgeStoreCorruptionError(
+          'Knowledge read exceeds its bound',
+        );
+      return value;
+    }
+    const value = this.readPublished(path, limit);
     if (context && !context.observed.has(rel)) {
       context.observed.set(rel, digest(value));
     }
     return value;
   }
 
-  private readPublished(path: string): Buffer | null {
+  private readPublished(path: string, maxBytes?: number): Buffer | null {
     this.assertNoSymlink(path);
+    let descriptor: number | undefined;
     try {
+      if (maxBytes !== undefined) {
+        descriptor = openSync(
+          path,
+          constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+        );
+        const info = fstatSync(descriptor);
+        if (!info.isFile() || info.size > maxBytes)
+          throw new KnowledgeStoreCorruptionError(
+            'Knowledge read exceeds its bound or is not a regular file',
+          );
+        const bytes = Buffer.alloc(info.size + 1);
+        let length = 0;
+        while (length < bytes.length) {
+          const count = readSync(
+            descriptor,
+            bytes,
+            length,
+            bytes.length - length,
+            null,
+          );
+          if (count === 0) return bytes.subarray(0, length);
+          length += count;
+        }
+        throw new KnowledgeStoreCorruptionError(
+          'Knowledge file grew during a bounded read',
+        );
+      }
       return readFileSync(path);
     } catch (error) {
       if (isMissing(error)) return null;
+      if (error instanceof KnowledgeStoreCorruptionError) throw error;
       throw unavailable(error);
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor);
     }
   }
 
@@ -513,13 +564,20 @@ export class KnowledgeFileTransactions {
       const path = join(this.root, entry.path);
       const before =
         entry.before === null ? null : Buffer.from(entry.before, 'base64');
-      if (digest(this.readPublished(path)) !== digest(before)) {
+      if (
+        digest(this.readPublished(path, context.readLimits.get(entry.path))) !==
+        digest(before)
+      ) {
         throw new KnowledgeStoreConflictError(entry.path);
       }
     }
     for (const [rel, expected] of context.observed) {
       if (stagedPaths.has(rel)) continue;
-      if (digest(this.readPublished(join(this.root, rel))) !== expected) {
+      if (
+        digest(
+          this.readPublished(join(this.root, rel), context.readLimits.get(rel)),
+        ) !== expected
+      ) {
         throw new KnowledgeStoreConflictError(rel);
       }
     }

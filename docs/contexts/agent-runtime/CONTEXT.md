@@ -1,78 +1,69 @@
 # Agent Runtime Context
 
-Agent Runtime covers how Station starts, drives, observes, resumes, and stops agent work across Station agents and External agents.
+This area owns how Station starts, observes, continues, and stops agent work.
+The [glossary](../../glossary.md) owns product vocabulary; the
+[Session API](../../reference/session-api.md) owns request details.
 
-## Language
+## Identities and ownership
 
-**Agent loop**:
-The ongoing read-think-act cycle that produces work. Station owns the loop for Station agents; an Agent app owns the loop for External agents.
-_Avoid_: runtime when user-facing
+An Agent is a working identity. Its engine executes it. Station's engine uses
+Model connections; external engines own their agent loop. The reserved Agent
+named Station can use a separately selected capable engine. An engine name,
+Agent name, and transport name are not interchangeable.
 
-**Station agent**:
-An agent whose loop is run by Station's engine. Station owns prompt, model choice, skills, integrations, tools, commands, guardrails, and delegation.
-_Avoid_: managed agent
+Default Agents are persisted by the [Agent registry](../../../src-server/domain/agent-registry.ts).
+Startup can adopt detected native CLIs; a deliberate removal is retained so
+detection cannot undo it. Disabled and unavailable engines keep their Agent
+records. Do not recreate the retired synthetic “virtual agent” model.
 
-**External agent**:
-An agent whose loop is run by an Agent app such as Claude Code, Codex, or Kiro. Station drives and observes it but does not own its behavior or tools.
-_Avoid_: connected agent, ACP agent
+Prompt, skill, and MCP delivery varies by engine. Read the
+[capability matrix](../../../packages/contracts/src/engine-capability-matrix.ts)
+and [tool-policy delivery](../../conformance/tool-policy-delivery.md).
+An external engine can receive supported Station context without giving
+Station ownership of its native loop or every tool it executes.
 
-**Agent app**:
-An external program that runs an agent loop. ACP is one connection method to an Agent app, not a separate agent type.
-_Avoid_: runtime connection in user-facing language
+## Follow one execution
 
-**Virtual agent**:
-An agent entry synthesized from an Agent app connection, direct-chat path, or ACP mode. It is selectable like an agent but remains backed by the app.
-_Avoid_: installed Station agent
+| Step | Owner | What to inspect |
+| --- | --- | --- |
+| Select and resolve an Agent | [Runtime Agent registry](../../../src-server/runtime/agents/runtime-agent-registry.ts) | Identity, current engine binding, and availability |
+| Start a Session | [SessionCommandModule](../../../src-server/services/orchestration/session-command-module.ts) | Start/reattach sequencing, command receipt durability, and uncertain provider creation |
+| Invoke an engine and compose services | [OrchestrationService](../../../src-server/services/orchestration/orchestration-service.ts) | Real provider caller and its cancellation path |
+| Admit a turn without replaying an uncertain effect | [Session execution coordinator](../../../src-server/services/orchestration/session-execution-coordinator.ts) and [durable invocation boundary](../../../src-server/services/orchestration/session-turn-boundary.ts) | Client-turn deduplication, provider acceptance, lifecycle exclusion, and retained uncertainty |
+| Record and read history | [EventStore](../../../src-server/services/orchestration/event-store.ts) | Persisted events, projections, and replay |
+| Change Session lifecycle | [SessionLifecycleModule](../../../src-server/services/orchestration/session-lifecycle-module.ts) | Transition ownership and concurrency with a new turn |
+| Attach an optional Flow run | [Flow policy owner](../../../src-server/services/orchestration/flow-policy-sidecar.ts) | Explicit `metadata.flowDefinition`, eligible definition, evidence, and completion verdict |
 
-**Agent session**:
-A bounded episode of agent work with lifecycle state, events, turns, project context, selected agent, and possible Flow run binding.
-_Avoid_: chat when lifecycle or evidence matters
+A Session can contain several turns. `idle` means a finished turn between
+messages; `completed` closes the Session. Stopped, terminal, and resumable have
+different meanings. The [lifecycle contract](../../../packages/contracts/src/session-lifecycle.ts)
+owns those predicates and transitions. Preserve that distinction in UI,
+approvals, retry logic, and completion reporting.
 
-**Turn**:
-One interaction within an agent session. A turn can include text, reasoning, tool calls, approval requests, terminal events, and completion events.
-_Avoid_: message when the event stream matters
+A conversation can outlive one execution Session. Continuation normally reuses
+an at-rest Session; a terminal Session, ended/error engine binding, unsupported
+per-turn model switch, or explicit handoff can require a reserved successor.
+The [lineage owner](../../../src-server/services/orchestration/conversation-session-lineage.ts)
+records that relationship. Reserving a child does not prove its engine started.
 
-**Canonical runtime event**:
-Station's normalized event language for all agent execution paths. It is the event seam that makes any-runtime-one-gate possible.
-_Avoid_: provider event after it crosses into Station
+Keep the records distinct: a Task records durable work; a command receipt records
+acceptance and its durability; a provider boundary records possible execution;
+canonical events record what Station observed. A successful command or completed
+turn does not by itself prove a Task or review passed. Start failure can occur
+after engine creation or during later binding work, and an indeterminate start may have no returned
+Session object. Inspect the recorded state before deciding whether to retry.
 
-**Session lifecycle**:
-Station's state machine for sessions: queued, running, needs input, review pending, blocked, completed, failed, or canceled.
-_Avoid_: provider status
+Delegation carries parent identity, depth, tool restrictions, and approval policy.
+Which restrictions reach the engine depends on its capability and tool-policy
+delivery contracts; carrying metadata is not proof that every native tool is gated.
+Workspace isolation chooses a shared directory or Git worktree; it is not a
+substitute for execution permissions. A Flow Agents sidecar records process
+state, not the Session transcript or an independent proof of completion.
 
-**Agent run**:
-The execution accounting record for an orchestration-backed agent session, including provider, execution class, retry state, attempt, and failure kind.
-_Avoid_: Flow run
+## Review a change
 
-**Delegation**:
-A controlled handoff from one agent to another, with depth, parent session, tool restrictions, and approval restrictions.
-_Avoid_: subtask when agent authority matters
-
-**Guardrail**:
-A Station-agent execution limit or setting such as max tokens, temperature, stop sequences, or max steps.
-_Avoid_: policy class
-
-**Workspace isolation**:
-The mode that decides whether an agent session works in the shared project workspace or in an isolated Git worktree.
-_Avoid_: sandbox when the isolation unit is the workspace
-
-**Workflow sidecar**:
-A file-backed Flow Agents process-state record that survives handoff, compaction, and Agent app switches.
-_Avoid_: conversation memory
-
-## Relationships
-
-- A Station agent uses Station's engine and a Model.
-- An External agent is backed by an Agent app and may be reached through native SDKs or ACP.
-- A virtual agent is a selection surface for an Agent app mode or direct connection path.
-- An agent session emits canonical runtime events and may produce an agent run.
-- A workflow sidecar can bind multiple sessions to the same task across Agent app switches.
-- Workspace isolation shapes where the agent writes, not what the agent is allowed to claim.
-
-## Flagged Ambiguities
-
-**Runtime**:
-Use Station's engine, Agent app, Station core, or External agent depending on the intended meaning.
-
-**Session versus run**:
-Session is the work episode and event stream. Run is execution accounting. Flow run is evidence-gated process state.
+Follow the caller into the owning module and its tests. Check response loss,
+restart, cancellation, and stale-provider outcomes before calling a start or
+continuation successful. Use the [module map](../../architecture/module-map.md)
+for focused evidence. Real-engine compatibility and device delivery require
+their own observations; fixture tests do not establish either.

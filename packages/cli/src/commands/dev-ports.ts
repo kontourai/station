@@ -73,7 +73,7 @@ const FETCH_BAD_PORTS = new Set<number>([
  * to be deterministic across runs and machines. Uses
  * `Math.imul` for the 32-bit multiply and `>>> 0` to stay unsigned.
  */
-export function fnv1a32(input: string): number {
+function fnv1a32(input: string): number {
   let hash = 0x811c9dc5;
   for (let i = 0; i < input.length; i += 1) {
     hash ^= input.charCodeAt(i);

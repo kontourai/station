@@ -1,6 +1,6 @@
 /**
- * OpenTelemetry SDK bootstrap — must be imported before all other modules.
- * Graceful no-op when OTEL_EXPORTER_OTLP_ENDPOINT is not set.
+ * Optional OpenTelemetry bootstrap. Await provider registration before creating
+ * instruments; importing this module first is insufficient (#2755).
  */
 
 import { platform } from 'node:os';

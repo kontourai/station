@@ -5,7 +5,10 @@ import { WORKSPACE_PANE_REGIONS } from '@kontourai/station-contracts/workspace-p
 import { describe, expect, test } from 'vitest';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
-import { STATION_DOCS_TOPICS } from '../station-docs-content.js';
+import {
+  STATION_DOCS_CONTENT_DIGEST,
+  STATION_DOCS_TOPICS,
+} from '../station-docs-content.js';
 import {
   createStationDocsMcpServer,
   findStationDocsTopic,
@@ -97,7 +100,7 @@ describe('station-docs content', () => {
     // Station. If this topic ever stops saying so, an engine reading it will
     // answer about Station as if it could act on it.
     expect(body).toMatch(
-      /An engine with docs and no `station-control` can explain Station\b[^.]*\bcannot perform it\./,
+      /An engine with docs and no `station-control` can explain Station operations\s+but cannot perform them through the docs tools\./,
     );
   });
 
@@ -146,6 +149,14 @@ describe('station-docs plugin-authoring topic', () => {
   const install =
     /\b(?:install(?:s|ing|ed|ation)?|set(?:s|ting)?\s+up)\b[^.;:\n]*?\b(?:plugins?|it\s+for\s+(?:them|you|the\s+person))\b/i;
 
+  const installationStatements = (body: string) =>
+    body
+      .split(/\n\s*\n/)
+      .flatMap((paragraph) =>
+        paragraph.replace(/\n/g, ' ').split(/(?<=[.!?])\s+/),
+      )
+      .filter((sentence) => install.test(sentence));
+
   /** The paragraph that starts with `heading`, as written in the body. */
   const paragraph = (heading: string) => {
     const match = paragraphs().find((block) => block.startsWith(heading));
@@ -166,7 +177,14 @@ describe('station-docs plugin-authoring topic', () => {
   const exampleManifests = () =>
     paragraphs()
       .filter((block) => block.startsWith('A complete minimal manifest'))
-      .map((block) => JSON.parse(block.slice(block.indexOf('\n{') + 1)));
+      .map((block) => {
+        const json = block.match(/```json\n([\s\S]*?)\n```/)?.[1];
+        expect(
+          json,
+          'manifest example must remain a fenced JSON block',
+        ).toBeDefined();
+        return JSON.parse(json!);
+      });
 
   const load = (manifest: unknown) =>
     parsePluginManifestDocumentWithFormat(
@@ -366,7 +384,7 @@ describe('station-docs plugin-authoring topic', () => {
     expect(assistant).toContain('It proposes instead');
   });
 
-  test('every sentence pairing install with plugin is one a person approved, word for word', () => {
+  test('every installation statement matches the reviewed permission and architecture text', () => {
     // An explicit allow-list, not a heuristic. Any sentence that pairs
     // install/installs/installing/installed/installation with plugin(s) in
     // the same clause, whatever sits between them ("install your plugin"),
@@ -377,20 +395,16 @@ describe('station-docs plugin-authoring topic', () => {
     const PERMITTED = [
       [
         'station-docs',
-        'Installing a plugin is not among those operations: it needs a person to approve the install preview, on the Plugins page or with `station plugin install <source>`, so no agent can install one (see the `plugin-authoring` topic).',
+        "Installing a plugin through Station's agent tools is refused: a person approves its preview on the Plugins page or with `station plugin install <source>` (see the `plugin-authoring` topic).",
       ],
-      ['builtin-assistant', 'It cannot install a plugin.'],
+      ['builtin-assistant', 'Its Station tools cannot install a plugin.'],
       [
         'builtin-assistant',
-        'An install is approved by a person who has read its preview — its permissions and the parts that run in Station’s own page — on the Plugins page or with `station plugin install <source>`.',
+        'An install is approved by a person who has read its preview \u2014 its permissions and the parts that run in Station\u2019s own page \u2014 on the Plugins page or with `station plugin install <source>`.',
       ],
       [
         'plugins',
-        'The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal.',
-      ],
-      [
-        'plugin-authoring',
-        'Station builds the bundle itself when the plugin is installed, so a plugin ships source, not a `dist/` folder.',
+        'The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person\u2019s approval of its preview), with an install lifecycle that includes updates and removal.',
       ],
       [
         'plugin-authoring',
@@ -398,22 +412,46 @@ describe('station-docs plugin-authoring topic', () => {
       ],
       [
         'plugin-authoring',
-        'For local typechecking, `npm install @kontourai/station-sdk react @types/react typescript` in the plugin folder is enough.',
-      ],
-      [
-        'plugin-authoring',
         'Agents must not install plugins, and `install_plugin` refuses.',
       ],
       [
         'plugin-authoring',
-        'A person installs from Plugins → Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal.',
+        'A person installs from Plugins \u2192 Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal.',
+      ],
+      [
+        'architecture-workspacepanehostadmission',
+        'It captures the installation journal incarnation and selected physical artifact digest, explicit own-plugin clean Agent identity/ownership marker, Project revision, authored Agent spec and exact literal or registered prompt body.',
+      ],
+      [
+        'architecture-workspacepanehostadmission',
+        '**Seam, Implementation, callers, and tests.** `ProjectFileTransactions` owns the additive exact-revision read guard; `capturePluginAgentInvocation` reuses the canonical Agent parser and identity mutation lock; installation and admission share one plugin-Agent marker parser.',
+      ],
+      [
+        'architecture-installedplugininventory',
+        '[The inventory scanner](../../src-server/services/plugins/installed-plugin-inventory.ts) keeps broken installations visible so a user can repair them.',
+      ],
+      [
+        'architecture-installedplugininventory',
+        'Provider resolution and Registry installed-state consume only valid scan entries, while `GET /api/plugins` projects both valid and rejected entries.',
+      ],
+      [
+        'architecture-plugingrantreconciliation',
+        '**Intent and Interface.** `PluginGrantReconciliationService.reconcile({ pluginName, permissions })` converges the runtime generation for one installed plugin after its durable grant state changes.',
+      ],
+      [
+        'architecture-operationaleventdelivery',
+        'The active [subscription registry](#operationaleventsubscriptions) wraps them for installed plugin observers; registration is no longer merely future work.',
+      ],
+      [
+        'architecture-operationaleventsubscriptions',
+        'It reads installed manifest declarations, checks the current artifact and `plugin.server`/`events.subscribe` grants, and additionally requires `events.read-payload` for an envelope.',
       ],
     ];
     const found = STATION_DOCS_TOPICS.flatMap((entry) =>
-      entry.body
-        .split(/(?<=[.!?])\s+|\n+/)
-        .filter((sentence) => install.test(sentence))
-        .map((sentence) => [entry.id, sentence]),
+      installationStatements(entry.body).map((sentence) => [
+        entry.id,
+        sentence,
+      ]),
     );
     expect(found).toEqual(PERMITTED);
   });
@@ -421,6 +459,7 @@ describe('station-docs plugin-authoring topic', () => {
   test('the install guard catches the phrasings the allow-list exists for', () => {
     for (const claim of [
       'The assistant installs plugins for a person.',
+      'The assistant\ninstalls your plugin.',
       'It can install plugins, not just list them.',
       'Ask the agent to install your plugin.',
       'The agent installed the new plugin.',
@@ -428,7 +467,7 @@ describe('station-docs plugin-authoring topic', () => {
       'Write it, then install it for them.',
       'Setting up your plugin is automatic.',
     ]) {
-      expect(install.test(claim), claim).toBe(true);
+      expect(installationStatements(claim), claim).not.toEqual([]);
     }
   });
 });
@@ -511,6 +550,37 @@ describe('station-docs MCP server', () => {
     expect(payload.query).toBe('engine');
     expect(payload.results.length).toBeGreaterThan(0);
     expect(payload.kind).toBe('shipped-documentation');
+  });
+
+  test('navigates the same architecture tree and identifies its compiled content', async () => {
+    const roots = await callTool('list_station_docs_topics', {
+      parentId: 'architecture',
+    });
+    expect(roots.topics).toHaveLength(10);
+    expect(
+      roots.topics.every(
+        (topic: { parentId: string }) => topic.parentId === 'architecture',
+      ),
+    ).toBe(true);
+    const children = await callTool('list_station_docs_topics', {
+      parentId: 'architecture-execution',
+    });
+    expect(children.topics.map((topic: { id: string }) => topic.id)).toContain(
+      'architecture-sessioncommandmodule',
+    );
+    const topic = await callTool('get_station_docs_topic', {
+      id: 'architecture-sessioncommandmodule',
+    });
+    expect(topic.topic.sourcePath).toBe('docs/architecture/module-map.md');
+    expect(topic.topic.sourceAnchor).toBe('sessioncommandmodule');
+    expect(topic.topic.body).toContain('indeterminate');
+    expect(topic.topic.body).toContain('do not establish live state');
+    expect(topic.documentationDigest).toBe(STATION_DOCS_CONTENT_DIGEST);
+    expect(topic.documentationDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(
+      (await callTool('list_station_docs_topics', { parentId: 'missing' }))
+        .topics,
+    ).toEqual([]);
   });
 });
 

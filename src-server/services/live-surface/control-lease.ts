@@ -5,33 +5,16 @@ import type {
 } from '@kontourai/station-contracts/live-surface';
 
 /**
- * One controller, N viewers, two counters (#90).
+ * One controller, many viewers, two counters (#90).
+ * `fence` changes on takeover, release, and expiry so an old operation stays
+ * invalid even when its controller reclaims. `epoch` changes only for a new
+ * controller, so the same viewer can resume after a lapse without stale input.
+ * Keep these separate: control-lease.test.ts covers both regressions (D2, S3).
  *
- * - The FENCE advances on every change of holder: claim, takeover, release,
- *   expiry. It is what operations fence on: an operation that captured
- *   fence F checks `isCurrent(F, controller)` before and after each step.
- *   Any holder change in between — including this same controller
- *   releasing and reclaiming — moves the fence, so the earlier operation's
- *   stragglers are refused rather than landing inside a later one.
- * - The EPOCH is what viewers see and echo with their input. It advances
- *   only when control passes to a DIFFERENT controller than the last one to
- *   hold it. A lease that merely lapses (expiry or release) leaves no holder
- *   and does not advance it: nobody else has acted, so the last holder's
- *   view is not stale and its next input reclaims without a refusal.
- *
- * Rules:
- * - A human's input auto-claims (`claimForHumanInput`) when the epoch the
- *   viewer observed is current. The most recent human input takes control —
- *   from another person, from another device of the same person, and always
- *   from an agent.
- * - An agent claims explicitly (`claimForAgent`). It never preempts a live
- *   human (`human-controlling`: a human holder is live until `humanHoldMs`
- *   after their last input or claim) and is refused `held-by-other` while a
- *   different agent holds an unexpired lease. The agent's identity comes from
- *   the caller's VERIFIED session; the registry's `claimAgentControl`
- *   authorizes its acting-for principal before calling this.
- * - Viewing never needs the lease.
- * - Expiry is evaluated lazily against the injected clock.
+ * The registry authorizes before claiming; agent identity comes from the
+ * verified calling session. Human input needs a current epoch, and an agent
+ * cannot preempt a live human. Viewing does not require control.
+ * Expiry runs on reads and on a timer so unwatched held input is also canceled.
  */
 
 /**

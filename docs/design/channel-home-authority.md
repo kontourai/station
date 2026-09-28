@@ -1,8 +1,17 @@
 # Channel home authority and planned transfer
 
+> **Reading status: staged authority implementation and remaining transfer requirements.**
+> [HTTP owner](../../src-server/routes/environments/home-authority-routes.ts),
+> [decision store](../../src-server/services/orchestration/planned-home-transfer-store.ts),
+> and [coordinator](../../src-server/services/orchestration/planned-home-transfer-coordinator.ts)
+> implement narrower identity and decision paths. Their metadata commit is
+> not target activation or provider continuation. The detailed storage, sealing,
+> dispatch, and cross-host acceptance claims require their own evidence.
+
 > Status: implementation design for [#495](https://github.com/kontourai/station/issues/495)
 > AC2 and the [#580](https://github.com/kontourai/station/issues/580) authority
-> prerequisites. This document does not introduce a runtime authority service.
+> prerequisites. The personal identity and decision routes below are implemented;
+> they do not yet provide target activation or execution transfer.
 > [Conversation state](conversation-state.md#34-the-lease-is-the-fence-the-epoch-is-only-the-label)
 > owns the consistency model. Offline home restore remains a separate operation.
 

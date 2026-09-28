@@ -28,19 +28,13 @@ import {
 import type { DeviceVideoDecoderProvider } from './h264-jpeg-decoder.js';
 
 /**
- * Device sessions (#1970): a device on a host, open for watching and
- * driving through a live surface.
- *
- * - `open` registers ONE surface per device (a second open of the same
- *   device returns the same session, so every viewer shares one lease and
- *   one input channel). Who may use it is decided per DEVICE (D12: the
- *   operator, or an admin of a Project the operator shared the device
- *   with), on every surface request.
- * - `close` (stop watching) unregisters the surface; the device keeps
- *   running. `powerOff` closes every session on the device, then shuts it
- *   down. A device that stops on its own, or a hub that exits, ends its
- *   sessions the same way — never a surface left streaming nothing.
- * - Sessions are listed (`list`) so none is ever hidden (D6).
+ * Device sessions (#1970): one surface, lease and input channel per open device
+ * on this host. Requests recheck device shares (D12); session identity is not a grant.
+ * Closing the shared session ends every viewer but leaves the device running.
+ * Detaching one viewer instead starts the idle grace when no viewers remain.
+ * Observed device stop or supervised helper exit ends sessions; an unavailable
+ * inventory alone cannot establish that the device stopped.
+ * Sessions remain listed even when no viewer watches (D6).
  */
 
 export type DeviceSessionSummary = MobileDeviceSession;

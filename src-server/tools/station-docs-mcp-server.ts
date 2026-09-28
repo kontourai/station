@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import packageJson from '../../package.json' with { type: 'json' };
 import {
+  STATION_DOCS_CONTENT_DIGEST,
   STATION_DOCS_TOPICS,
   type StationDocsTopic,
 } from './station-docs-content.js';
@@ -13,8 +14,8 @@ import {
  *
  * Deliberately NOT built on `StationControlToolRegistry`: importing that
  * module would pull `station-control-shared.ts` and the SDK HTTP client into
- * this bundle, and the whole point of this server is that its bundle
- * contains no way to reach the network, the filesystem, or Station's API.
+ * this bundle. Documentation handlers use only bundled data; importing the
+ * control registry would couple them to operational capabilities.
  * The registration surface here is small enough that duplicating four lines
  * is cheaper than the coupling.
  *
@@ -22,24 +23,16 @@ import {
  * compiled into the bundle. There is no tool that reads this Station's live
  * or user state, and there must never be one: that requires authentication
  * and belongs to `station-control`, a different server with a different
- * review. `createStationDocsIntegration()`
+ * review. `createRuntimeDocsIntegration()`
  * (`src-server/runtime/agents/runtime-default-agent.ts`) therefore declares
- * NO `env`, which is what lets this server be delivered to every engine
- * including the ones that can never receive `station-control`.
+ * NO `env`, removing credential custody as a delivery prerequisite. An engine
+ * still needs a supported tool-server channel and the genuine runtime server;
+ * credential-free documentation does not create a transport for engines such
+ * as Muse, whose tool-server capability is unsupported.
  */
 
-/**
- * Station's own package version, inlined at build time.
- *
- * Deliberately NOT described as a build identifier (archive#1547 review,
- * HIGH). It has read `0.1.0` since the founding commit and this repo does not
- * publish from it, so a claim that a served topic is "attributable to the
- * Station build that shipped it" attributed nothing — the same string is
- * returned by every build that has ever existed. It is reported because MCP's
- * server-info requires a version, and it identifies the package, not the
- * build. Wiring a real build stamp is archive#1635; until then this must not
- * be presented to a model as provenance.
- */
+// Package version is not a build identity (archive#1547, archive#1635).
+// The content digest below identifies the exact compiled documentation only.
 export const STATION_DOCS_VERSION: string = packageJson.version;
 
 /** A topic without its `body` — the shape list/search results return. */
@@ -48,6 +41,9 @@ interface StationDocsTopicSummary {
   title: string;
   summary: string;
   tags: string[];
+  parentId: string;
+  sourcePath: string;
+  sourceAnchor: string;
 }
 
 function toSummary(topic: StationDocsTopic): StationDocsTopicSummary {
@@ -56,6 +52,9 @@ function toSummary(topic: StationDocsTopic): StationDocsTopicSummary {
     title: topic.title,
     summary: topic.summary,
     tags: [...topic.tags],
+    parentId: topic.parentId,
+    sourcePath: topic.sourcePath,
+    sourceAnchor: topic.sourceAnchor,
   };
 }
 
@@ -69,11 +68,7 @@ interface StationDocsSearchHit extends StationDocsTopicSummary {
   excerpt: string | null;
 }
 
-/**
- * Plain case-insensitive substring search over id, title, summary, tags, and
- * body. No index, no scoring model, no stemming — the corpus is fifteen
- * topics, and a boring matcher is one nobody has to reverse-engineer.
- */
+/** Case-insensitive substring search, bounded to the requested topic count. */
 export function searchStationDocs(
   query: string,
   limit = 10,
@@ -112,6 +107,7 @@ const SHIPPED_SOURCE = {
   source: 'station-docs',
   kind: 'shipped-documentation',
   stationVersion: STATION_DOCS_VERSION,
+  documentationDigest: STATION_DOCS_CONTENT_DIGEST,
   note: "Static documentation bundled with Station. This is not live state: it does not describe this Station's agents, runs, jobs, projects, or settings.",
 } as const;
 
@@ -135,13 +131,22 @@ export function createStationDocsMcpServer(): McpServer {
     'list_station_docs_topics',
     {
       description:
-        "List the topics in Station's SHIPPED DOCUMENTATION (what Station is, projects, agents, engines, connections, tasks, skills, scheduled jobs, tool servers, trust and receipts, fleet, plugins, vocabulary). Returns bundled documentation, never live state: it cannot tell you what exists on this Station.",
-      inputSchema: z.object({}),
+        "List topics in Station's SHIPPED DOCUMENTATION, including the architecture learning tree. Filter parentId to manual, architecture, or a branch id returned by this tool. Returns bundled documentation, never live state: it cannot tell you what exists on this Station.",
+      inputSchema: z.object({
+        parentId: z
+          .string()
+          .optional()
+          .describe(
+            'Optional parent topic id, such as architecture or architecture-execution.',
+          ),
+      }),
     },
-    async () =>
+    async ({ parentId }) =>
       jsonToolResult({
         ...SHIPPED_SOURCE,
-        topics: STATION_DOCS_TOPICS.map(toSummary),
+        topics: STATION_DOCS_TOPICS.filter(
+          (topic) => parentId === undefined || topic.parentId === parentId,
+        ).map(toSummary),
       }),
   );
 
@@ -171,9 +176,9 @@ export function createStationDocsMcpServer(): McpServer {
     'search_station_docs',
     {
       description:
-        "Keyword search across Station's SHIPPED DOCUMENTATION. Returns matching bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
+        "Case-insensitive substring search across Station's SHIPPED DOCUMENTATION. Returns matching bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
       inputSchema: z.object({
-        query: z.string().describe('Words to look for, e.g. "gate evidence".'),
+        query: z.string().describe('Substring to look for, e.g. "approval".'),
         limit: z
           .number()
           .int()

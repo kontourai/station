@@ -2,7 +2,6 @@
  * @vitest-environment jsdom
  */
 
-import { parsePatchFiles } from '@pierre/diffs';
 import {
   fireEvent,
   render,
@@ -88,11 +87,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 
 import {
-  binaryFileNames,
   DiffPanel,
-  diffFileChangeCounts,
-  diffFileKind,
-  diffTotalChangeCounts,
   LARGE_DIFF_COLLAPSE_THRESHOLD,
 } from '../components/coding-layout/DiffPanel';
 import { subscribeInteractiveWorkspacePerformanceMarks } from '../performance/interactive-workspace-performance-hooks';
@@ -132,6 +127,23 @@ rename to new-name.ts
 const BINARY_PATCH = `diff --git a/image.png b/image.png
 index 1234567..89abcde 100644
 Binary files a/image.png and b/image.png differ
+`;
+
+// A pure file-mode change: no hunks, not a rename, no binary marker.
+const MODE_ONLY_PATCH = `diff --git a/run.sh b/run.sh
+old mode 100644
+new mode 100755
+`;
+
+// Synthetic: one file carrying both git's binary marker and a real hunk, so
+// the rendered header must choose between the two readings.
+const BINARY_MARKED_WITH_HUNKS_PATCH = `diff --git a/data.txt b/data.txt
+Binary files a/data.txt and b/data.txt differ
+--- a/data.txt
++++ b/data.txt
+@@ -1 +1 @@
+-old
++new
 `;
 
 /**
@@ -248,91 +260,6 @@ describe('DiffPanel', () => {
   });
 });
 
-describe('diffFileChangeCounts / diffTotalChangeCounts (pure, station#3104)', () => {
-  test('counts are derived from the parsed diff, not a hardcoded fixture', () => {
-    const [oneChange] = parsePatchFiles(SAMPLE_PATCH, 'test').flatMap(
-      (p) => p.files,
-    );
-    expect(diffFileChangeCounts(oneChange)).toEqual({
-      additions: 1,
-      deletions: 1,
-    });
-
-    const [twoChanges] = parsePatchFiles(SECOND_FILE_PATCH, 'test').flatMap(
-      (p) => p.files,
-    );
-    expect(diffFileChangeCounts(twoChanges)).toEqual({
-      additions: 2,
-      deletions: 1,
-    });
-
-    // Changing the diff text changes the derived counts — this is the load-
-    // bearing assertion for "derived from the parsed diff, not a constant".
-    expect(diffFileChangeCounts(oneChange)).not.toEqual(
-      diffFileChangeCounts(twoChanges),
-    );
-  });
-
-  test('total counts sum every file in a multi-file diff', () => {
-    const files = parsePatchFiles(MULTI_FILE_PATCH, 'test').flatMap(
-      (p) => p.files,
-    );
-    expect(files).toHaveLength(2);
-    expect(diffTotalChangeCounts(files)).toEqual({
-      additions: 3, // 1 (foo.ts) + 2 (bar.ts)
-      deletions: 2, // 1 (foo.ts) + 1 (bar.ts)
-    });
-  });
-
-  test('a file with no hunks has zero counts', () => {
-    expect(diffFileChangeCounts({ hunks: [] } as never)).toEqual({
-      additions: 0,
-      deletions: 0,
-    });
-  });
-});
-
-describe('diffFileKind / binaryFileNames (pure, station#3170)', () => {
-  test('a file with hunks is always "lines", regardless of type', () => {
-    const [changed] = parsePatchFiles(SAMPLE_PATCH, 'test').flatMap(
-      (p) => p.files,
-    );
-    expect(diffFileKind(changed, false)).toBe('lines');
-    // Even if somehow flagged binary, real hunk content wins — a file with
-    // actual +/- lines to show should never lose them to a kind label.
-    expect(diffFileKind(changed, true)).toBe('lines');
-  });
-
-  test('a pure rename (no hunks) is "renamed"', () => {
-    const [renamed] = parsePatchFiles(PURE_RENAME_PATCH, 'test').flatMap(
-      (p) => p.files,
-    );
-    expect(renamed.hunks).toHaveLength(0);
-    expect(renamed.type).toBe('rename-pure');
-    expect(diffFileKind(renamed, false)).toBe('renamed');
-  });
-
-  test('binaryFileNames recovers the file name @pierre/diffs drops', () => {
-    const names = binaryFileNames(BINARY_PATCH);
-    expect(names.has('image.png')).toBe(true);
-  });
-
-  test('a binary file (no hunks, name resolved via binaryFileNames) is "binary"', () => {
-    const [binary] = parsePatchFiles(BINARY_PATCH, 'test').flatMap(
-      (p) => p.files,
-    );
-    expect(binary.hunks).toHaveLength(0);
-    const isBinary = binaryFileNames(BINARY_PATCH).has(binary.name);
-    expect(diffFileKind(binary, isBinary)).toBe('binary');
-  });
-
-  test('a hunkless, non-renamed, non-binary file falls back to "unknown"', () => {
-    expect(diffFileKind({ hunks: [], type: 'change' } as never, false)).toBe(
-      'unknown',
-    );
-  });
-});
-
 describe('DiffPanel change counts (rendered, station#3104)', () => {
   test('per-file and total counts render without expanding anything', () => {
     diffQueryResult = {
@@ -391,6 +318,30 @@ describe('DiffPanel change counts — hunkless files (station#3170)', () => {
     expect(stats).toEqual(['binary']);
     expect(stats.some((s) => s.includes('+0'))).toBe(false);
     expect(stats.some((s) => s.includes('−0'))).toBe(false);
+  });
+
+  test('a hunkless file that is neither a rename nor binary says so, not 0/0', () => {
+    // A pure file-mode change: no hunks, a `change` type, no binary marker.
+    diffQueryResult = { data: MODE_ONLY_PATCH, isLoading: false, error: null };
+    const { container } = render(
+      <DiffPanel workingDir="/repo" projectSlug="project" />,
+    );
+    expect(perFileStatText(container)).toEqual(['—']);
+  });
+
+  test('real hunk content beats a binary marker for the same file', () => {
+    diffQueryResult = {
+      data: BINARY_MARKED_WITH_HUNKS_PATCH,
+      isLoading: false,
+      error: null,
+    };
+    const { container } = render(
+      <DiffPanel workingDir="/repo" projectSlug="project" />,
+    );
+    const [stat] = perFileStatText(container);
+    expect(stat).toContain('+1');
+    expect(stat).toContain('−1');
+    expect(stat).not.toContain('binary');
   });
 
   test('files with hunks are unchanged — still render numeric +/− counts', () => {

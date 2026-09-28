@@ -1,13 +1,4 @@
-/**
- * ElevenLabsTTSProvider — TTSProvider using ElevenLabs streaming TTS.
- *
- * Flow:
- *  1. Fetch single-use WS URL from local server
- *  2. Open WebSocket, send text in chunks
- *  3. Receive streamed MP3 chunks, play via Web Audio API
- *
- * Keepalive: send empty text flush every 20s.
- */
+// Legacy authorization path; provider compatibility is tracked in #2784.
 import type { TTSOptions, TTSProvider } from '@kontourai/station-sdk';
 
 export class ElevenLabsTTSProvider implements TTSProvider {
@@ -67,7 +58,6 @@ export class ElevenLabsTTSProvider implements TTSProvider {
       this._audioCtx = new AudioContext();
 
       ws.onopen = () => {
-        // Send text to synthesize
         ws.send(
           JSON.stringify({
             text,
@@ -92,7 +82,6 @@ export class ElevenLabsTTSProvider implements TTSProvider {
         try {
           const msg = JSON.parse(evt.data);
           if (msg.audio) {
-            // Base64-encoded MP3 chunk
             const binary = atob(msg.audio);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++)
@@ -100,7 +89,6 @@ export class ElevenLabsTTSProvider implements TTSProvider {
             this._mp3Chunks.push(bytes);
           }
           if (msg.isFinal) {
-            // Decode and play accumulated MP3
             const total = this._mp3Chunks.reduce((a, c) => a + c.length, 0);
             const merged = new Uint8Array(total);
             let offset = 0;

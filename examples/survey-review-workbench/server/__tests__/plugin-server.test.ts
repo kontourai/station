@@ -3,10 +3,10 @@
  * per-project review-session persistence (Survey ReviewSessionEventStore
  * backing), optimistic concurrency, path safety, and trust-bundle projection.
  *
- * The example-session and trust-bundle routes import `@kontourai/survey`,
- * which resolves from the root dependencies (3.0.0; the plugin's own
- * package.json declares ^0.7.2). The file imports it up front so a lost
- * resolution fails loudly instead of skipping the projection tests.
+ * The example-session and trust-bundle routes import `@kontourai/survey`
+ * through the repository dependency graph. The file imports it up front so
+ * missing resolution fails rather than skipping projection tests.
+ * Run the repository's managed `npm run dependencies:ci` setup first.
  */
 
 import {

@@ -1,6 +1,4 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { renderSessionInventoryDom } from '../session-inventory-dom';
 import { buildStationSessionInventoryMcpAppResource } from '../session-inventory-mcp-app';
@@ -53,30 +51,6 @@ for (const id of [
   });
 
 describe('portable Session inventory MCP App', () => {
-  test('keeps compact/full keys and counts identical while rendering inert hostile content', () => {
-    projection.groups[0].items[0].attachmentDescriptors = [
-      {
-        kind: 'attachment',
-        name: 'https://host/<script>\u202e',
-        mediaType: 'text/html',
-        length: 1,
-      },
-    ];
-    const selection = { scope: projection.scope, groupId: 'inputs' as const };
-    const compact = buildSessionInventoryViewModel(
-      projection,
-      selection,
-      'compact',
-    );
-    const full = buildSessionInventoryViewModel(projection, selection, 'full');
-    expect(compact.groups.map((group) => [group.key, group.count])).toEqual(
-      full.groups.map((group) => [group.key, group.count]),
-    );
-    const root = document.createElement('section');
-    renderSessionInventoryDom(root, compact);
-    expect(root.querySelectorAll('a,img,script')).toHaveLength(0);
-  });
-
   test('renders owner and derived Attention gaps plus owner-derived current/kept labels inertly', () => {
     projection.version = 'station.session-inventory/v2';
     projection.groups.splice(2, 0, {
@@ -88,14 +62,6 @@ describe('portable Session inventory MCP App', () => {
       gaps: [],
     });
     projection.groups[0].gaps = [{ kind: 'unavailable' }];
-    projection.groups[0].items[0].attachmentDescriptors = [
-      {
-        kind: 'attachment',
-        name: '<script>hostile gap witness</script>\u202e',
-        mediaType: 'text/plain',
-        length: 1,
-      },
-    ];
     const keptGroup = projection.groups.find(
       (group: any) => group.id === 'kept',
     )!;
@@ -170,16 +136,15 @@ describe('portable Session inventory MCP App', () => {
     // runtime guard's last-line ceiling is 640 KiB.
     expect(Buffer.byteLength(resource.text)).toBeLessThanOrEqual(573_335);
     expect(resource.text).not.toMatch(/react|node:|surface-trust-panel/i);
-    const source = readFileSync(
-      join(import.meta.dirname, '..', 'session-inventory-mcp-app.browser.ts'),
-      'utf8',
+    // The shipped app pages only through the opaque station-control tool
+    // capability and never fetches or links on its own.
+    expect(resource.text).toMatch(/name:\s*["']get_session_inventory["']/);
+    expect(resource.text).toMatch(/operation:\s*["']page["']/);
+    expect(resource.text).toContain('station.session-inventory-app/v1');
+    expect(resource.text).not.toMatch(
+      /<a[\s>]|\bfetch\(|createElement\(["']a["']\)/,
     );
-    expect(source).toContain("name: 'get_session_inventory'");
-    expect(source).toContain("operation: 'page'");
-    expect(source).toContain("'station.session-inventory-app/v1'");
-    expect(source).toContain(
-      'buildBasisPanelViewModel(current.projection.basis)',
-    );
-    expect(source).not.toMatch(/fetch\(|<a|createElement\('a'/);
+    expect(resource.text).toContain("connect-src 'none'");
+    expect(resource._meta.ui.csp.connectDomains).toEqual([]);
   });
 });

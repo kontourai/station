@@ -6,10 +6,14 @@ import type {
   FleetServeReceiptPage,
 } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-contracts/http';
-import type { SystemIdentityResponse } from '@kontourai/station-contracts/system-status';
+import type {
+  ServiceUpdateProgress,
+  SystemIdentityResponse,
+} from '@kontourai/station-contracts/system-status';
 import { _getApiBase } from '../api';
 import { parseRestartExpectation } from '../core-update-restart-expectation';
 import {
+  parseServiceUpdateProgress,
   parseSystemIdentityResponse,
   parseSystemUpdateStatus,
 } from '../system-update-status-parser';
@@ -493,6 +497,28 @@ export async function requestSystemIdentity(
   return parseSystemIdentityResponse(await response.json());
 }
 
+/**
+ * Read a launcher-run archive's update progress (`GET
+ * /api/system/core-update/service-update`). A non-ok status throws; a body
+ * this SDK cannot read as a progress state reads as `unavailable`.
+ */
+export async function requestServiceUpdateProgress(
+  apiBase: string,
+  signal?: AbortSignal,
+): Promise<ServiceUpdateProgress> {
+  const response = await authenticatedFetch(
+    `${apiBase}/api/system/core-update/service-update`,
+    { signal },
+  );
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      `Failed to fetch service update progress: ${response.status}`,
+    );
+  }
+  return parseServiceUpdateProgress(await response.json());
+}
+
 export async function applyCoreUpdate(apiBase: string): Promise<{
   success: boolean;
   error?: string;
@@ -500,6 +526,11 @@ export async function applyCoreUpdate(apiBase: string): Promise<{
   updating?: boolean;
   restarting?: boolean;
   restart?: CoreUpdateRestartExpectation;
+  /**
+   * A launcher-run archive queued the update (#2675): follow it with
+   * `requestServiceUpdateProgress`, correlating by `requestId`.
+   */
+  serviceUpdate?: { requestId: string };
   logPath?: string;
   message?: string;
 }> {
@@ -515,13 +546,26 @@ export async function applyCoreUpdate(apiBase: string): Promise<{
     updating?: boolean;
     restarting?: boolean;
     restart?: unknown;
+    serviceUpdate?: unknown;
     logPath?: string;
     message?: string;
   };
   if (!result.success) {
     throw new Error(apiErrorMessage(result, 'Failed to apply core update'));
   }
-  const { restart: rawRestart, ...responsePayload } = result;
+  const {
+    restart: rawRestart,
+    serviceUpdate: rawServiceUpdate,
+    ...responsePayload
+  } = result;
+  if (rawServiceUpdate !== undefined) {
+    const requestId = (rawServiceUpdate as { requestId?: unknown } | null)
+      ?.requestId;
+    if (typeof requestId !== 'string' || requestId.length === 0) {
+      throw new Error('Service update request could not be followed');
+    }
+    return { ...responsePayload, serviceUpdate: { requestId } };
+  }
   if (result.restarting) {
     const restart = parseRestartExpectation(rawRestart);
     if (!restart) {

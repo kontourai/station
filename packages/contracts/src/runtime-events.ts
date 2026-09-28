@@ -462,6 +462,17 @@ export interface SessionApprovalModeSetEvent extends CanonicalRuntimeEventBase {
   method: 'session.approval-mode-set';
   sessionId: string;
   approvalMode: ApprovalMode;
+  /**
+   * #1796: set only on the Ask Station records when the operator revokes a
+   * device's full access (`approval:full-access` removed, or the device
+   * revoked). Names the device whose grant this undoes; the decision it
+   * supersedes stays in history.
+   */
+  revocation?: {
+    reason: 'device-full-access-revoked';
+    deviceId: string;
+    cause: 'scope-removed' | 'device-revoked';
+  };
 }
 
 export interface ContentTextDeltaEvent extends CanonicalRuntimeEventBase {
@@ -669,11 +680,62 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   purpose?: string;
 }
 
+/**
+ * #2880: what an adapter can report about a decision after Station records
+ * it. `request.resolved` always means "decision recorded"; this says whether
+ * any later `request.delivery` can follow.
+ *
+ * - `engine`: the engine closes the request on its own wire after Station's
+ *   reply (Codex `serverRequest/resolved`, Muse `approval/resolved`). That is
+ *   an acknowledgement the request was closed after a well-formed reply —
+ *   never proof the engine applied the decision.
+ * - `in-process`: Station's own engine consumes the decision in-process.
+ * - `none`: the protocol has no acknowledgement (Claude Agent SDK
+ *   `canUseTool`, ACP `session/request_permission`). Delivery is not
+ *   reported; that is a capability, not a warning.
+ */
+export type ApprovalAcknowledgement = 'engine' | 'in-process' | 'none';
+
 export interface RequestResolvedEvent extends CanonicalRuntimeEventBase {
   method: 'request.resolved';
   requestId: string;
   status: ApprovalStatus;
   response?: Record<string, unknown>;
+  /**
+   * #2880: the publishing adapter's acknowledgement capability for this
+   * decision. Absent on events that predate the field and on settlements
+   * Station makes without replying to the engine (a session stopped
+   * mid-approval, or a request the engine closed on its own before Station
+   * answered); both read as "delivery not reported".
+   */
+  acknowledgement?: ApprovalAcknowledgement;
+}
+
+/**
+ * #2880: the engine-side fate of a recorded decision, published only by an
+ * adapter whose `acknowledgement` is `engine`.
+ *
+ * - `acknowledged`: the engine closed the request after Station's
+ *   well-formed reply. It supersedes an earlier `unacknowledged` for the
+ *   same request (a late acknowledgement).
+ * - `unacknowledged`: `no-acknowledgement` — nothing arrived within the
+ *   adapter's bounded window (not a failure; Station did not re-send);
+ *   `invalid-reply` — Station refused to write a reply that failed the
+ *   engine's decision vocabulary, so the engine never received one.
+ */
+export interface RequestDeliveryEvent extends CanonicalRuntimeEventBase {
+  method: 'request.delivery';
+  requestId: string;
+  outcome: 'acknowledged' | 'unacknowledged';
+  /** Milliseconds from Station's reply (or refusal) to this observation. */
+  waitedMs: number;
+  reason?: 'no-acknowledgement' | 'invalid-reply';
+  /**
+   * The outcome the engine itself reported when closing the request, when
+   * its acknowledgement carries one (Muse's `approval/resolved`). It may
+   * differ from the recorded decision; Codex's acknowledgement carries none.
+   */
+  engineStatus?: ApprovalStatus;
 }
 
 export interface RuntimeErrorEvent extends CanonicalRuntimeEventBase {
@@ -1123,6 +1185,7 @@ export type CanonicalRuntimeEvent =
   | ToolCompletedEvent
   | RequestOpenedEvent
   | RequestResolvedEvent
+  | RequestDeliveryEvent
   | RuntimeErrorEvent
   | RuntimeWarningEvent
   | TokenUsageUpdatedEvent

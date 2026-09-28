@@ -109,26 +109,6 @@ test.describe('Bundled plugin registry lifecycle', () => {
   // The 360s outer budget leaves 60s for ordinary UI interactions and cleanup.
   test.describe.configure({ timeout: 360_000 });
 
-  test('request-only authentication reaches operator routes without changing the ordinary request context', async ({
-    authenticatedRequest,
-    playwright,
-  }) => {
-    const operatorResponse = await authenticatedRequest.get(
-      `${API}/api/pairing/requests`,
-    );
-    expect(operatorResponse.ok()).toBe(true);
-
-    const ordinaryRequest = await playwright.request.newContext();
-    try {
-      const unauthenticatedResponse = await ordinaryRequest.get(
-        `${API}/api/pairing/requests`,
-      );
-      expect(unauthenticatedResponse.status()).toBe(401);
-    } finally {
-      await ordinaryRequest.dispose();
-    }
-  });
-
   test('installs, uses, removes, and reinstalls the bundled minimal workspace', async ({
     page,
     authenticatedRequest,

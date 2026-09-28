@@ -14,7 +14,7 @@ interface PluginHostContext {
 
 export function activate({ apiBase }: PluginHostContext): () => void {
   const disposeSTT = voiceRegistry.registerSTT(new NovaSonicProvider(apiBase));
-  // NovaSonicProvider also implements TTSProvider (same session).
+  // The legacy registry receives separate STT and TTS instances.
   const disposeTTS = voiceRegistry.registerTTS(new NovaSonicProvider(apiBase));
   return () => {
     disposeTTS();

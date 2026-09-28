@@ -34,6 +34,7 @@ describe('createRuntimeInitializationDeps', () => {
         verifyCredential: vi.fn(() => true),
         canSharePersonalConversation: vi.fn(() => false),
         personalConversationOwnerIds: vi.fn(() => undefined),
+        deviceHoldsFullAccess: vi.fn(() => false),
         resolveGrantedScope: vi.fn(
           () =>
             'orchestration:read orchestration:operate terminal:operate access:manage',

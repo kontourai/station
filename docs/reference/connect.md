@@ -2,7 +2,12 @@
 
 Multi-device connectivity package. Handles stable Station identity, host-
 confirmed one-time device pairing, scoped credential storage, revocation, and
-connection persistence. Framework-agnostic core with optional React bindings.
+connection persistence. The source contains a framework-agnostic core and React
+bindings; the package root exports both. This is a private workspace package,
+not a separately published installation contract. The root and `/health-probe`
+exports require the package build; other declared subpaths point to TypeScript
+source. See the [package README](../../packages/connect/README.md) and
+[export map](../../packages/connect/package.json).
 
 For how this pairing relationship differs from an SSH environment's
 delegated-execution relationship — direction, trust model, and what persists
@@ -11,11 +16,30 @@ where — see
 
 ---
 
+## Optional native application transport
+
+The `/native-application` source entry exports
+`createNativeApplicationTransport({ signaling, origin, signal, trust, ... })`.
+The host supplies v2 signaling and approved Station trust, including an
+authoritative asynchronous recheck. The client verifies the signed Station
+answer before setting the remote description and uses only the reliable,
+ordered `station-application-v1` DataChannel. It returns `fetch` and
+`openChannel`; abort or retired trust closes owned work. There is no direct
+HTTP fallback or grant-bearer exposure.
+
+This is an opt-in library surface, separate from ordinary saved-route selection.
+It does not approve a Device, authenticate an account or grant Project access.
+See the [package README](../../packages/connect/README.md#optional-native-application-transport)
+and [native account continuation](sdk.md#native-station-account-continuation-opt-in)
+for the separate caller responsibilities. No physical native-client result is
+implied by these source contracts.
+
 ## types
 
 ### `SavedConnection`
 
-A persisted server connection entry.
+A persisted server connection entry. This excerpt shows the main fields; import
+the canonical type for host-injected, broker-route and recovery metadata.
 
 ```ts
 interface SavedConnection {
@@ -25,6 +49,8 @@ interface SavedConnection {
   url: string; // compatibility alias for the selected endpoint
   endpoints: AccessEndpoint[];
   selectedEndpointId: string;
+  accessMethods: EnvironmentAccessMethod[];
+  selectedAccessMethodId: string;
   environmentId: string | null;
   authProtocolVersion: number | null;
   credentialRef: CredentialRef; // lookup reference, never bearer material
@@ -52,13 +78,16 @@ feature detection across a rolling client/server upgrade. See
 for that field's schema and absence-means-unsupported semantics, and
 `hasCapability()` from `@kontourai/station-sdk` for reading it.
 
-Changing a verified environment's endpoint stages an untrusted candidate. On
-explicit confirmation, Connect sends a fresh 256-bit nonce (never the bearer)
-to `POST /.well-known/station/v1/proof` and verifies the returned,
-domain-separated HMAC locally with the saved credential. The endpoint changes
-only when the environment id, nonce, protocol version, and signature all match.
-Remote candidates must use HTTPS; cleartext HTTP is accepted only for strict
-loopback hosts.
+Changing a verified environment's endpoint stages a candidate for explicit
+confirmation. The current confirmation path requires a saved credential, sends
+a fresh 256-bit nonce to `POST /.well-known/station/v1/proof`, and checks the
+returned environment ID, nonce, protocol version and HMAC before committing the
+candidate. The request does not include the bearer credential. Use an endpoint
+whose ownership you have independently established; the public handshake and
+this response check are not a replacement for trusted endpoint selection.
+This confirmation path accepts HTTPS, or HTTP on strict loopback hosts. See the
+[confirmation caller](../../packages/connect/src/react/ConnectionManagerModalContent.tsx)
+and [proof parser](../../packages/connect/src/core/environmentProof.ts).
 
 Version 4 migrates older URL-only and endpoint records idempotently. One verified
 environment can retain typed same-origin, tailnet HTTPS, LAN HTTPS/HTTP, and
@@ -71,17 +100,27 @@ redacted.
 uses bounded exponential retry with jitter, cancels when the environment or
 subscriber set changes, and wakes on browser online/visibility signals. The
 last verified profile/session data may remain visible during a transient
-outage, but it is explicitly stale and read-only. The SDK rejects mutations
-before `fetch` while stale and keeps no outbox, so blocked changes are never
-silently replayed after recovery.
+outage. Health snapshots do not themselves make all consumers read-only. The
+SDK transport can reject non-safe HTTP methods before dispatch when a host's
+credential resolver supplies `mutationAllowed: () => false`; Station's current
+`ApiBaseContext` resolver does not supply that optional guard. Individual
+features still own their availability checks. See the
+[SDK transport](../../packages/sdk/src/client/http.ts) and
+[Station resolver](../../src-ui/src/contexts/ApiBaseContext.tsx).
+[#2815](https://github.com/kontourai/station/issues/2815) tracks the decision
+about a shared stale-connection mutation policy. The optional guard's absence
+alone does not establish that a particular stale operation can succeed.
+This health coordinator does not queue mutations.
+Station's separate chat outbound queue has its own admission and replay rules;
+this is not a promise that the whole application has no queue.
 
 ### `ConnectionSupervisor`
 
 A standalone, transport-agnostic connection state machine: `available ->
 connecting -> connected`, with `backoff` (transient failure, retry scheduled
-on a 1/2/4/8/16s ladder that resets after 30s of stable connection), `blocked`
-(terminal failure — currently just an auth rejection — which never retries
-automatically), and `offline` (no network). It is driven entirely by typed
+on a default 1/2/4/8/16s ladder with 20% jitter that resets after 30s of stable
+connection), `blocked` (a caller-classified terminal failure, which never
+retries automatically), and `offline` (no network). It is driven by typed
 signals (`connectRequested`, `disconnectRequested`, `retryRequested`,
 `networkChanged`, `wakeup`, `credentialChanged`, `attemptSucceeded`,
 `attemptFailed`, `transportClosed`) rather than ad hoc booleans, and it owns
@@ -101,17 +140,15 @@ supervisor's generic classification — today only `authentication-failed`
 (401/403) is terminal. `ConnectionHealthCoordinator` is the first adopter: it
 consults this classifier on each failure and, for a terminal reason, stops
 scheduling its automatic retry ladder (surfaced as a new `blocked: boolean`
-on `ConnectionHealthSnapshot` / `ConnectionStatusResult`) instead of hot
-looping against a stale credential. It resumes on the next explicit
+on `ConnectionHealthSnapshot` / `ConnectionStatusResult`). It resumes on the next explicit
 `trigger()` — already reachable through a manual "Try now", the browser
-regaining network, or (new) a saved-credential change — closing the specific
-hot-loop-on-401 gap this mechanism exists to fix. A full engine swap (the
-coordinator's own multi-endpoint polling loop driven end-to-end by a live
-`ConnectionSupervisor` instance, including its `offline`/wake-probe
-semantics) is deliberately out of scope for this first adoption to avoid
-regressing the proven polling behavior; a per-environment supervisor
-*registry* (one instance per environment, reusable beyond health polling) is
-tracked separately (#1096).
+regaining network, or a saved-credential change). The coordinator keeps its own
+multi-endpoint polling loop; it does not instantiate `ConnectionSupervisor`.
+The hook shares coordinators through a registry, which is separate from the
+proposed reusable supervisor registry (#1096). See the
+[supervisor](../../packages/connect/src/core/ConnectionSupervisor.ts),
+[coordinator](../../packages/connect/src/core/ConnectionHealthCoordinator.ts),
+and [hook registry](../../packages/connect/src/react/useConnectionStatus.ts).
 
 ### `StorageAdapter`
 
@@ -128,7 +165,7 @@ interface StorageAdapter {
 ### `ConnectionStatus`
 
 ```ts
-type ConnectionStatus = 'connected' | 'connecting' | 'error';
+type ConnectionStatus = 'connected' | 'connecting' | 'error' | 'idle';
 ```
 
 ### `ConnectionCandidate`
@@ -182,8 +219,12 @@ separate from profile `localStorage`. They survive reloads in the same tab but
 are discarded with the tab session. This remains a conservative advanced
 fallback, not an OS keychain: same-origin script can read it. Same-origin web
 pairing does not use this adapter; the server places the device credential in a
-persistent `HttpOnly` cookie that JavaScript cannot read. Native clients should
-inject a keychain-backed `StorageAdapter`.
+persistent `HttpOnly` cookie that JavaScript cannot read. Supplying `storage`
+without `credentialStorage` makes that custom adapter the credential fallback
+too; pass both explicitly when they need different custody. Station's native
+host owns credentials and supplies authenticated transport plus secret-free
+profile state. A renderer-readable keychain adapter would not preserve that
+host-only boundary.
 
 ---
 
@@ -192,12 +233,16 @@ inject a keychain-backed `StorageAdapter`.
 Framework-agnostic store for managing saved connections. Compatible with React's `useSyncExternalStore` via the `subscribe` method.
 
 ```ts
-import { ConnectionStore } from '@kontourai/station-connect';
+import {
+  ConnectionStore,
+  LocalStorageAdapter,
+  SessionStorageAdapter,
+} from '@kontourai/station-connect';
 
 const store = new ConnectionStore({
-  storage?: StorageAdapter,   // default: defaultStorage
-  credentialStorage?: StorageAdapter, // default: session storage
-  storageKey?: string,        // default: 'station-connect-connections'
+  storage: new LocalStorageAdapter(),
+  credentialStorage: new SessionStorageAdapter(),
+  storageKey: 'my-host-connections',
 });
 ```
 
@@ -209,23 +254,34 @@ query string, or ordinary connection-profile localStorage record.
 
 #### `getAll(): SavedConnection[]`
 
-Returns all saved connections. Result is referentially stable between writes (cached).
+Returns the composed connection list, including a host-injected entry when it
+has not been folded into its matching saved profile. Injected entries are not
+persisted. The result is cached between invalidations.
 
 #### `getActive(): SavedConnection | null`
 
-Returns the currently active connection, or the first connection if no active ID is set.
+Returns the resolved usable active connection. Resolution considers explicit
+selection, host-injected selection, matching mobile/default and managed-loopback
+profiles, then a non-broker saved fallback. It can return `null`; an unprepared
+broker route is not automatically activated.
 
 #### `add(name: string, url: string): SavedConnection`
 
-Adds a new connection and activates it. If a connection with the same URL already exists, activates it instead and returns the existing entry.
+Adds a new connection, selecting it when no active ID exists. If a non-broker
+connection with the same URL already exists, activates and returns that entry.
+Call `setActive` explicitly when the new connection should replace a selection.
 
 #### `remove(id: string): void`
 
-Removes a connection by ID. If it was active, the first remaining connection becomes active.
+Removes a saved connection and its saved credential. If it was active, selection
+falls back to the first remaining non-broker saved profile, then the normal
+host-aware active-resolution rules.
 
-#### `update(id: string, changes: Partial<Pick<SavedConnection, 'name' | 'url'>>): void`
+#### `update(id: string, changes: Partial<Pick<SavedConnection, 'name' | 'url' | 'sshForward'>>): void`
 
-Updates the name or URL of an existing connection.
+Updates supported profile fields. A URL change for a verified environment
+stages an endpoint candidate for proof and confirmation. A broker route's URL
+cannot be replaced this way; it requires a new invitation.
 
 #### `reconcileHandshake(id, handshake): SavedConnection | null`
 
@@ -278,9 +334,9 @@ STATION_HOME=/path/to/station-home STATION_PORT=4141 \
 
 The equivalent explicit form is `--api-base=http://127.0.0.1:4141` together
 with the matching `STATION_HOME`. Before sending authorization, the CLI compares
-the public environment identity and verifies a fresh nonce/HMAC proof. A wrong
-port, wrong home, redirect, or copied environment ID fails without sending the
-credential.
+the public environment identity and checks a fresh nonce/HMAC response against
+that home's operator credential. These checks do not make an independently
+untrusted destination safe. Select the home and listener you operate.
 
 The command loads the operator credential inside the host process, sends it
 only to the loopback Station API, asks for interactive confirmation, and prints
@@ -303,9 +359,17 @@ in-app scanner, select **Scanner inside Station** above the QR instead.
 The selected client channel controls both the app-opening QR and any published
 mobile download links. Public store and beta invitation URLs are maintained in
 `packages/connect/src/core/mobileAppDownloads.ts`; absent destinations have no
-install link. Native clients default to their own release channel. Station creates a five-minute, single-use offer containing an environment
-ID, intended HTTPS endpoint,
-one-time challenge, conservative `station:interactive` scope, and expiry. The
+install link. Native clients default to their own release channel. Station
+creates a five-minute, single-use offer containing an environment ID, endpoint,
+one-time challenge, selected scope and expiry. The interactive UI defaults to
+**Standard** (`orchestration:read orchestration:operate terminal:operate`) and
+also offers **Read-only** (`orchestration:read`). `station:interactive` is a
+legacy marker migrated to the historical default grant, not the new UI's
+scope string. HTTPS is accepted; the offer service also accepts local/private
+HTTP endpoints. The current in-app QR decoder is narrower: it accepts HTTPS or
+strict-loopback HTTP, and rejects a nonloopback LAN HTTP offer even if the server
+created it. Use a reachable HTTPS endpoint for that scan flow. Browser camera
+and mixed-content restrictions still apply. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
 
@@ -316,21 +380,39 @@ credential. When
 the Station endpoint is the browser's own origin, the server returns only safe
 device/environment metadata and stores that credential in a host-only,
 persistent `HttpOnly` `SameSite=Strict` cookie. Closing and reopening the phone
-browser therefore keeps the device paired without exposing a token to
-JavaScript. Cross-origin and native clients retain explicit bearer delivery.
+browser can therefore retain the pairing while that cookie remains present,
+valid and unrevoked. Cross-origin and native exchanges support bearer delivery;
+Station's native host captures and holds it outside the WebView.
 Expired, denied, cancelled, altered, replayed, and unconfirmed offers are
 rejected.
 
 Use the paired-device inventory in the same host panel to revoke one device.
-Revocation is checked by the shared HTTP/SSE/WebSocket credential verifier and
-takes effect immediately without rotating the operator credential or revoking
-other devices. Ordinary paired credentials cannot administer pairing offers or
-revoke other devices. The native desktop’s local grant, minted using proof of
-Station-home possession, can manage pairing within its current scope. Browser
-launcher grants do not inherit that authority. `station environment credential rotate` rotates operator
-bootstrap authority without silently exporting it; `station environment reset`
-changes the environment ID and clears all paired-device authority. If a web
-session is revoked or its site data is cleared, pair again.
+Revocation makes the credential fail subsequent authenticated HTTP, SSE and
+remote WebSocket admission without rotating the operator credential or revoking
+other devices. Existing streams have their own revalidation boundaries; this is
+not a guarantee that revocation closes every already admitted socket. It does
+not recall data already delivered or guarantee cancellation of effects already
+dispatched. Ordinary paired
+credentials cannot create pairing offers or revoke other devices. A device
+explicitly granted `access:approve` can list and decide pending requests; that
+does not grant device-inventory or offer-management access. The native desktop's
+local grant, minted using proof of Station-home possession, can manage pairing
+within its current scope. Browser launcher grants do not inherit that authority.
+
+The host-managed `station environment credential rotate` path replaces the
+operator credential, preserves the environment ID and paired-device registry,
+and prints the new secret to stdout after confirmation. Keep that output out of
+logs and shared terminals. `station environment reset` replaces the environment
+ID and operator credential and clears paired-device authority; its output is
+metadata rather than the new credential. Both support explicit `--force` to
+bypass the prompt. The separately installed CLI refuses these operations when
+no host security service is supplied; use the host's repository launcher or
+management UI. If a web session is revoked or its site data is cleared, pair
+again. The owners are the
+[CLI dispatcher](../../packages/cli/src/commands/environment.ts),
+[security service](../../src-server/services/ssh/environment-security-service.ts),
+[pairing service](../../src-server/services/ssh/device-pairing-service.ts), and
+[scope contract](../../packages/contracts/src/environment-security.ts).
 
 #### `markDeviceSession(id: string): void`
 
@@ -342,9 +424,12 @@ session without serializing credential material into the connection store.
 Removes the saved credential and returns a remote Station to the
 credential-required state.
 
-#### `setActive(id: string): void`
+#### `setActive(id: string): boolean`
 
-Sets the active connection and stamps `lastConnected` with the current timestamp.
+Selects a saved direct connection and stamps `lastConnected`; returns `false`
+for an unknown ID or a broker route. Selecting the injected host entry clears
+the saved active pointer and returns `true`. Broker routes use the React host's
+asynchronous preparation path before the store marks them active.
 
 #### `subscribe(fn: () => void): () => void`
 
@@ -357,7 +442,9 @@ unsub(); // cleanup
 
 #### `migrate(legacyKey: string): void`
 
-One-time migration helper. Reads a URL stored under a legacy single-URL key, imports it as a connection, and removes the old key.
+Reads a URL stored under a legacy single-URL key and imports it when no saved
+entry has the same URL. It retains the legacy key, so repeated calls do not
+delete the old client's fallback or duplicate the same entry.
 
 ```ts
 store.migrate('project-station-api-base');
@@ -423,7 +510,7 @@ const {
   addConnection,      // (name, url) => SavedConnection
   removeConnection,   // (id) => void
   updateConnection,   // (id, changes) => void
-  setActiveConnection,// (id) => void
+  setActiveConnection,// (id) => Promise<void>; host transport preparation can reject
   setApiBase,         // (url) => void — upsert by URL and activate
   resetToDefault,     // () => void — activate or create the defaultUrl connection
   isCustom,           // boolean — true when active URL !== defaultUrl
@@ -464,14 +551,27 @@ function useConnectionStatus(options: UseConnectionStatusOptions): ConnectionSta
 
 ```ts
 interface UseConnectionStatusOptions {
-  checkHealth: (url: string) => Promise<boolean>;
+  checkHealth: (url: string, credential?: string) => Promise<boolean>;
+  probeEndpoint?: (
+    url: string,
+    credential: string | undefined,
+    expectedEnvironmentId: string | null,
+    signal: AbortSignal,
+    brokerRoute?: NonNullable<SavedConnection['brokerRoute']>,
+  ) => Promise<ConnectionHealthCheckResult>;
   pollInterval?: number; // ms, default: 10_000
 }
 
 interface ConnectionStatusResult {
-  status: ConnectionStatus;   // 'connected' | 'connecting' | 'error'
+  status: ConnectionStatus;
   checking: boolean;          // true while a check is in flight
   reason: ConnectionFailureReason | null;
+  failureStreak: number;
+  failureWindows: ReadonlyArray<{
+    start: string;
+    end: string;
+    reason: ConnectionFailureReason;
+  }>;
   blocked: boolean;           // true on a terminal failure (e.g. authentication-failed);
                                // the automatic retry ladder is paused until recheck(),
                                // a credential change, or the browser regaining network
@@ -483,21 +583,26 @@ interface ConnectionStatusResult {
 
 ```tsx
 const { status, recheck } = useConnectionStatus({
-  checkHealth: async (url) => {
-    const res = await fetch(`${url}/api/health`).catch(() => null);
-    return res?.ok ?? false;
-  },
+  checkHealth: hostCheckHealth,
+  probeEndpoint: hostProbeEndpoint,
   pollInterval: 15_000,
 });
 ```
 
-Resets to `'connecting'` whenever the active URL changes.
+The two callbacks above are supplied by the embedding host; they are not
+package exports. The host must preserve selected-connection authentication,
+identity checks, cancellation and failure reasons. Station's own caller uses
+authenticated `/api/system/status`, not an unauthenticated `/api/health`
+endpoint. See [the host health adapter](../../src-ui/src/lib/serverHealth.ts).
 
 ---
 
 ### `useHostUrl(options)`
 
-Detects the device's LAN IP via `RTCPeerConnection` ICE candidates and returns a host URL suitable for QR display. Falls back to `localhost` if detection fails or times out (3 s).
+Attempts to derive an address from `RTCPeerConnection` ICE candidates and
+returns a URL hint. Falls back to `localhost` if detection fails or times out
+(3 s). This does not prove that a Station server is listening or reachable,
+and a URL hint is not a pairing offer accepted by `QRScanner`.
 
 **signature**
 
@@ -526,7 +631,7 @@ const { hostUrl, isDetecting } = useHostUrl({ port: 3141 });
 
 return isDetecting
   ? <span>Detecting IP…</span>
-  : <QRDisplay url={hostUrl} />;
+  : <span>Candidate address: {hostUrl}</span>;
 ```
 
 ---
@@ -572,7 +677,7 @@ interface UseConnectionCandidatesResult {
 ```
 
 Candidate URLs are reduced to HTTP/HTTPS origins. URLs containing credentials,
-invalid names, and malformed results are discarded. HTTPS tailnet candidates
+invalid names, and malformed results are discarded. Tailnet candidates
 rank ahead of LAN and desktop-host hints, and duplicate origins collapse to one
 suggestion. A failing provider is isolated from healthy providers.
 
@@ -588,9 +693,9 @@ guessed subnet or probe a hard-coded port. Manual address and pairing-code
 entry remain available under Advanced connection options.
 
 The former `useNetworkDiscovery` and `DiscoveredServer` exports remain as
-deprecated source-compatibility adapters in `0.4.x`. The hook now reads the
-same registered providers and never performs its former browser subnet scan;
-move callers to `useConnectionCandidates` before the next major release.
+deprecated source-compatibility adapters. The hook reads the same registered
+providers and does not perform its former browser subnet scan. New callers
+should use `useConnectionCandidates`.
 
 ---
 
@@ -601,14 +706,15 @@ move callers to `useConnectionCandidates` before the next major release.
 Full-featured modal for managing connections. Includes one-time host/device
 pairing, manual endpoint add, and provider-backed connection suggestions.
 
-**props**
+**selected props**
 
 ```ts
 interface ConnectionManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  checkHealth: (url: string) => Promise<boolean>;
-  initialPanel?: 'list' | 'add' | 'pair-device' | 'pair-host' | 'discover';
+  checkHealth: (url: string, credential?: string) => Promise<ConnectionHealthCheckResult>;
+  initialPanel?: 'list' | 'add' | 'request-access' | 'pair-device' | 'pair-code' | 'pair-host' | 'devices' | 'discover';
+  initialPairingPayload?: string;
 }
 ```
 
@@ -620,12 +726,26 @@ Must be rendered inside `ConnectionsProvider`.
 <ConnectionManagerModal
   isOpen={showModal}
   onClose={() => setShowModal(false)}
-  checkHealth={async (url) => {
-    const res = await fetch(`${url}/api/health`).catch(() => null);
-    return res?.ok ?? false;
-  }}
+  checkHealth={hostCheckConnectionHealth}
 />
 ```
+
+`hostCheckConnectionHealth` is the host's authenticated adapter. Prefer a
+structured failure reason to a bare `false`; credential refusal and an
+unreachable server need different recovery. See the
+[complete prop contract](../../packages/connect/src/react/ConnectionManagerModal.tsx)
+for compatibility checks and native-host integration options.
+
+The [store](../../packages/connect/src/core/ConnectionStore.ts),
+[profile normalizer](../../packages/connect/src/core/connectionProfile.ts), and
+[React context](../../packages/connect/src/react/ConnectionsContext.tsx) own
+selection and migration. A broker profile has no direct HTTP endpoints and
+requires the host's `prepareActiveConnection` callback; failed preparation does
+not select it. The native host's
+[pairing transport](../../src-ui/src/platform/native/pairingTransport.ts) and
+[profile storage](../../src-ui/src/platform/native/stationProfileStorage.ts)
+own its credential custody. These source boundaries do not prove a completed
+pairing or reconnection on a physical device.
 
 ---
 
@@ -648,8 +768,11 @@ interface QRDisplayProps {
 **example**
 
 ```tsx
-<QRDisplay url="http://192.168.1.42:3141" size={200} label="Scan to connect" />
+<QRDisplay url={pairingPayload} size={200} label="Scan pairing invitation" />
 ```
+
+Here `pairingPayload` is the short-lived offer returned by the host's pairing
+flow. Displaying a raw address as a QR code does not create such an offer.
 
 ---
 
@@ -666,6 +789,7 @@ connection modal always exposes the accessible manual-code fallback.
 interface QRScannerProps {
   onScan: (payload: string) => void;
   onCancel: () => void;
+  onManualEntry?: () => void;
 }
 ```
 
@@ -682,18 +806,22 @@ interface QRScannerProps {
 
 ### `ConnectionStatusDot`
 
-A small colored circle indicating connection status.
+A small status indicator. Pairing/repair states use a triangle; the remaining
+states use a circle. Hosts should also show an accessible label and remedy.
 
 **props**
 
 ```ts
 interface ConnectionStatusDotProps {
-  status: ConnectionStatus; // 'connected' | 'connecting' | 'error'
+  status: ConnectionIndicatorState;
   size?: number;            // px, default: 8
 }
 ```
 
-Colors: `connected` → green (`#22c55e`), `connecting` → yellow (`#eab308`), `error` → red (`#ef4444`).
+`ConnectionIndicatorState` includes `connected` (green), `connecting` and
+`busy` (yellow), `error` (red), `idle` (gray), and `needs-credential`,
+`awaiting-approval`, `needs-repair` (amber). The two `needs-*` states use the
+triangle. This richer UI state is distinct from `ConnectionStatus`.
 
 **example**
 

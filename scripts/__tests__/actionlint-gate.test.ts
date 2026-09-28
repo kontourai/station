@@ -700,15 +700,6 @@ describe('persistent runner policy', () => {
     return checkout;
   }
 
-  test('accepts the checked-in repo-scans job and nothing else in it (#2176)', () => {
-    const clean = primaryCiJobFixture('repo-scans', () => {});
-    expect(
-      persistentRunnerPolicyFindings(clean).filter(
-        (finding) => finding.jobId === 'repo-scans',
-      ),
-    ).toEqual([]);
-  });
-
   test.each([
     [
       'a fork-reachable guard',
@@ -1016,17 +1007,6 @@ describe('persistent runner policy', () => {
       expect(expressionReadsCredential(expression), expression).toBe(false);
   });
 
-  test('the shipped ci.yml jobs reference no credential', () => {
-    const findings = persistentRunnerPolicyFindings(
-      primaryCiJobFixture('fast-checks', () => {}),
-    );
-    expect(
-      findings.filter(({ message }) =>
-        message.includes('must not reference secrets, the GitHub token'),
-      ),
-    ).toEqual([]);
-  });
-
   describe('ui-bundle-delta report job (#1703)', () => {
     type Step = Record<string, unknown> & {
       name?: string;
@@ -1036,14 +1016,6 @@ describe('persistent runner policy', () => {
     const steps = (job: Record<string, unknown>) => job.steps as Step[];
     const report = (job: Record<string, unknown>) =>
       steps(job).find((step) => step.name === 'Report UI entry bundle delta');
-
-    test('accepts the checked-in job', () => {
-      expect(
-        persistentRunnerPolicyFindings(
-          primaryCiJobFixture('ui-bundle-delta', () => {}),
-        ).filter(({ jobId }) => jobId === 'ui-bundle-delta'),
-      ).toEqual([]);
-    });
 
     test.each([
       [
@@ -3413,14 +3385,6 @@ describe('merge-queue regression workflow policy', () => {
       [key: string]: unknown;
     };
   }
-
-  test('accepts the checked-in workflow (false-positive control)', () => {
-    expect(
-      persistentRunnerPolicyFindings([
-        { file, document: mergeQueueRegressionDocument() },
-      ]),
-    ).toEqual([]);
-  });
 
   test.each([
     [

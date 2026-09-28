@@ -171,6 +171,7 @@ export interface InitializeRuntimeDeps {
     | 'resolveGrantedScope'
     | 'canSharePersonalConversation'
     | 'personalConversationOwnerIds'
+    | 'deviceHoldsFullAccess'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -540,6 +541,10 @@ export async function initializeRuntime(
   );
   const orchestrationService = new OrchestrationService({
     ...(idleSessionParkAfterMs !== undefined ? { idleSessionParkAfterMs } : {}),
+    // #1796: revoking a device's full access re-confines the sessions its
+    // grant unconfined, from their next turn.
+    isFullAccessGrantorCurrent: (deviceId) =>
+      deps.environmentSecurityService.deviceHoldsFullAccess(deviceId),
     // Bedrock and Ollama are Station-engine model-provider implementations,
     // not public engine connections. Keep them available for dispatch without
     // publishing them through the registry that feeds New Chat inventory.

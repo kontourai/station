@@ -1,5 +1,12 @@
 # Keep browser-preview hosting adapter-local
 
+> **Historical record:** the `2.0` Browser pane state and migration mentioned
+> below now have an implementation. See the
+> [current glossary and source links](../glossary.md#browser-pane-live-surface-control-lease).
+> The dated decisions and platform observations below are retained as history.
+> Current operator instructions and source boundaries are in the
+> [Browser workspace guide](../guides/browser-workspace.md).
+
 **Status (2026-09-22):** Superseded in part by
 [ADR 0019](0019-host-the-browser-pane-server-side-behind-a-host-adapter.md).
 The text below is the original record and is unchanged.

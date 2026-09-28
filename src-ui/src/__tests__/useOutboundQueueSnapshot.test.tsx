@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useConversationBoundaryDialogs } from '../components/chat-dock/useConversationBoundaryDialogs';
 import { useOutboundQueueSnapshot } from '../hooks/useOutboundQueueSnapshot';
 import {
   _resetOutboundQueueStorage,
@@ -17,6 +17,7 @@ import {
   attachOutboundQueueSource,
   detachOutboundQueueSource,
 } from '../lib/outboundQueueSnapshotSource';
+import type { ChatSession } from '../types';
 
 /**
  * Counts every durable read the queue performs. `updateItem` is the
@@ -116,44 +117,45 @@ describe('useOutboundQueueSnapshot', () => {
     view.unmount();
   });
 
-  /**
-   * The dock itself cannot be mounted in a test — `ChatWorkspacePane`'s graph
-   * needs an active session carrying a `conversationId`, seeded through
-   * `activeChatsStore` plus the conversation inventory query, and
-   * `DockShellControlParity`/`DockShellProjectBinding` both record that
-   * decision. The flag above is proven where it is implemented; this is what
-   * keeps the dock passing it. The call lives in the dock's boundary-dialogs
-   * hook (extracted from ChatDock.tsx in #1785), which is the file this pin
-   * reads: a pin on ChatDock.tsx itself went red the moment the hook moved,
-   * unnoticed by any related-set selection because nothing imports this
-   * file's subject by path.
-   */
-  it('is gated on a conversation at the dock call site', () => {
-    const dockSource = readFileSync(
-      join(__dirname, '..', 'components', 'chat-dock', 'ChatDock.tsx'),
-      'utf8',
+  it('the dock boundary hook opens no queue until its session has a conversation', async () => {
+    const { storage, calls } = countingStorage();
+    _setOutboundQueueStorage(storage);
+    const subscribe = vi.spyOn(outboundDispatch, 'subscribe');
+    const client = new QueryClient();
+    const session = { id: 'session-a', agentSlug: 'codex' } as ChatSession;
+
+    const view = renderHook(
+      ({ activeSession }: { activeSession: ChatSession }) =>
+        useConversationBoundaryDialogs({
+          agents: [],
+          apiBase: 'http://station.test',
+          activeSession,
+          allSessions: [],
+        }),
+      {
+        initialProps: { activeSession: session },
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      },
     );
-    expect(dockSource).toContain('useConversationBoundaryDialogs({');
-    const boundarySource = readFileSync(
-      join(
-        __dirname,
-        '..',
-        'components',
-        'chat-dock',
-        'useConversationBoundaryDialogs.ts',
-      ),
-      'utf8',
-    );
-    const call = boundarySource.match(
-      /useOutboundQueueSnapshot\(([\s\S]{0,120}?)\);/,
-    );
-    expect(
-      call,
-      'The dock boundary hook must gate its queue subscription',
-    ).not.toBe(null);
-    expect((call?.[1] ?? '').replace(/\s+/g, ' ')).toContain(
-      'Boolean(activeSession?.conversationId)',
-    );
+    // Bounded real time, so a queue module slower than a microtask cannot
+    // turn the refusal into a false green.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(calls.durableReads).toBe(0);
+
+    // The control: the same mounted hook subscribes once a conversation exists.
+    view.rerender({
+      activeSession: { ...session, conversationId: 'conversation-a' },
+    });
+    await waitFor(() => expect(subscribe).toHaveBeenCalledOnce());
+    await waitFor(() => expect(calls.durableReads).toBeGreaterThan(0));
+
+    subscribe.mockRestore();
+    view.unmount();
   });
 
   it('opens nothing at all while the consumer is disabled', async () => {

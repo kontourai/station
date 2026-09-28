@@ -25,6 +25,12 @@ const bootHistory = vi.hoisted(() => ({
         shortSha: 'abc1234',
         source: 'derived',
       },
+      {
+        bootTime: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+        shortSha: 'fed4321',
+        source: 'recorded',
+        cause: 'crash',
+      },
     ],
   },
   isLoading: false,
@@ -100,9 +106,16 @@ describe('Developer System tab (station#2642)', () => {
     ).toBeTruthy();
   });
 
-  test('a record without a derivable cause renders no cause chip at all', () => {
+  test('only a record carrying a cause renders a cause chip', () => {
     renderTab();
-    expect(document.querySelector('.system-tab__cause')).toBeNull();
+    const rows = Array.from(document.querySelectorAll('.system-tab__rows li'));
+    expect(rows).toHaveLength(3);
+    const chips = rows.map((row) =>
+      Array.from(row.querySelectorAll('.system-tab__cause')).map(
+        (chip) => chip.textContent,
+      ),
+    );
+    expect(chips).toEqual([[], [], ['crash']]);
     // The best-effort historical row is honestly labeled.
     expect(screen.getByText('derived from logs')).toBeTruthy();
   });

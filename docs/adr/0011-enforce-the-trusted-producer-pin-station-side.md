@@ -1,5 +1,14 @@
 # Enforce the trusted-producer pin Station-side, at attach and at completion
 
+**Status:** Superseded on 2026-08-26; see the
+[retirement record](#superseded--2026-08-26) below. The Station-side probe,
+attach veto, and `STATION_FLOW_PRODUCER_PIN` switch described in the original
+decision are retired. Current
+[`FlowRunService.evaluate`](../../src-server/services/flow/flow-run-service.ts)
+delegates to Flow's public `evaluateRun`; historical event fields do not prove
+that a current run passed policy. Preserve the original failure analysis as
+rationale, not as instructions to recreate the removed enforcement layer.
+
 ## Context
 
 Station's workspace pins who may satisfy a governance claim. `.flow/config.json`
