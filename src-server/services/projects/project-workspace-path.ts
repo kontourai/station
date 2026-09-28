@@ -420,6 +420,9 @@ type ProjectDirectoryOutcome =
  * Ask the directory-question. Never throws, for the same reason
  * {@link resolveProjectWorkspaceOutcome} does not — a resolver throw becomes
  * the `error` state carrying the thrown message verbatim.
+ *
+ * No production caller yet: S2 (then A1/A2) re-migrates onto it after slice
+ * 3c-pre; see docs/design/portable-project-identity.md, "Why S2 is deferred".
  */
 export async function resolveProjectDirectoryOutcome(
   projectSlug: string,

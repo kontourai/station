@@ -38,10 +38,17 @@ interface SupervisingServiceDependencies {
    * home runs.
    */
   repoPath?: string;
+  /**
+   * A packaged prebuilt-archive upgrade's install root. A service whose
+   * manifest records this root runs `<installRoot>/current`, and install.sh
+   * restarts it around the switch (#2675 slice C), so it does not block the
+   * upgrade. Every other service is judged as before.
+   */
+  archiveInstallRoot?: string;
 }
 
 function realpathOrSelf(
-  fs: SupervisingServiceDependencies['fs'],
+  fs: Pick<ServiceFs, 'realpathSync'>,
   path: string,
 ): string {
   try {
@@ -101,6 +108,24 @@ function probeUnit(
   return windowsServiceStatus(registration, probe);
 }
 
+/**
+ * The manifest names an archive service that runs `installRoot`'s `current`.
+ * The same rule install.sh applies when it chooses which services to restart
+ * around an upgrade; both key on the recorded install root, never on the
+ * version directory the unit happened to start.
+ */
+function isArchiveServiceOfInstallRoot(
+  manifest: Record<string, unknown>,
+  installRoot: string,
+  fs: Pick<ServiceFs, 'realpathSync'>,
+): boolean {
+  return (
+    manifest.kind === 'archive' &&
+    typeof manifest.installRoot === 'string' &&
+    realpathOrSelf(fs, manifest.installRoot) === realpathOrSelf(fs, installRoot)
+  );
+}
+
 /** One manifest's verdict: `null` when it rules itself out. */
 function inspectManifest(
   stationHome: string,
@@ -133,6 +158,16 @@ function inspectManifest(
     repoPath !== undefined &&
     typeof manifest.repoPath === 'string' &&
     realpathOrSelf(dependencies.fs, manifest.repoPath) !== repoPath
+  ) {
+    return null;
+  }
+  if (
+    dependencies.archiveInstallRoot !== undefined &&
+    isArchiveServiceOfInstallRoot(
+      manifest,
+      dependencies.archiveInstallRoot,
+      dependencies.fs,
+    )
   ) {
     return null;
   }

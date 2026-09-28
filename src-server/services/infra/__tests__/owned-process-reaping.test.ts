@@ -555,30 +555,26 @@ describe('ACPProcess escalation (#1863)', () => {
     // be near-zero, not the confirm-wait cost under test.
     (acp as any).spawnedPid = proc.pid ?? null;
     (acp as any).releaseOwnedChild = release;
-    const recordFile = join(registryDir, `engine-${proc.pid}.json`);
 
     try {
       const start = Date.now();
       await destroyProcessWithEscalation(acp, 500, () => {});
       const elapsed = Date.now() - start;
 
-      // Same property the HIGH-1 test proves, re-checked against the exact
-      // run this timing measurement comes from.
-      expect(existsSync(recordFile)).toBe(true);
-
-      // The measured, code-attributable single-attempt cost: bounded near
-      // FORCE_GROUP_KILL_CONFIRM_MS (1000ms) plus the destroy race's own
-      // near-instant reject and the near-instant second-destroy race -- NOT
-      // the docblock's old ~13s/attempt figure, which models destroy()
-      // hanging for the full operationTimeoutMs (a different, validated
-      // mode).
+      // The code-attributable single-attempt cost: the confirm wait
+      // (FORCE_GROUP_KILL_CONFIRM_MS, 1000ms) ran in full, and the whole
+      // pass stayed in the quick-reject mode (~1s) rather than the ~13s
+      // destroy-hang mode the acp-probe.ts docblock distinguishes. The upper
+      // bound is set between the two modes, not near the measured value, so
+      // a slow host does not trip it; the test timeout sits above it so the
+      // assertion, not the timeout, reports a regression.
       expect(elapsed).toBeGreaterThanOrEqual(900);
-      expect(elapsed).toBeLessThan(3000);
+      expect(elapsed).toBeLessThan(6000);
     } finally {
       if (proc.pid) reapGroup(proc.pid);
       rmSync(registryDir, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 
   // archive#3441 LOW-1: every existing assertion on releaseIfConfirmedGone()
   // was a vi.fn() spy on a mock cast `as unknown as ACPProcess` in

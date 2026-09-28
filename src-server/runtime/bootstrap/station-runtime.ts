@@ -122,8 +122,10 @@ import {
   connectionSpawnEnv,
 } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
+import { readVerifiedNativePionApplicationRequest } from '../../services/connections/native-v2-pion-application-adapter.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import {
+  readVerifiedNativeVirtualApplicationRequest,
   type VirtualApplication,
   VirtualApplicationIngress,
 } from '../../services/connections/virtual-application.js';
@@ -3285,6 +3287,7 @@ export class StationRuntime {
       ? new VirtualApplicationIngress(
           this.virtualApplicationConfiguration.origin,
           readVerifiedPionApplicationRequest,
+          readVerifiedNativePionApplicationRequest,
         )
       : undefined;
     this.virtualApplication = virtualApplication;
@@ -3405,6 +3408,7 @@ export class StationRuntime {
               aliasId,
             ),
         },
+        readVerifiedNativeVirtualApplicationRequest,
       );
     }
     if (!this.relayEnrollment) {

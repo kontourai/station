@@ -7,10 +7,6 @@ import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
-import {
-  type PluginForegroundRunReader,
-  projectPluginForegroundRun,
-} from '../plugins/plugin-foreground-runs.js';
 import type { SchedulerService } from '../scheduling/scheduler-service.js';
 import type { NativeInvocationRunReader } from './native-invocation-runs.js';
 import type { OrchestrationService } from './orchestration-service.js';
@@ -31,13 +27,6 @@ export class VoiceTurnStorageUnavailableError extends Error {
   }
 }
 
-export class PluginForegroundRunStorageUnavailableError extends Error {
-  constructor() {
-    super('Plugin foreground run storage is temporarily unavailable.');
-    this.name = 'PluginForegroundRunStorageUnavailableError';
-  }
-}
-
 interface RunListFilters {
   source?: RunSource;
   providerId?: string;
@@ -50,8 +39,6 @@ export class RunService {
     private readonly schedulerService: SchedulerService,
     private readonly nativeInvocationRuns: NativeInvocationRunReader,
     private readonly voiceTurnRuns: VoiceTurnRunsReader,
-    /** Optional only until the deep plugin foreground-work tracer is composed. */
-    private readonly pluginForegroundRuns?: PluginForegroundRunReader,
   ) {}
 
   async listRuns(
@@ -72,9 +59,6 @@ export class RunService {
     const includeVoice =
       !isHostedSessionReadAuthority(authority) &&
       (!filters.source || filters.source === 'voice');
-    const includePlugin =
-      !!this.pluginForegroundRuns &&
-      (!filters.source || filters.source === 'plugin');
 
     const [orchestrationRuns, scheduleRuns] = await Promise.all([
       includeOrchestration
@@ -93,17 +77,11 @@ export class RunService {
     const voiceRuns = includeVoice
       ? this.voiceTurnRuns.list()
       : { kind: 'available' as const, runs: [] };
-    const pluginRuns = includePlugin
-      ? await this.pluginForegroundRuns!.list(authority)
-      : { kind: 'available' as const, runs: [] };
     if (nativeRuns.kind === 'unavailable') {
       throw new NativeInvocationStorageUnavailableError();
     }
     if (voiceRuns.kind === 'unavailable') {
       throw new VoiceTurnStorageUnavailableError();
-    }
-    if (pluginRuns.kind === 'unavailable') {
-      throw new PluginForegroundRunStorageUnavailableError();
     }
 
     return [
@@ -113,9 +91,6 @@ export class RunService {
       ...scheduleRuns,
       ...nativeRuns.runs.filter((run) => this.matchesFilters(run, filters)),
       ...voiceRuns.runs.filter((run) => this.matchesFilters(run, filters)),
-      ...pluginRuns.runs
-        .map(projectPluginForegroundRun)
-        .filter((run) => this.matchesFilters(run, filters)),
     ].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   }
 
@@ -146,15 +121,6 @@ export class RunService {
       }
       return result.run;
     }
-    if (runId.startsWith('plugin:')) {
-      if (!this.pluginForegroundRuns) return null;
-      const result = await this.pluginForegroundRuns.read(runId, authority);
-      if (result.kind === 'unavailable') {
-        throw new PluginForegroundRunStorageUnavailableError();
-      }
-      return result.run ? projectPluginForegroundRun(result.run) : null;
-    }
-
     const legacy = await this.orchestrationService.readAgentRun(
       runId,
       authority,

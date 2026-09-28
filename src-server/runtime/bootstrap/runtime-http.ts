@@ -3,6 +3,8 @@ import {
   ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
   APPLICATION_SESSION_BASE_PATH,
   APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_PROOF_HEADER,
 } from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
@@ -52,6 +54,10 @@ import {
   setBudgetPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../security/runtime-request-security.js';
+import {
+  readVerifiedNativeVirtualApplicationRequest,
+  transferVerifiedNativeVirtualApplicationRequest,
+} from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import {
@@ -514,7 +520,9 @@ function configureRuntimeSecurity(
       !security.deploymentAuthentication &&
       !accountOperation &&
       (c.req.raw.headers.has(APPLICATION_SESSION_HEADER) ||
-        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER))
+        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER) ||
+        c.req.raw.headers.has(APPLICATION_SESSION_NATIVE_HEADER) ||
+        c.req.raw.headers.has(APPLICATION_SESSION_NATIVE_PROOF_HEADER))
     ) {
       c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
       return c.json(
@@ -906,6 +914,7 @@ function configureRuntimeSecurity(
     // adapter and the middleware resolve to different module copies.
     if (bodyResult !== 'no-stream') {
       const raw = c.req.raw;
+      const nativePeer = readVerifiedNativeVirtualApplicationRequest(raw);
       const authenticated = getRuntimeAuthenticatedRequestPrincipal(raw);
       c.req.raw = new Request(raw.url, {
         method: raw.method,
@@ -914,6 +923,14 @@ function configureRuntimeSecurity(
         body: bodyResult,
         duplex: 'half',
       });
+      if (
+        nativePeer &&
+        !transferVerifiedNativeVirtualApplicationRequest(raw, c.req.raw)
+      )
+        return c.json(
+          { error: { code: 'virtual_pion_provenance_invalid' } },
+          403,
+        );
       security.deploymentAuthentication?.transferRequest(raw, c.req.raw);
       // The request was deliberately rewrapped after bounded body buffering.
       // Carry the already middleware-verified principal to that replacement;

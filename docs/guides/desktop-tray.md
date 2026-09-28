@@ -150,7 +150,7 @@ Stable, Beta, and Nightly builds.
 
 ## Logging (#1899)
 
-The native shell (Rust/Tauri process — the tray, the notification watch, the
+The native shell (Rust/Tauri process — the tray, the notification feed, the
 credential/profile bridge, `bundled_server_status`) logs through
 [`tauri-plugin-log`](https://github.com/tauri-apps/plugins-workspace), not
 `eprintln!`. A terminal launch still sees stdout; a double-clicked `.app` — the

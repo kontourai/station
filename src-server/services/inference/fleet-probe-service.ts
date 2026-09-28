@@ -123,7 +123,7 @@ const FLEET_PROBE_MAX_OBSERVATIONS = 1024;
  * content to a machine the router had not yet decided to trust, which is the
  * exact ordering mistake a verification step must not make.
  */
-export const FLEET_PROBE_PROMPT = 'ping' as const;
+const FLEET_PROBE_PROMPT = 'ping' as const;
 
 /** One candidate this service can probe. Structural — no credential store. */
 export interface FleetProbeTarget {

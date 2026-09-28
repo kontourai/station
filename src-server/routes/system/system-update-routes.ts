@@ -67,10 +67,10 @@ const DEFAULT_INSTANCE_ID = 'default';
  *   server's parent watchdog. `station start` deletes it from its plain
  *   spawns (lifecycle.ts), and the child-env scrub removes it from terminals
  *   and engine children (child-process-environment.ts). It covers the
- *   Windows service too, whose task sets no other marker.
+ *   Windows service too.
  * - `STATION_SERVICE_MANAGED=1` is written by the launchd/systemd unit and
- *   inherited through the supervisor. It catches the case the PID cannot: a
- *   replacement a PREVIOUS git-pull restart spawned under the service, which
+ *   (since #2675) the Windows task wrapper, and inherited through the
+ *   supervisor. It catches the case the PID cannot: a replacement a PREVIOUS git-pull restart spawned under the service, which
  *   `performGitPullRestart` strips of the PID but still lives in the unit's
  *   process group (systemd `KillMode=mixed`) and is still restarted by it.
  *

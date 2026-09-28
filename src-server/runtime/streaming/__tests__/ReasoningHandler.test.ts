@@ -3,133 +3,90 @@ import { ReasoningHandler } from '../handlers/ReasoningHandler.js';
 import type { StreamChunk } from '../types.js';
 import { collect, toStream } from './helpers.js';
 
+/** Runs one text block, delivered as `deltas`, through a thinking-enabled handler. */
+async function runTextBlock(deltas: string[]) {
+  const handler = new ReasoningHandler({ enableThinking: true });
+  const result = await collect(
+    handler.process(
+      toStream([
+        { type: 'text-start', id: '0' } as StreamChunk,
+        ...deltas.map(
+          (text) => ({ type: 'text-delta', id: '0', text }) as StreamChunk,
+        ),
+        { type: 'text-end', id: '0' } as StreamChunk,
+      ]),
+    ),
+  );
+  const joined = (type: string) =>
+    result
+      .filter((chunk) => chunk.type === type)
+      .map((chunk) => chunk.text)
+      .join('');
+  return {
+    result,
+    reasoning: joined('reasoning-delta'),
+    text: joined('text-delta'),
+  };
+}
+
 describe('ReasoningHandler', () => {
-  test('detects thinking block start', async () => {
-    const handler = new ReasoningHandler({ enableThinking: true });
-    const result = await collect(
-      handler.process(
-        toStream([
-          { type: 'text-start', id: '0' } as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: '<thinking>thought</thinking>',
-          } as unknown as StreamChunk,
-          { type: 'text-end', id: '0' } as StreamChunk,
-        ]),
-      ),
-    );
+  test.each([
+    ['one delta', ['<thinking>thought</thinking>']],
+    ['tags in their own deltas', ['<thinking>', 'thought', '</thinking>']],
+    [
+      'tags split across deltas',
+      ['<thin', 'king>', 'thought', '</think', 'ing>'],
+    ],
+  ])(
+    'moves a thinking block into reasoning, delivered as %s',
+    async (_label, deltas) => {
+      const { result, reasoning, text } = await runTextBlock(deltas);
 
-    expect(result.some((c) => c.type === 'reasoning-start')).toBe(true);
+      expect(reasoning).toBe('thought');
+      // Neither the thought nor any tag byte leaks into visible text.
+      expect(text).toBe('');
+      const types = result.map((chunk) => chunk.type);
+      expect(types[0]).toBe('reasoning-start');
+      expect(types.lastIndexOf('reasoning-delta')).toBeLessThan(
+        types.indexOf('reasoning-end'),
+      );
+      expect(types).not.toContain('text-delta');
+    },
+  );
+
+  test('keeps the text around a thinking block visible and in order', async () => {
+    const { result, reasoning, text } = await runTextBlock([
+      'Before <thin',
+      'king>plan</thinking>after',
+    ]);
+
+    expect(reasoning).toBe('plan');
+    expect(text).toBe('Before after');
+    // Order of content, not chunking: consecutive deltas of one kind merge.
+    const segments: { type: string; text: string }[] = [];
+    for (const chunk of result) {
+      if (chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta') {
+        continue;
+      }
+      const last = segments.at(-1);
+      if (last?.type === chunk.type) last.text += chunk.text;
+      else segments.push({ type: chunk.type, text: chunk.text });
+    }
+    expect(segments).toEqual([
+      { type: 'text-delta', text: 'Before ' },
+      { type: 'reasoning-delta', text: 'plan' },
+      { type: 'text-delta', text: 'after' },
+    ]);
   });
 
-  test('buffers content inside thinking block', async () => {
-    const handler = new ReasoningHandler({ enableThinking: true });
-    const result = await collect(
-      handler.process(
-        toStream([
-          { type: 'text-start', id: '0' } as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: '<thinking>',
-          } as unknown as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: 'test content',
-          } as unknown as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: '</thinking>',
-          } as unknown as StreamChunk,
-          { type: 'text-end', id: '0' } as StreamChunk,
-        ]),
-      ),
-    );
+  test('passes regular text through unchanged, including a prefix that was not a tag', async () => {
+    const { reasoning, text } = await runTextBlock([
+      'regular <thin',
+      'x> text',
+    ]);
 
-    const deltas = result.filter((c) => c.type === 'reasoning-delta');
-    expect(deltas.length).toBeGreaterThan(0);
-  });
-
-  test('detects thinking block end', async () => {
-    const handler = new ReasoningHandler({ enableThinking: true });
-    const result = await collect(
-      handler.process(
-        toStream([
-          { type: 'text-start', id: '0' } as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: '<thinking>content</thinking>',
-          } as unknown as StreamChunk,
-          { type: 'text-end', id: '0' } as StreamChunk,
-        ]),
-      ),
-    );
-
-    expect(result.some((c) => c.type === 'reasoning-end')).toBe(true);
-  });
-
-  test('handles tag split across chunks', async () => {
-    const handler = new ReasoningHandler({ enableThinking: true });
-    const result = await collect(
-      handler.process(
-        toStream([
-          { type: 'text-start', id: '0' } as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: '<thin',
-          } as unknown as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: 'king>',
-          } as unknown as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: 'thought',
-          } as unknown as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: '</think',
-          } as unknown as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: 'ing>',
-          } as unknown as StreamChunk,
-          { type: 'text-end', id: '0' } as StreamChunk,
-        ]),
-      ),
-    );
-
-    expect(result.some((c) => c.type === 'reasoning-start')).toBe(true);
-    expect(result.some((c) => c.type === 'reasoning-end')).toBe(true);
-  });
-
-  test('passes through non-thinking text as text-delta', async () => {
-    const handler = new ReasoningHandler({ enableThinking: true });
-    const result = await collect(
-      handler.process(
-        toStream([
-          { type: 'text-start', id: '0' } as StreamChunk,
-          {
-            type: 'text-delta',
-            id: '0',
-            text: 'regular text',
-          } as unknown as StreamChunk,
-          { type: 'text-end', id: '0' } as StreamChunk,
-        ]),
-      ),
-    );
-
-    const textDeltas = result.filter((c) => c.type === 'text-delta');
-    expect(textDeltas.length).toBeGreaterThan(0);
+    expect(reasoning).toBe('');
+    expect(text).toBe('regular <thinx> text');
   });
 
   test('passes through non-text-delta chunks', async () => {

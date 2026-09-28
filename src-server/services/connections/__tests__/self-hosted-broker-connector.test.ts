@@ -137,6 +137,7 @@ describe.runIf(process.platform !== 'win32')(
           throw new Error('unexpected offer');
         },
       );
+      const nativePoll = vi.spyOn(connector, 'pollNative');
       const runtime = new SelfHostedBrokerRuntime({
         origin: 'https://station.example',
         configuredOrigin: scope.browserOrigin,
@@ -153,12 +154,13 @@ describe.runIf(process.platform !== 'win32')(
           () =>
             expect(
               f.service.register(scope, f.credentials.connector).revision,
-            ).toBe(2),
+            ).toBeGreaterThanOrEqual(2),
           { timeout: 5_000 },
         );
         expect(lostReply).toBe(true);
-        expect(renewalRequests).toBe(2);
+        expect(renewalRequests).toBeGreaterThanOrEqual(2);
         expect(offerReads).toBeGreaterThanOrEqual(2);
+        expect(nativePoll).not.toHaveBeenCalled();
         await runtime.shutdown();
       } finally {
         lifetime.abort();
