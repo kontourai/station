@@ -12,6 +12,11 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const reloadRuntimeAgents = vi.hoisted(() => vi.fn());
+// Captures the context StationRuntime hands its routes, so the case reads the
+// flag through the getter production routes consume.
+const configureRuntimeRoutes = vi.hoisted(() => vi.fn((_context: any) => ({})));
+
+vi.mock('../../routes/runtime-routes.js', () => ({ configureRuntimeRoutes }));
 
 vi.mock('../../agents/runtime-agent-lifecycle.js', async () => {
   const actual = await vi.importActual<
@@ -20,7 +25,6 @@ vi.mock('../../agents/runtime-agent-lifecycle.js', async () => {
   return { ...actual, reloadRuntimeAgents };
 });
 
-import { isManagedChatOrchestrationFeatureEnabled } from '../station-features.js';
 import { StationRuntime } from '../station-runtime.js';
 
 function createRuntime(): any {
@@ -54,7 +58,16 @@ function createRuntime(): any {
   runtime.logger = { error: vi.fn(), info: vi.fn() };
   runtime.eventBus = { emit: vi.fn() };
   runtime.reloadDefaultAgentFromConfig = vi.fn();
+  // Already built, so route configuration does not compose search.
+  runtime.runtimeSearch = { stop: vi.fn() };
   return runtime;
+}
+
+/** Configures routes once, as boot does, and returns the routes' flag getter. */
+function routeFlagGetter(runtime: any): () => boolean {
+  runtime.configureRoutes({});
+  const context = configureRuntimeRoutes.mock.calls.at(-1)?.[0];
+  return context.getManagedChatOrchestrationEnabled;
 }
 
 describe('StationRuntime managed-chat-orchestration flag durability (station#980 fix)', () => {
@@ -69,14 +82,14 @@ describe('StationRuntime managed-chat-orchestration flag durability (station#980
     }
   });
 
-  test('a config reload (reloadAgentsFromDisk) loses appConfig.managedChatOrchestration, but the live feature check is unaffected', async () => {
+  test('a config reload (reloadAgentsFromDisk) loses appConfig.managedChatOrchestration, but the route-context flag is unaffected', async () => {
     process.env.STATION_FEATURES = 'managed-chat-orchestration';
     const runtime = createRuntime();
     // The boot-time snapshot (runtime-initialize.ts) sets this — simulates a
     // freshly-booted runtime before any config mutation.
     runtime.appConfig = { managedChatOrchestration: true };
-
-    expect(isManagedChatOrchestrationFeatureEnabled()).toBe(true);
+    const managedChatOrchestrationEnabled = routeFlagGetter(runtime);
+    expect(managedChatOrchestrationEnabled()).toBe(true);
 
     // A fresh disk load never carries the non-persisted field — exactly what
     // `reloadRuntimeAgents`/`configLoader.loadAppConfig()` return in
@@ -88,19 +101,20 @@ describe('StationRuntime managed-chat-orchestration flag durability (station#980
     // Confirms the trap is real: the reassigned appConfig no longer carries
     // the flag.
     expect(runtime.appConfig.managedChatOrchestration).not.toBe(true);
-    // The fix: the live getter never depended on `appConfig`, so it is
-    // unaffected by the reassignment above.
-    expect(isManagedChatOrchestrationFeatureEnabled()).toBe(true);
+    // The fix: the getter the routes hold never depended on `appConfig`.
+    expect(managedChatOrchestrationEnabled()).toBe(true);
   });
 
-  test('the feature check reports false when STATION_FEATURES does not include the flag, before or after a reload', async () => {
+  test('the route-context flag follows STATION_FEATURES, not the appConfig snapshot', async () => {
     process.env.STATION_FEATURES = 'strands-runtime';
     const runtime = createRuntime();
-    runtime.appConfig = { managedChatOrchestration: false };
+    // A stale snapshot claiming the flag must not turn it on.
+    runtime.appConfig = { managedChatOrchestration: true };
     reloadRuntimeAgents.mockResolvedValue({ defaultModel: 'current-model' });
+    const managedChatOrchestrationEnabled = routeFlagGetter(runtime);
 
-    expect(isManagedChatOrchestrationFeatureEnabled()).toBe(false);
+    expect(managedChatOrchestrationEnabled()).toBe(false);
     await runtime.reloadAgentsFromDisk();
-    expect(isManagedChatOrchestrationFeatureEnabled()).toBe(false);
+    expect(managedChatOrchestrationEnabled()).toBe(false);
   });
 });

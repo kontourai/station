@@ -209,10 +209,10 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     # The fifteen-minute shard budget (CI_FAST_TIMEOUT_MS, enforced by the
-    # shard runner itself) + actionlint (5) + install (15) + Chromium (20) +
-    # ~3 minutes of unbounded setup = 58; ci-workflow-contract.test.ts pins
-    # the sum.
-    timeout-minutes: 60
+    # shard runner itself) + actionlint (5) + install (15) + zsh (5) +
+    # Chromium (20) + ~3 minutes of unbounded setup = 63;
+    # ci-workflow-contract.test.ts pins the sum.
+    timeout-minutes: 65
     strategy:
       fail-fast: false
       matrix:
@@ -273,6 +273,21 @@ jobs:
       - run: npm run dependencies:ci
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 15
+
+      # Same provisioning as full-regression: the selection can include
+      # tests that exec zsh (ops/nightly/macos-build-only-cleanup.test.mjs),
+      # and ubuntu-22.04 ships without it.
+      - name: Provision and preflight zsh for process-heavy installer fixtures
+        if: ${{ steps.slice.outputs.empty == 'false' }}
+        timeout-minutes: 5
+        run: |
+          if [[ ! -x /bin/zsh ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes zsh
+          fi
+          command -v zsh
+          test -x /bin/zsh
+          /bin/zsh --version
 
       # Same provisioning as fast-checks-statics: the selection can include
       # real-Chromium touch-target checks (station#3513).

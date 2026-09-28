@@ -193,6 +193,12 @@ export const pluginInstallConsentSchema = z.object({
     .optional(),
   permissions: z.array(z.string()).max(256),
   contentDigest: z.string().min(1).max(256),
+  /**
+   * #2719: the preview staged this source without its git metadata (an open
+   * install proposal named it), as the preview's own `gitMetadata` said. The
+   * install stages the same way, so the approval covers the bytes installed.
+   */
+  gitMetadata: z.literal('excluded').optional(),
   dependencies: z.array(z.string()).max(256).optional(),
   dependencyApprovals: z
     .array(

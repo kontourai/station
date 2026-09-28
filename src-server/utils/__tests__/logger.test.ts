@@ -390,11 +390,6 @@ describe('createLogger — level filtering and the store tee', () => {
     }
   });
 
-  it('still writes to stdout-only (no throw) when no sink has been installed', () => {
-    const logger = createLogger({ name: 'unsinked-logger', level: 'info' });
-    expect(() => logger.info('no sink yet')).not.toThrow();
-  });
-
   it('a module-scope logger created before boot lands in the store once installed', async () => {
     // Mirrors how ~57 files in this codebase create a logger at import time,
     // before `index.ts` has installed the durable sink.
@@ -637,9 +632,32 @@ describe('a log call never throws (station#2502 sibling: the ACP probe outage)',
     ).not.toThrow();
   });
 
-  it('still renders a correct string message unchanged', () => {
-    const logger = createLogger({ name: 'ordinary-logger', level: 'info' });
-    expect(() => logger.warn('an ordinary message', { a: 1 })).not.toThrow();
+  it('still renders a correct string message unchanged on stdout', async () => {
+    // The survival coercion above feeds only the pino/stdout line (the store
+    // tee renders `msg` separately), so read stdout: the production branch
+    // makes it `process.stdout`, which is spyable.
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    try {
+      const logger = createLogger({ name: 'ordinary-logger', level: 'info' });
+      logger.warn('an ordinary message', { a: 1 });
+      await new Promise((resolve) => setImmediate(resolve));
+      const lines = writeSpy.mock.calls
+        .flatMap((call) => String(call[0]).split('\n'))
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((line) => line.name === 'ordinary-logger');
+      expect(lines).toEqual([
+        expect.objectContaining({ msg: 'an ordinary message', a: 1 }),
+      ]);
+    } finally {
+      writeSpy.mockRestore();
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+    }
   });
 });
 

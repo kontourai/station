@@ -166,12 +166,18 @@ export async function observeLocalPluginSourceStatuses(input: {
         });
         continue;
       }
+      // A proposed install was staged without its git metadata (#2719), so
+      // its recorded digest leaves that out; the same walk read the folder
+      // both ways.
+      const current =
+        observed.digestWithoutGitMetadata === installedSourceDigest
+          ? observed.digestWithoutGitMetadata
+          : observed.digest;
       statuses.push({
         ...base,
-        status:
-          observed.digest === installedSourceDigest ? 'unchanged' : 'changed',
+        status: current === installedSourceDigest ? 'unchanged' : 'changed',
         installedSourceDigest,
-        currentSourceDigest: observed.digest,
+        currentSourceDigest: current,
       });
     }
   }

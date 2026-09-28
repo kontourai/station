@@ -6,7 +6,6 @@ import {
   verifyChannelAuth,
 } from '../src/apns-channel-auth.ts';
 import { parseLiveActivityRequest } from '../src/apns-request.ts';
-import { resetProviderTokenCacheForTest } from '../src/apns-token.ts';
 import { DAILY_STARTS_PER_DEVICE } from '../src/channel-ledger.ts';
 import {
   type ApnsGatewayConfig,
@@ -218,7 +217,6 @@ async function del(
 let errors: string[] = [];
 const originalError = console.error;
 beforeEach(() => {
-  resetProviderTokenCacheForTest();
   errors = [];
   console.error = (...args: unknown[]) => {
     errors.push(args.join(' '));

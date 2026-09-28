@@ -5,6 +5,7 @@ vi.mock('../api', () => ({
 }));
 
 import { COOPERATIVE_STOP_BUDGET_MS } from '@kontourai/station-contracts/orchestration';
+import { ChatHttpError } from '../client/chatHttpError';
 import { StationRequestTimeoutError } from '../client/http';
 import {
   cleanupTerminalProcess,
@@ -22,6 +23,7 @@ import {
   interruptOrchestrationTurn,
   STOP_REQUEST_BUDGET_MS,
   sendOrchestrationTurn,
+  setOrchestrationApprovalMode,
 } from '../query-domains/chatRuntimeOrchestration';
 
 function mockJsonResponse(payload: unknown, ok = true) {
@@ -142,6 +144,39 @@ describe('chatRuntimeOrchestration', () => {
       'This draft is starting on another device or tab.',
     );
     expect(refused?.code).toBe('draft_busy');
+  });
+
+  it('keeps a full-access refusal’s details on a rejected command (#1796)', async () => {
+    const details = {
+      requested: 'never',
+      requester: { kind: 'device', deviceId: 'ffb80147', deviceName: 'Laptop' },
+      station: {},
+      grant: null,
+    };
+    mockJsonResponse(
+      {
+        success: false,
+        error: 'Full access was not granted to device ffb80147.',
+        code: 'approval-full-access-not-granted',
+        details,
+      },
+      false,
+    );
+    const refused = await setOrchestrationApprovalMode({
+      threadId: 'thread-1',
+      approvalMode: 'never',
+      basedOnSequence: null,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(ChatHttpError);
+    expect(refused).toMatchObject({
+      status: 500,
+      code: 'approval-full-access-not-granted',
+      stationEnvelope: true,
+      details,
+    });
   });
 
   it('sends ambient context out-of-band on sendTurn and omits it when absent (#685)', async () => {

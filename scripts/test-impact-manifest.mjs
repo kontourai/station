@@ -703,6 +703,9 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Walks src-server/knowledge-store and src-server/services/knowledge for raw
+  // fs mutations that bypass the file-transaction seam.
+  'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
   'src-server/providers/__tests__/child-work-conformance.test.ts',
   'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',

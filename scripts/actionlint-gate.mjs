@@ -2210,6 +2210,15 @@ const CHANGED_SET_CHROMIUM_STEP = Object.freeze({
   run: 'echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"\nfor attempt in 1 2 3; do\n  echo "Playwright install attempt $attempt"\n  if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then\n    exit 0\n  fi\n  echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"\n  sleep 15\ndone\necho "::error::Playwright install failed after 3 attempts"\nexit 1\n',
 });
 
+const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
+  // Reviewed with its workflow step: the same apt provisioning and preflight
+  // full-regression and merge-queue-regression run. It installs a distro
+  // package and reads no secret or credential; the shard's selection can
+  // include tests that exec zsh (ops/nightly/macos-build-only-cleanup).
+  name: 'Provision and preflight zsh for process-heavy installer fixtures',
+  run: 'if [[ ! -x /bin/zsh ]]; then\n  sudo apt-get update\n  sudo apt-get install --yes zsh\nfi\ncommand -v zsh\ntest -x /bin/zsh\n/bin/zsh --version\n',
+});
+
 /**
  * #2709: the plan, the shards and the `fast-checks` aggregator all run
  * pull-request head code under pull_request_target, so each carries the same
@@ -2304,6 +2313,7 @@ function fastChecksShardingFindings(file, jobs) {
           run: PINNED_ACTIONLINT_PROVISION_RUN,
         },
         { name: undefined, run: 'npm run dependencies:ci' },
+        FAST_CHECKS_SHARD_ZSH_STEP,
         CHANGED_SET_CHROMIUM_STEP,
         { name: 'Run fast-checks shard', run: FAST_CHECKS_SHARD_RUN },
       ],

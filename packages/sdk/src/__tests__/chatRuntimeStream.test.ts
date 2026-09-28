@@ -350,6 +350,43 @@ describe('chatRuntimeStream', () => {
       message: 'HTTP 502',
     });
   });
+
+  it('keeps a refusal’s details, so the composer renders its structure (#1796)', async () => {
+    const details = {
+      requested: 'never',
+      requester: { kind: 'device', deviceId: 'e6f3f571', deviceName: 'Pixel' },
+      station: { environmentId: 'env-1' },
+      grant: null,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 403,
+        json: async () => ({
+          success: false,
+          error: 'Full access was not granted to device e6f3f571.',
+          code: 'approval-full-access-not-granted',
+          details,
+        }),
+      })) as any,
+    );
+
+    await expect(
+      streamConversationTurn({
+        agentSlug: 'default',
+        content: 'hello',
+        onStreamEvent: vi.fn(),
+        apiBase: 'http://example.test',
+      }),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'approval-full-access-not-granted',
+      serverMessage: 'Full access was not granted to device e6f3f571.',
+      stationEnvelope: true,
+      details,
+    });
+  });
 });
 
 describe('chatRuntimeStream — stall watchdog (station#1207)', () => {

@@ -78,7 +78,7 @@ describe('FileMemoryAdapter message mutations (station#2252)', () => {
    * queue. This test earns its place as coexistence coverage for the delete
    * path, not as evidence for the fix.
    */
-  test('a delete and a concurrent append both apply', async () => {
+  test('a delete and a concurrent append both complete and compose', async () => {
     await adapter.addMessages(
       [message('m1', 'one'), message('m2', 'two')],
       USER,

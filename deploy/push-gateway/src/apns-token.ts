@@ -120,10 +120,6 @@ interface CachedToken {
 // key's fingerprint so a rotated key never reuses the previous key's token.
 const isolateCache = new Map<string, CachedToken>();
 
-export function resetProviderTokenCacheForTest(): void {
-  isolateCache.clear();
-}
-
 export async function providerToken(
   credentials: ApnsCredentials,
   nowSeconds: number,
