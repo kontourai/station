@@ -10,7 +10,6 @@ import {
   act,
   fireEvent,
   render,
-  renderHook,
   screen,
   waitFor,
 } from '@testing-library/react';
@@ -52,15 +51,7 @@ import {
   INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT,
   subscribeInteractiveWorkspacePerformanceMarks,
 } from '../../performance/interactive-workspace-performance-hooks';
-import {
-  FilePreviewPane,
-  FilePreviewSourceLines,
-  highlightFilePreviewLine,
-  isRenderedMarkdownWithinBudget,
-  projectFilePreviewLines,
-  shouldHighlightFilePreviewLines,
-  useFilePreviewWrapController,
-} from '../FilePreviewPane';
+import { FilePreviewPane } from '../FilePreviewPane';
 
 // Receipt 3ea2e798 recorded the first real lazy Markdown chunk taking longer
 // than Testing Library's default 1 s polling budget under full-lane load. Keep
@@ -797,33 +788,57 @@ describe('FilePreviewPane', () => {
     expect(await screen.findByText(autolinkCorpus)).toBeTruthy();
   });
 
-  test('rejects token-dense Markdown before building a large React tree', () => {
-    expect(isRenderedMarkdownWithinBudget('*a'.repeat(4_096))).toBe(true);
-    expect(isRenderedMarkdownWithinBudget('*a'.repeat(4_097))).toBe(false);
-    expect(isRenderedMarkdownWithinBudget(`${'> '.repeat(4_096)}deep`)).toBe(
-      false,
-    );
-    expect(isRenderedMarkdownWithinBudget(`${'- '.repeat(4_096)}deep`)).toBe(
-      false,
-    );
-    expect(isRenderedMarkdownWithinBudget(`${'1. '.repeat(4_096)}deep`)).toBe(
-      false,
-    );
-    expect(isRenderedMarkdownWithinBudget(`${'- > '.repeat(1_024)}deep`)).toBe(
-      false,
-    );
-    expect(isRenderedMarkdownWithinBudget(`${'>\t'.repeat(2_048)}deep`)).toBe(
-      false,
-    );
-  });
+  test.each([
+    ['at', 4_096, false],
+    ['one past', 4_097, true],
+  ])(
+    'routes token-dense Markdown %s the 4,096-token budget (%i)',
+    async (_edge, count, refused) => {
+      previewQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: {
+          path: 'dense.md',
+          status: 'ready',
+          renderKind: 'markdown',
+          mimeType: 'text/markdown',
+          content: '*a'.repeat(count),
+        },
+      });
+
+      renderPaneAt('dense.md');
+
+      if (refused) {
+        expect(screen.getByRole('status').textContent).toContain(
+          'too complex for the bounded rendered view',
+        );
+        expect(
+          screen.queryByRole('region', { name: 'Rendered Markdown preview' }),
+        ).toBeNull();
+      } else {
+        expect(
+          await screen.findByRole(
+            'region',
+            { name: 'Rendered Markdown preview' },
+            { timeout: COLD_RENDERED_MARKDOWN_QUERY_TIMEOUT_MS },
+          ),
+        ).toBeTruthy();
+        expect(
+          screen.queryByText(/too complex for the bounded rendered view/),
+        ).toBeNull();
+      }
+    },
+    COLD_RENDERED_MARKDOWN_TEST_TIMEOUT_MS,
+  );
 
   test.each([
+    ['blockquote', `${'> '.repeat(4_096)}deep`],
     ['unordered', `${'- '.repeat(4_096)}deep`],
     ['ordered', `${'1. '.repeat(4_096)}deep`],
     ['mixed unordered and blockquote', `${'- > '.repeat(1_024)}deep`],
     ['mixed ordered and blockquote', `${'1. > '.repeat(1_024)}deep`],
     ['tabbed blockquote', `${'>\t'.repeat(2_048)}deep`],
-  ])('never parses a deeply nested %s list corpus', (_kind, content) => {
+  ])('never parses a deeply nested %s corpus', (_kind, content) => {
     previewQuery.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -833,29 +848,6 @@ describe('FilePreviewPane', () => {
         renderKind: 'markdown',
         mimeType: 'text/markdown',
         content,
-      },
-    });
-
-    renderPaneAt('deep.md');
-
-    expect(screen.getByRole('status').textContent).toContain(
-      'too complex for the bounded rendered view',
-    );
-    expect(
-      screen.queryByRole('region', { name: 'Rendered Markdown preview' }),
-    ).toBeNull();
-  });
-
-  test('routes structurally deep Markdown to the safe source view', () => {
-    previewQuery.mockReturnValue({
-      isLoading: false,
-      isError: false,
-      data: {
-        path: 'deep.md',
-        status: 'ready',
-        renderKind: 'markdown',
-        mimeType: 'text/markdown',
-        content: `${'> '.repeat(4_096)}deep`,
       },
     });
 
@@ -1024,89 +1016,53 @@ describe('FilePreviewPane', () => {
     ).toContain('"wrap":false');
   });
 
-  test('the source-lines unit reveals the exact response-owned first line', () => {
+  test('reveals the response-owned first line, not the requested one', () => {
     const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: scrollIntoView,
     });
-    render(
-      <FilePreviewSourceLines
-        preview={{
+    try {
+      previewQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: {
           path: 'src/example.ts',
           status: 'ready',
           renderKind: 'source',
           lineRange: { start: 250, end: 251 },
           content: 'first\nsecond',
-        }}
-        state={{
-          version: '1.0',
-          projectSlug: 'demo',
-          path: 'src/example.ts',
-          lineRange: { start: 100, end: 101 },
-          wrap: true,
-        }}
-        stateKey="file-preview:source-lines"
-        wrap={true}
-      />,
-    );
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
-    expect(screen.getByRole('link', { name: 'Link to line 250' })).toBeTruthy();
-    delete (HTMLElement.prototype as { scrollIntoView?: unknown })
-      .scrollIntoView;
-  });
-
-  test('the wrap controller owns local preference persistence', () => {
-    const state = {
-      version: '1.0' as const,
-      projectSlug: 'demo',
-      path: 'src/example.ts',
-      wrap: true,
-    };
-    const { result } = renderHook(() =>
-      useFilePreviewWrapController('file-preview:wrap-controller', state),
-    );
-    act(() => result.current.updateWrap(false));
-    expect(result.current.wrap).toBe(false);
-    expect(
-      localStorage.getItem(
-        'station:file-preview-pane-state:v1:file-preview%3Awrap-controller',
-      ),
-    ).toContain('"wrap":false');
-  });
-
-  test('projects sliced contract responses from the server-owned line range', () => {
-    expect(
-      projectFilePreviewLines(
-        {
-          path: 'src/example.ts',
-          status: 'ready',
-          renderKind: 'source',
-          lineRange: { start: 100, end: 110 },
-          content: Array.from(
-            { length: 11 },
-            (_, index) => `line ${index}`,
-          ).join('\n'),
         },
-        {
-          version: '1.0',
+      });
+      render(
+        pane({
           projectSlug: 'demo',
-          path: 'src/example.ts',
-          lineRange: { start: 100, end: 110 },
-          wrap: true,
-        },
-      ).map((line) => line.number),
-    ).toEqual([100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
-  });
-
-  test('highlights as React text without accepting workspace markup authority', () => {
-    const { container } = render(
-      <code>
-        {highlightFilePreviewLine('const value = "<script>";', true)}
-      </code>,
-    );
-    expect(container.querySelector('script')).toBeNull();
-    expect(container.textContent).toBe('const value = "<script>";');
+          stateKey: 'file-preview:source-lines',
+          state: {
+            version: '1.0',
+            projectSlug: 'demo',
+            path: 'src/example.ts',
+            lineRange: { start: 100, end: 101 },
+            wrap: true,
+          },
+        }),
+      );
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(
+        document.getElementById(
+          'file-preview-file-preview:source-lines-line-250',
+        ),
+      );
+      expect(
+        screen.getByRole('link', { name: 'Link to line 250' }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('link', { name: 'Link to line 100' }),
+      ).toBeNull();
+    } finally {
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown })
+        .scrollIntoView;
+    }
   });
 
   test('colours every token through a theme rung, never a pigment (#2140)', () => {
@@ -1114,9 +1070,17 @@ describe('FilePreviewPane', () => {
     // theme cannot reach: on light the string rung measured 1.54:1 against
     // the pane. What is pinned is that each token NAMES a rung -- the pigment
     // is the theme's decision, and `theme-rung-contrast.test.ts` measures it.
-    const { container } = render(
-      <code>{highlightFilePreviewLine('const n = 42; // "s"', true)}</code>,
-    );
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'src/example.ts',
+        status: 'ready',
+        renderKind: 'source',
+        content: 'const n = 42; // "s"',
+      },
+    });
+    const { container } = renderPane();
     const colours = [...container.querySelectorAll('[data-file-preview-token]')]
       .map((node) => (node as HTMLElement).style.color)
       .filter(Boolean);
@@ -1130,26 +1094,34 @@ describe('FilePreviewPane', () => {
     expect(colours).toContain('var(--syntax-number)');
   });
 
-  test('falls back to one inert text payload before token-dense content exceeds the total React-node budget', () => {
-    const dense = 'const value = 1;'.repeat(32_768);
-    const lines = [{ number: 1, text: dense, requested: false }] as const;
-    expect(dense.length).toBeGreaterThan(500_000);
-    expect(shouldHighlightFilePreviewLines(lines, true)).toBe(false);
-    expect(highlightFilePreviewLine(dense, true)).toBe(dense);
-
-    previewQuery.mockReturnValue({
-      isLoading: false,
-      isError: false,
-      data: {
-        path: 'src/example.ts',
-        status: 'ready',
-        renderKind: 'source',
-        content: dense,
-      },
-    });
-    const { container } = renderPane();
-    expect(
-      container.querySelectorAll('[data-file-preview-token]'),
-    ).toHaveLength(0);
-  });
+  // One dense line trips the per-line fallback; many light lines (32 tokens
+  // each, 2,048 in all) are only caught by the whole-response preflight.
+  test.each([
+    ['one token-dense line', 'const value = 1;'.repeat(32_768)],
+    [
+      'many light lines',
+      Array.from({ length: 64 }, () => 'const value = 1;'.repeat(16)).join(
+        '\n',
+      ),
+    ],
+  ])(
+    'falls back to inert text before %s exceeds the highlight budget',
+    (_corpus, content) => {
+      previewQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: {
+          path: 'src/example.ts',
+          status: 'ready',
+          renderKind: 'source',
+          content,
+        },
+      });
+      const { container } = renderPane();
+      expect(container.textContent).toContain('const value = 1;');
+      expect(
+        container.querySelectorAll('[data-file-preview-token]'),
+      ).toHaveLength(0);
+    },
+  );
 });

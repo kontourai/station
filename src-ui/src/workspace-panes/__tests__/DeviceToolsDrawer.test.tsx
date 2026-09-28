@@ -34,11 +34,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 }));
 
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
-import {
-  DEVICE_TOOLS_DOCK_MIN_WIDTH,
-  DeviceWorkspacePane,
-  deviceToolsLayout,
-} from '../DeviceWorkspacePane';
+import { DeviceWorkspacePane } from '../DeviceWorkspacePane';
 import {
   authorizeScope,
   click,
@@ -319,15 +315,7 @@ describe('the Tools drawer', () => {
 });
 
 describe('drawer layout (container width)', () => {
-  test('the boundary: overlay below 560px, docked at 560px and above', () => {
-    expect(DEVICE_TOOLS_DOCK_MIN_WIDTH).toBe(560);
-    expect(deviceToolsLayout(0)).toBe('overlay');
-    expect(deviceToolsLayout(559.5)).toBe('overlay');
-    expect(deviceToolsLayout(560)).toBe('docked');
-    expect(deviceToolsLayout(1200)).toBe('docked');
-  });
-
-  test('the drawer follows the measured width of the pane as it is resized', async () => {
+  test('the drawer follows the measured width of the pane: overlay below 560px, docked at 560px', async () => {
     await openDevice(({ method, path }) =>
       method === 'GET' && path.endsWith('/tools')
         ? { body: { success: true, data: snapshot() } }

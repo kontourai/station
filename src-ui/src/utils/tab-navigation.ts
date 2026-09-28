@@ -5,8 +5,6 @@
  * page-level tab strip primitive) needed the identical Left/Right/Up/Down/
  * Home/End behavior, and two hand-rolled copies of the same keyboard
  * contract is exactly the drift this primitive extraction exists to remove.
- * `WorkspacePaneHostTabs` re-exports this under its original name so its own
- * test file's import keeps working unchanged.
  */
 export function nextTabIndex(
   index: number,

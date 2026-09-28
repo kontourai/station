@@ -3,10 +3,49 @@
 import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
-import { describe, expect, test } from 'vitest';
+import { renderHook } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
+
+// Only `useResolvedWorkspacePaneCatalog` reads these hooks; the pure
+// projection tests below never call them.
+const hookInputs = vi.hoisted(() => ({
+  configSettled: true,
+  catalog: undefined as unknown,
+}));
+vi.mock('@kontourai/station-sdk/workspace-pane', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@kontourai/station-sdk/workspace-pane')
+  >()),
+  useProjectWorkspacePanesQuery: () => ({ data: hookInputs.catalog }),
+}));
+vi.mock('../../contexts/ConfigContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../contexts/ConfigContext')>()),
+  // A failed `/api/config` read and one in flight both surface as null.
+  useConfig: () => null,
+  useConfigSettled: () => hookInputs.configSettled,
+}));
+vi.mock('../../platform/PlatformProfileContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../platform/PlatformProfileContext')
+  >()),
+  usePlatformProfile: () => ({
+    target: 'web',
+    isMobile: false,
+    isDesktop: false,
+  }),
+}));
+vi.mock('../workspacePaneAvailabilityAdapters', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../workspacePaneAvailabilityAdapters')
+  >()),
+  useWorkspacePaneAvailabilityFacts: () => ({}),
+}));
+
+import { pluginRegistry } from '../../core/PluginRegistry';
 import {
   rendererGateFromPluginRegistryLoadStatus,
   resolveWorkspacePaneCatalogPresentation,
+  useResolvedWorkspacePaneCatalog,
   workspacePaneRendererFactsPending,
 } from '../resolvedWorkspacePaneCatalog';
 import { presentWorkspacePaneAvailability } from '../workspacePaneAvailabilityPresentation';
@@ -726,28 +765,60 @@ describe('direct plugin Pane occurrences (station#3543)', () => {
         },
       );
 
-      test('a settled config failure keeps the real reason AND its retry action', () => {
-        // The whole point of not calling a failure "pending": the reader gets
-        // something to do about it.
-        const presentation = presentWorkspacePaneAvailability(
-          {
-            state: 'temporarily-unavailable',
-            reason: { code: 'renderer-missing', source: 'renderer' },
-            action: { type: 'retry', code: 'retry-availability-check' },
-          },
-          undefined,
-          workspacePaneRendererFactsPending({
-            pluginRegistryLoading: false,
-            configLoaded: false,
-            configSettled: true,
-          })
-            ? 'pending'
-            : undefined,
-        );
-
-        expect(presentation.pending).toBeUndefined();
-        expect(presentation.stateLabel).toBe('Temporarily unavailable');
-        expect(presentation.actionLabel).toBe('Check again');
+      test.each([
+        [
+          'a settled config failure keeps the real reason AND its retry action',
+          true,
+        ],
+        ['a config read still in flight marks the renderer pending', false],
+      ] as const)('%s (hook)', (_label, configSettled) => {
+        hookInputs.configSettled = configSettled;
+        // A retry-able unavailability: the plugin's installation is pending.
+        hookInputs.catalog = {
+          descriptors: [plugin],
+          instances: [],
+          availability: [
+            {
+              descriptorId: plugin.id,
+              input: {
+                rollout: 'available',
+                distribution: 'enabled',
+                installation: 'pending',
+              },
+            },
+          ],
+        };
+        const loadStatus = vi
+          .spyOn(pluginRegistry, 'getLoadStatus')
+          .mockReturnValue({ state: 'ready', failedPluginNames: [] });
+        try {
+          const { result } = renderHook(() =>
+            useResolvedWorkspacePaneCatalog('demo'),
+          );
+          const [entry] = result.current.entries;
+          expect(entry?.descriptor.id).toBe(plugin.id);
+          const presentation = presentWorkspacePaneAvailability(
+            entry!.availability,
+            entry!.rendererGate,
+            entry!.rendererResolution,
+          );
+          if (configSettled) {
+            // The whole point of not calling a failure "pending": the reader
+            // gets something to do about it.
+            expect(entry).not.toHaveProperty('rendererResolution');
+            expect(presentation.pending).toBeUndefined();
+            expect(presentation.stateLabel).toBe('Temporarily unavailable');
+            expect(presentation.actionLabel).toBe('Check again');
+          } else {
+            // The wiring's other half: an unsettled read still marks the
+            // unselected renderer as waiting.
+            expect(entry).toHaveProperty('rendererResolution', 'pending');
+          }
+        } finally {
+          loadStatus.mockRestore();
+          hookInputs.catalog = undefined;
+          hookInputs.configSettled = true;
+        }
       });
     });
 

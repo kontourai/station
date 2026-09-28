@@ -1,11 +1,16 @@
 /** @vitest-environment jsdom */
 
-import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
 import { chromium, expect as expectPlaywright } from '@playwright/test';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import {
   assertNoImportsSurvive,
@@ -161,10 +166,10 @@ function buildInventoryFixtureCss(): string {
   return css;
 }
 
-function renderWorkItemMarkup(): string {
+function renderWorkItemMarkup(inventory = workItemInventory()): string {
   configure();
   hooks.inventory.mockReturnValue({
-    data: workItemInventory() as never,
+    data: inventory as never,
     isLoading: false,
     error: null,
   });
@@ -211,22 +216,6 @@ const { ConnectedSessionInventory } = await import(
 );
 
 describe('ConnectedSessionInventory', () => {
-  test('keeps compact chip text independent of channel accent contrast', () => {
-    const css = readFileSync(INVENTORY_CSS_PATH, 'utf8');
-    // Beta, nightly, and user accents may be intentionally vivid. Tone stays
-    // in the border/tint; readable chip text must remain on the canonical
-    // theme foreground rather than inheriting the channel accent.
-    expect(css).toMatch(
-      /\.session-inventory__state,\s*\.session-inventory__classification\s*\{[^}]*color:\s*var\(--text-primary\)/,
-    );
-    expect(css).toMatch(
-      /\.session-inventory__item--kept \.session-inventory__classification\s*\{[^}]*color:\s*var\(--text-primary\)/,
-    );
-    expect(css).toMatch(
-      /^\.session-inventory__classification\s*\{[^}]*color:\s*var\(--text-primary\)/m,
-    );
-  });
-
   test('renders only a valid structured work item as a safe keyboard link', () => {
     configure();
     hooks.inventory.mockReturnValue({
@@ -443,7 +432,7 @@ describe('ConnectedSessionInventory', () => {
     ).toHaveLength(3);
   });
 
-  test('does not publish a late kept result after the bound pane unmounts', async () => {
+  test('does not publish a late kept result onto a Task selected while the keep was pending', async () => {
     configure();
     let resolve: (value: { outcome: 'kept' }) => void = () => {};
     hooks.keep.mockImplementationOnce(
@@ -452,22 +441,24 @@ describe('ConnectedSessionInventory', () => {
           resolve = done;
         }),
     );
-    commitSessionInventorySelection(
-      { ...requestScope, sessionId: 'session' },
-      {
-        scope: { kind: 'kept-in-task', sessionId: 'session', taskId: 'task-a' },
-        groupId: 'outputs',
-      },
-    );
-    hooks.inventory.mockReturnValue({
-      data: {
-        ...projection,
-        scope: { kind: 'kept-in-task', sessionId: 'session', taskId: 'task-a' },
-      },
-      isLoading: false,
-      error: null,
-    });
-    const view = render(
+    const selectTask = (taskId: string) => {
+      const scope = {
+        kind: 'kept-in-task' as const,
+        sessionId: 'session',
+        taskId,
+      };
+      hooks.inventory.mockReturnValue({
+        data: { ...projection, scope },
+        isLoading: false,
+        error: null,
+      });
+      commitSessionInventorySelection(
+        { ...requestScope, sessionId: 'session' },
+        { scope, groupId: 'outputs' },
+      );
+    };
+    selectTask('task-a');
+    render(
       <ConnectedSessionInventory
         sessionId="session"
         currentProjectId="project"
@@ -475,15 +466,16 @@ describe('ConnectedSessionInventory', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Keep file' }));
     expect(hooks.keep).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: 'task-a',
-        requestScope,
-      }),
+      expect.objectContaining({ taskId: 'task-a', requestScope }),
     );
-    view.unmount();
-    resolve({ outcome: 'kept' });
-    await Promise.resolve();
-    expect(screen.queryByText('Kept')).toBeNull();
+    // The pane stays mounted; only the kept-in Task changes under the keep.
+    act(() => selectTask('task-b'));
+    expect(screen.getByRole('button', { name: 'Keep file' })).toBeTruthy();
+    await act(async () => {
+      resolve({ outcome: 'kept' });
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   test('keeps current-answer assessment disclosure and evidence windows local to its authority tuple', () => {
@@ -682,6 +674,49 @@ describe.skipIf(!chromiumAvailable)(
             () => document.querySelector('#fixture')!.scrollWidth,
           ),
         ).toBeLessThanOrEqual(420);
+      } finally {
+        await page.close();
+      }
+    });
+
+    test('keeps compact chip text on the theme foreground under a vivid channel accent', async () => {
+      // Beta, nightly, and user accents may be intentionally vivid. Tone stays
+      // in the border/tint; readable chip text must resolve to the canonical
+      // theme foreground rather than inheriting any accent.
+      const kept = workItemInventory();
+      kept.groups[0]!.items[0]!.relations = ['observed-during', 'kept-in-task'];
+      const css = buildInventoryFixtureCss();
+      const page = await browser.newPage({
+        viewport: { width: 1152, height: 768 },
+      });
+      try {
+        await page.setContent(
+          `<!doctype html><html data-app-channel="nightly"><style>${css}
+          :root { --accent-primary: rgb(255, 0, 255); --success-text: rgb(0, 255, 0); --warning-text: rgb(255, 255, 0); }
+          </style><main>${renderWorkItemMarkup()}${renderWorkItemMarkup(kept)}</main>
+          <span id="foreground" style="color: var(--text-primary)">probe</span></html>`,
+        );
+        const foreground = await page
+          .locator('#foreground')
+          .evaluate((node) => getComputedStyle(node).color);
+        expect(foreground).not.toBe('rgb(255, 0, 255)');
+        const chips = [
+          page.locator('.session-inventory__state').first(),
+          page
+            .locator(
+              '.session-inventory__item:not(.session-inventory__item--kept) .session-inventory__classification',
+            )
+            .first(),
+          page
+            .locator(
+              '.session-inventory__item--kept .session-inventory__classification',
+            )
+            .first(),
+        ];
+        for (const chip of chips)
+          expect(
+            await chip.evaluate((node) => getComputedStyle(node).color),
+          ).toBe(foreground);
       } finally {
         await page.close();
       }

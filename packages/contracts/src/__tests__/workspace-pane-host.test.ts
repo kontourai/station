@@ -8,6 +8,8 @@ import {
   parseWorkspacePaneHostDocument,
   restoreWorkspacePaneHostDocument,
   WORKSPACE_PANE_HOST_DOCUMENT_VERSION,
+  workspacePaneHostScopeMatches,
+  workspacePaneHostScopeProjectId,
   workspacePaneHostSuppliableContexts,
 } from '../workspace-pane-host';
 
@@ -730,5 +732,51 @@ describe('Workspace Pane host document', () => {
         nullPrototype as typeof pane,
       ]).document?.instances[0],
     ).toBe(nullPrototype);
+  });
+});
+
+describe('Workspace Pane host ambient scope', () => {
+  test('an ambient scope names no project, and scope equality is total over all three kinds', () => {
+    expect(
+      workspacePaneHostScopeProjectId({ kind: 'ambient' }),
+    ).toBeUndefined();
+    expect(
+      workspacePaneHostScopeProjectId({
+        kind: 'project',
+        projectId: 'project',
+        layoutId: 'layout',
+      }),
+    ).toBe('project');
+    expect(
+      workspacePaneHostScopeMatches({ kind: 'ambient' }, { kind: 'ambient' }),
+    ).toBe(true);
+    expect(
+      workspacePaneHostScopeMatches(
+        { kind: 'ambient' },
+        { kind: 'project', projectId: 'project', layoutId: 'layout' },
+      ),
+    ).toBe(false);
+    expect(
+      workspacePaneHostScopeMatches(
+        { kind: 'project', projectId: 'project', layoutId: 'layout' },
+        { kind: 'project', projectId: 'project', layoutId: 'other' },
+      ),
+    ).toBe(false);
+  });
+
+  test('an ambient document round-trips, and one carrying a project identity is rejected', () => {
+    const ambient = {
+      ...documentWith(instance('one')),
+      scope: { kind: 'ambient' },
+    };
+    expect(parseWorkspacePaneHostDocument(ambient)?.scope).toEqual({
+      kind: 'ambient',
+    });
+    expect(
+      parseWorkspacePaneHostDocument({
+        ...ambient,
+        scope: { kind: 'ambient', projectId: 'project', layoutId: 'layout' },
+      }),
+    ).toBeNull();
   });
 });

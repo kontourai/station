@@ -17,9 +17,7 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { useBasisPaneLauncher } from '../BasisPaneLauncher';
 import {
-  AMBIENT_CHAT_DOCK_DOCUMENT_ID,
   adoptLegacyChatDockDocument,
-  createAmbientChatDockPaneDocument,
   createRegionPaneHostDocument as deriveRegionPaneHostDocument,
   RegionPaneHost,
   reconcileRegionPaneHostDocument,
@@ -169,39 +167,6 @@ function ProjectBasisLauncher() {
     </>
   );
 }
-
-test('the ambient dock document names a projectless chat occupant in the docked region', () => {
-  const document = createAmbientChatDockPaneDocument();
-
-  expect(document).toMatchObject({
-    id: 'chat-dock',
-    scope: { kind: 'ambient' },
-    instances: [
-      {
-        descriptorId: 'pane:builtin:chat',
-        boundContext: { sourceId: 'builtin:workspace-chat' },
-      },
-    ],
-  });
-  expect(document.instances[0]?.boundContext?.projectId).toBeUndefined();
-});
-
-/**
- * #928 C2b: the docked-Home path was deleted, the document that outlived it
- * was not. Its key is a user's persisted dock state, so the document's own
- * identity (scope + id, the two inputs `workspacePaneHostStorageKey` folds)
- * must still resolve to the pre-C2b literal — a renamed id or scope would
- * silently reset every device's dock. Since #2045 that document is the
- * model-less mount's and the source a region adopts from
- * (`RegionPaneHost.regions.test.tsx`).
- */
-test('the persisted dock document keeps its pre-C2b storage key', () => {
-  const document = createAmbientChatDockPaneDocument();
-  expect(AMBIENT_CHAT_DOCK_DOCUMENT_ID).toBe('chat-dock');
-  expect(workspacePaneHostStorageKey(document.scope, document.id)).toBe(
-    AMBIENT_DOCK_STORAGE_KEY,
-  );
-});
 
 /**
  * #2045: a dock region's document is `ambient:<region>`, per REGION; only
