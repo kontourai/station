@@ -103,6 +103,15 @@ application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
 
+The opt-in native continuation uses a separate protocol and headers. Its
+challenge/exchange routes require server-owned provenance from an admitted
+native application peer, an approved account-bound Device and provider session
+verification. Missing browser `Origin` alone never selects native authority.
+The [native Connect transport](../../packages/connect/src/core/nativeApplicationTransport.ts)
+and [SDK client](../../packages/sdk/src/client/application-session-native.ts)
+consume host-supplied trust and signaling/signing interfaces; their existence
+does not wire ordinary Desktop sign-in or the Rust key vault below.
+
 The desktop [native account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
 is a separate foundation. It stores a software P-256 key through the existing
 OS keyring adapter, under an account-proof namespace distinct from broker

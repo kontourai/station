@@ -361,7 +361,7 @@ custody property, not an attestation supplied by a client-controlled JSON field.
 
 All application headers and bodies travel inside the authenticated encrypted
 transport. The receiver must establish the selected Station's identity before
-credentials enter it. The continuation adds these headers to the normal Device
+credentials enter it. The browser-profile continuation adds these headers to the normal Device
 authorization:
 
 | Header | Meaning |
@@ -442,6 +442,37 @@ The core/SDK fixture is free and uses real cryptographic keys, maintained local
 sessions and the production HTTP principal path without a cookie-processing client.
 It is not proof of actual WebRTC delivery, native key custody or two-human use;
 the relay consumer and physical acceptance must supply those receipts.
+
+#### Native application-session profile
+
+`station.application-session-native/v1` is a separate opt-in profile.
+`POST /api/account-auth/continuations/native/challenge` accepts its version and
+public JWK; `/native/exchange` accepts its version, challenge ID, provider
+credentials and proof. Both require server-owned request provenance from the
+admitted native Pion/virtual-application path, the exact configured Station
+audience and native surface, and an approved Device already bound to an account.
+They reject a browser `Origin`; absence of that header on a direct HTTP request
+does not establish native provenance. Controls retain the 16 KiB body bound.
+
+The provider must support private session-reference login and verification.
+Exchange consumes the challenge before provider login, then rechecks the exact
+provider subject/session and Device binding before persisting a continuation.
+The client's exchange proof binds the exact serialized credential body; resource proofs bind the
+method, path/query, Station audience, native surface, Device, nonce and
+continuation hash. Native resource requests carry
+`X-Station-Native-Account-Continuation` and `X-Station-Native-Account-Proof`
+alongside the existing Device credential. Combining native and browser
+continuation headers is refused. The receiver rechecks current provider and
+Device authority and rejects replay; the native continuation lasts at most
+15 minutes and never beyond its provider session.
+
+The native SDK supplies `challenge`, `exchange` and signed `headers`; this
+profile does not add a native renewal or cookie-adoption operation. It consumes
+a caller-owned encrypted transport and independent account signer. The
+[connector opt-in](self-hosted-broker.md#native-routing-grant-foundation-v2)
+and [SDK contract](../reference/sdk.md#native-station-account-continuation-opt-in)
+do not establish ordinary Desktop activation, key-custody integration or a
+physical end-to-end result.
 
 The executable external-module fixture materializes a disposable module using
 the public factory contract and loads it through the production loader. It

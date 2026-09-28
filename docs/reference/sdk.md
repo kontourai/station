@@ -1401,6 +1401,39 @@ account cookies, proof verification or membership logic. See the
 [application-session protocol](../guides/deployment-authentication.md#application-sessions-over-virtual-transports)
 for expiry, origin, replay and revocation behavior.
 
+### Native Station account continuation (opt-in)
+
+`@kontourai/station-sdk/application-session-native` is the opt-in native v1
+account-continuation client for Station's own native installation surface. It
+consumes the `station.application-session-native/v1` contract and a
+**caller-supplied encrypted application-channel transport**
+(`NativeApplicationSessionTransportV1`); the client itself never opens an HTTP
+connection, never touches cookies, and never holds a broker bearer. The account
+proof key must be independent of the native broker route proof key. The client
+accepts `ApplicationSessionSigner`, including a host-owned signing facade;
+`createApplicationSessionKey()` supplies a non-extractable WebCrypto P-256 key.
+Signer custody is a caller responsibility, not attested by the facade. The
+caller owns the trust snapshot: exact Station ID, canonical HTTPS Station
+audience (or loopback HTTP for a local fixture), full approved native surface,
+and the approved Device ID; the
+snapshot is re-read before every operation and any mismatch (Station, audience,
+surface, device, key thumbprint, expiry, replayed challenge, reused JTI) fails
+closed.
+Exchange proofs sign the exact JSON serialization of provider credentials that
+Station forwards to the configured provider; request
+proofs bind method, path, audience, surface, device, continuation nonce and
+credential hash with a one-use JTI. Provider, Device, and Project authority
+remain separate: the continuation is not a bearer or Device grant, and this
+client implements no provider/Device/Project authority.
+
+```ts
+import { NativeApplicationSessionClient } from '@kontourai/station-sdk/application-session-native';
+
+const accounts = new NativeApplicationSessionClient(encryptedTransport, () => trustedSnapshot, key);
+const continuation = await accounts.exchange({ username, password });
+const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/example' });
+```
+
 ### Fresh relay enrollment proof helpers
 
 `@kontourai/station-sdk/relay-enrollment` exposes `createRelayEnrollmentKey`,

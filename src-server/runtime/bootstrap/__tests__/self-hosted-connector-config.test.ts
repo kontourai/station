@@ -472,6 +472,62 @@ describe.skipIf(skipOnWindows)('self-hosted connector config', () => {
     ).toThrow('connector_config_peer_limit_invalid');
   });
 
+  test('opt-in nativeClient loads as an exact surface; absent stays the disabled default', async () => {
+    const withoutNative = await validSetup();
+    expect(
+      loadSelfHostedBrokerConnectorConfig({
+        homeDir: withoutNative.home,
+        env: {
+          STATION_BROKER_CONFIG_FILE: withoutNative.configPath,
+        },
+      }),
+    ).not.toBeNull();
+    const surface = {
+      kind: 'station-native',
+      appIdentifier: 'io.kontourai.station',
+      channel: 'stable',
+      clientInstanceId: randomUUID(),
+      keyThumbprint: 'A'.repeat(43),
+    };
+    const withNative = await validSetup({ nativeClient: surface });
+    const factory = loadSelfHostedBrokerConnectorConfig({
+      homeDir: withNative.home,
+      env: { STATION_BROKER_CONFIG_FILE: withNative.configPath },
+    });
+    expect(factory).not.toBeNull();
+    // The composed runtime must still be the ordinary broker runtime; the
+    // native surface is validated here and re-bound against live trust by
+    // the runtime composition (covered by the pion runtime native tests).
+    expect(
+      factory!.selfHostedBrokerConnector.create(fakeApplication()),
+    ).toBeInstanceOf(SelfHostedBrokerRuntime);
+    for (const invalid of [
+      { ...surface, channel: 'invalid' },
+      { ...surface, appIdentifier: 'bad app' },
+      { ...surface, clientInstanceId: 'invalid' },
+      { ...surface, keyThumbprint: 'short' },
+      { ...surface, extra: true },
+      { ...surface, maxPeers: 64 },
+      { ...surface, kind: 'browser' },
+    ]) {
+      const broken = await validSetup({ nativeClient: invalid });
+      expect(() =>
+        loadSelfHostedBrokerConnectorConfig({
+          homeDir: broken.home,
+          env: { STATION_BROKER_CONFIG_FILE: broken.configPath },
+        }),
+      ).toThrow('connector_config_native_client_invalid');
+    }
+    // A non-object native client refuses as well.
+    const scalar = await validSetup({ nativeClient: 'station-native' });
+    expect(() =>
+      loadSelfHostedBrokerConnectorConfig({
+        homeDir: scalar.home,
+        env: { STATION_BROKER_CONFIG_FILE: scalar.configPath },
+      }),
+    ).toThrow('connector_config_native_client_invalid');
+  });
+
   test('trust owner compares full descriptor semantics, never identity', async () => {
     const { home, store, descriptor } = await keyedHome();
     const owner = createConnectorTrustOwner(home);

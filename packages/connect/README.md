@@ -10,7 +10,8 @@ not grant any of those permissions.
 [package.json](./package.json), not an advertised standalone npm installation.
 Its root and `/health-probe` entries select compiled `dist/` output; other named
 entries, including `/connection-trust`, `/device-pairing`,
-`/application-channel`, `/self-hosted-browser` and `/native-diagnostic-echo`,
+`/application-channel`, `/self-hosted-browser`, `/native-diagnostic-echo` and
+`/native-application`,
 select TypeScript source. The former `/node-storage` entry is no longer exported.
 
 From a managed Station checkout, `npm run build --prefix packages/connect`
@@ -37,6 +38,18 @@ credential broker and secret-free profile projection. The former
 host's current credential/transport integration. See
 [storage](./src/core/storage.ts), [ConnectionStore](./src/core/ConnectionStore.ts)
 and the [host profile adapter](../../src-ui/src/platform/native/stationProfileStorage.ts).
+
+## Optional native application transport
+
+`@kontourai/station-connect/native-application` exports
+`createNativeApplicationTransport`. Its caller supplies host-owned v2 signaling,
+approved Station trust with an authoritative recheck, a Station origin and a
+lifetime signal. The client verifies the Station proof before applying the
+answer and exposes `fetch` and `openChannel` over the reliable ordered
+`station-application-v1` DataChannel. It has no direct HTTP fallback and does
+not read the routing grant bearer. Device and account credentials remain with
+their existing owners. This opt-in library does not activate a saved Desktop
+route or establish a packaged native journey.
 
 ## Optional self-hosted browser transport
 

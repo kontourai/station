@@ -173,14 +173,18 @@ generation. They are stored separately and never appear in v1 offer pages.
 The Station connector exposes `pollNative()` only when a caller explicitly
 supplies a native offer adapter bound to one exact surface. Before that callback
 can allocate a peer, it checks the offer's Station key thumbprint and generation
-against current approved Station trust. The production Pion runtime does not
-register this adapter, and its ordinary `poll()` never reads native offers.
-It does poll the separate native signing-key candidate lane; that lane helps
-approve endpoint trust and does not carry native application traffic.
-Native signalling therefore does not enable application ingress, encrypted
-application traffic, or native UI onboarding. Several native installations can
-hold separate grants; connector fan-out across multiple native surfaces remains
-future work.
+against current approved Station trust. The production Pion runtime registers
+the native application adapter only when `nativeClient` is configured. Its
+ordinary browser `poll()` remains separate; the lifecycle additionally calls
+`pollNative()` for that opt-in surface. The signing-key candidate lane still
+only establishes endpoint trust.
+
+The native application adapter marks requests from an admitted peer with
+server-owned provenance before virtual ingress; omitting `Origin` on an
+ordinary HTTP request supplies no such authority. Device and account admission
+remain separate. Several native installations can hold separate grants, but
+this connector configuration names one surface; multi-surface fan-out and
+ordinary native UI onboarding remain separate work.
 
 An explicit native-v2 `diagnosticEcho` composition is available in the
 [local lab](local-collaboration-lab.md#native-v2-signaling-diagnostic).
@@ -321,6 +325,31 @@ origin policy, Device grants and account-provider configuration must separately
 admit the browser. No CORS, membership or authentication permission is added by
 the connector. `maxPeers` and `maxPeerLifetimeMs` are independently optional with
 the defaults shown; heartbeat, renewal and offer polling use 5s, 10s and 1s.
+
+An operator may additionally opt in one exact native v2 client surface by adding
+this field to the connector file:
+
+```json
+{
+  "nativeClient": {
+    "kind": "station-native",
+    "appIdentifier": "io.example.station",
+    "channel": "stable",
+    "clientInstanceId": "8b9c86cf-e65a-4aad-983b-82bb03960ad1",
+    "keyThumbprint": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "maxPeers": 4
+  }
+}
+```
+
+Use the actual approved client identity and proof-key thumbprint; the sample is
+not a credential. The native peer limit defaults to four and is capped at 32.
+Without `nativeClient`, Station does not poll or answer native application
+offers. With it, the connector answers only that surface under its current
+Station signing trust. This opt-in does not issue the native routing grant,
+approve a Device, authenticate a person or grant Project access. A packaged
+native client journey still requires the host-owned grant and account wiring
+described above; this source configuration alone is not onboarding.
 
 The config, credential bundle and certificate/key files must be bounded regular
 files in private owner-held directories, with no symlinks or hardlinks. The

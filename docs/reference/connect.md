@@ -16,6 +16,24 @@ where — see
 
 ---
 
+## Optional native application transport
+
+The `/native-application` source entry exports
+`createNativeApplicationTransport({ signaling, origin, signal, trust, ... })`.
+The host supplies v2 signaling and approved Station trust, including an
+authoritative asynchronous recheck. The client verifies the signed Station
+answer before setting the remote description and uses only the reliable,
+ordered `station-application-v1` DataChannel. It returns `fetch` and
+`openChannel`; abort or retired trust closes owned work. There is no direct
+HTTP fallback or grant-bearer exposure.
+
+This is an opt-in library surface, separate from ordinary saved-route selection.
+It does not approve a Device, authenticate an account or grant Project access.
+See the [package README](../../packages/connect/README.md#optional-native-application-transport)
+and [native account continuation](sdk.md#native-station-account-continuation-opt-in)
+for the separate caller responsibilities. No physical native-client result is
+implied by these source contracts.
+
 ## types
 
 ### `SavedConnection`
