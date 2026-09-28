@@ -251,8 +251,11 @@ Muse's own terminal (a `cancelled` terminal nobody in Station asked for is
 `finishReason: 'cancelled'`, never `stop`); the follow-up turn Muse starts
 after background work is adopted as a provider turn as above; tool approvals,
 a workflow subagent's included, are `request.opened` events (attributed to
-the child by `payload.childWork`), resolved from Muse's own
-`approval/resolved`. Station's serve adapter owns an unanswered-approval
+the child by `payload.childWork`). A decision Station records publishes
+`request.resolved` (`acknowledgement: 'engine'`), and Muse's own
+`approval/resolved` then publishes `request.delivery` `acknowledged` with
+Muse's outcome as `engineStatus`; a request Muse closes before Station
+decides resolves from `approval/resolved`. Station's serve adapter owns an unanswered-approval
 deadline, defaulting to 30 minutes (`muse-approval-expired`), after which it
 declines the request and publishes `expired`. That local publication does not
 prove Muse accepted the decline: if the engine does not settle it, the adapter
