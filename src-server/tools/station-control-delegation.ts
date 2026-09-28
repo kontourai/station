@@ -1253,7 +1253,7 @@ export function delegatedLastDecision(
  * was; these keep A visible. Each request is judged on its latest
  * `request.resolved`, exactly as `lastDecision` is.
  */
-export function delegatedEarlierUnacknowledgedDecisions(
+function delegatedEarlierUnacknowledgedDecisions(
   events: ReadonlyArray<Record<string, unknown>>,
   lastRequestId: string,
 ): DelegatedTaskDecision[] {
