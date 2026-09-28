@@ -241,14 +241,7 @@ export function createRuntimeResourcePostureController(
   };
 }
 
-export function createRuntimeResourcePostureProbe(
-  options: RuntimeResourcePostureProbeOptions = {},
-): RuntimeResourcePostureController {
-  return createRuntimeResourcePostureController(options);
-}
-
 export function createEnvironmentRuntimeResourcePostureProbe(
-  _env: NodeJS.ProcessEnv = process.env,
   options: RuntimeResourcePostureProbeOptions = {},
 ): RuntimeResourcePostureController {
   return createRuntimeResourcePostureController(options);

@@ -2161,8 +2161,6 @@ describe('SchedulerService', () => {
     chatFnBehavior = { ok: true, text: 'confirmed output' };
     await service.addJob({ name: 'manual-run-correlation', prompt: 'run' });
     const completed = await service.runJob('manual-run-correlation');
-    if ('output' in completed)
-      throw new Error('built-in scheduler must return an observable receipt');
     if (!completed.runId) throw new Error('expected completed run identity');
     const completedRun = await service.readRunSummary(completed.runId);
     expect(completedRun).toMatchObject({
@@ -2173,8 +2171,6 @@ describe('SchedulerService', () => {
 
     chatFnBehavior = { ok: false, text: '' };
     const indeterminate = await service.runJob('manual-run-correlation');
-    if ('output' in indeterminate)
-      throw new Error('built-in scheduler must return an observable receipt');
     if (!indeterminate.runId)
       throw new Error('expected indeterminate run identity');
     const indeterminateRun = await service.readRunSummary(indeterminate.runId);
@@ -2249,42 +2245,8 @@ describe('SchedulerService', () => {
     },
   );
 
-  test('addProvider registers a custom provider', async () => {
-    const mock: any = {
-      id: 'mock-provider',
-      displayName: 'Mock',
-      capabilities: [],
-      listJobs: vi.fn().mockResolvedValue([]),
-      getStats: vi.fn().mockResolvedValue({ jobs: [] }),
-      getStatus: vi.fn().mockResolvedValue({ running: true, jobCount: 0 }),
-    };
-    service.addProvider(mock);
-    const providers = service.listProviders();
-    expect(providers.find((p) => p.id === 'mock-provider')).toBeDefined();
-  });
-
   test('preserves authoritative completed and indeterminate provider outcomes when metrics throw', async () => {
-    const provider: any = {
-      id: 'metric-provider',
-      displayName: 'Metric provider',
-      capabilities: [],
-      listJobs: vi.fn().mockResolvedValue([{ name: 'metric-job' }]),
-      getStats: vi.fn().mockResolvedValue({ jobs: [] }),
-      getStatus: vi.fn().mockResolvedValue({ running: true, jobCount: 1 }),
-      runJob: vi
-        .fn()
-        .mockResolvedValueOnce({
-          outcome: 'completed',
-          message: 'completed by provider',
-          runId: 'schedule:metric:metric-job:run-1',
-        })
-        .mockResolvedValueOnce({
-          outcome: 'indeterminate',
-          message: 'provider may have started',
-          runId: 'schedule:metric:metric-job:run-2',
-        }),
-    };
-    service.addProvider(provider);
+    await service.addJob({ name: 'metric-job', prompt: 'run' });
     vi.spyOn(schedulerJobRuns, 'add').mockImplementation(() => {
       throw new Error('metrics unavailable');
     });
@@ -2292,13 +2254,15 @@ describe('SchedulerService', () => {
       throw new Error('metrics unavailable');
     });
 
+    chatFnBehavior = { ok: true, text: 'completed by provider' };
     await expect(service.runJob('metric-job')).resolves.toMatchObject({
       outcome: 'completed',
-      runId: 'schedule:metric:metric-job:run-1',
+      runId: expect.any(String),
     });
+    chatFnBehavior = { ok: false, text: '' };
     await expect(service.runJob('metric-job')).resolves.toMatchObject({
       outcome: 'indeterminate',
-      runId: 'schedule:metric:metric-job:run-2',
+      runId: expect.any(String),
     });
   });
 });
@@ -2477,39 +2441,5 @@ describe('Scheduler Routes', () => {
   test('POST /jobs/:target/run returns 500 for missing job', async () => {
     const res = await app.request('/jobs/ghost/run', { method: 'POST' });
     expect(res.status).toBe(500);
-  });
-
-  test('routes an internally composed legacy provider output without inventing a receipt', async () => {
-    service.addProvider({
-      id: 'legacy-scheduler',
-      displayName: 'Legacy scheduler',
-      capabilities: [],
-      listJobs: async () => [
-        {
-          name: 'legacy-job',
-          prompt: 'run',
-          provider: 'legacy-scheduler',
-          enabled: true,
-        },
-      ],
-      addJob: async () => 'unused',
-      editJob: async () => 'unused',
-      removeJob: async () => undefined,
-      runJob: async () => 'legacy provider completed',
-      enableJob: async () => undefined,
-      disableJob: async () => undefined,
-      getJobLogs: async () => [],
-      getStats: async () => ({ jobs: [] }),
-      getStatus: async () => ({ running: true, jobCount: 1 }),
-    });
-
-    const response = await app.request('/jobs/legacy-job/run', {
-      method: 'POST',
-    });
-    expect(response.status).toBe(200);
-    await expect(json(response)).resolves.toEqual({
-      success: true,
-      data: { output: 'legacy provider completed' },
-    });
   });
 });

@@ -44,10 +44,6 @@ export interface SchedulerServiceOptions {
 }
 
 /** Internal route result; legacy output never fabricates a receipt/run id. */
-export type SchedulerManualRunResult =
-  | SchedulerManualRunReceipt
-  | Readonly<{ output: string }>;
-
 /**
  * A caller-supplied schedule the projector cannot evaluate — a bad cron field
  * or an unknown IANA zone. Distinct from a storage or conflict failure because
@@ -82,11 +78,6 @@ export class SchedulerService {
 
   async stop(): Promise<void> {
     await this.builtin.stop();
-  }
-
-  /** Register an internally composed scheduler provider. This is not a plugin SDK seam. */
-  addProvider(provider: ISchedulerProvider) {
-    this.providers.set(provider.id, provider);
   }
 
   /** List registered providers (for UI dropdown) */
@@ -196,20 +187,14 @@ export class SchedulerService {
     return p.removeJob(target);
   }
 
-  async runJob(target: string): Promise<SchedulerManualRunResult> {
+  async runJob(target: string): Promise<SchedulerManualRunReceipt> {
     const p = await this.findJobProvider(target);
     const start = Date.now();
     try {
-      const providerResult = await p.runJob(target);
-      const result =
-        typeof providerResult === 'string'
-          ? { output: providerResult }
-          : providerResult;
+      const result = await p.runJob(target);
       this.recordRunMetrics(
         target,
-        !('outcome' in result) || result.outcome === 'completed'
-          ? 'success'
-          : 'error',
+        result.outcome === 'completed' ? 'success' : 'error',
         start,
       );
       return result;
