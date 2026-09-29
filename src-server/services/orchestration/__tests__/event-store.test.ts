@@ -109,7 +109,7 @@ function capturedPlan(
 
 /**
  * A peer process that holds a write lock on `databasePath` for `holdMs`, then
- * commits and reports when it let go. The time is read just before COMMIT, so
+ * commits and reports when it let go. That time is read just before COMMIT, so
  * it is a lower bound a waiting writer cannot beat even if the peer is
  * preempted before reporting. A write that began before that moment and
  * returned after it waited through the lock; one that began later proves
@@ -141,7 +141,7 @@ async function holdPeerWriteLock(databasePath: string, holdMs: number) {
     });
   });
   return {
-    /** Wall-clock milliseconds at which the peer committed. */
+    /** Wall-clock milliseconds read just before the peer's COMMIT. */
     releasedAt: async () => {
       await exited;
       const released = /released (\d+)/.exec(output);
