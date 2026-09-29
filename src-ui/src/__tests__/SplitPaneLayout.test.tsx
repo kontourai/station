@@ -3,7 +3,13 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { StrictMode, useEffect, useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -1535,6 +1541,222 @@ describe('SplitPaneLayout', () => {
         container.querySelector('.split-pane__add .split-pane__add-btn')
           ?.textContent,
       ).toBe('+ Add provider');
+    });
+  });
+
+  describe('list rows as a keyboard composite', () => {
+    type Items = Parameters<typeof SplitPaneLayout>[0]['items'];
+
+    function renderList(
+      items: Items,
+      options: {
+        selectedId?: string | null;
+        onSelect?: (id: string) => void;
+      } = {},
+    ) {
+      const onSelect = options.onSelect ?? vi.fn();
+      const view = render(
+        <SplitPaneLayout
+          label="things"
+          title="Things"
+          items={items}
+          selectedId={options.selectedId ?? null}
+          onSelect={onSelect}
+          onSearch={vi.fn()}
+        >
+          <div>detail</div>
+        </SplitPaneLayout>,
+      );
+      const list =
+        view.container.querySelector<HTMLElement>('.split-pane__list');
+      if (!list) throw new Error('the list did not render');
+      const rows = () =>
+        Array.from(list.querySelectorAll<HTMLElement>('.split-pane__item'));
+      const tabStops = () =>
+        Array.from(
+          list.querySelectorAll<HTMLElement>('button, a[href]'),
+        ).filter((element) => element.tabIndex >= 0);
+      return { ...view, list, rows, tabStops, onSelect };
+    }
+
+    const plain: Items = [
+      { id: 'a', name: 'Alpha', subtitle: 'first' },
+      { id: 'b', name: 'Beta', subtitle: 'second' },
+      { id: 'c', name: 'Gamma', subtitle: 'third' },
+    ];
+
+    test('the selected row is aria-current; no other row claims it', () => {
+      const { rows } = renderList(plain, { selectedId: 'b' });
+      expect(rows().map((row) => row.getAttribute('aria-current'))).toEqual([
+        null,
+        'true',
+        null,
+      ]);
+    });
+
+    test('a row is named by its name alone and described by badge and subtitle', () => {
+      renderList([
+        {
+          id: 'run',
+          name: 'SLOW refactor the chart module',
+          icon: <span>RP</span>,
+          badge: <span>Conflict</span>,
+          subtitle: 'Delegated task · Running · 1m ago',
+        },
+      ]);
+      // Pre-change this was "RPSLOW refactor the chart module Conflict
+      // Delegated task · Running · 1m ago".
+      const row = screen.getByRole('button', {
+        name: 'SLOW refactor the chart module',
+        description: 'Conflict Delegated task · Running · 1m ago',
+      });
+      expect(row.getAttribute('aria-labelledby')).toBeTruthy();
+    });
+
+    test('exactly one row is a Tab stop: the selected one, else the first', () => {
+      const unselected = renderList(plain);
+      expect(unselected.tabStops()).toEqual([unselected.rows()[0]]);
+      unselected.unmount();
+
+      const selected = renderList(plain, { selectedId: 'c' });
+      expect(selected.tabStops()).toEqual([selected.rows()[2]]);
+    });
+
+    test('Up/Down/Home/End move focus between rows and never select', () => {
+      const { rows, tabStops, onSelect } = renderList(plain);
+      const [alpha, beta, gamma] = rows();
+      alpha.focus();
+
+      fireEvent.keyDown(alpha, { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(beta);
+      // The Tab stop follows focus, so leaving and re-entering the list
+      // returns to the row the reader was on.
+      expect(tabStops()).toEqual([beta]);
+
+      fireEvent.keyDown(beta, { key: 'End' });
+      expect(document.activeElement).toBe(gamma);
+      fireEvent.keyDown(gamma, { key: 'ArrowUp' });
+      expect(document.activeElement).toBe(beta);
+      fireEvent.keyDown(beta, { key: 'Home' });
+      expect(document.activeElement).toBe(alpha);
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    test('an edge key is left to the browser rather than swallowed', () => {
+      const { rows } = renderList(plain);
+      const [alpha] = rows();
+      alpha.focus();
+      const notCancelled = fireEvent.keyDown(alpha, { key: 'ArrowUp' });
+      expect(notCancelled).toBe(true);
+      expect(document.activeElement).toBe(alpha);
+      const cancelled = !fireEvent.keyDown(alpha, { key: 'ArrowDown' });
+      expect(cancelled).toBe(true);
+    });
+
+    test('a key a child control already handled is not re-handled', () => {
+      const items: Items = [
+        {
+          id: 'a',
+          name: 'Alpha',
+          trailing: (
+            <button
+              type="button"
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown') event.preventDefault();
+              }}
+            >
+              Menu
+            </button>
+          ),
+        },
+        { id: 'b', name: 'Beta' },
+      ];
+      renderList(items);
+      const menu = screen.getByRole('button', { name: 'Menu' });
+      menu.focus();
+      fireEvent.keyDown(menu, { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(menu);
+    });
+
+    test('trailing controls: only the active row keeps them in the Tab sequence, Right/Left walk into and out of them', () => {
+      const items: Items = [
+        {
+          id: 'a',
+          name: 'Alpha',
+          trailing: (
+            <>
+              <button type="button">Alpha pill</button>
+              <button type="button" tabIndex={0}>
+                Alpha more
+              </button>
+            </>
+          ),
+        },
+        {
+          id: 'b',
+          name: 'Beta',
+          trailing: <button type="button">Beta pill</button>,
+        },
+      ];
+      const { rows, tabStops } = renderList(items);
+      const [alpha, beta] = rows();
+      const alphaPill = screen.getByRole('button', { name: 'Alpha pill' });
+      const alphaMore = screen.getByRole('button', { name: 'Alpha more' });
+      const betaPill = screen.getByRole('button', { name: 'Beta pill' });
+
+      expect(tabStops()).toEqual([alpha, alphaPill, alphaMore]);
+
+      alpha.focus();
+      fireEvent.keyDown(alpha, { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(alphaPill);
+      fireEvent.keyDown(alphaPill, { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(alphaMore);
+      fireEvent.keyDown(alphaMore, { key: 'ArrowLeft' });
+      fireEvent.keyDown(alphaPill, { key: 'ArrowLeft' });
+      expect(document.activeElement).toBe(alpha);
+      // Down from a trailing control goes to the next row's button.
+      alphaPill.focus();
+      fireEvent.keyDown(alphaPill, { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(beta);
+
+      expect(tabStops()).toEqual([beta, betaPill]);
+      // Demotion restores exactly what the caller rendered: no attribute
+      // where there was none, the explicit 0 where there was one.
+      expect(alphaPill.getAttribute('tabindex')).toBe('-1');
+      act(() => alpha.focus());
+      expect(alphaPill.hasAttribute('tabindex')).toBe(false);
+      expect(alphaMore.getAttribute('tabindex')).toBe('0');
+      expect(betaPill.getAttribute('tabindex')).toBe('-1');
+    });
+
+    test('group toggles are named for their action and sit in the arrow sequence; collapsed members are skipped', () => {
+      const group = { id: 'run', label: 'Run · 1 delegated session' };
+      const items: Items = [
+        { id: 'root', name: 'Root task', group },
+        { id: 'child', name: 'Child task', group },
+        { id: 'solo', name: 'Solo' },
+      ];
+      const { rows } = renderList(items);
+      const toggle = screen.getByRole('button', {
+        name: 'Collapse Run · 1 delegated session',
+      });
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+      toggle.focus();
+      fireEvent.keyDown(toggle, { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(rows()[0]);
+
+      fireEvent.click(toggle);
+      expect(
+        screen.getByRole('button', {
+          name: 'Expand Run · 1 delegated session',
+        }),
+      ).toBe(toggle);
+      toggle.focus();
+      fireEvent.keyDown(toggle, { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Solo' }),
+      );
     });
   });
 });

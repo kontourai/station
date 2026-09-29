@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-shared/return-focus';
 import React, {
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -265,6 +266,51 @@ function SplitPaneDetailSkeleton() {
   );
 }
 
+/*
+ * List keyboard model (roving tabindex).
+ *
+ * Every list LINE is a row button, or a group's toggle, plus whatever the
+ * caller put beside it (`trailing`, a group's `renderSummary`). The list is
+ * one composite: exactly one line is in the Tab sequence at a time.
+ * - Up/Down move focus between line primaries (rows and group toggles, in
+ *   DOM order); Home/End jump to the first/last. Focus moves; selection does
+ *   not — Enter/Space on the row button select, as they always have.
+ * - Right/Left walk from the line's primary into its own controls and back,
+ *   the APG grid convention for a row with cells.
+ * - Tab from the active line's primary reaches that line's controls; other
+ *   lines' controls leave the Tab sequence, so a 40-row list costs two or
+ *   three stops, not two per row.
+ * The Tab stop is the line last focused; failing that, the selected row;
+ * failing that, the first line.
+ */
+const NAV_ATTR = 'data-split-pane-nav';
+const LINE_ATTR = 'data-split-pane-line';
+/** Original `tabindex` of a demoted control (`''` when it had none). */
+const DEMOTED_ATTR = 'data-split-pane-demoted';
+const LINE_FOCUSABLE =
+  'a[href], button, input, select, textarea, [tabindex], [contenteditable="true"]';
+
+function lineControls(line: Element): HTMLElement[] {
+  return Array.from(line.querySelectorAll<HTMLElement>(LINE_FOCUSABLE)).filter(
+    (element) => !element.hasAttribute(NAV_ATTR),
+  );
+}
+
+function linePrimary(line: Element): HTMLElement | null {
+  return line.hasAttribute(NAV_ATTR)
+    ? (line as HTMLElement)
+    : line.querySelector<HTMLElement>(`[${NAV_ATTR}]`);
+}
+
+/** Keys an owning control may already need (text entry, open menus). */
+function ownsArrowKeys(target: HTMLElement): boolean {
+  return Boolean(
+    target.closest(
+      'input, textarea, select, [contenteditable="true"], [role="menu"], [role="listbox"], [role="dialog"]',
+    ),
+  );
+}
+
 export function SplitPaneLayout({
   paneId,
   firstRunAnchor,
@@ -397,6 +443,15 @@ export function SplitPaneLayout({
     target.focus();
     setPendingGroupMemberFocus(null);
   }, [pendingGroupMemberFocus]);
+
+  const rowIdPrefix = useId();
+  const [activeNavKey, setActiveNavKey] = useState<string | null>(null);
+  // A new selection (click, route, deep link) is where the list resumes; a
+  // stale "last focused" line must not outrank it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on selection change only.
+  useEffect(() => {
+    setActiveNavKey(null);
+  }, [selectedId]);
 
   const focusGroupMember = (groupId: string, memberId: string) => {
     expandGroup(groupId);
@@ -811,6 +866,107 @@ export function SplitPaneLayout({
     [framed, breadcrumb, title, subtitle],
   );
   usePageHeader(headerContent);
+
+  const isGroupExpanded = (group: NonNullable<SplitPaneItem['group']>) =>
+    group.collapsedByDefault
+      ? openedGroups.has(group.id)
+      : !collapsedGroups.has(group.id);
+  // The rendered lines, in the order the list below emits them.
+  const navKeys: string[] = [];
+  const listRendersItems = !loading && items.length > 0;
+  if (listRendersItems) {
+    items.forEach((item, i) => {
+      const group = item.group;
+      if (group && group.id !== items[i - 1]?.group?.id) {
+        navKeys.push(`group:${group.id}`);
+      }
+      if (!group || isGroupExpanded(group)) navKeys.push(`item:${item.id}`);
+    });
+  }
+  const tabStopKey =
+    activeNavKey && navKeys.includes(activeNavKey)
+      ? activeNavKey
+      : selectedId !== null && navKeys.includes(`item:${selectedId}`)
+        ? `item:${selectedId}`
+        : (navKeys[0] ?? null);
+
+  // Only the active line's own controls stay in the Tab sequence. Callers own
+  // the markup of `trailing`/`renderSummary`, so their controls are demoted
+  // here and restored to exactly the tabindex they came with.
+  useIsomorphicLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    for (const line of list.querySelectorAll(`[${LINE_ATTR}]`)) {
+      const active = line.getAttribute(LINE_ATTR) === tabStopKey;
+      for (const control of lineControls(line)) {
+        const demoted = control.getAttribute(DEMOTED_ATTR);
+        if (active) {
+          if (demoted === null) continue;
+          if (demoted === '') control.removeAttribute('tabindex');
+          else control.setAttribute('tabindex', demoted);
+          control.removeAttribute(DEMOTED_ATTR);
+        } else if (demoted === null) {
+          control.setAttribute(
+            DEMOTED_ATTR,
+            control.getAttribute('tabindex') ?? '',
+          );
+          control.setAttribute('tabindex', '-1');
+        }
+      }
+    }
+  });
+
+  function trackActiveLine(event: React.FocusEvent<HTMLDivElement>) {
+    const line = (event.target as HTMLElement).closest(`[${LINE_ATTR}]`);
+    if (!line || !listRef.current?.contains(line)) return;
+    const key = line.getAttribute(LINE_ATTR);
+    if (key && key !== activeNavKey) setActiveNavKey(key);
+  }
+
+  function navigateList(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.defaultPrevented) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+      return;
+    const list = listRef.current;
+    const target = event.target as HTMLElement;
+    if (!list || ownsArrowKeys(target)) return;
+    const line = target.closest(`[${LINE_ATTR}]`);
+    if (!line || !list.contains(line)) return;
+    const primary = linePrimary(line);
+    if (!primary) return;
+    let next: HTMLElement | undefined;
+    if (
+      event.key === 'ArrowDown' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'Home' ||
+      event.key === 'End'
+    ) {
+      const primaries = Array.from(
+        list.querySelectorAll<HTMLElement>(`[${NAV_ATTR}]`),
+      );
+      const index = primaries.indexOf(primary);
+      next =
+        event.key === 'Home'
+          ? primaries[0]
+          : event.key === 'End'
+            ? primaries[primaries.length - 1]
+            : primaries[index + (event.key === 'ArrowDown' ? 1 : -1)];
+    } else if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      const sequence = [primary, ...lineControls(line)];
+      const index = sequence.findIndex(
+        (element) => element === target || element.contains(target),
+      );
+      next = sequence[index + (event.key === 'ArrowRight' ? 1 : -1)];
+    } else {
+      return;
+    }
+    // At an edge there is nowhere to go; leave the key to the browser rather
+    // than swallowing it.
+    if (!next || next === target) return;
+    event.preventDefault();
+    next.focus();
+  }
+
   const collapseButton = (
     <button
       ref={collapseButtonRef}
@@ -1005,10 +1161,16 @@ export function SplitPaneLayout({
           </div>
         </div>
 
+        {/* Key and focus events are delegated from the rows and controls
+            inside (the roving model above); the container itself is only a
+            programmatic focus target and gains no role of its own. */}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: delegated from focusable descendants. */}
         <div
           className={`split-pane__list${listClassName ? ` ${listClassName}` : ''}`}
           ref={listRef}
           tabIndex={-1}
+          onFocus={trackActiveLine}
+          onKeyDown={navigateList}
         >
           {typeof listIntro === 'function' ? listIntro(selectItem) : listIntro}
           {loading ? (
@@ -1069,11 +1231,23 @@ export function SplitPaneLayout({
                 const group = item.group;
                 const previousGroupId = items[i - 1]?.group?.id;
                 const groupStarts = group && group.id !== previousGroupId;
-                const groupExpanded = group
-                  ? group.collapsedByDefault
-                    ? openedGroups.has(group.id)
-                    : !collapsedGroups.has(group.id)
-                  : true;
+                const groupExpanded = group ? isGroupExpanded(group) : true;
+                const itemKey = `item:${item.id}`;
+                const selected = selectedId === item.id;
+                // The row's name is its name. Icons (initials, brand marks),
+                // badges and the subtitle used to concatenate into it
+                // ("RPSLOW refactor… Delegated task · Running · 1m ago");
+                // badge and subtitle are its description instead.
+                const nameId = `${rowIdPrefix}-${i}-name`;
+                const badgeId = `${rowIdPrefix}-${i}-badge`;
+                const subtitleId = `${rowIdPrefix}-${i}-subtitle`;
+                const describedBy =
+                  [
+                    item.badge ? badgeId : null,
+                    item.subtitle ? subtitleId : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' ') || undefined;
                 const row = (
                   <button
                     ref={(node) => {
@@ -1081,8 +1255,14 @@ export function SplitPaneLayout({
                       else itemButtonRefs.current.delete(item.id);
                     }}
                     type="button"
-                    className={`split-pane__item${selectedId === item.id ? ' split-pane__item--selected' : ''}`}
+                    className={`split-pane__item${selected ? ' split-pane__item--selected' : ''}`}
                     onClick={() => selectItem(item.id)}
+                    tabIndex={itemKey === tabStopKey ? 0 : -1}
+                    aria-current={selected ? 'true' : undefined}
+                    aria-labelledby={nameId}
+                    aria-describedby={describedBy}
+                    data-split-pane-nav={itemKey}
+                    data-split-pane-line={item.trailing ? undefined : itemKey}
                   >
                     {item.icon && (
                       <div className="split-pane__item-icon">{item.icon}</div>
@@ -1096,17 +1276,26 @@ export function SplitPaneLayout({
                           gives way first (see the shrink rule in the CSS), so
                           the name keeps the row's remaining width. */}
                       <div className="split-pane__item-name">
-                        <span className="split-pane__item-name-text">
+                        <span
+                          id={nameId}
+                          className="split-pane__item-name-text"
+                        >
                           {item.name}
                         </span>
                         {item.badge ? (
-                          <span className="split-pane__item-name-badge">
+                          <span
+                            id={badgeId}
+                            className="split-pane__item-name-badge"
+                          >
                             {item.badge}
                           </span>
                         ) : null}
                       </div>
                       {item.subtitle && (
-                        <div className="split-pane__item-subtitle">
+                        <div
+                          id={subtitleId}
+                          className="split-pane__item-subtitle"
+                        >
                           {item.subtitle}
                         </div>
                       )}
@@ -1114,7 +1303,10 @@ export function SplitPaneLayout({
                   </button>
                 );
                 const rowContent = item.trailing ? (
-                  <div className="split-pane__item-row">
+                  <div
+                    className="split-pane__item-row"
+                    data-split-pane-line={itemKey}
+                  >
                     {row}
                     <div className="split-pane__item-trailing">
                       {item.trailing}
@@ -1132,11 +1324,19 @@ export function SplitPaneLayout({
                         </div>
                       )}
                     {groupStarts && group && (
-                      <div className="split-pane__group-header">
+                      <div
+                        className="split-pane__group-header"
+                        data-split-pane-line={`group:${group.id}`}
+                      >
                         <button
                           type="button"
                           className="split-pane__group-toggle"
                           aria-expanded={groupExpanded}
+                          // The visible label leads with a disclosure glyph;
+                          // name the action and the group instead.
+                          aria-label={`${groupExpanded ? 'Collapse' : 'Expand'} ${group.label}`}
+                          tabIndex={`group:${group.id}` === tabStopKey ? 0 : -1}
+                          data-split-pane-nav={`group:${group.id}`}
                           onClick={() => {
                             const toggle = (current: ReadonlySet<string>) => {
                               const next = new Set(current);
