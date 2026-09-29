@@ -1696,7 +1696,7 @@
     {
       "path": "deploy/gcp-dev/README.md",
       "documentDigest": "b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0",
-      "sourceRevision": "595972e1acffc55ebd797125feec57f416bca902",
+      "sourceRevision": "3a126d186e415ad99c1d392830114464842dd973",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Single-owner GCP development recipe with a retained historical qualification record. Full 170-line baseline read. Bootstrap guard/swap helper, container enrollment boundary and GCP preview source checked; official GCP documentation checked read-only. The 2026-09-05 drill remains historical evidence, not fresh cloud qualification.",
@@ -1780,7 +1780,7 @@
         },
         {
           "path": "scripts/__tests__/container-release.test.ts",
-          "digest": "a2581a535538127577f8a5924e990d564c672c996e927634e972dc70c8a64872"
+          "digest": "6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524"
         },
         {
           "path": "scripts/__tests__/gcp-bootstrap.test.ts",
@@ -1874,13 +1874,14 @@
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The README's separate terminal/voice listener and station-control delivery statements do not depend on the removed path, so the prose remains accurate. Source review only.",
         "Re-read the single-operator GCP recipe against the .dockerignore and Dockerfile edits. Its container claims are about the runtime image, the boot/data disk, IAP/OS Login and the E2 machine reference, not the build context or COPY list, so no prose change is needed. The Dockerfile edit adds docs/ to the discarded build stage only; the runtime stage at line 63 onward pulls no docs path, so the image it deploys is unchanged.",
-        "Re-read the GCP single-operator recipe against the follow-up .dockerignore/Dockerfile change. The build stage now also copies biome.json, .gitignore and config/; the runtime stage still copies /app/config from build, so the runtime image now carries all of config/'s public JSON (previously two files) and still no docs/, biome.json or .gitignore (checked with docker run ls /app). The recipe's claims concern image enrollment by digest or archive, UID/GID 1000, disk, IAP/OS Login and measured sizing on an older revision; none enumerate image contents, so no prose change is needed."
+        "Re-read the GCP single-operator recipe against the follow-up .dockerignore/Dockerfile change. The build stage now also copies biome.json, .gitignore and config/; the runtime stage still copies /app/config from build, so the runtime image now carries all of config/'s public JSON (previously two files) and still no docs/, biome.json or .gitignore (checked with docker run ls /app). The recipe's claims concern image enrollment by digest or archive, UID/GID 1000, disk, IAP/OS Login and measured sizing on an older revision; none enumerate image contents, so no prose change is needed.",
+        "Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern)."
       ]
     },
     {
       "path": "deploy/public-ingress/README.md",
       "documentDigest": "713a080bec7e77d77db623d83a52874bb698556e6ddc28bb75eda69b0e864d5b",
-      "sourceRevision": "595972e1acffc55ebd797125feec57f416bca902",
+      "sourceRevision": "3a126d186e415ad99c1d392830114464842dd973",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Optional Caddy Compose ingress template and its protocol qualification fixture. Full 128-line baseline read. Compose/Caddy files and the synthetic smoke upstream traced; actual Compose model validated read-only. No Caddy/Station startup, public CA issuance, DNS change or smoke execution.",
@@ -1964,7 +1965,7 @@
         },
         {
           "path": "scripts/__tests__/container-release.test.ts",
-          "digest": "a2581a535538127577f8a5924e990d564c672c996e927634e972dc70c8a64872"
+          "digest": "6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524"
         },
         {
           "path": "scripts/__tests__/gcp-bootstrap.test.ts",
@@ -2058,7 +2059,8 @@
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The profile's ingress, CA and rate-limit statements are unaffected, so the prose remains accurate. Source review only.",
         "Re-read the optional Caddy Compose ingress template against the .dockerignore and Dockerfile edits. It documents the ingress protocol, its qualification fixture and Caddyfile directives, and makes no claim about the build context, the COPY list or image contents, so no prose change is needed. The Dockerfile edit stays inside the discarded build stage.",
-        "Re-read the Caddy ingress template against the follow-up .dockerignore/Dockerfile change (build stage adds biome.json, .gitignore and config/; runtime gains the rest of config/'s public JSON). The template requires a reviewed digest-pinned Station image and documents only the ingress protocol, fixture and Caddyfile, with no claim about build context or image contents, so no prose change is needed."
+        "Re-read the Caddy ingress template against the follow-up .dockerignore/Dockerfile change (build stage adds biome.json, .gitignore and config/; runtime gains the rest of config/'s public JSON). The template requires a reviewed digest-pinned Station image and documents only the ingress protocol, fixture and Caddyfile, with no claim about build context or image contents, so no prose change is needed.",
+        "Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern)."
       ]
     },
     {
@@ -12865,7 +12867,7 @@
     {
       "path": "docs/guides/deployment.md",
       "documentDigest": "1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2",
-      "sourceRevision": "595972e1acffc55ebd797125feec57f416bca902",
+      "sourceRevision": "3a126d186e415ad99c1d392830114464842dd973",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Operating paths for checkout/container deployments, hosted foundations, and the legacy macOS dogfood supervisor. Full 920-line baseline and parent working bytes read. Source checks cover Docker, CLI/proxy/auth, home archive/schema/migration, hosted preflight, channel homes, supervisor staging/timing/health and cleanup. Detailed installer rollback, tenant carriers and lifecycle journal failure matrices were not fully re-executed; runtime qualification is partial. Follow-up: Changed pre-provisioning paragraphs checked against real schema-gate/lifecycle/server/migration ordering. Windows issue-link addition preserves the already disclosed staging limitation.",
@@ -12957,7 +12959,7 @@
         },
         {
           "path": "scripts/__tests__/container-release.test.ts",
-          "digest": "a2581a535538127577f8a5924e990d564c672c996e927634e972dc70c8a64872"
+          "digest": "6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524"
         },
         {
           "path": "scripts/__tests__/gcp-bootstrap.test.ts",
@@ -13057,7 +13059,8 @@
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The hosted tenant carrier claim (token-bound Codex HTTP/SSE session, exact built-in child environment, trusted async context) remains accurate. Source review only.",
         "Re-read the deployment guide's container and image claims against the .dockerignore and Dockerfile edits. The guide documents runtime deployment, the hosted preflight, the installer rollback and channel homes; it does not enumerate the build-context allowlist, the COPY list, or image contents, so no prose change is needed. The Dockerfile edit is confined to the build stage (line 46, before the runtime stage at line 63) and the .dockerignore edit only widens what is sent to the docker daemon, not what lands in the image.",
-        "Re-read the local source build paragraph and command block against the follow-up .dockerignore/Dockerfile change. The claim that the Docker context excludes .git, credentials, nested node_modules and dist still holds: .gitignore is admitted as a Biome input but no pattern re-admits .git (container-release.test.ts now rejects !.git, !.git/, !.git/**, !.git* per line; fault-injected), and node scripts/check-container-build-context.mjs passed. The documented docker build with explicit provenance build-args was executed on this tree and succeeded (it failed on the prior head), and scripts/container-smoke.sh passed on arm64 Docker Desktop. The runtime image now also carries the rest of config/'s public JSON; the guide's image-content claims (Git, OpenSSH client, certificate trust, terminal support, UID/GID 1000) are unchanged, so no prose change is needed."
+        "Re-read the local source build paragraph and command block against the follow-up .dockerignore/Dockerfile change. The claim that the Docker context excludes .git, credentials, nested node_modules and dist still holds: .gitignore is admitted as a Biome input but no pattern re-admits .git (container-release.test.ts now rejects !.git, !.git/, !.git/**, !.git* per line; fault-injected), and node scripts/check-container-build-context.mjs passed. The documented docker build with explicit provenance build-args was executed on this tree and succeeded (it failed on the prior head), and scripts/container-smoke.sh passed on arm64 Docker Desktop. The runtime image now also carries the rest of config/'s public JSON; the guide's image-content claims (Git, OpenSSH client, certificate trust, terminal support, UID/GID 1000) are unchanged, so no prose change is needed.",
+        "Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern)."
       ]
     },
     {
