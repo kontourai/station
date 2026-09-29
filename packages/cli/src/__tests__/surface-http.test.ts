@@ -186,7 +186,11 @@ describe('CLI surface commands over HTTP', () => {
         }
         const projection = {
           profiles: [
-            { ref: 'primary', label: 'Primary account' },
+            {
+              ref: 'primary',
+              label: 'Primary account',
+              envInvalid: { names: ['ANTHROPIC_API_KEY', 7] },
+            },
             {
               ref: 'recovery',
               label: 'Recovery account',
@@ -1402,6 +1406,9 @@ describe('CLI surface commands over HTTP', () => {
     await runCli(['connections', 'profiles', 'codex', `--api-base=${apiBase}`]);
     const profileListOutput = String(_consoleLog.mock.calls.at(-1)?.[0]);
     expect(profileListOutput).toContain('Primary account');
+    expect(JSON.parse(profileListOutput).profiles[0].envInvalid).toEqual({
+      names: ['ANTHROPIC_API_KEY'],
+    });
     expect(JSON.parse(profileListOutput).profiles[1].env).toEqual({
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
       ANTHROPIC_API_KEY: '',

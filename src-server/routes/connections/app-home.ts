@@ -55,6 +55,7 @@ import {
 import { appHomeCleared, appHomeImport } from '../../telemetry/metrics.js';
 import {
   appHomeImportRequestSchema,
+  CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES,
   credentialProfileApplyRequestSchema,
   credentialProfileEnrollmentRequestSchema,
   credentialProfileEnvRequestSchema,
@@ -345,7 +346,9 @@ export function createAppHomeRoutes(deps?: {
   // clears it. The schema refuses credential-shaped literals with a 400.
   app.put(
     '/agent/:id/credential-recovery/profiles/:ref/env',
-    validate(credentialProfileEnvRequestSchema),
+    validate(credentialProfileEnvRequestSchema, {
+      maxBodyBytes: CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES,
+    }),
     async (c) => {
       const ref = profileRefFromParam(param(c, 'ref'));
       if (!ref)

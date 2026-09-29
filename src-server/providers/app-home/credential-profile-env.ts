@@ -17,7 +17,6 @@
  * login/enrolment children (they only write the profile home's own
  * credentials).
  */
-import type { CredentialProfile } from '@kontourai/station-contracts/connection-recovery';
 import {
   appHomeActive,
   type ConnectionEnvEngine,
@@ -30,6 +29,7 @@ import {
   ensureAppHomeProfile,
 } from './app-home-profiles.js';
 import {
+  credentialProfileStorageId,
   ensureCredentialProfileAppHome,
   normalizeCredentialProfileRegistry,
   persistedCredentialProfileEnv,
@@ -43,17 +43,23 @@ import {
  * selected. The message carries no ref, path, or env value.
  */
 export class CredentialProfileEnvUnavailableError extends Error {
-  constructor() {
+  /**
+   * Offending overlay variable NAMES when the saved overlay is invalid; for
+   * server-side diagnostics only (never values, never the ref).
+   */
+  readonly invalidVariableNames?: readonly string[];
+
+  constructor(invalidVariableNames?: readonly string[]) {
     super('Credential profile environment could not be prepared.');
     this.name = 'CredentialProfileEnvUnavailableError';
+    if (invalidVariableNames) this.invalidVariableNames = invalidVariableNames;
   }
 }
 
 /**
- * The selected profile's validated overlay. Validation runs on the persisted
- * value, not the normalized registry: normalization drops an invalid overlay
- * whole, and applying "no overlay" for a profile configured with one would
- * silently un-route the session. Invalid persisted state fails closed.
+ * The selected profile's validated overlay. The registry keeps an invalid
+ * saved overlay verbatim, so it is still visible here and fails closed
+ * instead of silently un-routing the session.
  */
 export function credentialProfileOverlayEnv(
   credentialRecovery: unknown,
@@ -62,7 +68,8 @@ export function credentialProfileOverlayEnv(
   const validation = validateCredentialProfileEnv(
     persistedCredentialProfileEnv(credentialRecovery, ref),
   );
-  if (!validation.ok) throw new CredentialProfileEnvUnavailableError();
+  if (!validation.ok)
+    throw new CredentialProfileEnvUnavailableError(validation.names);
   return validation.env;
 }
 
@@ -70,15 +77,30 @@ export function credentialProfileOverlayEnv(
  * Where a profile's sessions are routed, as a comparable string: its sorted
  * literal env entries. Automatic recovery only switches between profiles
  * with equal fingerprints, so an exhausted account is never replaced by one
- * that talks to a different endpoint.
+ * that talks to a different endpoint. `undefined` for an invalid saved
+ * overlay: it matches nothing, not even another invalid overlay.
  */
 export function credentialProfileRoutingFingerprint(
-  profile: Pick<CredentialProfile, 'env'> | undefined,
-): string {
-  const entries = Object.entries(profile?.env ?? {}).sort(([a], [b]) =>
+  profile: { env?: unknown } | undefined,
+): string | undefined {
+  const validation = validateCredentialProfileEnv(profile?.env);
+  if (!validation.ok) return undefined;
+  const entries = Object.entries(validation.env).sort(([a], [b]) =>
     a < b ? -1 : a > b ? 1 : 0,
   );
   return JSON.stringify({ env: entries });
+}
+
+/** True only when both profiles have valid overlays with equal routing. */
+export function credentialProfilesRouteAlike(
+  left: { env?: unknown } | undefined,
+  right: { env?: unknown } | undefined,
+): boolean {
+  const fingerprint = credentialProfileRoutingFingerprint(left);
+  return (
+    fingerprint !== undefined &&
+    fingerprint === credentialProfileRoutingFingerprint(right)
+  );
 }
 
 const APP_HOME_ENV_FOR: Record<
@@ -141,7 +163,32 @@ export function createCredentialProfileAppHomeEnvResolver(options: {
       );
       return homeEnvFor(dir);
     } catch (error) {
-      if (selectedProfileRef) throw new CredentialProfileEnvUnavailableError();
+      if (selectedProfileRef) {
+        // Server-side diagnostic: the storage id hash, never the raw ref, and
+        // offending variable names, never values.
+        let profileId = 'unidentified';
+        try {
+          profileId = credentialProfileStorageId(
+            options.engine,
+            selectedProfileRef,
+          );
+        } catch {}
+        const reason =
+          error instanceof CredentialProfileEnvUnavailableError &&
+          error.invalidVariableNames
+            ? `the saved env overlay is invalid${
+                error.invalidVariableNames.length > 0
+                  ? ` (${error.invalidVariableNames.join(', ')})`
+                  : ''
+              }`
+            : errorMessage(error);
+        options.warn?.(
+          `Credential profile ${profileId} (${options.engine}): environment could not be prepared; refusing to start the session: ${reason}`,
+        );
+        throw error instanceof CredentialProfileEnvUnavailableError
+          ? error
+          : new CredentialProfileEnvUnavailableError();
+      }
       options.warn?.(
         `App home profile: failed to resolve the ${options.engine} app-home env; continuing with the global engine config: ${errorMessage(error)}`,
       );

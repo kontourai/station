@@ -3647,6 +3647,41 @@ describe('ConnectionService', () => {
       ).toContainEqual({ ref: 'profile-a', env: routed });
     });
 
+    test('an unrelated registry write keeps an invalid saved overlay, which the projection flags by name', async () => {
+      const tampered = {
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        ANTHROPIC_API_KEY: 'sk-live-canary',
+      };
+      const { service, getAppConfig } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        undefined,
+        [
+          { ref: 'profile-a' },
+          { ref: 'canary-profile-ref', env: tampered },
+          { ref: 'profile-c' },
+        ],
+      );
+
+      const projected = await service.upsertCredentialProfile('codex', {
+        ref: 'profile-a',
+        label: 'Relabelled',
+      });
+
+      expect(
+        getAppConfig().agentConnections.codex.credentialRecovery.profiles,
+      ).toContainEqual({ ref: 'canary-profile-ref', env: tampered });
+      expect(
+        projected.profiles.find(
+          (profile) => profile.ref === 'canary-profile-ref',
+        ),
+      ).toEqual({
+        ref: 'canary-profile-ref',
+        envInvalid: { names: ['ANTHROPIC_API_KEY'] },
+      });
+      expect(JSON.stringify(projected)).not.toContain('sk-live-canary');
+    });
+
     test('refuses as environment_mismatch when no enrolled candidate routes like the active profile', async () => {
       const { service } = createCredentialProfileApplyFixture(
         vi.fn<ConnectionSmokeRunner>(),

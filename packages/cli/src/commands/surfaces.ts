@@ -126,8 +126,9 @@ function safeStringList(value: unknown): string[] {
  * profile directory, raw import result, or credentials) out of normal CLI
  * output. Labels are management metadata and are shown only by `profiles`.
  * A profile's env overlay is non-secret by server contract (credential-shaped
- * names may only hold an empty masking value) and is shown by `profiles` and
- * `profile-env`, keeping only string values.
+ * names and values are refused heuristically) and is shown by `profiles` and
+ * `profile-env`, keeping only string values. `envInvalid` lists the variable
+ * names of a saved overlay the server refuses to apply.
  */
 function credentialRecoveryOutput(
   data: unknown,
@@ -149,6 +150,12 @@ function credentialRecoveryOutput(
             ),
           );
           if (Object.keys(env).length > 0) result.env = env;
+        }
+        if (options.includeEnv && isRecord(profile.envInvalid)) {
+          // Names only: a saved overlay the server refuses to apply.
+          result.envInvalid = {
+            names: safeStringList(profile.envInvalid.names),
+          };
         }
         return [result];
       })

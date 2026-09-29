@@ -5,8 +5,12 @@ import {
   CredentialProfileEnvUnavailableError,
   createCredentialProfileAppHomeEnvResolver,
   credentialProfileRoutingFingerprint,
+  credentialProfilesRouteAlike,
 } from '../credential-profile-env.js';
-import { credentialProfileAppHomeDir } from '../credential-profile-registry.js';
+import {
+  credentialProfileAppHomeDir,
+  credentialProfileStorageId,
+} from '../credential-profile-registry.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -87,7 +91,14 @@ describe('credential profile env resolver (#2966)', () => {
     );
     expect(failure).toBeInstanceOf(CredentialProfileEnvUnavailableError);
     expect(String((failure as Error).message)).not.toContain('canary-secret');
-    expect(warn).not.toHaveBeenCalled();
+    // A server-side diagnostic names the storage id and variable, never the
+    // raw ref or the value.
+    expect(warn).toHaveBeenCalledTimes(1);
+    const diagnostic = String(warn.mock.calls[0]?.[0]);
+    expect(diagnostic).toContain(credentialProfileStorageId('claude', 'proxy'));
+    expect(diagnostic).toContain('ANTHROPIC_AUTH_TOKEN');
+    expect(diagnostic).not.toContain('canary-secret');
+    expect(diagnostic).not.toMatch(/\bproxy\b/);
     expect(
       existsSync(credentialProfileAppHomeDir('claude', 'proxy', homeDir)),
     ).toBe(false);
@@ -106,6 +117,13 @@ describe('credential profile env resolver (#2966)', () => {
 
     await expect(resolve()).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  test('an invalid overlay routes alike with nothing, not even another invalid overlay', () => {
+    const invalid = { env: { ANTHROPIC_AUTH_TOKEN: 'x' } };
+    expect(credentialProfileRoutingFingerprint(invalid)).toBeUndefined();
+    expect(credentialProfilesRouteAlike(invalid, invalid)).toBe(false);
+    expect(credentialProfilesRouteAlike({}, undefined)).toBe(true);
   });
 
   test('routing fingerprint compares sorted env entries only', () => {

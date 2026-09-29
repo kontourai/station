@@ -46,7 +46,7 @@ import {
   engineIdForAdapter,
 } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
-import { credentialProfileRoutingFingerprint } from '../../providers/app-home/credential-profile-env.js';
+import { credentialProfilesRouteAlike } from '../../providers/app-home/credential-profile-env.js';
 import type { LegacyCredentialProfileRegistryState } from '../../providers/app-home/credential-profile-registry.js';
 import {
   deleteCredentialProfile,
@@ -2421,14 +2421,13 @@ export class ConnectionService {
     // #2966: prefer the first enrolled candidate that routes like the active
     // profile. When none does, offer the first anyway so the selector refuses
     // it as `environment_mismatch` rather than reporting "not enrolled".
-    const fingerprintOf = (ref: string | undefined) =>
-      credentialProfileRoutingFingerprint(
-        state.profiles.find((profile) => profile.ref === ref),
-      );
-    const activeFingerprint = fingerprintOf(state.activeProfileRef);
+    const profileOf = (ref: string | undefined) =>
+      state.profiles.find((profile) => profile.ref === ref);
+    const active = profileOf(state.activeProfileRef);
     const candidateProfileRef =
-      candidates.find((ref) => fingerprintOf(ref) === activeFingerprint) ??
-      candidates[0];
+      candidates.find((ref) =>
+        credentialProfilesRouteAlike(profileOf(ref), active),
+      ) ?? candidates[0];
     const selection = selectCredentialRecoveryCandidate({
       capability:
         this.credentialRecoveryAdapter(connectionId)?.metadata.recovery,

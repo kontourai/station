@@ -16,6 +16,7 @@ import {
 import type { EngineLoginCapabilities } from '../../../services/connections/engine-login-capabilities.js';
 import { appHomeCleared, appHomeImport } from '../../../telemetry/metrics.js';
 import { resolveHomeDir } from '../../../utils/paths.js';
+import { CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES } from '../../schemas/schemas.js';
 import { createAppHomeRoutes } from '../app-home.js';
 
 /**
@@ -754,6 +755,33 @@ describe('App home profile routes (#896)', () => {
         (await readJson<{ data: { profiles: unknown[] } }>(cleared)).data
           .profiles,
       ).toEqual([{ ref: 'profile-a', label: 'Canary Account Label' }]);
+    });
+
+    test('profile upsert refuses an env field with a 400 naming the env route', async () => {
+      const { app, service } = envFixture();
+      const res = await app.request(
+        '/agent/codex/credential-recovery/profiles',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ref: 'profile-a',
+            env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318' },
+          }),
+        },
+      );
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain('/env');
+      expect(service.upsertCredentialProfile).not.toHaveBeenCalled();
+    });
+
+    test('refuses a body over the overlay byte bound with 413 before parsing', async () => {
+      const { app, service } = envFixture();
+      const res = await put(app, {
+        env: { BIG: 'x'.repeat(CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES) },
+      });
+      expect(res.status).toBe(413);
+      expect(service.setCredentialProfileEnv).not.toHaveBeenCalled();
     });
 
     test('404s for an unknown profile and 400s for a hostile ref or missing env', async () => {

@@ -4,7 +4,6 @@ import type {
   ConnectionRecoveryFailureKind,
   ConnectionRecoveryScope,
   ConnectionRecoveryTiming,
-  CredentialProfile,
   CredentialRecoveryGroup,
   CredentialRecoveryPolicy,
 } from '@kontourai/station-contracts/connection-recovery';
@@ -12,7 +11,7 @@ import {
   isAutomaticCredentialRecoveryEnabled,
   resolveCredentialProfileApplicationCapability,
 } from '@kontourai/station-contracts/connection-recovery';
-import { credentialProfileRoutingFingerprint } from '../../providers/app-home/credential-profile-env.js';
+import { credentialProfilesRouteAlike } from '../../providers/app-home/credential-profile-env.js';
 import { isRuntimeAuthenticationFailure } from './runtime-auth-health-monitor.js';
 
 /** Recovery remains a short-lived continuity aid, never a long-term scheduler. */
@@ -54,8 +53,11 @@ export function selectCredentialRecoveryCandidate(input: {
   group?: CredentialRecoveryGroup;
   activeProfileRef?: string;
   candidateProfileRef?: string;
-  /** Registry profiles; their env overlays decide routing compatibility. */
-  profiles?: readonly CredentialProfile[];
+  /**
+   * Registry profiles; their env overlays decide routing compatibility. An
+   * invalid saved overlay never routes alike, so it is never auto-selected.
+   */
+  profiles?: readonly { ref: string; env?: unknown }[];
 }): CredentialRecoveryCandidateSelection {
   if (input.failure.kind === 'authentication') {
     return { outcome: 'refused', reason: 'authentication' };
@@ -91,9 +93,10 @@ export function selectCredentialRecoveryCandidate(input: {
   const profileOf = (ref: string) =>
     input.profiles?.find((profile) => profile.ref === ref);
   if (
-    credentialProfileRoutingFingerprint(
+    !credentialProfilesRouteAlike(
       profileOf(input.candidateProfileRef),
-    ) !== credentialProfileRoutingFingerprint(profileOf(input.activeProfileRef))
+      profileOf(input.activeProfileRef),
+    )
   ) {
     return { outcome: 'refused', reason: 'environment_mismatch' };
   }

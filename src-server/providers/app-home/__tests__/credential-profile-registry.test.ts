@@ -135,35 +135,39 @@ describe('credential profile registry', () => {
       ).toEqual([{ ref: 'proxy', label: 'Proxy', env: routed }]);
     });
 
-    test('an overlay with a refused entry is dropped whole, never partially kept', () => {
-      const state = normalizeCredentialProfileRegistry({
-        profiles: [
-          {
-            ref: 'tampered',
-            env: { ...routed, ANTHROPIC_AUTH_TOKEN: 'canary-secret' },
-          },
-          { ref: 'home-key', env: { ...routed, CLAUDE_CONFIG_DIR: '/x' } },
-        ],
-      });
-      expect(state.profiles).toEqual([
-        { ref: 'tampered' },
-        { ref: 'home-key' },
-      ]);
-      expect(JSON.stringify(state)).not.toContain('canary-secret');
-      // The raw value stays reachable for the spawn-time resolver to refuse.
-      expect(
-        persistedCredentialProfileEnv(
-          {
-            profiles: [
-              {
-                ref: 'tampered',
-                env: { ANTHROPIC_AUTH_TOKEN: 'canary-secret' },
-              },
-            ],
-          },
-          'tampered',
+    test('an invalid saved overlay is kept verbatim, survives unrelated writes, and is flagged by name in the projection', () => {
+      const tampered = { ...routed, ANTHROPIC_AUTH_TOKEN: 'canary-secret' };
+      const saved = {
+        profiles: [{ ref: 'a' }, { ref: 'b', label: 'B', env: tampered }],
+        group: { profileRefs: ['a', 'b'], enrolledProfileRefs: [] },
+      };
+      // An unrelated write (relabel a) goes through the same normalization
+      // that every registry mutation persists.
+      const written = JSON.parse(
+        JSON.stringify(
+          upsertCredentialProfile(saved, { ref: 'a', label: 'A' }).state,
         ),
-      ).toEqual({ ANTHROPIC_AUTH_TOKEN: 'canary-secret' });
+      );
+      expect(written.profiles[1]).toEqual({
+        ref: 'b',
+        label: 'B',
+        env: tampered,
+      });
+      expect(persistedCredentialProfileEnv(written, 'b')).toEqual(tampered);
+      const projected = projectCredentialProfileRegistry(
+        written,
+        'restart_resume',
+      );
+      expect(projected.profiles[1]).toEqual({
+        ref: 'b',
+        label: 'B',
+        envInvalid: { names: ['ANTHROPIC_AUTH_TOKEN'] },
+      });
+      expect(JSON.stringify(projected)).not.toContain('canary-secret');
+      // Replacing the overlay is the repair path.
+      expect(
+        setCredentialProfileEnv(written, 'b', routed).state.profiles[1],
+      ).toEqual({ ref: 'b', label: 'B', env: routed });
     });
 
     test('a label-only upsert preserves an existing overlay', () => {

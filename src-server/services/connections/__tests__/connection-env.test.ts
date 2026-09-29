@@ -203,6 +203,49 @@ describe('validateCredentialProfileEnv (#2966)', () => {
   );
 
   test.each([
+    ['OPENAI_API_KEYS', 'sk-a,sk-b'],
+    ['GITHUB_PAT', 'ghp_x'],
+    ['ANTHROPIC_AUTH', 'abc'],
+    ['GITHUB_OAUTH', 'abc'],
+    ['ANTHROPIC_CUSTOM_HEADERS', 'X-Team: platform'],
+    ['DB_PASSWD', 'x'],
+    ['HTTPS_PROXY', 'http://user:pw@proxy.example.internal:8080'],
+    ['UPSTREAM_URL', 'https://token@host.example.internal/v1'],
+    ['EXTRA', 'Authorization: Bearer abc'],
+    ['EXTRA', 'proxy-authorization: Basic dXNlcjpwYXNz'],
+    ['EXTRA', 'x-api-key: abc'],
+    ['EXTRA', 'bearer abc.def'],
+    ['EXTRA', 'Basic dXNlcjpwYXNzd29yZA=='],
+  ])(
+    'refuses the credential-shaped %s=<value> heuristic case and reports only the name',
+    (name, value) => {
+      const result = validateCredentialProfileEnv({ [name]: value });
+      expect(result).toMatchObject({ ok: false, names: [name] });
+      expect(JSON.stringify(result)).not.toContain(value);
+    },
+  );
+
+  test('keeps near-miss names and ordinary URLs', () => {
+    expect(
+      validateCredentialProfileEnv({
+        COMPAT: 'x',
+        PATH_HINT: 'x',
+        HTTPS_PROXY: 'http://proxy.example.internal:8080',
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318/v1?x=a@b',
+        NOTE: 'basic mode',
+        ANTHROPIC_CUSTOM_HEADERS: '',
+      }).ok,
+    ).toBe(true);
+    expect(validateCredentialProfileEnv(null)).toEqual({ ok: true, env: {} });
+  });
+
+  test('never echoes a malformed name, which could be pasted secret text', () => {
+    const result = validateCredentialProfileEnv({ 'sk-live-canary': 'x' });
+    expect(result).toMatchObject({ ok: false, names: [] });
+    expect(JSON.stringify(result)).not.toContain('sk-live-canary');
+  });
+
+  test.each([
     'TMPDIR',
     'CLAUDE_CONFIG_DIR',
     'CODEX_HOME',

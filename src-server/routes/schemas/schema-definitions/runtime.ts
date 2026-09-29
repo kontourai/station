@@ -154,6 +154,16 @@ export const credentialProfileRefSchema = credentialProfileText('ref').refine(
 export const credentialProfileUpsertRequestSchema = z.object({
   ref: credentialProfileRefSchema,
   label: credentialProfileText('label').optional(),
+  // #2966: upsert manages ref/label only. An `env` here would otherwise be
+  // stripped silently; refuse it and name the route that owns the overlay.
+  env: z
+    .undefined({
+      errorMap: () => ({
+        message:
+          'env is not accepted here; set it with PUT /api/connections/agent/:id/credential-recovery/profiles/:ref/env (station connections profile-env)',
+      }),
+    })
+    .optional(),
 });
 
 export const credentialProfileEnrollmentRequestSchema = z.object({
@@ -162,6 +172,13 @@ export const credentialProfileEnrollmentRequestSchema = z.object({
 
 // #2966: the overlay is refused whole (never trimmed) when any entry breaks
 // the profile-env rules, so the 400 names every offending variable.
+//
+// Body bound: the largest valid overlay is 64 entries of at most 32,768
+// code units each. 2 MiB + 64 KiB admits every ASCII overlay at those caps
+// plus JSON quoting and names; a near-cap overlay of mostly multi-byte or
+// escaped text can exceed it and gets a 413 rather than being read whole.
+export const CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES =
+  64 * 32 * 1024 + 64 * 1024;
 export const credentialProfileEnvRequestSchema = z.object({
   env: z.record(z.string(), z.string()).superRefine((env, ctx) => {
     const validation = validateCredentialProfileEnv(env);

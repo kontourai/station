@@ -883,7 +883,7 @@ const VERBS: Record<string, VerbSpec> = {
       'with `recovery-policy` and profiles are explicitly enrolled.',
       '',
       'profile-env replaces a profile\'s non-secret env overlay ({"env":{}} clears it).',
-      'Credential-shaped names (*_KEY, *_TOKEN, ...) may only be set to "" to mask them.',
+      'Credential-shaped names and values are refused (heuristic); set such a name to "" to mask it.',
       'Automatic recovery only switches between profiles with the same overlay.',
       '',
       'profile-import excludes credentials by default. Pass --include-credentials',

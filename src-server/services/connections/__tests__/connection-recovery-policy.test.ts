@@ -159,6 +159,16 @@ describe('credential recovery selection', () => {
         ],
       }),
     ).toEqual({ outcome: 'selected', candidateProfileRef: 'profile-recovery' });
+    const invalid = { ANTHROPIC_AUTH_TOKEN: 'x' };
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...selectable,
+        profiles: [
+          { ref: 'profile-primary', env: invalid },
+          { ref: 'profile-recovery', env: invalid },
+        ],
+      }),
+    ).toEqual({ outcome: 'refused', reason: 'environment_mismatch' });
   });
 
   test('defaults automatic switching off', () => {

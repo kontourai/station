@@ -909,17 +909,41 @@ applies the [profile env rules](../../src-server/services/connections/connection
 and refuses the whole body with 400 when any entry breaks them: an invalid
 name, a non-string value, NUL, a value over 32,768 JavaScript string code
 units, more than 64 entries, `TMPDIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, a
-Station-internal name, or a non-empty value under a name ending in `KEY`,
-`TOKEN`, `SECRET`, `PASSWORD`, or `CREDENTIAL(S)` (case-insensitive; an empty
-string is allowed so a profile can mask an inherited credential). Error
-details name the variable, never its value.
+Station-internal name, or a non-empty value that looks like a credential.
+That last check is a heuristic, not a secret detector: it refuses names
+ending in `KEY(S)`, `TOKEN(S)`, `SECRET(S)`, `PASSWORD(S)`, `PASSWD`,
+`CREDENTIAL(S)`, `AUTH`, or `HEADER(S)`, or equal to or ending in `_PAT`, and
+values carrying URL userinfo (`scheme://user:pass@host`), an
+`Authorization`/`Proxy-Authorization` or API-key header, or a `Bearer`/`Basic`
+credential. An empty string is allowed under any name so a profile can mask an
+inherited credential. Error details name the variable, never its value.
+
+A body larger than 2 MiB + 64 KiB is refused with 413 before it is parsed.
+That admits every ASCII overlay at the entry and value caps; a near-cap overlay
+of mostly multi-byte or escaped text can exceed it.
 
 An unknown profile returns 404, and an Agent App without credential recovery
-returns 404. On success the response is `{success: true, data}` with the
-credential-recovery projection, whose `profiles[].env` carries the overlay.
-The route belongs to the `/api/connections/agent/:id/credential-recovery`
-family, which requires the `access:manage` pairing scope
-([route mapping](../../src-server/security/pairing-route-scopes.ts)).
+returns 404. A 409 means the registry did not end up holding the requested
+overlay (for example a concurrent change) or the write failed; re-read the
+profiles before retrying. On success the response is `{success: true, data}`
+with the credential-recovery projection: `profiles[].env` carries a valid
+overlay, and `profiles[].envInvalid.names` lists the offending variable names
+of a saved overlay that breaks the rules (sessions under that profile fail
+until it is replaced).
+
+This dedicated route requires the `access:manage` pairing scope, like the rest
+of the `/api/connections/agent/:id/credential-recovery` family
+([route mapping](../../src-server/security/pairing-route-scopes.ts)). The
+overlay is not secret: it is also readable at `orchestration:read` through the
+connection listings and `GET /config/app`, and the whole credential-recovery
+registry, overlay included, can be written through `PUT /config/app` at
+`orchestration:operate`, which does not apply these rules. A saved overlay that
+breaks them is kept as written and makes sessions under that profile fail
+closed.
+
+`POST /api/connections/agent/:id/credential-recovery/profiles` (profile upsert)
+manages the ref and label only; a body that includes `env` is refused with 400
+naming this route.
 
 ### Test a Connection
 

@@ -1530,10 +1530,13 @@ station connections profile-apply <id> <profile-ref> --confirm [--timeout-ms=<ms
 ```
 
 `profile-env` replaces a credential profile's non-secret env overlay
-(`{"env":{}}` clears it). A non-empty value under a credential-shaped name
-(`*_KEY`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_CREDENTIAL(S)`) is refused;
-set such a name to `""` to mask an inherited value. `profiles` and
-`profile-env` print each profile's overlay; `recovery` does not. See
+(`{"env":{}}` clears it). Credential-shaped names and values are refused by a
+heuristic (names such as `*_KEY`, `*_TOKEN`, `*_AUTH`, `*_HEADERS`, `*_PAT`;
+values with URL userinfo or an authorization header); set such a name to `""`
+to mask an inherited value. `profile-upsert` refuses an `env` field.
+`profiles` and `profile-env` print each profile's overlay, or `envInvalid`
+with the offending variable names when the saved overlay breaks the rules;
+`recovery` does not. See
 [credential profile env overlays](../guides/connections.md#give-a-credential-profile-its-own-routing).
 
 ### `flow`

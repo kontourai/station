@@ -3,6 +3,8 @@ import type {
   CredentialProfile,
   CredentialProfileApplicationCapability,
   CredentialProfileApplicationOutcome,
+  CredentialProfileProjection,
+  CredentialProfileRecord,
   CredentialProfileRegistryState,
   CredentialRecoveryGroup,
   CredentialRecoveryGroupProjection,
@@ -11,7 +13,10 @@ import {
   DEFAULT_CREDENTIAL_RECOVERY_POLICY,
   isAutomaticCredentialRecoveryEnabled,
 } from '@kontourai/station-contracts/connection-recovery';
-import { sanitizeCredentialProfileEnv } from '../../services/connections/connection-env.js';
+import {
+  sanitizeCredentialProfileEnv,
+  validateCredentialProfileEnv,
+} from '../../services/connections/connection-env.js';
 import {
   appHomeProfileDir,
   type EnsureAppHomeProfileOptions,
@@ -25,8 +30,11 @@ const MAX_ATTEMPT_ID_LENGTH = 128;
 /** Never evict an unacknowledged receipt: refusing a new stage is safer. */
 const MAX_APPLICATION_RECEIPTS = 64;
 
-type RegistryState = Required<
-  Pick<CredentialProfileRegistryState, 'profiles' | 'group' | 'policy'>
+/** See `CredentialProfileRecord`: an invalid saved overlay is kept verbatim. */
+export type RegistryCredentialProfile = CredentialProfileRecord;
+
+type RegistryState = { profiles: RegistryCredentialProfile[] } & Required<
+  Pick<CredentialProfileRegistryState, 'group' | 'policy'>
 > &
   Omit<CredentialProfileRegistryState, 'profiles' | 'group' | 'policy'>;
 
@@ -106,68 +114,50 @@ function normalizeAttemptId(value: unknown): string | undefined {
 function profileRecord(
   ref: string,
   label: string | undefined,
-  env: Record<string, string> | undefined,
-): CredentialProfile {
+  env: unknown,
+): RegistryCredentialProfile {
+  const validation = validateCredentialProfileEnv(env);
   return {
     ref,
     ...(label ? { label } : {}),
-    ...(env && Object.keys(env).length > 0 ? { env: { ...env } } : {}),
+    ...(validation.ok
+      ? Object.keys(validation.env).length > 0
+        ? { env: { ...validation.env } }
+        : {}
+      : { env }),
   };
 }
 
-function normalizeProfiles(value: unknown): CredentialProfile[] {
+function normalizeProfiles(value: unknown): RegistryCredentialProfile[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
-  const profiles: CredentialProfile[] = [];
+  const profiles: RegistryCredentialProfile[] = [];
   for (const candidate of value) {
     if (!candidate || typeof candidate !== 'object') continue;
     const raw = candidate as Record<string, unknown>;
     const ref = normalizeRef(raw.ref);
     if (!ref || seen.has(ref) || profiles.length >= MAX_PROFILES) continue;
     seen.add(ref);
-    // An invalid overlay is dropped whole, never partially: the spawn-time
-    // resolver (`credential-profile-env.ts`) re-reads the persisted value and
-    // refuses to start rather than applying what survived normalization.
-    profiles.push(
-      profileRecord(
-        ref,
-        normalizeLabel(raw.label),
-        sanitizeCredentialProfileEnv(raw.env),
-      ),
-    );
+    profiles.push(profileRecord(ref, normalizeLabel(raw.label), raw.env));
   }
   return profiles;
 }
 
 /**
- * The persisted, un-normalized `env` of the profile that normalization would
- * keep for `refInput` (the first valid occurrence). The spawn-time resolver
- * validates this raw value itself so a hand-edited invalid overlay fails the
- * start instead of disappearing in normalization.
+ * The persisted `env` of the profile that normalization keeps for
+ * `refInput` (its first valid occurrence): a validated map, the invalid
+ * saved value verbatim, or `undefined`. The spawn-time resolver validates it
+ * and fails closed on anything invalid.
  */
 export function persistedCredentialProfileEnv(
   value: unknown,
   refInput: string,
 ): unknown {
   const ref = normalizeRef(refInput);
-  const raw =
-    value && typeof value === 'object'
-      ? (value as Record<string, unknown>).profiles
-      : undefined;
-  if (!ref || !Array.isArray(raw)) return undefined;
-  const seen = new Set<string>();
-  let kept = 0;
-  for (const candidate of raw) {
-    if (!candidate || typeof candidate !== 'object') continue;
-    const record = candidate as Record<string, unknown>;
-    const candidateRef = normalizeRef(record.ref);
-    if (!candidateRef || seen.has(candidateRef) || kept >= MAX_PROFILES)
-      continue;
-    seen.add(candidateRef);
-    kept += 1;
-    if (candidateRef === ref) return record.env;
-  }
-  return undefined;
+  if (!ref) return undefined;
+  return normalizeCredentialProfileRegistry(value).profiles.find(
+    (profile) => profile.ref === ref,
+  )?.env;
 }
 
 function normalizeRefs(value: unknown, knownRefs: Set<string>): string[] {
@@ -462,6 +452,25 @@ export function deleteCredentialProfile(
   };
 }
 
+/**
+ * A valid overlay is projected as `env`; an invalid saved overlay is flagged
+ * with the offending variable NAMES only, never its values.
+ */
+function projectProfile(
+  profile: RegistryCredentialProfile,
+): CredentialProfileProjection {
+  const validation = validateCredentialProfileEnv(profile.env);
+  return {
+    ref: profile.ref,
+    ...(profile.label ? { label: profile.label } : {}),
+    ...(validation.ok
+      ? Object.keys(validation.env).length > 0
+        ? { env: { ...validation.env } }
+        : {}
+      : { envInvalid: { names: [...validation.names] } }),
+  };
+}
+
 /** Public projection intentionally does not include pending attempt identity. */
 export function projectCredentialProfileRegistry(
   value: unknown,
@@ -469,9 +478,7 @@ export function projectCredentialProfileRegistry(
 ): CredentialRecoveryGroupProjection {
   const state = stateOf(value);
   return {
-    profiles: state.profiles.map((profile) =>
-      profileRecord(profile.ref, profile.label, profile.env),
-    ),
+    profiles: state.profiles.map(projectProfile),
     group: {
       profileRefs: [...state.group.profileRefs],
       enrolledProfileRefs: [...state.group.enrolledProfileRefs],
