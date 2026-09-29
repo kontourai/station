@@ -380,6 +380,8 @@ export function ACPChatPanel({
         attachmentError={chatInput.attachmentError}
         attachmentStages={chatInput.attachmentStages}
         attachmentNotice={chatInput.attachmentNotice}
+        attachUnavailableReason={chatInput.attachUnavailableReason}
+        onAttachUnavailable={chatInput.setAttachmentError}
         sendBlockedReason={chatInput.sendBlockedReason}
         onRetryAttachmentStage={chatInput.retryAttachmentStage}
         onCancelAttachmentStage={chatInput.cancelAttachmentStage}

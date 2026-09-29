@@ -657,6 +657,12 @@ export function useChatInput({
     [sessionId, updateChat],
   );
 
+  // Only when nothing at all can be attached: the paperclip then explains
+  // the engine's own answer on tap instead of sitting silently disabled.
+  const attachUnavailableReason =
+    !attachmentCapabilities.images && !attachmentCapabilities.files
+      ? attachmentCapabilities.imageRefusal
+      : undefined;
   const {
     error: attachmentError,
     selectFiles: selectAttachmentFiles,
@@ -1109,6 +1115,7 @@ export function useChatInput({
       attachmentStages,
       sendBlockedReason,
       attachmentNotice,
+      attachUnavailableReason,
       currentModel,
       canModelSelect,
       modelSelectionReason,
@@ -1154,6 +1161,7 @@ export function useChatInput({
       attachmentStages,
       sendBlockedReason,
       attachmentNotice,
+      attachUnavailableReason,
       currentModel,
       canModelSelect,
       modelSelectionReason,

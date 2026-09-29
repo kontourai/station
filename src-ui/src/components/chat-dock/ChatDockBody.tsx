@@ -1578,6 +1578,8 @@ export function ChatDockBody({
             attachmentError={chatInput.attachmentError}
             attachmentStages={chatInput.attachmentStages}
             attachmentNotice={chatInput.attachmentNotice}
+            attachUnavailableReason={chatInput.attachUnavailableReason}
+            onAttachUnavailable={chatInput.setAttachmentError}
             sendBlockedReason={
               recoveryOpen && !unverifiedOpen
                 ? 'This conversation is available read-only. Retry resolution or start a new chat.'

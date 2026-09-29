@@ -230,6 +230,9 @@ interface ChatInputAreaProps {
   attachmentError?: string | null;
   /** Non-blocking attach-time note (e.g. image support not yet confirmed). */
   attachmentNotice?: string;
+  /** Why nothing can be attached; tapping the paperclip reports it. */
+  attachUnavailableReason?: string;
+  onAttachUnavailable?: (reason: string) => void;
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   sendBlockedReason?: string;
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
@@ -341,6 +344,8 @@ export function ChatInputArea({
   selectAttachmentFiles = async () => {},
   attachmentError = null,
   attachmentNotice,
+  attachUnavailableReason,
+  onAttachUnavailable,
   attachmentStages = [],
   sendBlockedReason,
   onRetryAttachmentStage,
@@ -1091,6 +1096,10 @@ export function ChatInputArea({
               }
               supportsImages={modelSupportsAttachments}
               supportsFiles={fileAttachmentsSupported}
+              unavailableReason={
+                disabled || isSending ? undefined : attachUnavailableReason
+              }
+              onUnavailable={onAttachUnavailable}
             />
           </React.Suspense>
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
