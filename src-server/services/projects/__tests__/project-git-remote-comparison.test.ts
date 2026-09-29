@@ -3,29 +3,74 @@ import { describe, expect, test } from 'vitest';
 import { compareProjectGitRemotes } from '../project-git-remote-comparison.js';
 
 describe('Project Git comparison without changing persisted identity', () => {
+  // The third column is the canonical checkout remote, pinned as literal
+  // bytes: deriving it from `normalizeGitOrigin` would move with the very
+  // canonicalization it is meant to hold still.
   test.each([
-    ['git@git.example:acme/repo.git', 'git.example/acme/repo'],
-    ['alice@git.example:acme/repo.git', 'git.example/acme/repo'],
-    ['ssh://alice@git.example/acme/repo.git', 'git.example:acme/repo'],
-    ['https://git.example/acme/repo.git', 'git.example:acme/repo'],
-    ['https://user:token@git.example/acme/repo.git', 'git.example/acme/repo'],
+    [
+      'git@git.example:acme/repo.git',
+      'git.example/acme/repo',
+      'git.example/acme/repo',
+    ],
+    [
+      'alice@git.example:acme/repo.git',
+      'git.example/acme/repo',
+      'git.example:acme/repo',
+    ],
+    [
+      'ssh://alice@git.example/acme/repo.git',
+      'git.example:acme/repo',
+      'git.example/acme/repo',
+    ],
+    [
+      'https://git.example/acme/repo.git',
+      'git.example:acme/repo',
+      'git.example/acme/repo',
+    ],
+    [
+      'https://user:token@git.example/acme/repo.git',
+      'git.example/acme/repo',
+      'git.example/acme/repo',
+    ],
     [
       'ssh://alice@git.example:2222/acme/repo.git',
       'git.example:2222/acme/repo',
+      'git.example:2222/acme/repo',
     ],
-    ['alice@[2001:db8::1]:acme/repo.git', '[2001:db8::1]/acme/repo'],
-    ['git@[2001:db8::1]:acme/repo.git', '[2001:db8::1]/acme/repo'],
-    ['ssh://git@[2001:db8::1]/acme/repo.git', '[2001/db8::1]/acme/repo'],
-    ['ssh://alice@[2001:db8::1]/acme/repo.git', '[2001/db8::1]:acme/repo'],
+    [
+      'alice@[2001:db8::1]:acme/repo.git',
+      '[2001:db8::1]/acme/repo',
+      '[2001:db8::1]:acme/repo',
+    ],
+    [
+      'git@[2001:db8::1]:acme/repo.git',
+      '[2001:db8::1]/acme/repo',
+      '[2001/db8::1]:acme/repo',
+    ],
+    [
+      'ssh://git@[2001:db8::1]/acme/repo.git',
+      '[2001/db8::1]/acme/repo',
+      '[2001/db8::1]/acme/repo',
+    ],
+    [
+      'ssh://alice@[2001:db8::1]/acme/repo.git',
+      '[2001/db8::1]:acme/repo',
+      '[2001:db8::1]/acme/repo',
+    ],
     [
       'ssh://alice@[2001:db8::1]:2222/acme/repo.git',
       '[2001:db8::1]:2222/acme/repo',
+      '[2001:db8::1]:2222/acme/repo',
     ],
-    ['https://Git.Example/Acme/Repo.git/', 'git.example/acme/repo'],
-  ])('matches %s against existing identity %s', (url, identity) => {
+    [
+      'https://Git.Example/Acme/Repo.git/',
+      'git.example/acme/repo',
+      'git.example/acme/repo',
+    ],
+  ])('matches %s against existing identity %s', (url, identity, canonical) => {
     const result = compareProjectGitRemotes([url], {}, [identity]);
     expect(result.outcome).toBe('matched');
-    expect(result.checkoutRemotes).toEqual([normalizeGitOrigin(url)]);
+    expect(result.checkoutRemotes).toEqual([canonical]);
   });
 
   test('preserves the historical receipt canonicalization bytes', () => {

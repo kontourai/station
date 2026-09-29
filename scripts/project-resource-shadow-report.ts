@@ -278,8 +278,9 @@ export function buildReport(
     record,
     (entry) => entry.outcome === SHADOW_TRIPWIRE_OUTCOME,
   );
+  const nonDivergent: readonly string[] = NON_DIVERGENT_RECORD_OUTCOMES;
   const divergences = record.entries.filter(
-    (entry) => !NON_DIVERGENT_RECORD_OUTCOMES.includes(entry.outcome),
+    (entry) => !nonDivergent.includes(entry.outcome),
   );
   const killSwitchCount = matchCount(
     record,

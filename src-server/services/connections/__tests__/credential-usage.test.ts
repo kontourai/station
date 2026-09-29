@@ -183,6 +183,7 @@ describe('credential usage — Codex', () => {
         }),
       }),
     );
+    expect(allowed.status).toBe('ok');
     expect(allowed.status === 'ok' && allowed.exhausted).toBe(false);
   });
 

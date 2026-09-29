@@ -8,5 +8,7 @@ export function useBranding() {
     theme: data?.theme ?? null,
     welcomeMessage: data?.welcomeMessage ?? null,
     loading: isLoading,
+    /** True once the server has answered; `theme: null` then means "none". */
+    loaded: data !== undefined,
   };
 }

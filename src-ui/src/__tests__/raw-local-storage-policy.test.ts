@@ -39,6 +39,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station:chat-drafts:v1', // Draft message content, not a setting.
   'theme', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-accent-color', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
+  'station-branding-theme-v1', // Validated branding cache for first paint; re-validated on read. Server data, not a device setting.
 ] as const;
 
 // Known accepted limitation ( 2, accepted-with-rationale): this is

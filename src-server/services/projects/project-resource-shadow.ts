@@ -142,6 +142,7 @@ import { projectResourceShadowComparisons } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { resolveProjectResource } from './project-resource-resolver.js';
 import {
+  NON_DIVERGENT_RECORD_OUTCOMES,
   recordShadowComparison,
   type ShadowRecordDimensions,
 } from './project-resource-shadow-record.js';
@@ -488,30 +489,14 @@ export const SHADOW_RECORD_FAILURE_LATCH = { warned: false };
 export const SHADOW_LOG_DEDUPE = new Set<string>();
 
 /**
- * Outcomes that are not a disagreement and must not be logged as one.
- *
- * Exported since archive#1686 so the record reader's own copy
- * (`NON_DIVERGENT_RECORD_OUTCOMES`) can be pinned against it in BOTH
- * directions. Two independently-maintained copies of "what counts as a
- * divergence" is the exact shape that makes a divergence record read empty
- * for the wrong reason.
+ * Outcomes that are not a disagreement and must not be logged as one. The
+ * record reader's `NON_DIVERGENT_RECORD_OUTCOMES` is the one list (see its
+ * per-member rationale); `satisfies` makes a member that is not a
+ * `CwdShadowOutcome` a compile error instead of a silently logged divergence.
  */
-export const NON_DIVERGENT_OUTCOMES: ReadonlySet<CwdShadowOutcome> = new Set([
-  'agree',
-  // Same directory, weaker claim — and the baseline seam's claim was never
-  // stronger. Counted (slice 3c reads them for population coverage), not
-  // logged. Kept distinct so a `drifted` sample cannot stand in for the `stale`
-  // leg the gate asks for.
-  'agree-unverified',
-  'agree-drifted',
-  // Both sides failed closed on an unknown project. That is the seam working,
-  // and it happens for any stale chat; logging it would bury real findings.
-  'both-failed-closed',
-  // Defensive only: the disabled branch returns before the logging block, so
-  // this membership is unreachable today. Kept so a later restructure of that
-  // branch cannot start logging a kill switch as a divergence.
-  'disabled',
-]);
+const NON_DIVERGENT_OUTCOMES: ReadonlySet<CwdShadowOutcome> = new Set(
+  NON_DIVERGENT_RECORD_OUTCOMES satisfies readonly CwdShadowOutcome[],
+);
 
 /**
  * Project a project's stored `workingDirectory` onto the baseline seam's own
@@ -523,12 +508,11 @@ export const NON_DIVERGENT_OUTCOMES: ReadonlySet<CwdShadowOutcome> = new Set([
  * this function never re-derives it and cannot disagree with the seam about
  * tilde expansion.
  */
-export function baselineCwdOutcome(
+function baselineCwdOutcome(
   absolutePath: string | undefined,
-  exists: (path: string) => boolean = existsSync,
 ): BaselineCwdOutcome {
   if (!absolutePath) return { kind: 'no-directory' };
-  return exists(absolutePath)
+  return existsSync(absolutePath)
     ? { kind: 'directory', path: absolutePath }
     : { kind: 'missing-directory', path: absolutePath };
 }

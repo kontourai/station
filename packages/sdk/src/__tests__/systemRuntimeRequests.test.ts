@@ -4,7 +4,7 @@ vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://example.test'),
 }));
 
-import { StationHttpError } from '../client/http';
+import { StationHttpError, StationRequestTimeoutError } from '../client/http';
 import { requestCoreUpdateRestartStatus } from '../core-update-restart-status';
 import { getDeploymentCapabilityState } from '../query-domains/systemRuntime';
 import {
@@ -106,6 +106,47 @@ describe('systemRuntimeRequests', () => {
     });
 
     expect(fetch).toHaveBeenCalledWith('http://example.test/api/branding');
+  });
+
+  it('rejects a branding error answer instead of reporting "no theme"', async () => {
+    // A resolved `theme: null` would clear a white-label theme the UI cached;
+    // an error has to reject so the query keeps what it had.
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ success: false, error: 'provider down' }),
+    } as Response);
+    await expect(fetchBranding()).rejects.toBeInstanceOf(StationHttpError);
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: false, error: 'provider down' }),
+    } as Response);
+    await expect(fetchBranding()).rejects.toThrow('provider down');
+  });
+
+  it('passes a deadline that fires mid-body on as the timeout, not a failed answer', async () => {
+    const deadline = new StationRequestTimeoutError(
+      'http://example.test/api/branding',
+      20,
+      { method: 'GET' },
+    );
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => {
+        throw deadline;
+      },
+    } as unknown as Response);
+    await expect(fetchBranding()).rejects.toBe(deadline);
+  });
+
+  it('passes the provider theme through untouched for the consumer to validate', async () => {
+    const theme = { dark: { '--k-focus': '#93c5fd' }, '--k-brand': 'url(x)' };
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { theme } }),
+    } as Response);
+    await expect(fetchBranding()).resolves.toMatchObject({ theme });
   });
 
   it('returns an empty metrics list when monitoring reports failure', async () => {

@@ -12,7 +12,7 @@ import {
   createPlannedHomeAdmissionStore,
   type PlannedHomeAdmissionStoreResult,
 } from '../planned-home-admission-store.js';
-import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
+import { createAuthorizedSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 
 const roots: string[] = [];
 const databases: DatabaseSync[] = [];
@@ -61,7 +61,10 @@ function fixture(authorize: () => boolean = () => true) {
     return database;
   };
   const database = open();
-  const transferStore = createSqlitePlannedHomeTransferStore(database);
+  const transferStore = createAuthorizedSqlitePlannedHomeTransferStore(
+    database,
+    () => true,
+  );
   const initialized = transferStore.initialize(owner);
   expect(initialized.kind).toBe('stored');
   const store = createPlannedHomeAdmissionStore(database, authorize);

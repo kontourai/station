@@ -193,6 +193,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     usePairedDevicesQuery,
     usePullRequestContextQuery: () => ({ data: { available: false } }),
     usePullRequestsQuery: () => ({ data: undefined }),
+    usePullRequestMergeabilityQuery: () => ({ data: undefined }),
     useWorkflowTasksQuery: (projectSlug: string | null | undefined) => ({
       data: projectSlug ? (workflowTasksByProject[projectSlug] ?? []) : [],
     }),

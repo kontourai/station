@@ -26,7 +26,7 @@ import { createPlannedHomeControlRoomWriteAdmissionAdapter } from '../planned-ho
 import { plannedHomeControlRoomWriteAdmissionId } from '../planned-home-control-room-write-identity.js';
 import { createPlannedHomeControlRoomWriteReceiptVerifier } from '../planned-home-control-room-write-receipt-verifier.js';
 import { createPlannedHomeControlSessionAuthority } from '../planned-home-control-session-authority.js';
-import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
+import { createAuthorizedSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 import { PROJECT_TASK_ROOM_APPEND_RECEIPT_LIMITS } from '../project-task-room-append-receipt.js';
 import type { ProjectTaskRoomWriteAdmissionPort } from '../project-task-room-history.js';
 import { projectTaskRoomChannelId } from '../project-task-room-history.js';
@@ -106,7 +106,10 @@ test('revoked control reconciles a lost finish from the reopened EventStore rece
   });
   if (opened.kind !== 'stored') throw new Error('Expected control session');
   const channelId = projectTaskRoomChannelId(scope);
-  const owner = createSqlitePlannedHomeTransferStore(database).initialize({
+  const owner = createAuthorizedSqlitePlannedHomeTransferStore(
+    database,
+    () => true,
+  ).initialize({
     tenantId: personalControllerTenantId(controller.environmentId),
     channelId,
     homeRef: pairedHomeRef(paired.device.id),

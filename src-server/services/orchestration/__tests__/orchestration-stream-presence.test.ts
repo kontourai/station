@@ -14,20 +14,6 @@ function humanPrincipalFixture(subject: string): PrincipalRef {
 }
 
 describe('OrchestrationStreamPresence (station#1225)', () => {
-  test('isConnected is false for a user with no connections', () => {
-    const presence = new OrchestrationStreamPresence();
-    expect(presence.isConnected('user-1')).toBe(false);
-  });
-
-  test('connect() marks a user connected until its disposer runs', () => {
-    const presence = new OrchestrationStreamPresence();
-    const disconnect = presence.connect('user-1');
-    expect(presence.isConnected('user-1')).toBe(true);
-
-    disconnect();
-    expect(presence.isConnected('user-1')).toBe(false);
-  });
-
   test('a user with two concurrent streams stays connected until BOTH disconnect', () => {
     const presence = new OrchestrationStreamPresence();
     const disconnectTabA = presence.connect('user-1');

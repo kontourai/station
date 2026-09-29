@@ -198,7 +198,9 @@ export async function fetchFleetRoutingReceiptsForStation(
   // away the one sentence that told the reader what actually happened.
   // `.catch` covers a body that fails to parse at all (or is genuinely
   // empty), which is the only case a synthesized fallback is honest.
-  const result = (await response.json().catch(() => undefined)) as
+  const result = (await response
+    .json()
+    .catch(unlessDeadline(() => undefined))) as
     | { success: boolean; data?: FleetRoutingReceiptPage; error?: string }
     | undefined;
   if (!response.ok) {
@@ -249,7 +251,9 @@ export async function fetchFleetServeReceiptsForStation(
   // before branching on status so a route-authored error sentence — e.g.
   // `monitoring.ts`'s 503 "This Station cannot locate its receipt log, so
   // what it has served is unknown rather than empty." — survives.
-  const result = (await response.json().catch(() => undefined)) as
+  const result = (await response
+    .json()
+    .catch(unlessDeadline(() => undefined))) as
     | { success: boolean; data?: FleetServeReceiptPage; error?: string }
     | undefined;
   if (!response.ok) {
@@ -351,6 +355,7 @@ export async function fetchMonitoringEventWindow(
       error?: string;
     };
   } catch (error) {
+    rethrowDeadline(error);
     parseFailure = error;
   }
   // station#3658: a read that did not SUCCEED is not an empty one. Every
@@ -412,15 +417,37 @@ export async function fetchBranding(
     `${apiBase}/api/branding`,
     ...signalInit(signal),
   );
-  const result = (await response.json()) as {
-    success: boolean;
-    data?: {
-      name?: string;
-      logo?: { src: string; alt?: string } | null;
-      theme?: Record<string, string> | null;
-      welcomeMessage?: string | null;
-    };
-  };
+  const result = (await response
+    .json()
+    .catch(unlessDeadline(() => undefined))) as
+    | {
+        success: boolean;
+        data?: {
+          name?: string;
+          logo?: { src: string; alt?: string } | null;
+          theme?: unknown;
+          welcomeMessage?: string | null;
+        };
+        error?: string;
+      }
+    | undefined;
+  // An error answer must not read as "this Station has no branding": callers
+  // such as Station's white-label theme would clear a cached theme on it.
+  // Rejecting keeps the query's previous data (or none) instead.
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      apiErrorMessage(
+        result ?? {},
+        `Branding request rejected with HTTP ${response.status}`,
+      ),
+    );
+  }
+  if (!result?.success) {
+    throw new Error(
+      apiErrorMessage(result ?? {}, 'Branding request was not successful'),
+    );
+  }
   const data = result.data ?? {};
   return {
     appName: data.name || 'Station',
@@ -577,3 +604,4 @@ export async function fetchServerCapabilities(
 
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch, StationHttpError } from '../client/http';
+import { rethrowDeadline, unlessDeadline } from '../client/request-deadline';

@@ -40,7 +40,6 @@ import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
 } from '../../routes/mcp/station-control-mcp-route.js';
-import { createChildDelegationContext } from '../../runtime/agents/delegation.js';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import {
   resolveStationControlCallerForRequest,
@@ -67,9 +66,9 @@ import {
   type StationControlToolPolicy,
 } from '../../tools/station-control-policy.js';
 import {
-  __resetStationControlStdioCallerCredentialForTests,
+  __resetStationControlStdioEntryForTests,
   api,
-  installStationControlStdioCallerCredential,
+  installStationControlStdioEntry,
   STATION_CONTROL_CALLER_PATH,
   STATION_CONTROL_CALLER_TOKEN_HEADER,
   stationControlCallerPrincipal,
@@ -123,14 +122,8 @@ let port: number;
 const refusals: string[] = [];
 const PEER_ENVIRONMENT_ID = 'env-authority-peer';
 let peerServer: ReturnType<typeof serve>;
-let peerBaseUrl: string;
 const peerReceived: Array<{ path: string; body: any }> = [];
-const derivations: Array<string | null> = [];
-const DERIVED_LINEAGE = createChildDelegationContext({
-  agentSlug: 'planner',
-  conversationId: 'conversation-derived',
-  spec: { name: 'Planner', prompt: 'Plan' },
-});
+const dispatchBodies: Array<Record<string, any>> = [];
 const hits: string[] = [];
 /** The headers each stub route last received, by its label. */
 const lastHeaders = new Map<string, Headers>();
@@ -243,39 +236,29 @@ beforeAll(async () => {
   );
   app.route(
     '/api/orchestration',
-    createStationControlCallerRoutes({
-      resolveRecord,
-      // #2601: the lineage this Station derives for the verified caller,
-      // read before a forward to a saved Environment.
-      deriveCallerDelegation: async (request) => {
-        derivations.push(
-          resolveStationControlCallerForRequest(request, resolveRecord)
-            ?.sessionId ?? null,
-        );
-        return DERIVED_LINEAGE;
-      },
-    }),
+    createStationControlCallerRoutes({ resolveRecord }),
   );
-  // A saved peer Environment: no SSH profile, one paired peer credential,
-  // and the peer Station itself on its own loopback listener.
+  // The peer Station on its own loopback listener. Since #2377 slice C2b no
+  // tool reaches it: a tool calls this Station's dispatch route, which
+  // forwards (stubbed below, so a tool call that reached the peer would show).
   app.get('/.well-known/station/v1', (c) =>
     c.json({ environmentId: 'env-authority-current' }),
   );
-  app.get('/api/environments/ssh', (c) => c.json({ success: true, data: [] }));
-  app.get('/api/environments/peers/:id/credential', (c) =>
-    c.req.param('id') === PEER_ENVIRONMENT_ID
-      ? c.json({
-          success: true,
-          data: {
-            environmentId: PEER_ENVIRONMENT_ID,
-            apiBase: peerBaseUrl,
-            scope: 'delegation',
-            credential: 'test-only-peer-credential-authority',
-            label: 'Peer',
-          },
-        })
-      : c.json({ success: false, error: 'not found' }, 404),
-  );
+  app.post('/api/orchestration/delegations', async (c) => {
+    hits.push('POST /api/orchestration/delegations');
+    dispatchBodies.push(await c.req.json());
+    return c.json({
+      success: true,
+      data: {
+        taskId: 'task:local',
+        sessionId: 'task:local',
+        conversationId: 'task:local',
+        status: 'dispatched',
+        resumable: true,
+        target: { kind: 'agent', id: 'writer' },
+      },
+    });
+  });
   const peerApp = new Hono();
   peerApp.post('/api/orchestration/*', async (c) => {
     peerReceived.push({ path: c.req.path, body: await c.req.json() });
@@ -300,7 +283,7 @@ beforeAll(async () => {
     { fetch: peerApp.fetch, hostname: '127.0.0.1', port: 0 },
     (info) => resolvePeerPort((info as AddressInfo).port),
   );
-  peerBaseUrl = `http://127.0.0.1:${await peerListening}`;
+  await peerListening;
   // Stubs for the Station routes the representative tools call. Each records
   // that it was reached, so "allowed" means the request got through.
   const record = (label: string, body: unknown) => (c: any) => {
@@ -369,13 +352,13 @@ afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await new Promise<void>((resolve) => peerServer.close(() => resolve()));
   delete process.env.STATION_API_BASE;
-  __resetStationControlStdioCallerCredentialForTests();
+  __resetStationControlStdioEntryForTests();
   __resetStationServerSelfAttestationForTests();
 });
 
 beforeEach(() => {
   __resetStationControlMcpTokensForTests();
-  __resetStationControlStdioCallerCredentialForTests();
+  __resetStationControlStdioEntryForTests();
   hits.length = 0;
   refusals.length = 0;
   lastHeaders.clear();
@@ -468,7 +451,7 @@ async function engineFor(
   if (channel === 'pooled') {
     // A pooled stdio child: the stdio entry ran with no per-session caller
     // credential, and the server has no caller context for it.
-    installStationControlStdioCallerCredential({});
+    installStationControlStdioEntry();
     const pooled = createStationControlMcpServer();
     const { transport, request } = memoryTransport();
     await pooled.connect(transport);
@@ -524,7 +507,7 @@ async function callTool(
     };
   } finally {
     await engine.close();
-    __resetStationControlStdioCallerCredentialForTests();
+    __resetStationControlStdioEntryForTests();
   }
 }
 
@@ -881,7 +864,7 @@ describe('the server enforces the same refusal for each channel’s forwarded cr
   });
 
   test('a pooled child’s own REST call carries no caller and no server attestation', async () => {
-    installStationControlStdioCallerCredential({});
+    installStationControlStdioEntry();
     expect(
       await api('/config/app', { method: 'PUT', body: '{}' }),
     ).toMatchObject({
@@ -1528,49 +1511,34 @@ describe('every tool route, table-driven through the real boundary', () => {
   });
 });
 
-describe('a verified forward to a saved Environment (#2601 leaf)', () => {
-  test('a bound operator’s delegate_task reaches the peer through the caller-delegation leaf', async () => {
-    peerReceived.length = 0;
-    derivations.length = 0;
-    const sessionId = nextSession('op-');
-    const { result } = await callTool('bound', sessionId, 'delegate_task', {
-      prompt: 'Draft the plan',
-      agent: 'writer',
-      environmentId: PEER_ENVIRONMENT_ID,
-    });
-    expect(result?.code).toBeUndefined();
-    // The guard let the verified caller through to its own lineage...
-    expect(derivations).toEqual([sessionId]);
-    // ...and the peer received the context this Station derived.
-    expect(peerReceived).toHaveLength(1);
-    expect(peerReceived[0]!.path).toBe('/api/orchestration/delegations');
-    expect(peerReceived[0]!.body.delegation).toEqual(DERIVED_LINEAGE);
-    expect(refusals).toEqual([]);
-  });
-
-  // #2377 slice C2a (decision 3): another Station needs a bound operator.
-  // The tool is refused at the first remote-target leaf, before it holds a
-  // bearer, and the typed code reaches the agent as an MCP error.
+describe('a tool’s call to a saved Environment (#2377 slice C2b)', () => {
+  // The tool no longer resolves, connects to or holds a credential for
+  // another Station: it names the Environment to this Station's dispatch
+  // route, whose remote verdict (a bound operator) and forward are pinned in
+  // `runtime-routes-station-control-dispatch-scope.test.ts` and the lineage
+  // suite. Here: whatever the channel, the tool reaches only that route.
   test.each([
-    ['delegated-custody', 'op-', 'station_control_assurance_insufficient'],
-    ['bearer-exposed', 'op-', 'station_control_assurance_insufficient'],
-    ['bound', 'person-', 'station_control_role_required'],
+    ['bound', 'op-'],
+    ['delegated-custody', 'op-'],
+    ['bearer-exposed', 'op-'],
+    ['bound', 'person-'],
   ] as const)(
-    'a %s (%s) caller’s delegate_task to a saved Environment is refused → %s',
-    async (channel, prefix, code) => {
+    'a %s (%s) caller’s delegate_task goes to this Station’s route, never the peer',
+    async (channel, prefix) => {
       peerReceived.length = 0;
-      const { result, isError } = await callTool(
-        channel,
-        nextSession(prefix),
-        'delegate_task',
-        {
-          prompt: 'Draft the plan',
-          agent: 'writer',
-          environmentId: PEER_ENVIRONMENT_ID,
-        },
-      );
-      expect([result?.code, isError]).toEqual([code, true]);
+      dispatchBodies.length = 0;
+      await callTool(channel, nextSession(prefix), 'delegate_task', {
+        prompt: 'Draft the plan',
+        agent: 'writer',
+        environmentId: PEER_ENVIRONMENT_ID,
+      });
       expect(peerReceived).toEqual([]);
+      expect(dispatchBodies).toHaveLength(1);
+      expect(dispatchBodies[0]!.target.environment).toEqual({
+        kind: 'saved',
+        id: PEER_ENVIRONMENT_ID,
+      });
+      expect(dispatchBodies[0]).not.toHaveProperty('delegation');
     },
   );
 });

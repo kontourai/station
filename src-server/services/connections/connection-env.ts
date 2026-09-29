@@ -98,7 +98,7 @@ export function appHomeActive(
   return config?.useAppHome === true;
 }
 
-export const CONNECTION_CONFIG_HOME_ENV_KEYS = {
+const CONNECTION_CONFIG_HOME_ENV_KEYS = {
   claude: 'CLAUDE_CONFIG_DIR',
   codex: 'CODEX_HOME',
 } as const;
