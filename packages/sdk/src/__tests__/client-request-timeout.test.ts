@@ -239,3 +239,122 @@ describe('client request deadlines', () => {
     expect(getClientRequestTimeout()).toBe(1_500);
   });
 });
+
+/**
+ * A `fetch` whose server answers 200 headers and then stalls its body until
+ * the request signal aborts — the body read is what the deadline interrupts.
+ */
+function stalledBodyFetch() {
+  return vi.fn(async (_input: unknown, init?: RequestInit) => {
+    const signal = init?.signal;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"success":true,'));
+        signal?.addEventListener('abort', () =>
+          controller.error(signal.reason ?? new Error('aborted')),
+        );
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+}
+
+describe('a deadline that fires while the body is read (#2377 C2b review)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('a read reports a StationRequestTimeoutError that claims no state change', async () => {
+    vi.stubGlobal('fetch', stalledBodyFetch());
+    const { getOrchestrationSession } = await import('../client/orchestration');
+    const error = await getOrchestrationSession(
+      'https://station.example.test',
+      'thread-1',
+      { timeoutMs: 20 },
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(StationRequestTimeoutError);
+    expect((error as StationRequestTimeoutError).mutation).toBe(false);
+  });
+
+  it('a command whose headers arrived reports a timeout that may have been applied', async () => {
+    vi.stubGlobal('fetch', stalledBodyFetch());
+    const { respondToRequest, interruptTurn } = await import(
+      '../client/orchestration'
+    );
+    for (const call of [
+      () =>
+        respondToRequest(
+          'https://station.example.test',
+          { threadId: 't', requestId: 'r', decision: 'accept' } as never,
+          { timeoutMs: 20 },
+        ),
+      () =>
+        interruptTurn(
+          'https://station.example.test',
+          { threadId: 't' },
+          { timeoutMs: 20 },
+        ),
+    ]) {
+      const error = await call().catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(StationRequestTimeoutError);
+      expect((error as StationRequestTimeoutError).mutation).toBe(true);
+    }
+  });
+
+  it('a Project read reports the timeout instead of "Request failed"', async () => {
+    vi.stubGlobal('fetch', stalledBodyFetch());
+    const { getProject } = await import('../client/projects');
+    const error = await getProject('https://station.example.test', 'p', {
+      timeoutMs: 20,
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(StationRequestTimeoutError);
+  });
+
+  it('a body that is not JSON, with no deadline fired, is still a protocol error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not json', { status: 200 })),
+    );
+    const { getOrchestrationSession } = await import('../client/orchestration');
+    const error = await getOrchestrationSession(
+      'https://station.example.test',
+      'thread-1',
+      { timeoutMs: 1_000 },
+    ).catch((caught: unknown) => caught);
+    expect(error).not.toBeInstanceOf(StationRequestTimeoutError);
+    expect((error as Error).message).toBe('Orchestration API error: 200');
+  });
+});
+
+describe('the deadline-bound response keeps its own shape (#2377 C2b round 4)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('is still a Response by its constructor', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}')),
+    );
+    const response = await getJson(URL_UNDER_TEST, { timeoutMs: 1_000 });
+    expect(response.constructor).toBe(Response);
+    expect(response).toBeInstanceOf(Response);
+  });
+
+  it('reports a body reader the runtime lacks as absent, not as a function', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const response = new Response('{}');
+        Object.defineProperty(response, 'bytes', { value: undefined });
+        return response;
+      }),
+    );
+    const response = await getJson(URL_UNDER_TEST, { timeoutMs: 1_000 });
+    expect(typeof response.bytes).toBe('undefined');
+    expect(await response.json()).toEqual({});
+  });
+});
