@@ -5723,7 +5723,10 @@ describe('CodexAdapter', () => {
 
       test('an invalid overlay on the active profile rejects startSession and the quota read without a ref, spawning nothing', async () => {
         const homeDir = makeTempDir('station-codex-profile-env-');
-        const processFactory = vi.fn(() => new FakeCodexProcess());
+        // A spawn here is the defect: fail fast rather than await a handshake.
+        const processFactory = vi.fn((): FakeCodexProcess => {
+          throw new Error('spawned despite an invalid profile overlay');
+        });
         const adapter = new CodexAdapter({
           processFactory,
           getAppHomeEnv: resolverFor(homeDir, {
