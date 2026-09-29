@@ -9,14 +9,14 @@
 
   "limits": "Purpose and recorded evidence reviewed; no exhaustive semantic certification or live provider/device proof; policy activation is limited to the approved additions in this branch.",
 
-  "document": {"digest":"729f649980c45de18af1b8a508d15adb41b69078f965a5279521e4364e3ebfff","revision":"760ef873c95eacdf8e7fcebaf9f6bc4985964b76"},
+  "document": {"digest":"729f649980c45de18af1b8a508d15adb41b69078f965a5279521e4364e3ebfff","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
 
   "sources": [
     {"path":".veritas/init-plans/documentation-maintenance-additions.json","digest":"4007fa4a0c45fdb1b9a4a8a3b79cfb1ba0fb6d9fb988ee9c7e5d159cdec07168","revision":"760ef873c95eacdf8e7fcebaf9f6bc4985964b76"},
 
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"760ef873c95eacdf8e7fcebaf9f6bc4985964b76"},
 
-    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46","revision":"760ef873c95eacdf8e7fcebaf9f6bc4985964b76"},
+    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"8bb92981958cf7280fe4fc3a01f76d9784cd3d7d"},
 
     {"path":".veritas/attestations/HEAD","digest":"509a9ed1d454af138d096f874c8fe21ce9e76cb34982654b06a62778d622bb41","revision":"760ef873c95eacdf8e7fcebaf9f6bc4985964b76"}
   ],

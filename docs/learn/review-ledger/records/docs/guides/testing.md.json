@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"98eea5a77a16fcc0e256c11d1f5dbf92710df700a5cbd046e2c1e2451c64d663","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
+  "document": {"digest":"eaaf107f8794e2bd2fc0034575cd939b5f1edebd80529d0bf8ff37611af34fc9","revision":"c8f80c629fca13479b0010de84094ad0a13332c1"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -34,7 +34,7 @@
 
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"8bb92981958cf7280fe4fc3a01f76d9784cd3d7d"},
 
     {"path":"docs/guides/documentation.md","digest":"2aa944283e4ea545dddd7a3e156f0b6960c84bad47131639e9509acb2d72697a","revision":"294167795ff5e2a3e374d80411e081275d9adef9"},
 
@@ -92,7 +92,7 @@
 
     {"path":"scripts/__tests__/prepush-typecheck.test.ts","digest":"c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/test-impact-manifest.mjs","digest":"c2861fbc87731ae84bd05a091914740d00813811e3c823f8e66b1ee5ad394b92","revision":"e19e4ed5d2ea3a29c422e16730c404b2254ea156"},
+    {"path":"scripts/test-impact-manifest.mjs","digest":"b99ba45d91fa2f3b341df5792649721e905ae89359218209e6e65dae7716514b","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
 
     {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"5638911fd695344c0aaf5e24464e8e23c236e383da9d38354b0735410b8999bf","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
 
@@ -100,9 +100,9 @@
 
     {"path":".github/workflows/portable-server-archives.yml","digest":"bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/run-changed-verification.mjs","digest":"e20b9fda50aefc0e588a73fb3bcd05795b477c5cfce76ac95eba7d5e58a4036c","revision":"3cf61a7b21800fa0a472c99799c9ddbb15167d66"},
+    {"path":"scripts/run-changed-verification.mjs","digest":"2eb2991a8e071605b7b8f6a704b75b4668d06ef716d182f94af442d8a24afad1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
 
-    {"path":"scripts/__tests__/changed-verification.test.ts","digest":"d37404a409453672e00cbedf27220c5bce083cf8892939f0e5fd78c2293043a4","revision":"50aaef876e1ff12e0f615d1fa6fdae39ee88bdce"},
+    {"path":"scripts/__tests__/changed-verification.test.ts","digest":"9f3cb341f88aec79a92c18573d2c0f770ab8b01fac0a58f61250d8439f50adb1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
 
     {"path":"scripts/__tests__/fast-checks-shard-cli.test.ts","digest":"037b1bd06551519a7bbb62f72a829374b4f8de3714492f9689af5341b73ca296","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -110,7 +110,11 @@
 
     {"path":"scripts/__tests__/guardrail-execution-coverage.test.ts","digest":"075ac3fa336618bc8b83c92ae2b3751c4cc0e9de211c51bc71e96b74af529bdd","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/__tests__/metric-reference.test.ts","digest":"9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
+    {"path":"scripts/__tests__/metric-reference.test.ts","digest":"9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"vitest.setup.ts","digest":"38b7e04f1819daa86f0ebf0f332e29ddc6d62a6576cad2b736870749b18b87e3","revision":"c322e3bff535a1d8d7a84d882dd84d75bddf041f"},
+
+    {"path":"scripts/lib/ci-event-environment.mjs","digest":"99de79de95d1fe18f28d36d13161d2fcc4db27cc4d7eda6d25741db39ad8080d","revision":"c322e3bff535a1d8d7a84d882dd84d75bddf041f"}
   ],
 
   "checks": [

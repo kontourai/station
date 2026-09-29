@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"a6302414b30ed9a9c590aed0584674f60c34201b86b167a51d06cadace8159ac","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+  "document": {"digest":"dd6933dc12b9e5d7ecb93b433fcf1cb00a7a564293976839b332448236208799","revision":"c8f80c629fca13479b0010de84094ad0a13332c1"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -36,7 +36,7 @@
 
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"8bb92981958cf7280fe4fc3a01f76d9784cd3d7d"},
 
     {"path":"docs/guides/documentation.md","digest":"2aa944283e4ea545dddd7a3e156f0b6960c84bad47131639e9509acb2d72697a","revision":"294167795ff5e2a3e374d80411e081275d9adef9"},
 
@@ -100,7 +100,9 @@
 
     {"path":"src-server/__test-utils__/sse-helpers.ts","digest":"daa4853dc02cf11574f8afb6c813145c58cc5356a2ff432870e55b1b23511492","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
+    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/gh-app-token.mjs","digest":"a04d8595b86db65207f5d7da128cd0c9b6a97ae32f0f2d7e9c0237a526af3f3a","revision":"d1b4b2c9cfe4eeb01c62c945da2d595c9e414eb3"}
   ],
 
   "checks": [
