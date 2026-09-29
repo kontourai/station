@@ -2043,10 +2043,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
 
       // #2933: a delegated child that may not grant approvals reaches here
-      // only when a tool-level grant let the call past the staged evaluator's
-      // own denial (a plan exit) or no evaluator ran. Nobody can answer the
+      // when a tool-level grant let a plan exit past the staged evaluator's
+      // own denial, when no evaluator ran, or when the agent named no tool
+      // (a nameless request skips the evaluator). Nobody can answer the
       // child's request, so decline it fail-fast rather than wait.
       if (record.delegation?.denyApprovals) {
+        // Called for its toolDenials metric only: an ACP permission outcome
+        // has no reason channel, so the denial text reaches nobody.
         delegatedApprovalDenial(
           toolName ?? params.toolCall?.title ?? 'tool call',
           'external',

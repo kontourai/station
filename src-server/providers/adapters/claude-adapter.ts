@@ -2794,11 +2794,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           return { behavior: 'allow', updatedInput: toolInput };
         }
         // #2933: a delegated child that may not grant approvals reaches here
-        // only when a tool-level grant let the call past the staged
-        // evaluator's own denial (an autoApprove match is no hook allow) and
-        // the engine then asked: an escalation or a plan exit. Nobody can
-        // answer the child's request, so deny it fail-fast, as the evaluator
-        // does for an ungranted call, rather than wait on a prompt.
+        // when the engine asks after the staged evaluator did not deny the
+        // call: a tool-level grant let it past (an autoApprove match is no
+        // hook allow) and it escalates or exits plan mode; a real hook allow
+        // (for example the approval guardian's) was followed by an engine
+        // safety check or a user-interaction tool's ask; or no hook ran at
+        // all (no resolved agent, or no `resolvePreToolPolicy`). Nobody can
+        // answer the child's request, so deny it fail-fast with the
+        // evaluator's own denial rather than wait on a prompt.
         if (serverDelegation(input.metadata)?.denyApprovals) {
           const { denial } = delegatedApprovalDenial(toolName, 'external');
           return { behavior: 'deny', message: denial.reason };

@@ -11,4 +11,6 @@ no session grant. Station uses them so an agent's `tools.autoApprove` pattern
 never answers an escalation or a plan exit. On Claude Code and ACP a broad
 pattern therefore no longer covers escalations: a headless run that reaches one
 waits on an approval request, and a delegated child that cannot grant approvals
-is denied the call at once.
+is denied the call at once. An ACP plan exit answered "for this session" is
+sent as the agent's allow-once option, so its `allow_always` option (such as
+"yes, and auto-accept edits") is not reachable from a session answer.

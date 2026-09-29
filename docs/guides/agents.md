@@ -174,11 +174,11 @@ or a delegated child session that cannot grant approvals — never waits on an
 approval request. Station's engine either allows the call without asking or
 denies it.
 
-On Claude Code and ACP engines a broad `autoApprove` pattern no longer covers
-escalations or plan exits ([what autoApprove never covers](#what-autoapprove-never-covers)),
-so a headless run that reaches one waits on an approval request until someone
-answers it (for example from the approval inbox), while a delegated child that
-cannot grant approvals is denied the call at once.
+External engines differ. On Claude Code and ACP, `autoApprove` does not cover
+escalations or plan exits, even for `*` ([what autoApprove never covers](#what-autoapprove-never-covers)).
+A headless run on those engines that reaches one waits on an approval request
+until someone answers it (for example from the approval inbox). A delegated
+child that cannot grant approvals is denied the call at once.
 
 `autoApprove` is attended auto-approval. Attended chat matches a pattern against
 both the original MCP tool name (`station-control_delete_agent`) and the runtime
