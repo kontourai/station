@@ -1449,7 +1449,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "b517c513f9bbd63b3db03a65945ed9bbb3ef80f5",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1479,7 +1479,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968"
+          "digest": "ef4da8449d6f90b53fc00bcf8c8584dfa658ff4159ceda8998fccef779ea4932"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1504,7 +1504,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map.md and the extension-ecosystem/workspace-surfaces contexts removed the deleted CollaborativeEditorPane controller and PluginForegroundRuns entries in favor of ProjectTaskRoom. The five context links and relationship statements do not name either; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "Glossary gained a Live lanes entry; this page only links the glossary and makes no lane or Draft claim, so no prose change."
       ]
     },
     {
@@ -1512,7 +1513,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "b517c513f9bbd63b3db03a65945ed9bbb3ef80f5",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1542,7 +1543,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968"
+          "digest": "ef4da8449d6f90b53fc00bcf8c8584dfa658ff4159ceda8998fccef779ea4932"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1567,7 +1568,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map replaced the CollaborativeEditorPane entry with ProjectTaskRoom and removed PluginForegroundRuns, and the two child CONTEXT files follow suit. The root CONTEXT names neither module and routes only to the child contexts and guides, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "Glossary gained a Live lanes entry; this page only links the glossary and makes no lane or Draft claim, so no prose change."
       ]
     },
     {
@@ -3029,7 +3031,7 @@
     },
     {
       "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "b517c513f9bbd63b3db03a65945ed9bbb3ef80f5",
       "kind": "design",
       "state": "classified",
       "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work. Browser/Device tranche: Full read; unchanged. Current viewer is per-visible-viewer, not the planned multiplex owner; no actual pool-starvation measurement. Current repo issue935 is the original ADR task, not archive935.",
@@ -3226,7 +3228,7 @@
         },
         {
           "path": "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
-          "digest": "1ad63d680fb04d56f0a73cda9870eb1d62425d23f9056744ecc20fe28e2218a2"
+          "digest": "08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
@@ -3278,7 +3280,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to the runtime-routes.ts security options, used for 403 versus 401 on unadmitted credentials. It touches no SSE, Last-Event-ID, replay or live-surface route. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout and the DEVICE_PLACEHOLDER_ASPECT/deviceCornerRadius re-export; the ADR names none of them and its transport claims are untouched; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
+        "ensureOrchestrationEventStream.ts changed one comment only (a Draft sits outside the live lanes, not 'Active now'); no transport behavior changed, ADR claims unaffected."
       ]
     },
     {
@@ -10226,8 +10229,8 @@
     },
     {
       "path": "docs/glossary.md",
-      "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "documentDigest": "ef4da8449d6f90b53fc00bcf8c8584dfa658ff4159ceda8998fccef779ea4932",
+      "sourceRevision": "b517c513f9bbd63b3db03a65945ed9bbb3ef80f5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10508,7 +10511,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports layout constants and helpers; behavior and the glossary's terms are unchanged and the glossary cites none of the removed exports; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Added the Live lanes entry (Needs you / Running / Idle from liveLaneFor in src-ui/src/views/home/home-lane-model.ts, consumed by Home, the Sessions list, the project live-work badge and the chat dock inbox) and the Unsent draft cue read from chatDraftsStore; replaced the retired 'Active now' reference in the Draft entry. Checked against the partition and InboxRow code in this commit."
       ]
     },
     {
@@ -23260,7 +23264,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "b517c513f9bbd63b3db03a65945ed9bbb3ef80f5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -23473,7 +23477,7 @@
         },
         {
           "path": "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
-          "digest": "1ad63d680fb04d56f0a73cda9870eb1d62425d23f9056744ecc20fe28e2218a2"
+          "digest": "08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45"
         }
       ],
       "checks": [
@@ -23500,7 +23504,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "ensureOrchestrationEventStream.ts changed one comment only (lane wording); no contract or event behavior changed, reference unaffected."
       ]
     },
     {
