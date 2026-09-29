@@ -97,10 +97,9 @@ test.describe('Project layout render storm', () => {
     await dismissSetupLauncher(page);
 
     // The detector only means something if the surface it detects is mounted:
-    // the pane host behind a drill-in, with the conversation kept mounted
+    // the Files drill-in (its file tree below), with the conversation kept mounted
     // (hidden) on the Chat page beside it (#928 coding stack).
     await selectCodingPane(page, 'Files');
-    await expect(page.locator('.workspace-pane-host')).toBeVisible();
     await expect(page.locator('#chat-workspace-pane')).toHaveCount(1);
     await expect(page.locator('.file-tree-panel__search-input')).toHaveCount(1);
 
@@ -126,9 +125,9 @@ test.describe('Project layout render storm', () => {
       await dismissSetupLauncher(page);
 
       // A phone lands on the Coding stack's Chat page, which is its
-      // (maximized) dock; the pane host is mounted behind it.
+      // (maximized) dock over the Coding workbench.
       await expect(page.locator('#chat-dock')).toBeVisible();
-      await expect(page.locator('.workspace-pane-host')).toHaveCount(1);
+      await expect(page.locator('.coding-workbench')).toHaveCount(1);
 
       const records = await sampleSteadyStateMutations(page);
       console.log(
