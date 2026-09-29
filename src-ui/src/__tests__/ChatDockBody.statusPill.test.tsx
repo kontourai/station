@@ -118,6 +118,7 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { OPEN_APPROVAL_QUEUE_EVENT } from '../components/status/approvalReveal';
 import { setStreamConnectionState } from '../hooks/orchestration/streamConnectionState';
 import type { ChatSession } from '../types';
 
@@ -269,5 +270,71 @@ describe('ChatDockBody floating status pill', () => {
       expect(pill()?.getAttribute('data-chat-status-pill')).toBe('working'),
     );
     expect(pill()?.textContent).toContain('Working');
+  });
+
+  test('an approval the pill cannot bring on screen opens the approval queue', async () => {
+    renderDock(
+      buildSession({
+        status: 'sending',
+        orchestrationStatus: 'awaiting-approval',
+        pendingApprovals: ['req-offscreen'],
+      } as Partial<ChatSession>),
+    );
+    await waitFor(() =>
+      expect(pill()?.getAttribute('data-chat-status-pill')).toBe('approval'),
+    );
+    const opened = vi.fn();
+    window.addEventListener(OPEN_APPROVAL_QUEUE_EVENT, opened);
+    (pill() as HTMLButtonElement).click();
+    await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
+    window.removeEventListener(OPEN_APPROVAL_QUEUE_EVENT, opened);
+  });
+
+  test('if the pill cannot load, the inline status comes back and nothing is claimed', async () => {
+    vi.resetModules();
+    vi.doMock('../components/status/ChatStatusPillView', () => {
+      throw new Error('chunk failed to load');
+    });
+    const { ChatDockBody: FreshDockBody } = await import(
+      '../components/chat-dock/ChatDockBody'
+    );
+    const { getApprovalClaims } = await import(
+      '../components/status/approvalReveal'
+    );
+    agentsMock.current = [
+      { slug: agentId('codex'), name: 'Codex', available: true },
+    ];
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <FreshDockBody
+          activeSession={buildSession({
+            status: 'sending',
+            isThinking: true,
+            orchestrationStatus: 'awaiting-approval',
+            pendingApprovals: ['req-1'],
+            messages: [
+              { role: 'user', content: 'Edit it', timestamp: 1 },
+              { role: 'assistant', content: 'Editing.', timestamp: 2 },
+            ],
+          } as Partial<ChatSession>)}
+          chatFontSize={14}
+          dockHeight={400}
+          showStatsPanel={false}
+          showReasoning={false}
+          showToolDetails={false}
+          modelSupportsAttachments={false}
+          fileAttachmentsSupported={false}
+          availableModels={[]}
+          chatInput={buildChatInput() as any}
+          setShowStatsPanel={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    // The transcript's own approval status is back…
+    await screen.findByText(/Awaiting tool approval/);
+    expect(pill()).toBeNull();
+    // …and the app-wide queue still owns this chat's approval.
+    expect(getApprovalClaims().size).toBe(0);
+    vi.doUnmock('../components/status/ChatStatusPillView');
   });
 });

@@ -193,7 +193,13 @@ export function ChatStatusPill({
   }, [shownAction]);
 
   const current = shown ?? (leaving ? lastShown.current : undefined);
-  const announcement = shown?.label ?? '';
+  // Kind-level only: "Running bash" → "Running npm test" → "Thinking" are
+  // one state (working) to a screen reader, never a stream of announcements.
+  const announcement = !shown
+    ? ''
+    : shown.kind === 'working'
+      ? 'Working'
+      : shown.label;
   const celebrate = current?.kind === 'resumed' || current?.kind === 'restored';
 
   const activate = () => {

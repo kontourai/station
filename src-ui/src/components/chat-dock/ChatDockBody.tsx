@@ -339,7 +339,7 @@ export function ChatDockBody({
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
   // Live chats present approval, connection and turn activity in one floating
   // pill; a replay keeps the inline rows it was recorded against.
-  const statusPill = useChatStatusPill({
+  const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
     streamStatus,
     turnLive: isTurnStreamLive(activeSession),
@@ -1018,8 +1018,8 @@ export function ChatDockBody({
             approvalEventsSettled: transcript.settled,
             historyLoading: transcript.loading,
             // The status pill owns turn activity for a live chat.
-            suppressActivity: !activeSession.replay || Boolean(streamStatus),
-            statusShownElsewhere: !activeSession.replay,
+            suppressActivity: statusInPill || Boolean(streamStatus),
+            statusShownElsewhere: statusInPill,
             // #2309: the stall notice below presents the silence (with its
             // Stop action); the streaming row does not repeat it.
             progressSilenceShownElsewhere: Boolean(
@@ -1045,7 +1045,7 @@ export function ChatDockBody({
           }}
         />
       )}
-      {streamStatus && activeSession.replay && (
+      {streamStatus && !statusInPill && streamStatus.kind !== 'restored' && (
         <div
           className="chat-stream-status"
           role="status"

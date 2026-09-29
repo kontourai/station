@@ -170,4 +170,23 @@ describe('ChatStatusPill', () => {
     expect(live.getAttribute('aria-live')).toBe('polite');
     expect(live.textContent).toBe('Working');
   });
+
+  test('a change of tool is not a new announcement', () => {
+    const running = (name: string) =>
+      deriveChatStatus({
+        ...base,
+        turnLive: true,
+        activity: {
+          ...openTurn,
+          runningTools: [
+            { name, callId: name, startedAt: '2026-09-29T00:01:00Z' },
+          ],
+        },
+      });
+    const view = render(<ChatStatusPill status={running('bash')} />);
+    const live = () => screen.getByRole('status').textContent;
+    expect(live()).toBe('Working');
+    view.rerender(<ChatStatusPill status={running('npm test')} />);
+    expect(live()).toBe('Working');
+  });
 });

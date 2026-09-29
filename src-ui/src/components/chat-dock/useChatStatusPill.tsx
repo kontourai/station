@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { ChatSession } from '../../types';
@@ -17,11 +24,25 @@ const loadChatStatusPillView = () =>
     default: module.ChatStatusPillView,
   }));
 
+/** Reports a chunk that could not load, once, from inside the boundary. */
+function ReportUnavailable({ onUnavailable }: { onUnavailable: () => void }) {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reports the failure once.
+  useEffect(onUnavailable, []);
+  return null;
+}
+
 /**
  * The chat pane's floating status pill, derived from the chat's own record
- * (`deriveChatStatus`). While it presents this chat's approvals it claims the
- * chat's threads, so the app-wide approval queue does not float a second copy
- * of the same decision over the pane.
+ * (`deriveChatStatus`). Once the pill is actually on screen and presenting
+ * this chat's approvals, it claims the chat's threads, so the app-wide
+ * approval queue does not float a second copy of the same decision over the
+ * pane.
+ *
+ * `statusInPill` says whether the host may leave the chat's status to the
+ * pill: true while it loads and once it shows, false if its chunk could not
+ * load — then the host keeps its inline status surfaces and nothing is
+ * claimed, so the approval stays reachable from the transcript and the
+ * app-wide pill.
  */
 export function useChatStatusPill({
   activeSession,
@@ -33,7 +54,12 @@ export function useChatStatusPill({
   streamStatus: ChatStreamStatus | undefined;
   turnLive: boolean;
   enabled: boolean;
-}) {
+}): { pill: ReactNode; statusInPill: boolean } {
+  const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
+    'loading',
+  );
+  const onMounted = useCallback(() => setView('mounted'), []);
+  const onUnavailable = useCallback(() => setView('unavailable'), []);
   const pendingApprovals = activeSession.pendingApprovals ?? [];
   const approvalCount = pendingApprovals.length;
   const input: ChatStatusInput = {
@@ -67,7 +93,7 @@ export function useChatStatusPill({
     ],
   );
   // Approval is the pill's highest priority: any pending one is what it shows.
-  const presentingApproval = enabled && approvalCount > 0;
+  const presentingApproval = enabled && view === 'mounted' && approvalCount > 0;
   useEffect(() => {
     if (!presentingApproval) return;
     return claimApprovalThreads(threadIds);
@@ -94,18 +120,22 @@ export function useChatStatusPill({
     next.current = 0;
   }, [requestKey]);
 
-  if (!enabled) return null;
-  return (
-    <LazyBoundary
-      load={loadChatStatusPillView}
-      shareAcrossMounts
-      pending={null}
-      unavailable={() => null}
-      componentProps={{
-        input,
-        onRevealApproval,
-        onRepair: () => openConnectionsModal({ mode: 'request-access' }),
-      }}
-    />
-  );
+  if (!enabled) return { pill: null, statusInPill: false };
+  return {
+    statusInPill: view !== 'unavailable',
+    pill: (
+      <LazyBoundary
+        load={loadChatStatusPillView}
+        shareAcrossMounts
+        pending={null}
+        unavailable={() => <ReportUnavailable onUnavailable={onUnavailable} />}
+        componentProps={{
+          input,
+          onRevealApproval,
+          onRepair: () => openConnectionsModal({ mode: 'request-access' }),
+          onMounted,
+        }}
+      />
+    ),
+  };
 }
