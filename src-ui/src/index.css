@@ -4590,8 +4590,14 @@ button.background-tasks-banner:focus-visible {
   margin: 2px 0;
 }
 
+/* #2917: the row wraps rather than squeezing. With the approval actions
+   beside it, a line allowed to shrink to nothing collapsed its label to 0px
+   and let its non-shrinking glyphs paint over the first button. The line's
+   10rem basis is the narrowest it may get while sharing the row; below that
+   the actions drop to their own line and the label keeps the full width. */
 .tool-call__row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -4599,7 +4605,7 @@ button.background-tasks-banner:focus-visible {
 
 .tool-call__line {
   display: flex;
-  flex: 1;
+  flex: 1 1 10rem;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -4660,12 +4666,17 @@ button.tool-call__line:hover {
 }
 
 /* Named to the shared action-row vocabulary so its direct buttons inherit
-   the inventory-wide mobile wrap/44px floor. */
+   the inventory-wide mobile wrap/44px floor. #2917: it may shrink to the
+   row and wrap its own buttons, so it never forces the line below its
+   basis or overflows a narrow column. */
 .tool-call__actions {
   display: flex;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Expanded detail: a subtle bounded monospace panel with a truthful status
@@ -4844,24 +4855,28 @@ button.tool-call__line:hover {
   border-radius: 3px;
   cursor: pointer;
   font-weight: 400;
-  transition:
-    transform var(--motion-fast) var(--ease-standard),
-    opacity var(--motion-fast) var(--ease-standard);
+  transition: transform var(--motion-fast) var(--ease-standard);
 }
 
 .tool-call__approve-btn:active {
   transform: scale(0.95);
 }
 
+/* #2917: --text-on-accent is --accent-primary's contrast partner (a device
+   accent override sets both together). White on dark's mint brand was
+   1.62:1. The filled variants carry a transparent 1px border so the
+   disabled state changes only its colour and style, never the size. */
 .tool-call__approve-btn--primary {
-  background: var(--color-primary);
-  color: white;
-  border: none;
-  margin-left: 0.25rem;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border: 1px solid transparent;
 }
 
+/* #2917: each filled variant sets its own hover fill. With only `opacity`
+   here, the global `button:hover` (0,1,1) outranked the variant background
+   and hover painted white text on --bg-tertiary: 1.03:1 in light. */
 .tool-call__approve-btn--primary:hover {
-  opacity: 0.8;
+  background: var(--accent-hover-fill);
 }
 
 .tool-call__approve-btn--secondary {
@@ -4877,29 +4892,37 @@ button.tool-call__line:hover {
 .tool-call__approve-btn--danger {
   background: var(--error-fill);
   color: white;
-  border: none;
+  border: 1px solid transparent;
 }
 
+/* #2917: see the primary hover above. */
 .tool-call__approve-btn--danger:hover {
-  opacity: 0.8;
+  background: var(--error-dark);
 }
 
-/* #2316: a decision in flight (or already accepted) cannot be sent twice. */
-.tool-call__approve-btn:disabled {
-  opacity: 0.5;
+/* #2316: a decision in flight (or already accepted) cannot be sent twice.
+   #2917: unfilled, dashed and in the row label's own --text-muted rather
+   than 50% opacity, which took every variant's text as low as 1.43:1.
+   Visibly quieter than an enabled control, yet still legible: the #2917
+   journey holds it to 3:1 (inactive controls are exempt from 4.5:1). */
+.tool-call__approve-btn:disabled,
+.tool-call__approve-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+  border-style: dashed;
+  border-color: var(--border-primary);
+  opacity: 1;
   cursor: default;
 }
 
 /* #2316: a decision Station did not accept is named on the card itself,
-   on its own line beneath the buttons. */
-.tool-call__actions:has(.tool-call__approve-error),
-.tool-call__actions:has(.tool-call__approve-status) {
-  flex-wrap: wrap;
-}
-
+   on its own line beneath the buttons. #2917: `contain: inline-size` keeps
+   the sentence out of the actions' intrinsic width, so it wraps under the
+   buttons instead of widening the actions until the label has no room. */
 .tool-call__approve-error,
 .tool-call__approve-status {
   flex-basis: 100%;
+  contain: inline-size;
   margin: 2px 0 0;
   font-size: 0.75em;
 }
