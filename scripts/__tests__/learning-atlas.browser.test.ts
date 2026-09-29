@@ -159,13 +159,14 @@ test('a reader follows a concept into its exact module, searches, and returns th
   const moduleMapState = atlas.documents.find(
     (doc) => doc.path === 'docs/architecture/module-map.md',
   )?.reviewRecord?.state;
-  const expectedStatus = {
+  const statusByState: Record<string, readonly string[]> = {
     'source-reviewed': [
       'Reviewed against code',
       'live outcomes need their own evidence',
     ],
     'needs-review': ['Review out of date', 'changed after this review'],
-  }[moduleMapState ?? ''];
+  };
+  const expectedStatus = statusByState[String(moduleMapState)];
   expect(
     expectedStatus,
     `module map review state ${moduleMapState}`,
