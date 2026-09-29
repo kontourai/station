@@ -254,9 +254,15 @@ describe('the Activity row opens Activity as the page', () => {
     expect(current().regions.main.occupant).toBe('home');
   });
 
-  test('on a phone with Activity open over Chat, the row ends the layer and opens the page', async () => {
+  // The reviewer's case: Chat was maximized BEFORE the layer, so the layer's
+  // own restore puts that maximize back. The page open must end the layer
+  // first and then restore the dock, not have the layer's dismissal re-apply
+  // Chat's maximize after the page landed.
+  test('on a phone with Activity open over a maximized Chat, the row ends the layer and shows the page', async () => {
     stubDevice({ phone: true });
     await mount();
+    act(() => navigationStore.setDockState(true, true));
+    await waitFor(() => expect(current().regions.bottom.maximized).toBe(true));
     act(() => current().showSurface('activity'));
     await waitFor(() => expect(current().phoneLayer).not.toBeNull());
     expect(current().regions.bottom.maximized).toBe(true);
@@ -267,10 +273,13 @@ describe('the Activity row opens Activity as the page', () => {
     );
     expect(current().phoneLayer).toBeNull();
     expect(current().regions.bottom.panes).not.toContain('activity');
+    // Settle every effect the layer's end schedules before reading.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
     expect(current().regions.bottom.maximized).toBe(false);
-    await waitFor(() =>
-      expect(navigationStore.getSnapshot().isDockMaximized).toBe(false),
-    );
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+    expect(current().regions.main.occupant).toBe('activity');
   });
 
   // Review round 1: a user's own dock placement survives the round trip
