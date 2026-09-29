@@ -359,7 +359,7 @@
       "scenario": "Knowledge Library \u2192 selected repository record",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "reviewedRevision": "9e9805e4add257da282f8fa67aaa0190d1872233",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -387,7 +387,7 @@
         },
         {
           "path": "packages/sdk/src/client/knowledge.ts",
-          "digest": "3cce37501a5cb2b8233624c5a831b9dbeed2fdecbfe9f24bb5716413ed060ac4"
+          "digest": "3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743"
         },
         {
           "path": "packages/sdk/src/components/KnowledgeRecall.css",
@@ -429,6 +429,9 @@
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"
+      ],
+      "reviewNotes": [
+        "Rechecked the repository-knowledge capture: the only change in its source knowledge.ts is the body-read deadline guard in the unwrap, which alters no screen state shown."
       ]
     },
     {
@@ -440,7 +443,7 @@
       "scenario": "Knowledge Library \u2192 narrow layout",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "reviewedRevision": "9e9805e4add257da282f8fa67aaa0190d1872233",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -468,7 +471,7 @@
         },
         {
           "path": "packages/sdk/src/client/knowledge.ts",
-          "digest": "3cce37501a5cb2b8233624c5a831b9dbeed2fdecbfe9f24bb5716413ed060ac4"
+          "digest": "3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743"
         },
         {
           "path": "packages/sdk/src/components/KnowledgeRecall.css",
@@ -510,6 +513,9 @@
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"
+      ],
+      "reviewNotes": [
+        "Rechecked the repository-knowledge capture: the only change in its source knowledge.ts is the body-read deadline guard in the unwrap, which alters no screen state shown."
       ]
     }
   ]
