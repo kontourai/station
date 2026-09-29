@@ -19845,8 +19845,8 @@
     },
     {
       "path": "docs/guides/theming.md",
-      "documentDigest": "6a51ff8d8a26bd2d5da35d860be5bc5fe7b9da102f11067aac9dc2e2601344fd",
-      "sourceRevision": "cf25f8166cc5e8de0e2e00274275e8ce040a2a9b",
+      "documentDigest": "50273b47fb6784cf8cdbe654ad46dad2121b0ed9b0872582d6c2100b0caecc5c",
+      "sourceRevision": "eed7a090db2821bd5e76a97a9bf7bbc8a7246a4f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19990,7 +19990,7 @@
         },
         {
           "path": "src-ui/src/lib/branding-theme.ts",
-          "digest": "617d0e8a21fe76e36c89024355f7c79d1f91be569119f1147ef79cbc23a3d2e9"
+          "digest": "179af9035f6f6d294095df773be375bcae31428421f6a2f3f56af6639fd9a2b3"
         },
         {
           "path": "src-ui/src/components/BrandingThemeBridge.tsx",
@@ -19998,7 +19998,7 @@
         },
         {
           "path": "src-ui/src/__tests__/branding-role-cascade.test.ts",
-          "digest": "507fdebc7bf502eb230e6e2f211e9372f4b239372fbb6a2bde77346d100a23fa"
+          "digest": "7f8a4a575fc67363e9964fe8d8e83a0b928572565c07668e7422d961272895a3"
         }
       ],
       "checks": [
@@ -20023,7 +20023,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). The guide's new claim that --accent-primary/--text-on-accent read the action role holds, and the #2917 Allow Once button consumes exactly that pair (hover: --accent-hover-fill -> --accent-darker -> the action role), so channel and white-label action roles reach it. No prose change.",
         "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium.",
         "Re-read 'Station theming' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new white-label branding section and channel interaction-role text; they describe the UI's theme validation and cascade, not the SDK's deadline handling or pairing scopes.",
-        "Updated for the ui 1.16.0 bump and the focus fix. The installed tokens define the roles, so the --k-brand fallback beside --k-action no longer applies. The focus-visible outline reads --k-focus only under data-brand-focus (applyBrandingTheme sets it while the applied theme supplies --k-focus for the current mode) or on a Dev, Beta or Nightly build, and --accent-primary otherwise, so a device accent recolours the ring again; checked against index.css, branding-theme.ts writeMode and branding-role-cascade.test.ts (device accent, theme focus and channel cases). The white-label section names validateBrandOverride from @kontourai/ui/contrast, the flat-key shape and Station's two stricter text rules, matching branding-theme.ts; #2944's channel brand-as-text paragraph is kept."
+        "Updated for the ui 1.16.0 bump and the focus fix. The installed tokens define the roles, so the --k-brand fallback beside --k-action no longer applies. The focus-visible outline reads --k-focus only under data-brand-focus (applyBrandingTheme sets it while the applied theme supplies --k-focus for the current mode) or on a Dev, Beta or Nightly build, and --accent-primary otherwise, so a device accent recolours the ring again; checked against index.css, branding-theme.ts writeMode and branding-role-cascade.test.ts (device accent, theme focus and channel cases). The white-label section names validateBrandOverride from @kontourai/ui/contrast, the flat-key shape and Station's two stricter text rules, matching branding-theme.ts; #2944's channel brand-as-text paragraph is kept.",
+        "Added that a mode setting only the brand also gets it as its action role, because the installed tokens define --k-action; checked against expandModes in branding-theme.ts and the brand-only cascade case in branding-role-cascade.test.ts (button fill, accent and focus follow the brand). The focus-ring and stricter-rule statements are unchanged."
       ]
     },
     {
@@ -21801,7 +21802,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "cf25f8166cc5e8de0e2e00274275e8ce040a2a9b",
+      "sourceRevision": "eed7a090db2821bd5e76a97a9bf7bbc8a7246a4f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -22474,7 +22475,7 @@
         },
         {
           "path": "src-ui/src/lib/branding-theme.ts",
-          "digest": "617d0e8a21fe76e36c89024355f7c79d1f91be569119f1147ef79cbc23a3d2e9"
+          "digest": "179af9035f6f6d294095df773be375bcae31428421f6a2f3f56af6639fd9a2b3"
         }
       ],
       "checks": [
@@ -22512,7 +22513,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked the continuation-caller paragraph (it still rebuilds the target from the binding and forwards the model choice, now via this Station's route for a saved Environment) and the pairing-scope and deadline statements; none lists the removed credential or caller-delegation routes. After merging main 91472e665, re-read main's edits (the /api/branding theme override surface, and dropping the legacy scheduler provider sentence); neither touches the continuation-caller, pairing-scope or deadline statements checked above.",
-        "Branding theme paragraph checked against branding-theme.ts after the swap to @kontourai/ui/contrast validateBrandOverride: allowlist, hex values, all-or-nothing and flat-key expansion unchanged; added that Station's stricter text checks also apply."
+        "Branding theme paragraph checked against branding-theme.ts after the swap to @kontourai/ui/contrast validateBrandOverride: allowlist, hex values, all-or-nothing and flat-key expansion unchanged; added that Station's stricter text checks also apply.",
+        "branding-theme.ts now expands a brand-only mode into the action role and rejects an invalid flat value a mode object shadows. This page's claims (allowlist, hex-only values, the package validator plus Station's stricter checks, all or nothing) are unchanged and still accurate; the detailed rules stay in examples/custom-branding."
       ]
     },
     {
@@ -27585,8 +27587,8 @@
     },
     {
       "path": "examples/custom-branding/README.md",
-      "documentDigest": "48022470c1726f0686f1dade4942abd7d9dd1e20ad284d0654d688ded6ccadb0",
-      "sourceRevision": "cf25f8166cc5e8de0e2e00274275e8ce040a2a9b",
+      "documentDigest": "567afc97bab92ac5857e0c4b089b3099f569b6a7db226539922d8730b6266bf7",
+      "sourceRevision": "eed7a090db2821bd5e76a97a9bf7bbc8a7246a4f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide traced through actual manifest/factory, permission derivation, branding route, SDK mapper and sidebar; corrected copy-only installation, response envelope and universal UI claim.",
@@ -27622,7 +27624,7 @@
         },
         {
           "path": "src-ui/src/lib/branding-theme.ts",
-          "digest": "617d0e8a21fe76e36c89024355f7c79d1f91be569119f1147ef79cbc23a3d2e9"
+          "digest": "179af9035f6f6d294095df773be375bcae31428421f6a2f3f56af6639fd9a2b3"
         }
       ],
       "checks": [
@@ -27632,7 +27634,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Added a Theme bullet and a Theme overrides section (shape, accepted properties and thresholds, all-or-nothing, flat expansion, device accent and focus precedence) on top of the main audit text. branding.js now returns a per-mode theme; fetchBranding rejects non-OK or unsuccessful answers while still mapping data.name to appName. Thresholds checked against checkModeOverrides in src-ui/src/lib/branding-theme.ts (added as a source); the example theme passes resolveBrandingTheme in unit tests. Installation and rendered provider branding remain NOT_VERIFIED. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); claims unaffected.",
         "Re-read 'Custom Branding Example' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new Theme overrides section; it describes the provider shape and UI validation. The SDK mapper it relies on (fetchBranding) now passes a mid-body deadline on via unlessDeadline; the README makes no claim about request deadlines.",
-        "Checked the accepted shape and threshold table against branding-theme.ts after the swap to validateBrandOverride, including where Station is stricter than the shared rule (action on panel, brand on page). The focus-ring bullet is back to main's wording (a theme's or a Dev, Beta or Nightly build's --k-focus wins, the device accent otherwise), which the data-brand-focus marker in applyBrandingTheme and the index.css focus rule make true with ui 1.16.0."
+        "Checked the accepted shape and threshold table against branding-theme.ts after the swap to validateBrandOverride, including where Station is stricter than the shared rule (action on panel, brand on page). The focus-ring bullet is back to main's wording (a theme's or a Dev, Beta or Nightly build's --k-focus wins, the device accent otherwise), which the data-brand-focus marker in applyBrandingTheme and the index.css focus rule make true with ui 1.16.0.",
+        "Added two rules checked against branding-theme.ts and branding-theme.test.ts: a flat value that a mode object replaces must still be #rgb/#rrggbb or the theme is rejected (shadowedFlatViolations), and a mode that sets --k-brand without either action property uses the brand as its action with --k-brand-contrast or the shipped action contrast, so the brand must pass the action rules too."
       ]
     },
     {
