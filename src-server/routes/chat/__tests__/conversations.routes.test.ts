@@ -4305,3 +4305,132 @@ describe('Conversation export route (station#1999 S2)', () => {
     },
   );
 });
+
+// A `[CHAT_ERROR]` failed-turn marker persisted before its text was made
+// outward-safe, in the exact shape the old `chat-lifecycle.ts` writer left in
+// FileMemory (captured from a real session file): the provider's error body,
+// secret included. Stored data is not rewritten, so every read that serves
+// or quotes a transcript must scrub it.
+describe('pre-fix failed-turn marker is never served verbatim', () => {
+  const SECRET = 'sk-live-SECRET-3e2d1c';
+  const preFixMarker = {
+    id: '0ce54880-6903-4b84-b5a8-46f23654145e',
+    role: 'user' as const,
+    parts: [
+      {
+        type: 'text',
+        text: `[SYSTEM_EVENT] [CHAT_ERROR] upstream exploded ${SECRET} leaked detail`,
+      },
+    ],
+    metadata: { timestamp: 1790688973106 },
+  };
+  const safeMarker = {
+    id: 'safe-marker',
+    role: 'user' as const,
+    parts: [
+      {
+        type: 'text',
+        text: '[SYSTEM_EVENT] [CHAT_ERROR] The model provider returned an error (HTTP 500).',
+      },
+    ],
+    metadata: { timestamp: 1790688973107 },
+  };
+  const transcript = [
+    {
+      id: 'u1',
+      role: 'user' as const,
+      parts: [{ type: 'text', text: 'please answer' }],
+      metadata: { timestamp: 1790688973100 },
+    },
+    preFixMarker,
+    safeMarker,
+  ];
+
+  function markerAdapter() {
+    const adapter = createMockAdapter();
+    adapter.getConversation.mockResolvedValue({
+      id: 'c1',
+      userId: 'agent:default',
+      title: 'Failed chat',
+    });
+    adapter.getMessages.mockResolvedValue(transcript);
+    return adapter;
+  }
+
+  test('/messages serves the generic in place of the provider text and keeps a safe marker', async () => {
+    const app = createConversationRoutes(
+      new Map([['default', markerAdapter()]]) as any,
+      mockLogger,
+    );
+    const body = await json(
+      await app.request('/station/conversations/c1/messages'),
+    );
+
+    expect(JSON.stringify(body)).not.toContain(SECRET);
+    expect(JSON.stringify(body)).not.toContain('upstream exploded');
+    const texts = body.data.map(
+      (message: { parts: Array<{ text?: string }> }) => message.parts[0]?.text,
+    );
+    expect(texts).toEqual([
+      'please answer',
+      '[SYSTEM_EVENT] [CHAT_ERROR] The response stream failed.',
+      '[SYSTEM_EVENT] [CHAT_ERROR] The model provider returned an error (HTTP 500).',
+    ]);
+  });
+
+  test('/export never contains the provider text', async () => {
+    const app = createConversationRoutes(
+      new Map([['default', markerAdapter()]]) as any,
+      mockLogger,
+    );
+    const res = await app.request('/station/conversations/c1/export');
+    const text = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(text).toContain('The response stream failed.');
+    expect(text).not.toContain(SECRET);
+    expect(text).not.toContain('upstream exploded');
+  });
+
+  test('regenerate-title never quotes the provider text to the title model', async () => {
+    const { generateConversationTitle } = await import(
+      '../chat-title-generation.js'
+    );
+    (generateConversationTitle as any).mockClear();
+    const app = createConversationRoutes(
+      new Map([['default', markerAdapter()]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => 'agent:default',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {} as any,
+    );
+    const response = await app.request(
+      '/station/conversations/c1/regenerate-title',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(generateConversationTitle).toHaveBeenCalledTimes(1);
+    const prompt = JSON.stringify(
+      (generateConversationTitle as any).mock.calls[0][0].firstUserText,
+    );
+    expect(prompt).toContain('please answer');
+    expect(prompt).not.toContain(SECRET);
+  });
+});

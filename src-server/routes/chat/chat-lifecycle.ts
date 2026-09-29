@@ -1,6 +1,7 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { SpanStatusCode } from '@opentelemetry/api';
 import { STATION_ENGINE_PROVIDER } from '../../../src-shared/monitoring-keys.js';
+import { CHAT_ERROR_MARKER_PREFIX } from '../../runtime/conversation/chat-error-marker.js';
 import { resolveManagedModelIdentity } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import {
@@ -258,7 +259,7 @@ export async function finalizeChatRequest({
           parts: [
             {
               type: 'text',
-              text: `[SYSTEM_EVENT] [CHAT_ERROR] ${turnFailureText}`,
+              text: `${CHAT_ERROR_MARKER_PREFIX}${turnFailureText}`,
             },
           ],
         },

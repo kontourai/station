@@ -37,6 +37,7 @@ import {
   getTenantRequestContext,
   loadHostedTenantRegistryFromEnvironment,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
+import { scrubChatErrorMarkers } from '../../runtime/conversation/chat-error-marker.js';
 import * as ConversationManager from '../../runtime/conversation/conversation-manager.js';
 import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
 import { sanitizeConversationMessagesUIBlockProvenance } from '../../runtime/conversation/ui-block-provenance.js';
@@ -1354,7 +1355,11 @@ export function createConversationRoutes(
           );
         }
         if (!runtimeContext) throw new Error('Title generation unavailable');
-        const messages = await adapter.getMessages(getUserId(), conversationId);
+        // The title prompt quotes every user message, which includes any
+        // persisted failed-turn marker; scrub it like any served read.
+        const messages = scrubChatErrorMarkers(
+          await adapter.getMessages(getUserId(), conversationId),
+        );
         const textFor = (role: string) =>
           messages
             .filter((message) => message.role === role)
@@ -1534,8 +1539,11 @@ export function createConversationRoutes(
   const sanitizeServedMessages = (
     messages: ConversationMessage[],
   ): ConversationMessage[] =>
-    sanitizeConversationMessagesUIBlockProvenance(messages, (message, meta) =>
-      logger.warn(message, meta),
+    sanitizeConversationMessagesUIBlockProvenance(
+      // A failed-turn marker persisted before its text was made
+      // outward-safe may hold a provider's error body; serve the generic.
+      scrubChatErrorMarkers(messages),
+      (message, meta) => logger.warn(message, meta),
     );
 
   /**

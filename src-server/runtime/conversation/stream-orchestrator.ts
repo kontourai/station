@@ -24,6 +24,7 @@ import {
   isAutoApproved,
   isIntrinsicStationEngineGrant,
 } from '../tools/tool-executor.js';
+import { STREAM_ABORTED_BY_CLIENT } from './chat-error-marker.js';
 
 /**
  * Create elicitation callback for tool approval
@@ -250,9 +251,6 @@ export async function writeSSEChunk(
 export async function writeSSEDone(streamWriter: any): Promise<void> {
   await streamWriter.write('data: [DONE]\n\n');
 }
-
-/** Station's own abort error (`StreamPipeline`), whose text is a constant. */
-const STREAM_ABORTED_BY_CLIENT = 'Stream aborted by client';
 
 function isCredentialShapedError(error: unknown): boolean {
   return (

@@ -36,6 +36,7 @@ import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
 } from '../conversation/authorized-turn-correlation.js';
+import { scrubChatErrorMarkers } from '../conversation/chat-error-marker.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import type { NativeMemoryHistoryCompanion } from '../conversation/native-memory-history.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
@@ -253,8 +254,12 @@ class StrandsAgentWrapper implements IAgent {
           return false;
         }
       };
+      // Replayed to the model: a pre-fix failed-turn marker may hold a
+      // provider's error body, so it gets the same scrub as a served read.
       messages = original
-        ? await adapter.getMessages(userId, conversationId)
+        ? scrubChatErrorMarkers(
+            await adapter.getMessages(userId, conversationId),
+          )
         : [];
       if (!(await isCurrent()))
         throw new Error('Direct Strands conversation ownership changed.');
