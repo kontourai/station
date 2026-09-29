@@ -2,7 +2,7 @@
 
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.261; its installed
+for this review. The reviewed lockfile resolves Agent SDK 0.3.278; its installed
 `sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
 settings. That dependency contract is not a fresh live test of permission-rule
 precedence, workspace trust, or memory/MCP discovery.
