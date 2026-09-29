@@ -396,6 +396,46 @@ describe('translateChatError', () => {
     expect(result.disclosureRaw).toBeUndefined();
   });
 
+  describe("the station-agent adapter's status-derived reason", () => {
+    const code = 'station_agent_turn_failed';
+
+    it.each([
+      'The model provider returned an error (HTTP 500).',
+      'The model provider rate-limited the request (HTTP 429).',
+      'The model provider could not find the model (HTTP 404).',
+      'The model provider timed out (HTTP 504).',
+    ])('shows %j as the body', (message) => {
+      const result = translateChatError({ message, code });
+
+      expect(result.title).toBe('This turn did not complete');
+      expect(result.body).toBe(message);
+      expect(result.hint).toMatch(/send it again to retry/i);
+    });
+
+    it('points a rejected-credentials reason at the connection first', () => {
+      const result = translateChatError({
+        message: 'The model provider rejected the credentials (HTTP 401).',
+        code,
+      });
+
+      expect(result.body).toBe(
+        'The model provider rejected the credentials (HTTP 401).',
+      );
+      expect(result.hint).toMatch(/credentials/i);
+    });
+
+    it.each([
+      'upstream exploded sk-live-SECRET-42 leaked detail',
+      'The model provider returned an error (HTTP 500). sk-live-SECRET-42',
+      'The model provider said sk-live-SECRET-42 (HTTP 500).',
+    ])('never quotes any other text under the code: %j', (message) => {
+      const result = translateChatError({ message, code });
+
+      expect(result.body).toBe('The Station agent could not finish this turn.');
+      expect(JSON.stringify(result)).not.toContain('sk-live-SECRET');
+    });
+  });
+
   // archive#1827
   describe('a dead engine session binding', () => {
     const rawMessage =

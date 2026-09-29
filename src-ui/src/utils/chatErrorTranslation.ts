@@ -167,13 +167,25 @@ const NOT_LAUNCHABLE_PATTERN = /not (currently )?launchable/i;
  * The code `station-agent-adapter.ts` publishes on the `runtime.error` it
  * emits when the inner `/chat` stream reports `type: 'error'`
  * (`mapStationAgentStreamEvent`). Unlike `ENGINE_TURN_FAILED_CODE`, the
- * message carries no underlying cause — the inner chunk's `errorText` is
- * already the outward-safe generic (`writeSSEError` in
- * `stream-orchestrator.ts`), so there is nothing further to forward — but
- * the event IS marked `retriable: true`, which is what lets the hint below
- * promise a retry honestly instead of hedging.
+ * message never carries provider text — the inner chunk's `errorText` is the
+ * outward-safe generic (`writeSSEError` in `stream-orchestrator.ts`). It is
+ * either the fixed "Station agent turn failed" or a sentence the adapter
+ * composed from the provider's HTTP status (see
+ * `STATION_AGENT_CLASSIFIED_REASON`). The event IS marked `retriable: true`,
+ * which is what lets the hint below promise a retry honestly.
  */
 const STATION_AGENT_TURN_FAILED_CODE = 'station_agent_turn_failed';
+
+/**
+ * The only non-generic messages the adapter publishes under that code: a
+ * sentence it composed from the model provider's HTTP status alone
+ * (`stationAgentTurnFailureMessage`), e.g. "The model provider returned an
+ * error (HTTP 500)." Matched whole and anchored, so the card quotes that
+ * sentence and nothing else; any other text under the code keeps the generic
+ * copy rather than being shown.
+ */
+const STATION_AGENT_CLASSIFIED_REASON =
+  /^The model provider [a-z -]{1,60} \(HTTP ([45]\d\d)\)\.$/;
 
 /**
  * archive#3299: the stream ended without a well-formed body — the client
@@ -267,10 +279,11 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  *       (`TERMINAL_SESSION_PATTERN`) as a last resort — still evaluated at
  *       this same point, not lower in the function.
  *   -1b. `code` is the station-agent adapter's retriable turn failure
- *       (`station_agent_turn_failed`) -> the inner stream reported an
- *       error whose text is already the outward-safe generic, so there is
- *       no cause to quote; the hint promises a retry because the event
- *       carries `retriable: true`.
+ *       (`station_agent_turn_failed`) -> the body is the adapter's
+ *       status-derived sentence when the message is exactly one, else the
+ *       generic copy; no other text under this code is quoted. The hint
+ *       promises a retry because the event carries `retriable: true`
+ *       (credentials first for a 401/403).
  *   0. Native `transport_*` codes (the FFI contract — see the `switch`).
  *   1. Client-abort-shaped message (prose) -> the response was stopped, not
  *      failed.
@@ -437,6 +450,17 @@ export function translateChatError(
   }
 
   if (code === STATION_AGENT_TURN_FAILED_CODE) {
+    const reason = STATION_AGENT_CLASSIFIED_REASON.exec(text.trim());
+    if (reason) {
+      return {
+        title: 'This turn did not complete',
+        body: reason[0],
+        hint:
+          reason[1] === '401' || reason[1] === '403'
+            ? "Check the model connection's credentials, then send your message again."
+            : 'Your message was kept — send it again to retry.',
+      };
+    }
     return {
       title: 'This turn did not complete',
       body: 'The Station agent could not finish this turn.',
