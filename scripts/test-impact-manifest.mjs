@@ -714,6 +714,10 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-server/providers/__tests__/child-work-conformance.test.ts',
   'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',
+  // Walks src-server/routes/plugins for grant- or content-mutating route
+  // registrations that must reach a command-effect withdrawal (#1419), the
+  // same tree reserved-plugin-identities.test.ts walks.
+  'src-server/routes/plugins/__tests__/plugin-command-effect-withdrawal-sites.test.ts',
   'src-server/runtime/conversation/__tests__/ui-block-provenance-writer-inventory.test.ts',
   'src-server/security/__tests__/svg-response-tripwire.test.ts',
   'src-server/services/__tests__/store-async-lock-cutover.scan.test.ts',
