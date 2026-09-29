@@ -1,8 +1,12 @@
+import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
+import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-events';
 import type {
   ComposerAttachmentStageSnapshot,
   UnsentMessageRecord,
 } from '../types';
+import type { TransformationReceipt } from '../utils/heif-normalizer';
 import type { PlanArtifact } from '../utils/planArtifacts';
+import type { FlowRunBinding } from './active-chats-state';
 
 /**
  * Restore-time shape checks for the chat state `activeChatsStore` keeps in
@@ -44,7 +48,8 @@ export function plainRecordOrUndefined(
   return isPlainRecord(value) ? value : undefined;
 }
 
-const STAGE_STATES = new Set<ComposerAttachmentStageSnapshot['state']>([
+type StageState = ComposerAttachmentStageSnapshot['state'];
+const STAGE_STATES: readonly StageState[] = [
   'queued',
   'uploading',
   'retryable',
@@ -52,7 +57,53 @@ const STAGE_STATES = new Set<ComposerAttachmentStageSnapshot['state']>([
   'accepted',
   'cancelled',
   'failed',
-]);
+];
+
+function isStageState(value: unknown): value is StageState {
+  return STAGE_STATES.some((state) => state === value);
+}
+
+/** The committed send authority a `complete` stage dispatches with. */
+function isStagedReference(value: unknown): value is StagedAttachmentReference {
+  return (
+    isPlainRecord(value) &&
+    typeof value.stageId === 'string' &&
+    typeof value.clientAttachmentId === 'string' &&
+    value.source === 'current-composer' &&
+    (value.kind === 'image' || value.kind === 'file') &&
+    typeof value.name === 'string' &&
+    typeof value.mimeType === 'string' &&
+    typeof value.size === 'number' &&
+    typeof value.digest === 'string' &&
+    value.digest.startsWith('sha256-') &&
+    typeof value.expiresAt === 'string'
+  );
+}
+
+function isByteSummary(
+  value: unknown,
+): value is { mimeType: string; bytes: number; sha256: string } {
+  return (
+    isPlainRecord(value) &&
+    typeof value.mimeType === 'string' &&
+    typeof value.bytes === 'number' &&
+    typeof value.sha256 === 'string'
+  );
+}
+
+function isTransformationReceipt(
+  value: unknown,
+): value is TransformationReceipt {
+  return (
+    isPlainRecord(value) &&
+    value.kind === 'heif-to-jpeg' &&
+    value.adapter === 'browser-native' &&
+    isByteSummary(value.source) &&
+    isPlainRecord(value.output) &&
+    typeof value.output.name === 'string' &&
+    isByteSummary(value.output)
+  );
+}
 
 function readStage(value: unknown): ComposerAttachmentStageSnapshot | null {
   if (!isPlainRecord(value)) return null;
@@ -76,43 +127,28 @@ function readStage(value: unknown): ComposerAttachmentStageSnapshot | null {
     typeof name !== 'string' ||
     typeof mimeType !== 'string' ||
     typeof size !== 'number' ||
-    typeof state !== 'string' ||
-    !STAGE_STATES.has(state as ComposerAttachmentStageSnapshot['state'])
+    !isStageState(state)
   ) {
     return null;
   }
-  // A committed reference is the send authority for a `complete` stage; one
-  // that is not the object the dispatcher reads is no reference at all.
-  const validReference =
-    isPlainRecord(reference) &&
-    typeof reference.stageId === 'string' &&
-    typeof reference.expiresAt === 'string';
   return {
     clientAttachmentId,
     name,
     mimeType,
     size,
-    state: state as ComposerAttachmentStageSnapshot['state'],
+    state,
     progress: typeof progress === 'number' ? progress : 0,
     ...(typeof stageId === 'string' ? { stageId } : {}),
-    ...(validReference
-      ? {
-          reference:
-            reference as unknown as ComposerAttachmentStageSnapshot['reference'],
-        }
-      : {}),
+    // A reference that is not the object the dispatcher reads is no
+    // reference at all; `readAttachmentStages` then asks for the file.
+    ...(isStagedReference(reference) ? { reference } : {}),
     ...(delivery === 'legacy-inline' || delivery === 'staged'
       ? { delivery }
       : {}),
     ...(typeof needsFile === 'boolean' ? { needsFile } : {}),
     ...(expired === true ? { expired: true } : {}),
     ...(typeof error === 'string' ? { error } : {}),
-    ...(isPlainRecord(transformation)
-      ? {
-          transformation:
-            transformation as unknown as ComposerAttachmentStageSnapshot['transformation'],
-        }
-      : {}),
+    ...(isTransformationReceipt(transformation) ? { transformation } : {}),
   };
 }
 
@@ -179,22 +215,70 @@ export function readQueuedMessageFailure(value: unknown):
   };
 }
 
+const PLAN_SOURCES = ['assistant', 'reasoning', 'canonical'] as const;
+const PLAN_STEP_STATUSES = ['pending', 'in_progress', 'completed'] as const;
+
 export function readPlanArtifact(value: unknown): PlanArtifact | null {
-  return isPlainRecord(value) &&
-    typeof value.rawText === 'string' &&
-    typeof value.updatedAt === 'string' &&
-    Array.isArray(value.steps) &&
-    value.steps.every(isPlainRecord)
-    ? (value as unknown as PlanArtifact)
-    : null;
+  if (
+    !isPlainRecord(value) ||
+    typeof value.rawText !== 'string' ||
+    typeof value.updatedAt !== 'string' ||
+    !Array.isArray(value.steps)
+  ) {
+    return null;
+  }
+  const source = PLAN_SOURCES.find((candidate) => candidate === value.source);
+  if (!source) return null;
+  const steps: PlanArtifact['steps'] = [];
+  for (const step of value.steps) {
+    if (!isPlainRecord(step) || typeof step.content !== 'string') return null;
+    const status = PLAN_STEP_STATUSES.find(
+      (candidate) => candidate === step.status,
+    );
+    if (!status) return null;
+    steps.push({ content: step.content, status });
+  }
+  return {
+    source,
+    rawText: value.rawText,
+    steps,
+    updatedAt: value.updatedAt,
+  };
 }
 
-export function readFlowRunBinding<T>(value: unknown): T | null {
-  return isPlainRecord(value) &&
-    typeof value.runId === 'string' &&
-    typeof value.definitionId === 'string'
-    ? (value as T)
-    : null;
+function isFlowRunFreshness(value: unknown): value is FlowRunFreshness {
+  return (
+    isPlainRecord(value) &&
+    (value.lastEvaluatedAt === null ||
+      typeof value.lastEvaluatedAt === 'string') &&
+    (value.blockedReason === undefined ||
+      value.blockedReason === 'ungated-step') &&
+    typeof value.gateOutcomeCount === 'number' &&
+    typeof value.evidenceCount === 'number'
+  );
+}
+
+export function readFlowRunBinding(value: unknown): FlowRunBinding | null {
+  if (
+    !isPlainRecord(value) ||
+    typeof value.runId !== 'string' ||
+    typeof value.definitionId !== 'string' ||
+    typeof value.resumed !== 'boolean'
+  ) {
+    return null;
+  }
+  return {
+    runId: value.runId,
+    definitionId: value.definitionId,
+    resumed: value.resumed,
+    ...(typeof value.cwd === 'string' ? { cwd: value.cwd } : {}),
+    ...(typeof value.currentStep === 'string'
+      ? { currentStep: value.currentStep }
+      : {}),
+    ...(isFlowRunFreshness(value.freshness)
+      ? { freshness: value.freshness }
+      : {}),
+  };
 }
 
 export { optionalString };

@@ -149,6 +149,80 @@ describe('restoring persisted chats from an older or corrupt payload', () => {
     expect(screen.getByText('Choose the file again')).toBeTruthy();
   });
 
+  test('a current-shape payload restores unchanged, reference and all', () => {
+    const stage = {
+      clientAttachmentId: 'shot',
+      name: 'shot.png',
+      mimeType: 'image/png',
+      size: 3,
+      state: 'complete',
+      progress: 1,
+      stageId: 'stage-1',
+      delivery: 'staged',
+      // The server's `StagedAttachmentReference`, as the staging route writes it.
+      reference: {
+        stageId: 'stage-1',
+        clientAttachmentId: 'shot',
+        source: 'current-composer',
+        kind: 'image',
+        name: 'shot.png',
+        mimeType: 'image/png',
+        size: 3,
+        digest: 'sha256-abc',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+      },
+      transformation: {
+        kind: 'heif-to-jpeg',
+        adapter: 'browser-native',
+        source: { mimeType: 'image/heic', bytes: 9, sha256: 'a' },
+        output: {
+          name: 'shot.jpg',
+          mimeType: 'image/jpeg',
+          bytes: 3,
+          sha256: 'b',
+        },
+      },
+    };
+    const flowRun = {
+      runId: 'run-1',
+      definitionId: 'def',
+      resumed: false,
+      freshness: {
+        lastEvaluatedAt: null,
+        gateOutcomeCount: 0,
+        evidenceCount: 0,
+      },
+    };
+    const planArtifact = {
+      source: 'assistant',
+      rawText: '- [ ] a',
+      steps: [{ content: 'a', status: 'pending' }],
+      updatedAt: '2030-01-01T00:00:00.000Z',
+    };
+    const store = new ActiveChatsStore({
+      storage: new MemoryStorage({
+        activeChats: JSON.stringify([
+          {
+            sessionId: 'chat-ok',
+            agentSlug: 'codex',
+            conversationId: 'conv',
+            title: 'Kept',
+            attachmentStages: [stage],
+            queuedMessages: ['next'],
+            flowRun,
+            planArtifact,
+          },
+        ]),
+      }),
+    });
+    const chat = store.getSnapshot()['chat-ok']!;
+    expect(chat.attachmentStages).toEqual([stage]);
+    expect(chat.queuedMessages).toEqual(['next']);
+    expect(chat.title).toBe('Kept');
+    expect(chat.flowRun).toEqual(flowRun);
+    expect(chat.planArtifact).toEqual(planArtifact);
+  });
+
   test('a payload that is not a list restores nothing instead of throwing', () => {
     const store = new ActiveChatsStore({
       storage: new MemoryStorage({

@@ -919,7 +919,7 @@ export function hydrateActiveChats(
       currentModeId:
         session.currentModeId === null ? null : text(session.currentModeId),
       planArtifact: readPlanArtifact(session.planArtifact),
-      flowRun: readFlowRunBinding<FlowRunBinding>(session.flowRun),
+      flowRun: readFlowRunBinding(session.flowRun),
     };
   }
   return chats;
