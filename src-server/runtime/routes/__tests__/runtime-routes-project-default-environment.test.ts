@@ -25,6 +25,7 @@ import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createOrchestrationRoutes } from '../../../routes/orchestration/orchestration.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { createRemoteStationForwarder } from '../../../services/remote-stations/remote-station-forwarder.js';
 import { executeExecutionTargetMessage } from '../../../tools/station-control-delegation.js';
 import { createProjectDefaultEnvironmentCallback } from '../runtime-routes.js';
 
@@ -125,15 +126,6 @@ describe('canonical target resolver with a dangling saved default', () => {
       if (url === `${CONTROL_API_BASE}/.well-known/station/v1`) {
         return json({ environmentId: 'environment-current' });
       }
-      if (url === `${CONTROL_API_BASE}/api/environments/ssh`) {
-        return json({ success: true, data: [] });
-      }
-      if (
-        url ===
-        `${CONTROL_API_BASE}/api/environments/peers/env-deleted/credential`
-      ) {
-        return json({ success: false, error: 'not found' }, 404);
-      }
       throw new Error(`Unexpected request: ${url}`);
     });
   });
@@ -176,6 +168,18 @@ describe('canonical target resolver with a dangling saved default', () => {
           userId: ROUTE_TEST_USER_ID,
         },
         localProviderSurface as never,
+        undefined,
+        // #2377 C2b: the runtime's forwarder over a home where the default
+        // names neither an SSH profile nor a peer.
+        createRemoteStationForwarder({
+          ssh: {
+            list: () => [],
+            connect: async () => {
+              throw new Error('unreachable');
+            },
+          } as never,
+          peers: { get: () => null } as never,
+        }),
       ),
     ).rejects.toThrow('not a saved, verified SSH environment');
     expect(touchedProviders).toEqual([]);

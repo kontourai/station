@@ -8,6 +8,7 @@ import {
 } from '@kontourai/station-contracts/session-inventory';
 import { envelopeError, type StationHttpError } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export class SessionInventoryRequestError extends Error {
   readonly status: number;
@@ -47,7 +48,8 @@ async function unwrap<T>(
     body = (await response.json()) as { success?: unknown; data?: unknown };
     const parsed = body.success === true ? parse(body.data) : null;
     if (response.ok && parsed) return parsed;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     /* normalize below */
   }
   throw new SessionInventoryRequestError(answered(response, body));
