@@ -24,7 +24,13 @@ rules, ask rules, safety checks and user-interaction tools after a hook allow,
 so the allow would have skipped its working-directory check. The hook states no
 opinion, and the engine asks `canUseTool` for anything it does not allow
 itself. On ACP, a `toolGrant` allow or pattern match never answers a plan exit
-(`switch_mode` kind or `ExitPlanMode`).
+(`switch_mode` kind or `ExitPlanMode`). A session answer to an ACP plan exit is
+a one-call accept (the agent's allow-once option) and mints no session grant;
+the request payload carries `toolKind`, so a `switch_mode` request offers no
+session option. In a delegated child that cannot grant approvals
+(`delegation.denyApprovals`), a request either adapter would otherwise open is
+denied at once with the staged evaluator's `delegation_deny_approvals` denial,
+since nobody could answer it.
 Stale-generation, delegated-tool, config-protection and approval-guardian
 decisions therefore have a pre-tool delivery path. What it still
 does not deliver is the unattended-grant chain: the staged evaluator hands

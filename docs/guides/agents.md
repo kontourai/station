@@ -146,13 +146,6 @@ every possible tool outcome:
 
 The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning.
 
-### Unattended runs
-
-A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,
-or a delegated child session that cannot grant approvals — never waits on an
-approval request. Station's engine either allows the call without asking or
-denies it.
-
 ### What autoApprove never covers
 
 A pattern allows plain calls to a matching tool. It never answers a request
@@ -168,10 +161,24 @@ Claude Code these always reach a person:
 - `ExitPlanMode`, so a plan is always reviewed.
 
 On ACP engines a plan exit (a `switch_mode` tool call, or `ExitPlanMode`)
-always prompts. ACP reports no other escalation signal. Codex and Muse do not
+always prompts, and answering it "for this session" allows that one exit
+only. ACP reports no other escalation signal. Codex and Muse do not
 honour `autoApprove`. A sensitive-file edit the engine asks about in its
 default mode carries the same signal as a plain edit, so a matching pattern
 still allows it ([delivery boundary](../conformance/tool-policy-delivery.md)).
+
+### Unattended runs
+
+A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,
+or a delegated child session that cannot grant approvals — never waits on an
+approval request. Station's engine either allows the call without asking or
+denies it.
+
+On Claude Code and ACP engines a broad `autoApprove` pattern no longer covers
+escalations or plan exits ([what autoApprove never covers](#what-autoapprove-never-covers)),
+so a headless run that reaches one waits on an approval request until someone
+answers it (for example from the approval inbox), while a delegated child that
+cannot grant approvals is denied the call at once.
 
 `autoApprove` is attended auto-approval. Attended chat matches a pattern against
 both the original MCP tool name (`station-control_delete_agent`) and the runtime

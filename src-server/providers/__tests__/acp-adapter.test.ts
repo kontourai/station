@@ -1164,6 +1164,147 @@ describe('AcpAdapter', () => {
       },
     );
 
+    test.each([
+      ['with the shared staged policy', true],
+      ['without a staged policy', false],
+    ])(
+      '#2933: a denyApprovals child with autoApprove * is declined a plan exit fail-fast, with no request (%s)',
+      async (_label, withPolicy) => {
+        const autoApprove = ['*'];
+        const { adapter, processes } = createAdapter(
+          withPolicy
+            ? { resolvePreToolPolicy: async () => sharedPolicy(autoApprove) }
+            : {},
+        );
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+        await adapter.startSession({
+          provider: 'acp',
+          threadId: `thread-child-plan-exit-${withPolicy}`,
+          cwd: '/tmp/project',
+          metadata: {
+            connectionId: 'kiro',
+            delegation: {
+              mode: 'isolated-child',
+              depth: 1,
+              maxDepth: 2,
+              parentAgentSlug: 'parent',
+              rootAgentSlug: 'parent',
+              denyApprovals: true,
+            },
+          },
+          agent: { slug: 'engine-lab', autoApprove },
+        });
+        await nextEvent(iterator, 'session.started');
+        await nextEvent(iterator, 'session.configured');
+        const client = processes[0].client;
+
+        await expect(
+          requestPermission(client, 'plain', 'mcp__tools__write'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'allow-once' },
+        });
+        await expect(
+          client.requestPermission({
+            sessionId: 'ignored-by-adapter',
+            toolCall: {
+              toolCallId: 'switch',
+              title: 'Ready to code?',
+              rawInput: { plan: 'Step 1' },
+              name: 'mcp__tools__exit',
+              kind: 'switch_mode',
+            },
+            options: PERMISSION_OPTIONS,
+          } as RequestPermissionRequest),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        expect(await nextEventOrTimeout(iterator, 100)).toBe('TIMED_OUT');
+      },
+    );
+
+    test('#2933: a session answer on a plan exit is a one-call accept and grants nothing', async () => {
+      const { adapter, processes } = createAdapter();
+      const threadId = 'thread-plan-exit-session';
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        agent: { slug: 'engine-lab' },
+      });
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      const client = processes[0].client;
+      const planExit = (
+        toolCallId: string,
+        toolCall: { name: string; kind?: string },
+      ) =>
+        client.requestPermission({
+          sessionId: 'ignored-by-adapter',
+          toolCall: {
+            toolCallId,
+            title: 'Ready to code?',
+            rawInput: { plan: 'Step 1' },
+            ...toolCall,
+          },
+          options: PERMISSION_OPTIONS,
+        } as RequestPermissionRequest);
+
+      const planExits: { name: string; kind?: string }[] = [
+        { name: 'mcp__tools__exit', kind: 'switch_mode' },
+        { name: 'ExitPlanMode' },
+      ];
+      for (const toolCall of planExits) {
+        const first = planExit(`${toolCall.name}-1`, toolCall);
+        const opened = await nextEvent(iterator, 'request.opened');
+        if (toolCall.kind)
+          expect(opened).toMatchObject({
+            payload: { toolKind: 'switch_mode' },
+          });
+        await adapter.respondToRequest(
+          threadId,
+          String(opened.requestId),
+          'acceptForSession',
+        );
+        // The agent gets its allow-once option, never allow-always.
+        await expect(first).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'allow-once' },
+        });
+        await nextEvent(iterator, 'request.resolved');
+
+        const second = planExit(`${toolCall.name}-2`, toolCall);
+        const reopened = await nextEvent(iterator, 'request.opened');
+        await adapter.respondToRequest(
+          threadId,
+          String(reopened.requestId),
+          'decline',
+        );
+        await expect(second).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        await nextEvent(iterator, 'request.resolved');
+      }
+
+      // Positive control: an ordinary tool's session answer still grants it.
+      const granted = requestPermission(client, 'grant-1', 'mcp__tools__write');
+      const opened = await nextEvent(iterator, 'request.opened');
+      await adapter.respondToRequest(
+        threadId,
+        String(opened.requestId),
+        'acceptForSession',
+      );
+      await expect(granted).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'allow-always' },
+      });
+      await nextEvent(iterator, 'request.resolved');
+      await expect(
+        requestPermission(client, 'grant-2', 'mcp__tools__write'),
+      ).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'allow-once' },
+      });
+    });
+
     test('fails closed when staged-policy preparation rejects', async () => {
       const { adapter, processes } = createAdapter({
         resolvePreToolPolicy: async () => {

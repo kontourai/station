@@ -6,9 +6,13 @@ import {
   TOOL_REQUEST_ARGS_FIELDS,
   toolRequestDisplayName,
   toolRequestFromPayload,
+  toolRequestGrantLabel,
+  toolRequestIsPlainCall,
+  toolRequestIsPlanExit,
   toolRequestPreview,
   toolRequestPreviewFromPayload,
   toolRequestSessionGrant,
+  toolRequestSessionGrantFromPayload,
 } from '../tool-request-preview.js';
 
 describe('#2915: directory permission updates', () => {
@@ -183,6 +187,89 @@ describe('#2915/#2916: what a session answer grants', () => {
     expect(sessionGrantPermissionUpdates(grant, [acceptEdits, addDir])).toEqual(
       forwarded,
     );
+  });
+});
+
+describe('#2933: what a tool-level allowance may answer', () => {
+  const acceptEdits = {
+    type: 'setMode',
+    mode: 'acceptEdits',
+    destination: 'session',
+  };
+  const readRule = {
+    type: 'addRules',
+    rules: [{ toolName: 'Read', ruleContent: '//work/b/**' }],
+    behavior: 'allow',
+    destination: 'session',
+  };
+
+  test('a plan exit is ExitPlanMode in any spelling, or an ACP switch_mode call', () => {
+    expect(toolRequestIsPlanExit('ExitPlanMode')).toBe(true);
+    expect(toolRequestIsPlanExit(' exit_plan_mode ')).toBe(true);
+    expect(toolRequestIsPlanExit('mcp__tools__anything', 'switch_mode')).toBe(
+      true,
+    );
+    expect(toolRequestIsPlanExit(undefined, 'switch_mode')).toBe(true);
+    expect(toolRequestIsPlanExit('EnterPlanMode')).toBe(false);
+    expect(toolRequestIsPlanExit('Bash', 'execute')).toBe(false);
+    expect(toolRequestIsPlanExit(undefined)).toBe(false);
+    expect(toolRequestIsPlanExit(null)).toBe(false);
+  });
+
+  test('plain calls: a tool call without escalation, and a plain file edit', () => {
+    expect(toolRequestIsPlainCall({ toolName: 'Bash' })).toBe(true);
+    expect(
+      toolRequestIsPlainCall({
+        toolName: 'mcp__github__get_issue',
+        suggestions: [],
+      }),
+    ).toBe(true);
+    expect(
+      toolRequestIsPlainCall({ toolName: 'Edit', suggestions: [acceptEdits] }),
+    ).toBe(true);
+  });
+
+  test('never an escalation, a Claude read ask, a plan exit or an unforwardable edit', () => {
+    for (const request of [
+      { toolName: 'Read', suggestions: [readRule] },
+      { toolName: 'Read' },
+      { toolName: 'Grep' },
+      { toolName: 'Bash', blockedPath: '/etc/hosts' },
+      { toolName: 'Bash', matchedAskRule: { toolName: 'Bash' } },
+      {
+        toolName: 'Edit',
+        suggestions: [
+          {
+            type: 'addDirectories',
+            directories: ['/work/b'],
+            destination: 'session',
+          },
+          acceptEdits,
+        ],
+      },
+      { toolName: 'ExitPlanMode', suggestions: [acceptEdits] },
+      { toolName: 'anything', toolKind: 'switch_mode' },
+      { toolName: 'Edit', suggestions: [] },
+      { toolName: 'Edit', suggestions: [acceptEdits], permissionMode: 'plan' },
+      {
+        toolName: 'Write',
+        suggestions: [acceptEdits],
+        permissionMode: 'bypassPermissions',
+      },
+    ])
+      expect(toolRequestIsPlainCall(request), JSON.stringify(request)).toBe(
+        false,
+      );
+  });
+
+  test('an ACP switch_mode payload offers no session answer', () => {
+    const payload = { rawInput: { plan: 'Step 1' }, toolKind: 'switch_mode' };
+    expect(toolRequestSessionGrantFromPayload(payload)).toBe('none');
+    expect(toolRequestGrantLabel(undefined, 'none')).toBeUndefined();
+    // Positive control: the same payload without the kind still offers one.
+    expect(
+      toolRequestSessionGrantFromPayload({ rawInput: { plan: 'x' } }),
+    ).toBe('tool');
   });
 });
 

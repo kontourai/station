@@ -149,7 +149,10 @@ standing Auto or full access. It then lasts until the next approval-mode
 decision. Through the delegated-task respond route or the inbox, the same
 answer is sent as `accept` and records nothing. Where nothing can be
 forwarded, for a file edit in plan mode or under full access, and for
-`ExitPlanMode`, `acceptForSession` counts as `accept` (#2915, #2916).
+`ExitPlanMode`, `acceptForSession` counts as `accept` (#2915, #2916). In an
+ACP Session it also counts as `accept` for a plan exit (a `switch_mode` tool
+call or `ExitPlanMode`), which mints no grant and selects the agent's
+allow-once option (#2933).
 
 The command records the decision: the adapter publishes `request.resolved`
 when Station records it, on every engine. Whether the engine then received it

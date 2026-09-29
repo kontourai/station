@@ -47,9 +47,10 @@ import {
   toolRequestIsPlainCall,
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
-import type {
-  PreToolPolicyDecision,
-  StagedPreToolPolicyEvaluator,
+import {
+  delegatedApprovalDenial,
+  type PreToolPolicyDecision,
+  type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
@@ -2791,6 +2792,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         const sessionGrant = toolRequestSessionGrant(request);
         if (record.approvedTools.has(toolName) && sessionGrant === 'tool') {
           return { behavior: 'allow', updatedInput: toolInput };
+        }
+        // #2933: a delegated child that may not grant approvals reaches here
+        // only when a tool-level grant let the call past the staged
+        // evaluator's own denial (an autoApprove match is no hook allow) and
+        // the engine then asked: an escalation or a plan exit. Nobody can
+        // answer the child's request, so deny it fail-fast, as the evaluator
+        // does for an ungranted call, rather than wait on a prompt.
+        if (serverDelegation(input.metadata)?.denyApprovals) {
+          const { denial } = delegatedApprovalDenial(toolName, 'external');
+          return { behavior: 'deny', message: denial.reason };
         }
         const requestId = crypto.randomUUID();
         this.publish({

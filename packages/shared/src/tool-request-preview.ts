@@ -280,6 +280,12 @@ export type ToolRequestGrantInput = {
   matchedAskRule?: unknown;
   /** The engine's permission mode when it asked (Claude: `plan`, …). */
   permissionMode?: unknown;
+  /**
+   * The engine's kind for the tool call, where it reports one (ACP's
+   * `toolCall.kind`; `switch_mode` is a mode change such as leaving plan
+   * mode).
+   */
+  toolKind?: unknown;
 };
 
 const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
@@ -409,13 +415,16 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
 }
 
 /**
- * #2916, #2933: whether the tool leaves plan mode (Claude's `ExitPlanMode`,
- * matched in any casing or separator). A plan exit is a request for a
+ * #2916, #2933: whether the request leaves plan mode: Claude's
+ * `ExitPlanMode` (matched in any casing or separator), or a call the engine
+ * reports with ACP's `switch_mode` tool kind. A plan exit is a request for a
  * person's review of the plan, so no tool-level allowance answers it.
  */
 export function toolRequestIsPlanExit(
   toolName: string | null | undefined,
+  toolKind?: unknown,
 ): boolean {
+  if (toolKind === 'switch_mode') return true;
   const trimmed = toolName?.trim();
   return !!trimmed && TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(trimmed));
 }
@@ -424,7 +433,7 @@ export function toolRequestSessionGrant(
   request: ToolRequestGrantInput,
 ): ToolRequestSessionGrant {
   const toolName = request.toolName?.trim();
-  if (toolRequestIsPlanExit(toolName)) return 'none';
+  if (toolRequestIsPlanExit(toolName, request.toolKind)) return 'none';
   const readOnly =
     toolName !== undefined && CLAUDE_READ_ONLY_TOOLS.has(toolName);
   const escalates = toolRequestEscalates(request);
@@ -479,6 +488,7 @@ export function toolRequestSessionGrantFromPayload(
     blockedPath: payload?.blockedPath,
     matchedAskRule: payload?.matchedAskRule,
     permissionMode: payload?.permissionMode,
+    toolKind: payload?.toolKind,
   });
 }
 

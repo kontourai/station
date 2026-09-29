@@ -2072,6 +2072,7 @@ describe('ClaudeAdapter', () => {
         modelOptions?: Record<string, unknown>;
         query?: ReturnType<typeof createControlledMockQuery>;
         agent?: { slug: string; autoApprove?: string[] };
+        metadata?: Record<string, unknown>;
       } = {},
     ) {
       const query = options.query ?? createMockQuery([]);
@@ -2083,6 +2084,7 @@ describe('ClaudeAdapter', () => {
         threadId,
         ...(options.modelOptions ? { modelOptions: options.modelOptions } : {}),
         ...(options.agent ? { agent: options.agent } : {}),
+        ...(options.metadata ? { metadata: options.metadata } : {}),
       });
       await iterator.next();
       await iterator.next();
@@ -2868,6 +2870,49 @@ describe('ClaudeAdapter', () => {
         expect(ruleForced.kind).toBe('prompted');
         if (ruleForced.kind === 'prompted') await ruleForced.answer('decline');
         await adapter.stopSession('thread-auto-ask-rule');
+      });
+
+      test('a delegated child that may not grant approvals is denied an escalation fail-fast, never prompted', async () => {
+        const { adapter, ask } = await grantHarness('thread-auto-child', {
+          agent: everything,
+          metadata: {
+            delegation: {
+              mode: 'isolated-child',
+              depth: 1,
+              maxDepth: 2,
+              parentAgentSlug: 'parent',
+              rootAgentSlug: 'parent',
+              denyApprovals: true,
+            },
+          },
+        });
+        // Positive control: a plain call is still allowed.
+        await expect(
+          ask('Bash', { command: 'git status' }),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        for (const [toolName, toolInput, extra] of [
+          [
+            'Read',
+            { file_path: '/work/b/notes.md' },
+            outsideDirRead('/work/b'),
+          ],
+          ['ExitPlanMode', { plan: 'Step 1' }, {}],
+        ] as const) {
+          // `allowed` here means the call settled without a request.opened.
+          const outcome = await ask(toolName, toolInput, extra);
+          expect(outcome.kind).toBe('allowed');
+          if (outcome.kind !== 'allowed') throw new Error('unreachable');
+          expect(outcome.result).toEqual({
+            behavior: 'deny',
+            message: expect.stringContaining(
+              'delegated child sessions cannot grant approvals',
+            ),
+          });
+        }
+        await adapter.stopSession('thread-auto-child');
       });
 
       test('a directory widening, a blocked path and a read with no signal prompt', async () => {

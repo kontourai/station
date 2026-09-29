@@ -45,7 +45,10 @@ import {
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
 import { toolRequestIsPlanExit } from '@kontourai/station-shared/tool-request-preview';
-import type { StagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
+import {
+  delegatedApprovalDenial,
+  type StagedPreToolPolicyEvaluator,
+} from '../../runtime/agents/pre-tool-policy.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   isBuiltinStationDocs,
@@ -401,6 +404,12 @@ interface AcpPendingRequest {
    * when the agent named no tool (nothing is granted or remembered).
    */
   toolName?: string;
+  /**
+   * #2933: the request leaves plan mode (`toolRequestIsPlanExit`). A session
+   * answer to it is a one-call accept and mints no session grant, so a later
+   * plan exit is still reviewed.
+   */
+  planExit?: true;
 }
 
 export interface AcpSessionRecord {
@@ -1671,10 +1680,14 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
 
     record.pendingRequests.delete(requestId);
-    if (decision === 'acceptForSession' && pending.toolName) {
+    // #2933: a plan exit is answered for this call only: no session grant is
+    // minted, and the agent is sent its allow-once option, not allow-always.
+    const effective =
+      decision === 'acceptForSession' && pending.planExit ? 'accept' : decision;
+    if (effective === 'acceptForSession' && pending.toolName) {
       record.approvedTools.add(pending.toolName);
     }
-    pending.resolve(decision);
+    pending.resolve(effective);
 
     this.publish({
       eventId: crypto.randomUUID(),
@@ -1961,9 +1974,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       // covers plain calls to the tool, never a plan exit. ACP marks a mode
       // switch such as leaving plan mode with the `switch_mode` tool kind;
       // it reports no other escalation signal on a permission request.
-      const planExit =
-        params.toolCall?.kind === 'switch_mode' ||
-        toolRequestIsPlanExit(toolName);
+      const planExit = toolRequestIsPlanExit(toolName, params.toolCall?.kind);
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {
@@ -2020,7 +2031,8 @@ export class AcpAdapter implements ProviderAdapterShape {
       // so granted tools never re-prompt. Denies are never cached. When the
       // agent offers no allow option at all, the auto-acceptance would be
       // `cancelled` — fall through to the prompt rather than auto-cancel.
-      if (toolName && record.approvedTools.has(toolName)) {
+      // #2933: never for a plan exit, which a session grant cannot answer.
+      if (toolName && !planExit && record.approvedTools.has(toolName)) {
         const grantedOutcome = mapAcpDecisionToOutcome(
           'accept',
           params.options,
@@ -2028,6 +2040,20 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (grantedOutcome.outcome !== 'cancelled') {
           return { outcome: grantedOutcome };
         }
+      }
+
+      // #2933: a delegated child that may not grant approvals reaches here
+      // only when a tool-level grant let the call past the staged evaluator's
+      // own denial (a plan exit) or no evaluator ran. Nobody can answer the
+      // child's request, so decline it fail-fast rather than wait.
+      if (record.delegation?.denyApprovals) {
+        delegatedApprovalDenial(
+          toolName ?? params.toolCall?.title ?? 'tool call',
+          'external',
+        );
+        return {
+          outcome: mapAcpDecisionToOutcome('decline', params.options),
+        };
       }
 
       const requestId = crypto.randomUUID();
@@ -2044,6 +2070,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           toolCallId: params.toolCall?.toolCallId,
           rawInput: params.toolCall?.rawInput,
           options: params.options,
+          // #2933: surfaces compute the session grant they offer from the
+          // payload; a `switch_mode` kind offers none.
+          ...(params.toolCall?.kind ? { toolKind: params.toolCall.kind } : {}),
         },
       });
 
@@ -2052,6 +2081,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           resolve,
           options: params.options,
           ...(toolName ? { toolName } : {}),
+          ...(planExit ? { planExit: true as const } : {}),
         });
       });
 

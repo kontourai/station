@@ -2390,7 +2390,7 @@
       "kind": "historical",
       "state": "classified",
       "documentDigest": "87b0ed372ef7d96462c84e94492a525319dfda23e702a80bb8b83a9c88c3874c",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "summary": "Historical ACP chat proposal, explicitly routed to current ACP guide and adapter. Retained phases and status tables describe the original design.",
       "limits": "Historical measurements and external incidents were not rerun; classification does not certify current behavior.",
       "sources": [
@@ -2400,13 +2400,14 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         }
       ],
       "checks": [
         "Read the full record and checked the current owner or local validation route.",
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts and stamps it on request.resolved. The document's historical banner, which says ACP execution is a per-thread process lifecycle in the ACP adapter, is unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "#2933: historical ACP proposal; the acp-adapter change (plan-exit gate on autoApprove in requestPermission) does not touch any retained design claim. No prose change."
+        "#2933: historical ACP proposal; the acp-adapter change (plan-exit gate on autoApprove in requestPermission) does not touch any retained design claim. No prose change.",
+        "#2933 round 2: historical proposal; ACP requestPermission plan-exit and delegated-child handling touch no retained design claim. No prose change."
       ]
     },
     {
@@ -2538,7 +2539,7 @@
     },
     {
       "path": "docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md",
-      "sourceRevision": "b4479246d86432a49b8fa7d5c87bd65353176dce",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "historical",
       "state": "classified",
       "summary": "A top status note points to ADR0014 and distinguishes the superseded flag/rollback mechanism from the retained orchestration/private-adapter/no-migration decisions. Current interactive route composition supplies the foreground orchestration seam.",
@@ -2551,7 +2552,7 @@
         },
         {
           "path": "docs/reference/session-api.md",
-          "digest": "b18516a68bb8c237fad827a8f60847431e2e80a81293f41d93f0302d38bde982"
+          "digest": "25595dfdc7dbcb9b81a5102cb7ca06ba6d061ae2338b4d32e39053fc801a6a54"
         },
         {
           "path": "packages/cli/src/commands/session-client.ts",
@@ -2581,7 +2582,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c added the recorded-vs-acknowledged section to session-api.md. The ADR's claim that approvals ride request.opened/request.resolved still holds (request.resolved is still published on every engine); prose accurate. Source review is separate from executed test evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: its source session-api.md changed only in the respondToRequest paragraph on what acceptForSession grants and records. The ADR's retained decisions (orchestration routing, private adapters, no migration) do not mention request answers; classification unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. The ADR's retained decisions (orchestration routing, private adapters, no migration) depend on neither; classification unchanged."
+        "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. The ADR's retained decisions (orchestration routing, private adapters, no migration) depend on neither; classification unchanged.",
+        "#2933 round 2: session-api.md added one sentence on ACP plan-exit acceptForSession (counts as accept, allow-once, no grant); the ADR's orchestration routing, private-adapter and flag decisions do not depend on per-engine session-grant semantics. No prose change."
       ]
     },
     {
@@ -2667,7 +2669,7 @@
     },
     {
       "path": "docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "design",
       "state": "classified",
       "summary": "A dated reading-status note separates the 2026-08-03 vendor survey from current support. The current ACP adapter installs the inbound refusal policy instead of fabricated empty success; original layer definitions, authority decision and vendor observations remain untouched.",
@@ -2680,7 +2682,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/services/acp/__tests__/acp-inbound-extension-policy.test.ts",
@@ -2700,7 +2702,8 @@
         "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
         "Integration source review through e0314c727: extension-notification-bindings.ts removed EXTENSION_NOTIFICATION_EVIDENCE_GAPS, EXTENSION_NOTIFICATION_PROMOTIONS and the reset seam. The `_kiro` v3 spelling stays unbound, with only a source comment. Corrected the rendering-table paragraph, which said the authority records an explicit gap entry. The dated survey and decisions are untouched. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata and a request.resolved acknowledgement stamp in acp-adapter.ts. The ADR's claims about extension-method binding (onExtMethod and friends) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "#2933: ADR concerns ACP extension-method binding; the acp-adapter change is confined to the requestPermission autoApprove gate. No prose change."
+        "#2933: ADR concerns ACP extension-method binding; the acp-adapter change is confined to the requestPermission autoApprove gate. No prose change.",
+        "#2933 round 2: ADR covers extension-method binding; acp-adapter change is confined to requestPermission/respondToRequest approval handling. No prose change."
       ]
     },
     {
@@ -5668,12 +5671,12 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical. Follow-up (#2915/#2916): added the session-grant scope section (tool, edit-mode with its mode sync, read-folder/folder, none), traced from the shared toolRequestSessionGrant through the Claude adapter's canUseTool/respondToRequest and the toast, inline card and inbox card.",
       "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
-      "documentDigest": "205678f47633447a5122c64912d13c90b9e5b826ce22eea204c243cafda59aeb",
+      "documentDigest": "0950e622bc5fd7c67340f36017610453e1b72e8f2083d73d47344f1caefa77a6",
       "sources": [
         {
           "path": "package.json",
@@ -5685,7 +5688,7 @@
         },
         {
           "path": "packages/shared/src/__tests__/tool-request-preview.test.ts",
-          "digest": "ab251cd862e821122d30655014fe205ea95b77c09ce8cc33771c0112cad755a2"
+          "digest": "83fa6ba966f39e2dc5f80eff5f27f37cb5043d200a949ed38a9fe8b790f8433b"
         },
         {
           "path": "packages/shared/src/redaction.ts",
@@ -5697,7 +5700,7 @@
         },
         {
           "path": "packages/shared/src/tool-request-preview.ts",
-          "digest": "c75fe4f00176cdae2a27fa3e31ab9d055c4e2a01661654df6d017ac594d76553"
+          "digest": "6e6496b46534d24b65bb9a49a19bfce2c2f4b3ecc7affea139b323968735efa2"
         },
         {
           "path": "pnpm-lock.yaml",
@@ -5705,7 +5708,7 @@
         },
         {
           "path": "src-server/providers/__tests__/claude-adapter.test.ts",
-          "digest": "fdd091ef2fc6c031a4ea8ec9c41d71bd620d0b83aa84fd585a1a1ca50e27b9be"
+          "digest": "5cb6514ed56188a067f87abe8bad2d83ae36f41607f508ad37b721bca31947e0"
         },
         {
           "path": "src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts",
@@ -5713,7 +5716,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter-events.ts",
@@ -5721,7 +5724,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0d1a4c22f23ea599152d22075cb29554ccaf5c0c8fe82eb6cbe5d2b69d404045"
+          "digest": "f756ba253dd962b4fab64363851f3d47e5566df36fd90722df3827db2dccb780"
         },
         {
           "path": "src-server/providers/adapters/claude-approval-mode.ts",
@@ -5737,7 +5740,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "bcf788b472cfcfc4454ab375865e1dbc27f23d6696f36c6ba79ffc2d327ea015"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
@@ -5781,7 +5784,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata and stamps acknowledgement on request.resolved in the claude and acp adapters, and adds handleRequestDeliveryEvent plus the toast copy 'this request is no longer open.' in approvalHandlers.ts (tests updated). None of this touches the tool-request preview readers, the pre-tool seams or the Ask-mode permission path the document describes. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review for #2915/#2916 on d0ca944c5: one shared computation, toolRequestSessionGrant (tool-request-preview.ts), decides what acceptForSession grants: tool (the only case that mints a Station tool grant), edit-mode (a plain Edit/Write/MultiEdit/NotebookEdit ask outside plan mode and full access; forwards only the engine's acceptEdits setMode; 'Auto-accept file edits for this session'), read-folder/folder (an escalation or any Read/Glob/Grep/LSP ask; directory suggestions only) or none (recorded as accept). The Claude adapter auto-allows a granted tool only for a tool grant, sets a forwarded setMode as both requested and reported mode, and applies a turn's posture only when it differs from its last request. The orchestration service, on a command-route answer (approvalModeAuthority), records auto for an edit-mode answer after the engine took it, unless any decision was recorded meanwhile or Auto/full access stands; other paths (delegated respond, inbox) send a one-call accept, and the inbox card omits the option. Rewrote the grant-scope paragraphs to match. Engine shapes were read from the Claude Code 2.1.261 binary bundled with the lockfile's Agent SDK 0.3.261, not from a live run. Fixture tests through the real adapter, the projection, the command and notification routes; no provider dispatched.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "#2933: updated the Claude autoApprove paragraph. canUseTool now allows an autoApprove match only where toolRequestIsPlainCall holds (tool or edit-mode grant); the staged evaluator's isGranted allow carries toolGrant and preToolPolicyHookOutput returns no permissionDecision for it, since Claude Code 2.1.261's post-hook-allow check (jv in the bundled CLI) re-checks deny/ask rules, safety checks and requiresUserInteraction but not the working-directory check. ACP: a toolGrant allow or pattern match never answers switch_mode/ExitPlanMode. Session-grant section unchanged and still accurate."
+        "#2933: updated the Claude autoApprove paragraph. canUseTool now allows an autoApprove match only where toolRequestIsPlainCall holds (tool or edit-mode grant); the staged evaluator's isGranted allow carries toolGrant and preToolPolicyHookOutput returns no permissionDecision for it, since Claude Code 2.1.261's post-hook-allow check (jv in the bundled CLI) re-checks deny/ask rules, safety checks and requiresUserInteraction but not the working-directory check. ACP: a toolGrant allow or pattern match never answers switch_mode/ExitPlanMode. Session-grant section unchanged and still accurate.",
+        "#2933 round 2: added the ACP plan-exit session answer (one-call accept, allow-once option, no approvedTools grant; payload toolKind hides the session option for switch_mode) and the denyApprovals fail-fast deny in Claude canUseTool and ACP requestPermission via the evaluator's exported delegatedApprovalDenial. Traced respondToRequest, requestPermission and canUseTool."
       ]
     },
     {
@@ -7403,7 +7407,7 @@
     {
       "path": "docs/design/connections-onboarding.md",
       "documentDigest": "dc33fe48b286ac9111bfb09c095a1c85ac62665eb89ec9e77a8637d28c3126ed",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7419,7 +7423,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0d1a4c22f23ea599152d22075cb29554ccaf5c0c8fe82eb6cbe5d2b69d404045"
+          "digest": "f756ba253dd962b4fab64363851f3d47e5566df36fd90722df3827db2dccb780"
         },
         {
           "path": "src-server/providers/adapters/claude-skills-materialization.ts",
@@ -7528,7 +7532,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its app-home claim (appHome reported on the start's session.configured) still holds: the adapter's mode report is a sparse session.configured like the CLI init's, and firstStartedMetadataOfThread reads the start. Prose accurate.",
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Its Codex claims are app-home and adoption wiring (getAppHomeEnv, processFactory), which neither change touches; the Claude app-home claim holds as recorded under #2915. Prose accurate.",
-        "#2933: claude-adapter change is limited to canUseTool/PreToolUse autoApprove gating; no onboarding or connection claim affected. No prose change."
+        "#2933: claude-adapter change is limited to canUseTool/PreToolUse autoApprove gating; no onboarding or connection claim affected. No prose change.",
+        "#2933 round 2: claude-adapter change adds a denyApprovals deny in canUseTool; no onboarding claim affected. No prose change."
       ]
     },
     {
@@ -10509,7 +10514,7 @@
     {
       "path": "docs/guides/acp.md",
       "documentDigest": "a902573fcf2c8caab6097af31941a73700df2906868bbbef1f2f13a97de5e02c",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current ACP Agent binding, canonical execution seam, guarded cursor restoration, credentials/refusal behavior, extension notifications, and current probe outcomes.",
@@ -10521,7 +10526,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -10547,13 +10552,14 @@
         "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Its requestPermission flow for ACP engines is unchanged by either. Prose accurate.",
-        "#2933: requestPermission still emits request.opened and maps allow_once/reject_once; the change only stops a tools.autoApprove match from answering a switch_mode or ExitPlanMode request, which now reaches this documented prompt path. No prose change."
+        "#2933: requestPermission still emits request.opened and maps allow_once/reject_once; the change only stops a tools.autoApprove match from answering a switch_mode or ExitPlanMode request, which now reaches this documented prompt path. No prose change.",
+        "#2933 round 2: requestPermission still publishes request.opened and maps to allow_once/reject_once; new behaviour is a plan-exit session answer selecting allow_once, a toolKind payload field, and a decline without request.opened in a denyApprovals child. Described mapping remains accurate; no prose change."
       ]
     },
     {
       "path": "docs/guides/agents.md",
-      "documentDigest": "d5a32dad340ba69e98d4d57b4fbc95a0a262041bb8ccb8be2845178b0b56f465",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "documentDigest": "2ab3a5d6dd8e63bb4fe7660184ab948e2289063c72b9d3c5abe24537f7096f86",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10609,11 +10615,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0d1a4c22f23ea599152d22075cb29554ccaf5c0c8fe82eb6cbe5d2b69d404045"
+          "digest": "f756ba253dd962b4fab64363851f3d47e5566df36fd90722df3827db2dccb780"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -10685,7 +10691,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "bcf788b472cfcfc4454ab375865e1dbc27f23d6696f36c6ba79ffc2d327ea015"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/request-delegation.ts",
@@ -10877,7 +10883,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its Tool Approval Flow section describes the Station-engine route and points orchestration clients at respondToRequest; it does not describe Claude session grants or posture recording. Prose accurate.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. Its Tool Approval Flow describes the Station-engine route and points orchestration clients at respondToRequest; no claim covers Codex permission replies, delegated title length, Claude session grants or the recorded Auto decision. Prose accurate.",
-        "#2933: added 'What autoApprove never covers' and linked it from the autoApprove bullet. Traced claude-adapter canUseTool (toolRequestIsPlainCall gate), preToolPolicyHookOutput toolGrant pass-through, acp-adapter requestPermission planExit gate; confirmed Codex, Muse and station-agent adapters have no autoApprove handling. Unattended and guardian ordering prose unchanged: the evaluator still returns allow from isGranted before the guardian."
+        "#2933: added 'What autoApprove never covers' and linked it from the autoApprove bullet. Traced claude-adapter canUseTool (toolRequestIsPlainCall gate), preToolPolicyHookOutput toolGrant pass-through, acp-adapter requestPermission planExit gate; confirmed Codex, Muse and station-agent adapters have no autoApprove handling. Unattended and guardian ordering prose unchanged: the evaluator still returns allow from isGranted before the guardian.",
+        "#2933 round 2: moved 'What autoApprove never covers' ahead of 'Unattended runs' (it had split that section), added the ACP one-exit session answer, and added the Unattended runs sentence: on Claude/ACP a broad pattern no longer covers escalations, so a headless run waits on an approval request and a denyApprovals child is denied at once. Checked no Discord approval channel exists, so the approval inbox is named instead."
       ]
     },
     {
@@ -11786,7 +11793,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11910,11 +11917,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0d1a4c22f23ea599152d22075cb29554ccaf5c0c8fe82eb6cbe5d2b69d404045"
+          "digest": "f756ba253dd962b4fab64363851f3d47e5566df36fd90722df3827db2dccb780"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -11982,7 +11989,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "bcf788b472cfcfc4454ab375865e1dbc27f23d6696f36c6ba79ffc2d327ea015"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/request-delegation.ts",
@@ -12295,7 +12302,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval mentions are Station signing-key and route approval; nothing describes engine request answers. Prose accurate.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. Its approval mentions are Station signing-key and route approval; none describes engine request answers or titles. Prose accurate.",
-        "#2933: no connection, credential or engine-selection claim depends on the autoApprove ordering changed in claude-adapter, acp-adapter or pre-tool-policy. No prose change."
+        "#2933: no connection, credential or engine-selection claim depends on the autoApprove ordering changed in claude-adapter, acp-adapter or pre-tool-policy. No prose change.",
+        "#2933 round 2: adapter changes are confined to approval handling (denyApprovals deny, ACP plan-exit session answer); no connection claim affected. No prose change."
       ]
     },
     {
@@ -18234,7 +18242,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "897111efa688f89ef5dfa4fbedbbf3dddc9fa65b00bee53bcaacacb5b9b6b2b2",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18286,11 +18294,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0d1a4c22f23ea599152d22075cb29554ccaf5c0c8fe82eb6cbe5d2b69d404045"
+          "digest": "f756ba253dd962b4fab64363851f3d47e5566df36fd90722df3827db2dccb780"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -18350,7 +18358,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "bcf788b472cfcfc4454ab375865e1dbc27f23d6696f36c6ba79ffc2d327ea015"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/request-delegation.ts",
@@ -18529,7 +18537,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It lists respond_to_task_request for an open approval or permission request from a delegated worker; that still answers the request, now as a one-call accept for an edit-mode session answer, which the guide's wording does not contradict. Prose accurate.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. It lists respond_to_task_request for an open request from a delegated worker (now answered as a one-call accept for an edit-mode session answer under #2915) and says delegated activity retains bounded request titles, which main's code-point bound with an ellipsis still satisfies. Prose accurate.",
-        "#2933: station-control_* autoApprove examples remain accurate: MCP calls carry no escalation signal, so toolRequestIsPlainCall is true and canUseTool/PreToolUse behavior for them is unchanged. No prose change."
+        "#2933: station-control_* autoApprove examples remain accurate: MCP calls carry no escalation signal, so toolRequestIsPlainCall is true and canUseTool/PreToolUse behavior for them is unchanged. No prose change.",
+        "#2933 round 2: station-control_* examples unaffected; MCP calls are plain calls, and the new denyApprovals deny only replaces a request a delegated child could never answer. No prose change."
       ]
     },
     {
@@ -18774,7 +18783,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18810,7 +18819,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0d1a4c22f23ea599152d22075cb29554ccaf5c0c8fe82eb6cbe5d2b69d404045"
+          "digest": "f756ba253dd962b4fab64363851f3d47e5566df36fd90722df3827db2dccb780"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
@@ -19018,7 +19027,8 @@
         "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its inspect-approval flow opens a request without deciding it; the answer path's new steps are not reached. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Its inspect-approval flow opens a request without deciding it, so neither Codex's reply change nor #2915's answer path is reached. Prose accurate.",
-        "#2933: claude-adapter change is limited to autoApprove gating on escalations and plan exits; no starter-work claim describes approval behavior. No prose change."
+        "#2933: claude-adapter change is limited to autoApprove gating on escalations and plan exits; no starter-work claim describes approval behavior. No prose change.",
+        "#2933 round 2: claude-adapter canUseTool delegated-child deny does not touch starter work flows or claims. No prose change."
       ]
     },
     {
@@ -21171,7 +21181,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
       "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
       "sources": [
@@ -21181,7 +21191,7 @@
         },
         {
           "path": "docs/guides/agents.md",
-          "digest": "d5a32dad340ba69e98d4d57b4fbc95a0a262041bb8ccb8be2845178b0b56f465"
+          "digest": "2ab3a5d6dd8e63bb4fe7660184ab948e2289063c72b9d3c5abe24537f7096f86"
         },
         {
           "path": "packages/contracts/src/agent-identity.ts",
@@ -21201,7 +21211,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map.md changes are limited to replacing CollaborativeEditorPane with ProjectTaskRoom and removing PluginForegroundRuns. No Agent identity or adapter-selector section changed, and the inventory has no link into the removed sections. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "#2933: agents.md gained an autoApprove scope section; the inventory's agent identity surfaces are unaffected. No prose change."
+        "#2933: agents.md gained an autoApprove scope section; the inventory's agent identity surfaces are unaffected. No prose change.",
+        "#2933 round 2: agents.md reorganised autoApprove/unattended sections; no identity surface claim changed. No prose change."
       ]
     },
     {
@@ -21558,7 +21569,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -21735,7 +21746,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/providers/adapters/bedrock-adapter.ts",
@@ -22262,7 +22273,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its request routes (inspect-approval, attention, the respond command) keep their shapes and status codes; only what an edit-mode acceptForSession grants changed, which session-api.md documents. Prose accurate.",
         "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; system-update-routes.ts only made coreUpdateSupervision module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. The orchestration route table, the respond command's shape and status codes, and the delegated task event fields are unchanged; a title is still an optional bounded string. Prose accurate.",
-        "#2933: API examples show autoApprove: [] only; no route or payload changed. No prose change."
+        "#2933: API examples show autoApprove: [] only; no route or payload changed. No prose change.",
+        "#2933 round 2: no HTTP route or payload schema changed; ACP request.opened payload gains an optional toolKind read by shared helpers only. No prose change."
       ]
     },
     {
@@ -22294,7 +22306,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22594,7 +22606,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/routes/evidence/flow-runs.ts",
@@ -22682,12 +22694,13 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage (distribution.ts) and the dev open-file MIME/path helpers (dev/http.ts) private but leaves their callers and behavior the same. It deletes the test-only parseGitSource/extractPluginName from commands/helpers.ts. Server-side plugin-source.ts still splits `#<branch>` and passes `--branch` to clone, so the documented `#<branch>` install syntax still works. The cloud, cloud-project-import, portability, surface-http and triage test changes only tighten assertions (EEXIST on new output paths, HTTP status text, export headings and loss entries, ledger degradedFields, remote-diagnostics rejection), and all of them match the documented behavior. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c auto-merged a new 'Recorded versus acknowledged decisions' subsection after the delegate examples. It fits the branch's delegate text (respond/status/events). It also matches source: the six delivery values in station-control-delegation.ts; CODEX_APPROVAL_ACK_WINDOW_MS = 30_000; the codes engine-decision-unacknowledged and engine-decision-not-sent; the CLI line formats in packages/cli delegate.ts; and acknowledgement 'none' in the acp and claude adapters. 7cd4892e5 refuses a decision on a closed Codex request ('not open'), which matches the closed-by-engine row. The approvals section's request.opened/request.resolved description still holds. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) main's own edit to the service section (fixed launcher at <install root>/runtime/station-launcher.mjs, 165s TimeoutStopSec, launcher-run self-update with trial/rollback/needs-operator, install.sh handoff, Check for server updates) auto-merged cleanly into the branch's text. It is not duplicated and does not contradict the branch's tier table (packaged service status|start|stop). Main left the `upgrade` section saying the installer always stops the service, switches current and restarts it; that is wrong for a running launcher-run service now that install.sh hands off. Corrected the upgrade section: the installer only stages and asks the service to switch, the launcher trials and keeps the previous version on failure, and the old stop/switch/restart applies otherwise. Source review is separate from executed test evidence.",
-        "#2933: no CLI command or flag touches the acp-adapter requestPermission gate changed here. No prose change."
+        "#2933: no CLI command or flag touches the acp-adapter requestPermission gate changed here. No prose change.",
+        "#2933 round 2: no CLI behaviour depends on the ACP approval changes. No prose change."
       ]
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -22804,7 +22817,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "bcf788b472cfcfc4454ab375865e1dbc27f23d6696f36c6ba79ffc2d327ea015"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/runtime-agent-builder.ts",
@@ -22964,7 +22977,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. defaultApprovalMode still applies at session start below the chat's recorded pick, which a command-route edit-mode answer can now record. Prose accurate.",
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); strands-tool-loader.ts now imports the shared tool-load-failure classifier instead of its private copy of the same redaction decision; mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. defaultApprovalMode still applies at session start below the chat's recorded pick, which a command-route edit-mode answer can record; neither helper is configuration. Prose accurate.",
-        "#2933: autoApprove row now states a grant covers plain calls only, never an escalation or plan exit, linking the agents guide section. pre-tool-policy.ts change adds only the toolGrant marker on the isGranted allow; stage order and the other rows are unchanged."
+        "#2933: autoApprove row now states a grant covers plain calls only, never an escalation or plan exit, linking the agents guide section. pre-tool-policy.ts change adds only the toolGrant marker on the isGranted allow; stage order and the other rows are unchanged.",
+        "#2933 round 2: pre-tool-policy.ts only exports delegatedApprovalDenial (same reason and wording as before) and narrows deny's return type; the autoApprove row stays accurate."
       ]
     },
     {
@@ -23186,7 +23200,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -23295,7 +23309,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/providers/adapters/claude-sdk-turns.ts",
@@ -23427,7 +23441,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It lists the attention request-reference exports and approval-mode contract types; no contract type changed (the grant helpers are in station-shared). Prose accurate.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. No contract type changed on either side; the delegated task event's title stays an optional string. Prose accurate.",
-        "#2933: no contracts export changed; the new helpers live in @kontourai/station-shared/tool-request-preview. No prose change."
+        "#2933: no contracts export changed; the new helpers live in @kontourai/station-shared/tool-request-preview. No prose change.",
+        "#2933 round 2: no contracts export changed; toolKind is on the shared ToolRequestGrantInput. No prose change."
       ]
     },
     {
@@ -24969,8 +24984,8 @@
     },
     {
       "path": "docs/reference/session-api.md",
-      "documentDigest": "b18516a68bb8c237fad827a8f60847431e2e80a81293f41d93f0302d38bde982",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "documentDigest": "25595dfdc7dbcb9b81a5102cb7ca06ba6d061ae2338b4d32e39053fc801a6a54",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection. Follow-up (#2915/#2916): respondToRequest now states what acceptForSession grants in a Claude Session, including the session.configured mode report after an edit-mode answer.",
@@ -24990,11 +25005,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0d1a4c22f23ea599152d22075cb29554ccaf5c0c8fe82eb6cbe5d2b69d404045"
+          "digest": "f756ba253dd962b4fab64363851f3d47e5566df36fd90722df3827db2dccb780"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -25103,7 +25118,8 @@
         "Integration source review for #2915/#2916 on d0ca944c5: the respondToRequest paragraph states what acceptForSession grants in a Claude Session, that a command-route edit-mode answer records Auto unless a decision was recorded meanwhile or Auto/full access stands, and that the delegated respond route and the inbox send it as accept. The setApprovalMode, acknowledgement and inbox-closing claims are unaffected. Fixture tests only; no provider dispatched.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Re-checked both: the respondToRequest paragraph (#2915) matches the route and service; the Codex paragraph (wire-ID preservation, adapter tests covering decisions and session grants) still holds with main's decline reply, which the tool-policy-delivery page's #2911 reference already names. Prose accurate.",
-        "#2933: acceptForSession semantics unchanged; canUseTool now computes the shared grant input before the autoApprove check and reuses it for the session grant. The escalation paragraph stays accurate. No prose change."
+        "#2933: acceptForSession semantics unchanged; canUseTool now computes the shared grant input before the autoApprove check and reuses it for the session grant. The escalation paragraph stays accurate. No prose change.",
+        "#2933 round 2: acceptForSession paragraph now states an ACP plan exit (switch_mode kind or ExitPlanMode) counts as accept, mints no grant and selects allow-once; traced acp-adapter respondToRequest planExit handling. Claude text unchanged."
       ]
     },
     {
@@ -25380,7 +25396,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "52d3c088aed1ecaa9eaf65a68eaeedee361d9390ffcd8cf6d5cbcedd846c20a0",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25464,7 +25480,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/routes/agents/enriched-agents.ts",
@@ -25627,7 +25643,8 @@
         "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval-policy and plugin-approval topics stay at their explanatory scope and do not describe session answers. Prose accurate.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "#2933: shipped MCP topics make no claim about autoApprove ordering against escalations; acp-adapter change does not alter their scope. No prose change."
+        "#2933: shipped MCP topics make no claim about autoApprove ordering against escalations; acp-adapter change does not alter their scope. No prose change.",
+        "#2933 round 2: shipped MCP topics make no claim about ACP plan-exit session answers or delegated-child approval denial. No prose change."
       ]
     },
     {
@@ -28382,7 +28399,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "4e7b6a6348c2c5c27c4247e0c590d29d0d855dfa",
+      "sourceRevision": "1eedcca663f35646df4414881a0a63ae9dfbeee1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28434,11 +28451,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "62b0c81ba421a3144f62ee0aec9adaf697a89531a106c25310fb475dd5d30517"
+          "digest": "5e0dd9a103563947edd72849a5b9e65ae6ec418f0d1e3d7b76fd661bc437b542"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0d1a4c22f23ea599152d22075cb29554ccaf5c0c8fe82eb6cbe5d2b69d404045"
+          "digest": "f756ba253dd962b4fab64363851f3d47e5566df36fd90722df3827db2dccb780"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -28498,7 +28515,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "bcf788b472cfcfc4454ab375865e1dbc27f23d6696f36c6ba79ffc2d327ea015"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/request-delegation.ts",
@@ -28677,7 +28694,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It states four metadata reads are auto-approved and the rest remain subject to approval and the caller's authority; still true. Prose accurate.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. It states four metadata reads are auto-approved and the rest remain subject to approval and the caller's authority; still true with both. Prose accurate.",
-        "#2933: the four auto-approved metadata reads run on Station's engine (agent-hooks), which this change does not alter; the new toolGrant marker is ignored by the managed hook. No prose change."
+        "#2933: the four auto-approved metadata reads run on Station's engine (agent-hooks), which this change does not alter; the new toolGrant marker is ignored by the managed hook. No prose change.",
+        "#2933 round 2: example runs on Station's engine; the delegatedApprovalDenial extraction keeps the managed path's reason and wording. No prose change."
       ]
     },
     {

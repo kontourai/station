@@ -113,7 +113,7 @@ function deny(
   toolName: string,
   predicate: string,
   quoted?: QuotedDenialText,
-): PreToolPolicyDecision {
+): Extract<PreToolPolicyDecision, { behavior: 'deny' }> {
   toolDenials.add(1, { reason });
   return {
     behavior: 'deny',
@@ -162,6 +162,24 @@ const SCHEDULED_JOB_STORE_UNAVAILABLE =
  * The opt-in is honoured on Station's engine only, so an external (ACP or
  * Claude) child is not sent to an edit that changes nothing there.
  */
+/**
+ * The denial a delegated child that may not grant approvals
+ * (`delegation.denyApprovals`) gets for a call that would ask a person. One
+ * composition for the staged evaluator and for an external adapter whose
+ * engine asks after a tool-level grant let the call through (#2933): nobody
+ * can answer the child's request, so it fails fast instead of waiting.
+ */
+export function delegatedApprovalDenial(
+  toolName: string,
+  interaction: 'managed' | 'external',
+): Extract<PreToolPolicyDecision, { behavior: 'deny' }> {
+  return deny(
+    'delegation_deny_approvals',
+    toolName,
+    childDenialPredicate(interaction),
+  );
+}
+
 function childDenialPredicate(interaction: 'managed' | 'external'): string {
   const predicate =
     'requires approval, and delegated child sessions cannot grant approvals.';
@@ -437,11 +455,7 @@ export function createStagedPreToolPolicyEvaluator(
         agentSlug: invocation.agentSlug,
         conversationId: invocation.conversationId,
       });
-      return deny(
-        'delegation_deny_approvals',
-        tool.toolName,
-        childDenialPredicate(options.interaction),
-      );
+      return delegatedApprovalDenial(tool.toolName, options.interaction);
     }
 
     // The Claude SDK's canUseTool remains its interactive authority. Defer so
