@@ -796,8 +796,14 @@ describe('derived pin edges only add to selection', () => {
   });
 
   it('leaves lanes, related paths, and escalation exactly as they were', () => {
+    // The baseline includes the spawned-script edges, so this isolates the
+    // pin edges: a spawned edge may legitimately defer to test-full (#2922).
+    const withoutPins = [
+      ...TEST_IMPACT_MANIFEST,
+      ...spawnedScriptEdges({ root: ROOT }),
+    ];
     for (const { pattern } of derived) {
-      const before = selectChangedVerification([pattern]);
+      const before = selectChangedVerification([pattern], withoutPins as never);
       const after = selectChangedVerification([pattern], built as never);
       expect(after.lanes, pattern).toEqual(before.lanes);
       expect(after.relatedPaths, pattern).toEqual(before.relatedPaths);
