@@ -384,32 +384,42 @@ try {
   // through Invoke-Expression: install.ps1 must not take the caller's
   // argument (a usage error) nor exit the caller (the marker is lost).
   const setup = join(work, 'setup.ps1');
+  // The first line records what text run through Invoke-Expression sees of
+  // its caller ($PSCommandPath and $args), so the log shows why the gating
+  // in install.ps1 matters (or does not) on each PowerShell.
   writeFileSync(
     setup,
-    `Invoke-Expression ([IO.File]::ReadAllText('${installScript.replaceAll("'", "''")}'))\r\nWrite-Output 'SETUP-CONTINUED'\r\n`,
+    [
+      `Invoke-Expression 'Write-Output ("IEX-SEES PSCommandPath=[" + $PSCommandPath + "] args=[" + ($args -join ",") + "]")'`,
+      `Invoke-Expression ([IO.File]::ReadAllText('${installScript.replaceAll("'", "''")}'))`,
+      "Write-Output 'SETUP-CONTINUED'",
+      '',
+    ].join('\r\n'),
   );
-  const four = await runFile(
-    windowsPowerShell,
-    environment(stationRoot, publish('caller', first)),
-    setup,
-    ['--caller-only-argument'],
-  );
-  check(four.status === 0, 'the caller script failed');
-  check(
-    four.stdout.includes(
-      `Station ${first.tag} is already installed; nothing to do.`,
-    ),
-    'the caller script did not run the installer',
-  );
-  check(
-    lastLine(four.stdout) === 'SETUP-CONTINUED',
-    'install.ps1 ended the caller script',
-  );
-  check(
-    !four.stderr.includes('unexpected argument') &&
-      !four.stderr.includes('usage:'),
-    "install.ps1 took the caller's argument",
-  );
+  for (const shell of [windowsPowerShell, pwsh]) {
+    const four = await runFile(
+      shell,
+      environment(stationRoot, publish('caller', first)),
+      setup,
+      ['--caller-only-argument'],
+    );
+    check(four.status === 0, `the caller script failed under ${shell}`);
+    check(
+      four.stdout.includes(
+        `Station ${first.tag} is already installed; nothing to do.`,
+      ),
+      `the caller script did not run the installer under ${shell}`,
+    );
+    check(
+      lastLine(four.stdout) === 'SETUP-CONTINUED',
+      `install.ps1 ended the caller script under ${shell}`,
+    );
+    check(
+      !four.stderr.includes('unexpected argument') &&
+        !four.stderr.includes('usage:'),
+      `install.ps1 took the caller's argument under ${shell}`,
+    );
+  }
 
   // 5. Refusals on this host; each uses a fresh root and stages nothing.
   const tampered = Buffer.from(readFileSync(first.path));
