@@ -1729,7 +1729,7 @@ describe('SplitPaneLayout', () => {
       expect(betaPill.getAttribute('tabindex')).toBe('-1');
     });
 
-    test('group toggles are named for their action and sit in the arrow sequence; collapsed members are skipped', () => {
+    test('group toggles keep a constant name (APG disclosure), sit in the arrow sequence, and collapsed members are skipped', () => {
       const group = { id: 'run', label: 'Run · 1 delegated session' };
       const items: Items = [
         { id: 'root', name: 'Root task', group },
@@ -1738,18 +1738,20 @@ describe('SplitPaneLayout', () => {
       ];
       const { rows } = renderList(items);
       const toggle = screen.getByRole('button', {
-        name: 'Collapse Run · 1 delegated session',
+        name: 'Run · 1 delegated session',
+        expanded: true,
       });
-      expect(toggle.getAttribute('aria-expanded')).toBe('true');
 
       toggle.focus();
       fireEvent.keyDown(toggle, { key: 'ArrowDown' });
       expect(document.activeElement).toBe(rows()[0]);
 
       fireEvent.click(toggle);
+      // Same name; only aria-expanded changes.
       expect(
         screen.getByRole('button', {
-          name: 'Expand Run · 1 delegated session',
+          name: 'Run · 1 delegated session',
+          expanded: false,
         }),
       ).toBe(toggle);
       toggle.focus();
@@ -1757,6 +1759,186 @@ describe('SplitPaneLayout', () => {
       expect(document.activeElement).toBe(
         screen.getByRole('button', { name: 'Solo' }),
       );
+    });
+
+    test('a control a trailing cell reveals from its own state is demoted too', async () => {
+      function RevealingCell() {
+        const [open, setOpen] = useState(false);
+        return (
+          <>
+            <button type="button" onClick={() => setOpen(true)}>
+              Reveal
+            </button>
+            {open ? <button type="button">Revealed fix</button> : null}
+          </>
+        );
+      }
+      const items: Items = [
+        { id: 'a', name: 'Alpha' },
+        { id: 'b', name: 'Beta', trailing: <RevealingCell /> },
+      ];
+      renderList(items);
+      const reveal = screen.getByRole('button', { name: 'Reveal' });
+      expect(reveal.getAttribute('tabindex')).toBe('-1');
+      // A click does not focus in jsdom, so Beta stays inactive: only the
+      // cell re-renders, never SplitPaneLayout.
+      fireEvent.click(reveal);
+      const revealed = screen.getByRole('button', { name: 'Revealed fix' });
+      await waitFor(() => expect(revealed.getAttribute('tabindex')).toBe('-1'));
+    });
+
+    test('restoring a demoted control keeps a tabindex the caller changed meanwhile', async () => {
+      let setCallerTabIndex: (value: number) => void = () => {};
+      function CallerCell() {
+        const [tabIndex, setTabIndex] = useState(0);
+        setCallerTabIndex = setTabIndex;
+        return (
+          <button type="button" tabIndex={tabIndex}>
+            Caller control
+          </button>
+        );
+      }
+      const items: Items = [
+        { id: 'a', name: 'Alpha' },
+        { id: 'b', name: 'Beta', trailing: <CallerCell /> },
+      ];
+      const { rows } = renderList(items);
+      const control = screen.getByRole('button', { name: 'Caller control' });
+      expect(control.getAttribute('tabindex')).toBe('-1');
+      act(() => setCallerTabIndex(-1));
+      // Let the observer see React's write.
+      await act(async () => {});
+      act(() => rows()[1].focus());
+      expect(control.getAttribute('tabindex')).toBe('-1');
+    });
+
+    test('Right skips disabled, hidden and inert controls instead of dead-ending', () => {
+      const items: Items = [
+        {
+          id: 'a',
+          name: 'Alpha',
+          trailing: (
+            <>
+              <button type="button" disabled>
+                Fix (disabled)
+              </button>
+              <span hidden>
+                <button type="button">Hidden</button>
+              </span>
+              <button type="button">Chat</button>
+            </>
+          ),
+        },
+      ];
+      const { rows } = renderList(items);
+      act(() => rows()[0].focus());
+      fireEvent.keyDown(rows()[0], { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Chat' }),
+      );
+    });
+
+    test('a selection made while focus is on another row keeps that row the Tab stop', () => {
+      const trailing = <button type="button">Beta action</button>;
+      const items: Items = [
+        { id: 'a', name: 'Alpha' },
+        { id: 'b', name: 'Beta', trailing },
+        { id: 'c', name: 'Gamma' },
+      ];
+      const props = {
+        label: 'things',
+        title: 'Things',
+        items,
+        onSelect: vi.fn(),
+        onSearch: vi.fn(),
+      };
+      const view = render(
+        <SplitPaneLayout {...props} selectedId="a">
+          <div>detail</div>
+        </SplitPaneLayout>,
+      );
+      const beta = screen.getByRole('button', { name: 'Beta' });
+      act(() => beta.focus());
+      view.rerender(
+        <SplitPaneLayout {...props} selectedId="c">
+          <div>detail</div>
+        </SplitPaneLayout>,
+      );
+      expect(beta.tabIndex).toBe(0);
+      expect(
+        screen
+          .getByRole('button', { name: 'Beta action' })
+          .hasAttribute('tabindex'),
+      ).toBe(false);
+      // Focus outside the list: an outside selection does move the Tab stop.
+      act(() => beta.blur());
+      view.rerender(
+        <SplitPaneLayout {...props} selectedId="a">
+          <div>detail</div>
+        </SplitPaneLayout>,
+      );
+      expect(screen.getByRole('button', { name: 'Alpha' }).tabIndex).toBe(0);
+    });
+
+    test('removing the focused row moves focus to the Tab stop, not <body>', () => {
+      const items: Items = [
+        { id: 'a', name: 'Alpha' },
+        { id: 'b', name: 'Beta' },
+        { id: 'c', name: 'Gamma' },
+      ];
+      const props = {
+        label: 'things',
+        title: 'Things',
+        selectedId: 'c',
+        onSelect: vi.fn(),
+        onSearch: vi.fn(),
+      };
+      const view = render(
+        <SplitPaneLayout {...props} items={items}>
+          <div>detail</div>
+        </SplitPaneLayout>,
+      );
+      act(() => screen.getByRole('button', { name: 'Beta' }).focus());
+      view.rerender(
+        <SplitPaneLayout
+          {...props}
+          items={items.filter((item) => item.id !== 'b')}
+        >
+          <div>detail</div>
+        </SplitPaneLayout>,
+      );
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Gamma' }),
+      );
+    });
+
+    test.each([
+      'radiogroup',
+      'tablist',
+      'slider',
+      'spinbutton',
+      'grid',
+      'tree',
+      'combobox',
+    ])('arrows inside a trailing %s belong to that widget', (role) => {
+      const items: Items = [
+        {
+          id: 'a',
+          name: 'Alpha',
+          trailing: (
+            <div role={role}>
+              <button type="button">Inner</button>
+            </div>
+          ),
+        },
+        { id: 'b', name: 'Beta' },
+      ];
+      renderList(items);
+      const inner = screen.getByRole('button', { name: 'Inner' });
+      act(() => inner.focus());
+      fireEvent.keyDown(inner, { key: 'ArrowDown' });
+      fireEvent.keyDown(inner, { key: 'ArrowLeft' });
+      expect(document.activeElement).toBe(inner);
     });
   });
 });

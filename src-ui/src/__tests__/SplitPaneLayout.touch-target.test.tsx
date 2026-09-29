@@ -89,7 +89,14 @@ function fixtureHtml(): string {
   const group = {
     id: 'run',
     label: 'Run · 1 delegated session',
-    renderSummary: () => chip('summary'),
+    // Two narrow adjacent clusters, the RunBoardSummary shape the review
+    // found stealing each other's edge taps.
+    renderSummary: () => (
+      <>
+        {chip('summary')}
+        {chip('c2')}
+      </>
+    ),
   };
   const { container, unmount } = render(
     <SplitPaneLayout
@@ -98,7 +105,18 @@ function fixtureHtml(): string {
       items={[
         { id: 'root', name: 'Root task', group, trailing: chip('root-pill') },
         { id: 'child', name: 'Child task', group },
-        { id: 'solo', name: 'Solo', trailing: chip('solo-pill') },
+        {
+          id: 'solo',
+          name: 'Solo',
+          // A narrow no-confirm control beside a wider one, next to the row
+          // button's right edge: the Discard draft + Evidence shape.
+          trailing: (
+            <>
+              {chip('x')}
+              {chip('solo-pill')}
+            </>
+          ),
+        },
         { id: 'after', name: 'After' },
       ]}
       selectedId={null}
@@ -175,10 +193,48 @@ describe.skipIf(!chromiumAvailable)(
               ),
             };
           };
+          /**
+           * Taps 1, 3 and 8px inside each visible edge of each control (and
+           * of the row button beside them) must land on that control and not
+           * on a neighbour's enlarged hit area.
+           */
+          const edgeThieves: string[] = [];
+          const probes = [
+            ...document.querySelectorAll<HTMLElement>('[data-probe]'),
+            ...document.querySelectorAll<HTMLElement>(
+              '.split-pane__item-row .split-pane__item',
+            ),
+          ];
+          for (const element of probes) {
+            const r = element.getBoundingClientRect();
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            for (const inset of [1, 3, 8]) {
+              if (inset * 2 >= Math.min(r.width, r.height)) continue;
+              for (const [x, y, edge] of [
+                [r.left + inset, cy, 'left'],
+                [r.right - inset, cy, 'right'],
+                [cx, r.top + inset, 'top'],
+                [cx, r.bottom - inset, 'bottom'],
+              ] as const) {
+                const hit = document.elementFromPoint(x, y);
+                if (!hit || !(hit === element || element.contains(hit))) {
+                  const name =
+                    element.dataset.probe ?? element.textContent?.trim() ?? '?';
+                  const thief =
+                    (hit as HTMLElement | null)?.closest<HTMLElement>(
+                      '[data-probe]',
+                    )?.dataset.probe ?? hit?.className;
+                  edgeThieves.push(`${name} ${edge}-${inset}px -> ${thief}`);
+                }
+              }
+            }
+          }
           const collapse = box('.split-pane__collapse');
           const toggle = box('.split-pane__group-toggle');
           return {
             coarse: matchMedia('(pointer: coarse)').matches,
+            edgeThieves,
             collapse: { width: collapse.width, height: collapse.height },
             toggleHeight: toggle.height,
             rowHeight: box('.split-pane__item').height,
@@ -214,6 +270,15 @@ describe.skipIf(!chromiumAvailable)(
         expect(probe.reached).toBe(true);
       }
     });
+
+    test.each([true, false])(
+      'coarse=%s: every visible edge of a control, and of the row beside it, takes its own tap',
+      async (coarse) => {
+        const result = await measure(coarse);
+        expect(result.coarse).toBe(coarse);
+        expect(result.edgeThieves).toEqual([]);
+      },
+    );
 
     test('fine: desktop density is unchanged', async () => {
       const result = await measure(false);

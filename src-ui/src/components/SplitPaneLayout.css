@@ -784,18 +784,24 @@
  *
  * Where this component owns the box, the box itself grows: rows, the group
  * header (its toggle is transparent text, so stretching it is invisible) and
- * the collapse control. Trailing and group-summary controls are the caller's
- * markup (Agents wraps its action in a cell), so for every button or link
- * inside those slots the HIT AREA grows instead: an invisible, centred ::after
- * at least 44px each way, a no-op for a control already that size. The line
- * it sits in is 44px tall, so the box never reaches a neighbouring row. None
- * of today's consumers draws an ::after or positions those controls; one that
- * starts to must reconcile it with this rule.
+ * the collapse control.
  *
- * Two limits, measured in the running Activity list: a control that clips its
- * own overflow (the project pill's ellipsis) clips this box too, and two
- * controls stacked in one 44px row cannot each own 44px. The fix for both is
- * one trailing control per row, not a larger box.
+ * Trailing and group-summary controls are the caller's markup, and a hit area
+ * that grows past a control's drawn box takes taps meant for whatever is drawn
+ * there. An earlier version grew it both ways: a tap just inside a row's right
+ * edge landed on the row's Discard draft, and a tap on one run-board cluster's
+ * edge landed on the next. So:
+ * - WIDTH is real: a narrow control is laid out at least 44px wide, so its
+ *   neighbours are moved, not overlapped;
+ * - HEIGHT grows through an invisible ::after, vertically only, centred in a
+ *   line that is itself 44px tall, so it never reaches another row;
+ * - the trailing slot does not wrap here: two controls stacked in one 44px
+ *   row would each extend over the other.
+ *
+ * Measured limit: a control that clips its own overflow (the project pill's
+ * ellipsis) clips its ::after too, so it keeps its drawn height. None of
+ * today's consumers draws an ::after or positions these controls; one that
+ * starts to must reconcile it with this rule.
  */
 @media (pointer: coarse) {
   .split-pane__item {
@@ -807,7 +813,8 @@
     height: 44px;
   }
 
-  .split-pane__group-header {
+  .split-pane__group-header,
+  .split-pane__item-row {
     min-height: 44px;
   }
 
@@ -815,9 +822,14 @@
     align-self: stretch;
   }
 
+  .split-pane__item-trailing {
+    flex-wrap: nowrap;
+  }
+
   .split-pane__group-header :is(button, a[href]):not(.split-pane__group-toggle),
   .split-pane__item-trailing :is(button, a[href]) {
     position: relative;
+    min-width: 44px;
   }
 
   .split-pane__group-header
@@ -825,8 +837,8 @@
   .split-pane__item-trailing :is(button, a[href])::after {
     content: "";
     position: absolute;
+    inset-inline: 0;
     inset-block: min(0px, calc((100% - 44px) / 2));
-    inset-inline: min(0px, calc((100% - 44px) / 2));
   }
 }
 

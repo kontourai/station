@@ -296,19 +296,94 @@ function lineControls(line: Element): HTMLElement[] {
   );
 }
 
+/** A control Right/Left can actually land on: enabled, shown, laid out. */
+function isReachable(element: HTMLElement): boolean {
+  if (element.matches(':disabled')) return false;
+  if (element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+  // Chromium/WebKit/Gecko all ship checkVisibility; jsdom does not lay out,
+  // so there it is simply absent and visibility is not judged.
+  return typeof element.checkVisibility === 'function'
+    ? element.checkVisibility()
+    : true;
+}
+
+/**
+ * Only the active line's own controls stay in the Tab sequence. Callers own
+ * the markup of `trailing`/`renderSummary`, so their controls are demoted
+ * here and later restored to the tabindex they carry at that point.
+ */
+function syncLineTabStops(list: HTMLElement, tabStopKey: string | null) {
+  for (const line of list.querySelectorAll(`[${LINE_ATTR}]`)) {
+    const active = line.getAttribute(LINE_ATTR) === tabStopKey;
+    for (const control of lineControls(line)) {
+      const demoted = control.getAttribute(DEMOTED_ATTR);
+      if (active) {
+        if (demoted === null) continue;
+        if (demoted === '') control.removeAttribute('tabindex');
+        else control.setAttribute('tabindex', demoted);
+        control.removeAttribute(DEMOTED_ATTR);
+      } else if (demoted === null) {
+        control.setAttribute(
+          DEMOTED_ATTR,
+          control.getAttribute('tabindex') ?? '',
+        );
+        control.setAttribute('tabindex', '-1');
+      }
+    }
+  }
+}
+
+/**
+ * A caller that writes `tabindex` on a control we demoted (React re-applying
+ * a changed `tabIndex` prop) has changed the value to restore. Record it, and
+ * keep the control demoted. Our own writes never reach this: they are drained
+ * with `takeRecords()` right after each sync.
+ */
+function absorbCallerTabindexWrites(records: MutationRecord[]) {
+  for (const record of records) {
+    if (record.type !== 'attributes' || record.attributeName !== 'tabindex')
+      continue;
+    const control = record.target as HTMLElement;
+    if (!control.hasAttribute(DEMOTED_ATTR)) continue;
+    control.setAttribute(DEMOTED_ATTR, control.getAttribute('tabindex') ?? '');
+    control.setAttribute('tabindex', '-1');
+  }
+}
+
 function linePrimary(line: Element): HTMLElement | null {
   return line.hasAttribute(NAV_ATTR)
     ? (line as HTMLElement)
     : line.querySelector<HTMLElement>(`[${NAV_ATTR}]`);
 }
 
-/** Keys an owning control may already need (text entry, open menus). */
+/**
+ * Keys an owning control already needs: text entry, and every widget whose
+ * APG pattern binds arrows (menus, listboxes, radio groups, tabs, sliders,
+ * spin buttons, grids, trees, comboboxes) or that opens a dialog.
+ */
+const OWNS_ARROW_KEYS = [
+  'input',
+  'textarea',
+  'select',
+  '[contenteditable="true"]',
+  ...[
+    'menu',
+    'menubar',
+    'listbox',
+    'dialog',
+    'radiogroup',
+    'tablist',
+    'slider',
+    'spinbutton',
+    'grid',
+    'treegrid',
+    'tree',
+    'combobox',
+  ].map((role) => `[role="${role}"]`),
+].join(', ');
+
 function ownsArrowKeys(target: HTMLElement): boolean {
-  return Boolean(
-    target.closest(
-      'input, textarea, select, [contenteditable="true"], [role="menu"], [role="listbox"], [role="dialog"]',
-    ),
-  );
+  return Boolean(target.closest(OWNS_ARROW_KEYS));
 }
 
 export function SplitPaneLayout({
@@ -446,12 +521,19 @@ export function SplitPaneLayout({
 
   const rowIdPrefix = useId();
   const [activeNavKey, setActiveNavKey] = useState<string | null>(null);
-  // A new selection (click, route, deep link) is where the list resumes; a
-  // stale "last focused" line must not outrank it.
+  // A new selection made from OUTSIDE the list (route, deep link) is where
+  // the list resumes; a stale "last focused" line must not outrank it. While
+  // focus is inside the list the reader's own line stays the Tab stop.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on selection change only.
   useEffect(() => {
+    const list = listRef.current;
+    if (list?.contains(list.ownerDocument.activeElement)) return;
     setActiveNavKey(null);
   }, [selectedId]);
+  /** The line focus is on, kept past its removal so focus can be rehomed. */
+  const focusedLineRef = useRef<string | null>(null);
+  const tabStopKeyRef = useRef<string | null>(null);
+  const tabStopObserverRef = useRef<MutationObserver | null>(null);
 
   const focusGroupMember = (groupId: string, memberId: string) => {
     expandGroup(groupId);
@@ -890,37 +972,76 @@ export function SplitPaneLayout({
         ? `item:${selectedId}`
         : (navKeys[0] ?? null);
 
-  // Only the active line's own controls stay in the Tab sequence. Callers own
-  // the markup of `trailing`/`renderSummary`, so their controls are demoted
-  // here and restored to exactly the tabindex they came with.
+  tabStopKeyRef.current = tabStopKey;
+
+  // Children re-render on their own (a trailing cell revealing a Fix button,
+  // a caller flipping a control's tabIndex), which never re-runs this
+  // component's effects. The observer re-syncs on exactly those mutations.
+  useIsomorphicLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || typeof MutationObserver === 'undefined') return;
+    const observer = new MutationObserver((records) => {
+      absorbCallerTabindexWrites(records);
+      syncLineTabStops(list, tabStopKeyRef.current);
+      observer.takeRecords();
+    });
+    observer.observe(list, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['tabindex'],
+    });
+    tabStopObserverRef.current = observer;
+    return () => {
+      observer.disconnect();
+      tabStopObserverRef.current = null;
+    };
+  }, []);
+
   useIsomorphicLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
-    for (const line of list.querySelectorAll(`[${LINE_ATTR}]`)) {
-      const active = line.getAttribute(LINE_ATTR) === tabStopKey;
-      for (const control of lineControls(line)) {
-        const demoted = control.getAttribute(DEMOTED_ATTR);
-        if (active) {
-          if (demoted === null) continue;
-          if (demoted === '') control.removeAttribute('tabindex');
-          else control.setAttribute('tabindex', demoted);
-          control.removeAttribute(DEMOTED_ATTR);
-        } else if (demoted === null) {
-          control.setAttribute(
-            DEMOTED_ATTR,
-            control.getAttribute('tabindex') ?? '',
-          );
-          control.setAttribute('tabindex', '-1');
-        }
-      }
+    const observer = tabStopObserverRef.current;
+    if (observer) absorbCallerTabindexWrites(observer.takeRecords());
+    syncLineTabStops(list, tabStopKey);
+    observer?.takeRecords();
+
+    // The focused line was removed (Discard draft, a filter, a refetch): the
+    // browser drops focus to <body>. Put it on the list's Tab stop instead.
+    const focusedLine = focusedLineRef.current;
+    if (!focusedLine) return;
+    const doc = list.ownerDocument;
+    const active = doc.activeElement;
+    if (active && active !== doc.body) {
+      if (!list.contains(active)) focusedLineRef.current = null;
+      return;
     }
+    if (navKeys.includes(focusedLine)) return;
+    focusedLineRef.current = null;
+    const target = tabStopKey
+      ? Array.from(list.querySelectorAll<HTMLElement>(`[${NAV_ATTR}]`)).find(
+          (element) => element.getAttribute(NAV_ATTR) === tabStopKey,
+        )
+      : undefined;
+    target?.focus();
   });
 
   function trackActiveLine(event: React.FocusEvent<HTMLDivElement>) {
     const line = (event.target as HTMLElement).closest(`[${LINE_ATTR}]`);
-    if (!line || !listRef.current?.contains(line)) return;
+    if (!line || !listRef.current?.contains(line)) {
+      focusedLineRef.current = null;
+      return;
+    }
     const key = line.getAttribute(LINE_ATTR);
+    focusedLineRef.current = key;
     if (key && key !== activeNavKey) setActiveNavKey(key);
+  }
+
+  function forgetLeftLine(event: React.FocusEvent<HTMLDivElement>) {
+    // Only a move to a known element outside the list forgets the line. A
+    // null relatedTarget is also what removing the focused row looks like.
+    const next = event.relatedTarget as Node | null;
+    if (next && !listRef.current?.contains(next)) focusedLineRef.current = null;
   }
 
   function navigateList(event: React.KeyboardEvent<HTMLDivElement>) {
@@ -952,7 +1073,7 @@ export function SplitPaneLayout({
             ? primaries[primaries.length - 1]
             : primaries[index + (event.key === 'ArrowDown' ? 1 : -1)];
     } else if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-      const sequence = [primary, ...lineControls(line)];
+      const sequence = [primary, ...lineControls(line).filter(isReachable)];
       const index = sequence.findIndex(
         (element) => element === target || element.contains(target),
       );
@@ -1170,6 +1291,7 @@ export function SplitPaneLayout({
           ref={listRef}
           tabIndex={-1}
           onFocus={trackActiveLine}
+          onBlur={forgetLeftLine}
           onKeyDown={navigateList}
         >
           {typeof listIntro === 'function' ? listIntro(selectItem) : listIntro}
@@ -1332,9 +1454,9 @@ export function SplitPaneLayout({
                           type="button"
                           className="split-pane__group-toggle"
                           aria-expanded={groupExpanded}
-                          // The visible label leads with a disclosure glyph;
-                          // name the action and the group instead.
-                          aria-label={`${groupExpanded ? 'Collapse' : 'Expand'} ${group.label}`}
+                          // APG disclosure: a constant name (the label, without
+                          // the glyph) and aria-expanded carries the state.
+                          aria-label={group.label}
                           tabIndex={`group:${group.id}` === tabStopKey ? 0 : -1}
                           data-split-pane-nav={`group:${group.id}`}
                           onClick={() => {

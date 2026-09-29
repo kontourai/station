@@ -565,7 +565,7 @@ describe('SessionsView', () => {
 
     expect(
       screen
-        .getByRole('button', { name: 'Collapse Run · 2 delegated sessions' })
+        .getByRole('button', { name: 'Run · 2 delegated sessions' })
         .getAttribute('aria-expanded'),
     ).toBe('true');
     expect(screen.getAllByTestId('session-member-status')).toHaveLength(3);
@@ -710,7 +710,7 @@ describe('SessionsView', () => {
     const view = renderView();
     const list = view.container.querySelector('.split-pane__list')!;
     const group = screen.getByRole('button', {
-      name: 'Collapse Run · 1 delegated session',
+      name: 'Run · 1 delegated session',
     });
 
     expect(
@@ -746,7 +746,7 @@ describe('SessionsView', () => {
       ),
     ).toEqual(['Delegated/background work · 2']);
     expect(
-      screen.getByRole('button', { name: 'Expand Run · 1 delegated session' }),
+      screen.getByRole('button', { name: 'Run · 1 delegated session' }),
     ).toBeTruthy();
 
     view.rerenderSession('needs-you-child');
@@ -784,7 +784,7 @@ describe('SessionsView', () => {
     renderView();
 
     const toggle = screen.getByRole('button', {
-      name: 'Collapse Run · 1 delegated session',
+      name: 'Run · 1 delegated session',
     });
     fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
@@ -4275,9 +4275,7 @@ describe('SessionsView', () => {
       renderView();
 
       expect(
-        screen.getByRole('button', {
-          name: 'Collapse Run · 1 delegated session',
-        }),
+        screen.getByRole('button', { name: 'Run · 1 delegated session' }),
       ).toBeTruthy();
       expect(
         screen.getByRole('button', { name: 'Evidence for Run child done' }),
