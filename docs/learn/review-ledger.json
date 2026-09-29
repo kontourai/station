@@ -3514,7 +3514,7 @@
     {
       "path": "docs/architecture.md",
       "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
-      "sourceRevision": "63a3f83ab328bc5bbe66c65f090aed034ed6e009",
+      "sourceRevision": "fee791801711ba5b3f41ac24ab4f0dbbcc52d1ec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
@@ -3618,7 +3618,7 @@
         },
         {
           "path": "src-server/runtime/conversation/stream-orchestrator.ts",
-          "digest": "8c08bf154c6d7a34f70e8e45c3e2b3ad4a9bc19037ee5d18d6daae4a6ce19b3c"
+          "digest": "f16106830039bbb499856af766112abd747a6e6e34e577d3e348297a1ec563b3"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -3703,7 +3703,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by execution-target-execution.ts (canonicalHandoffEffectDigest unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the station-agent failure-reason change: writeSSEError now forwards only a 4xx/5xx provider HTTP status beside the fixed outward text, and the station-agent relay composes its runtime.error message from that status (code/retriable unchanged). This document makes no claim about the /chat error frame, the relay's runtime.error wording, or provider-text exposure; its pipeline, adapter and module-ownership claims remain accurate.",
-        "Reviewed against the failure-reason follow-up: a zero-output /chat turn's persisted [SYSTEM_EVENT] [CHAT_ERROR] marker now carries outwardTurnFailureText (provider status sentence, Station's abort constant, or the fixed outward generic) instead of the thrown error's message; writeSSEError and the station-agent relay share the status wording in providers/model-provider-failure.ts, credential-shaped 401 precedence unchanged. This document makes no claim about the marker text, the /chat error frame or runtime.error wording; its cost-tracking, env-var, agent, pipeline, adapter and ownership claims remain accurate."
+        "Reviewed against the failure-reason follow-up: a zero-output /chat turn's persisted [SYSTEM_EVENT] [CHAT_ERROR] marker now carries outwardTurnFailureText (provider status sentence, Station's abort constant, or the fixed outward generic) instead of the thrown error's message; writeSSEError and the station-agent relay share the status wording in providers/model-provider-failure.ts, credential-shaped 401 precedence unchanged. This document makes no claim about the marker text, the /chat error frame or runtime.error wording; its cost-tracking, env-var, agent, pipeline, adapter and ownership claims remain accurate.",
+        "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract."
       ]
     },
     {
@@ -3892,7 +3893,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "63a3f83ab328bc5bbe66c65f090aed034ed6e009",
+      "sourceRevision": "fee791801711ba5b3f41ac24ab4f0dbbcc52d1ec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4248,7 +4249,7 @@
         },
         {
           "path": "src-server/knowledge-store/adapters/conversation-store.ts",
-          "digest": "349b4e7f4f0620b306d1ac82f816cd36446f1c31a843878b3fcbcf2484701c9d"
+          "digest": "f49321e1e2ba42b416887ccec379cd71d7725d34b12c56d2511af3e7b30673f9"
         },
         {
           "path": "src-server/knowledge-store/adapters/default-store.ts",
@@ -4300,7 +4301,7 @@
         },
         {
           "path": "src-server/providers/adapters/station-agent-adapter.ts",
-          "digest": "d64cebf20e915608a2d660a03762328a5bb1d39b05532f747bd186d5112bdde5"
+          "digest": "f39ae6f86a6048adce9bd1b44c18c988c91592d01b88a5ac471fded9cb472ecf"
         },
         {
           "path": "src-server/providers/finish-reason-authority.ts",
@@ -5642,7 +5643,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Reviewed against the station-agent failure-reason change: writeSSEError now forwards only a 4xx/5xx provider HTTP status beside the fixed outward text, and the station-agent relay composes its runtime.error message from that status (code/retriable unchanged). This document makes no claim about the /chat error frame, the relay's runtime.error wording, or provider-text exposure; its pipeline, adapter and module-ownership claims remain accurate.",
-        "Reviewed against the failure-reason follow-up: a zero-output /chat turn's persisted [SYSTEM_EVENT] [CHAT_ERROR] marker now carries outwardTurnFailureText (provider status sentence, Station's abort constant, or the fixed outward generic) instead of the thrown error's message; writeSSEError and the station-agent relay share the status wording in providers/model-provider-failure.ts, credential-shaped 401 precedence unchanged. This document makes no claim about the marker text, the /chat error frame or runtime.error wording; its cost-tracking, env-var, agent, pipeline, adapter and ownership claims remain accurate."
+        "Reviewed against the failure-reason follow-up: a zero-output /chat turn's persisted [SYSTEM_EVENT] [CHAT_ERROR] marker now carries outwardTurnFailureText (provider status sentence, Station's abort constant, or the fixed outward generic) instead of the thrown error's message; writeSSEError and the station-agent relay share the status wording in providers/model-provider-failure.ts, credential-shaped 401 precedence unchanged. This document makes no claim about the marker text, the /chat error frame or runtime.error wording; its cost-tracking, env-var, agent, pipeline, adapter and ownership claims remain accurate.",
+        "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract."
       ]
     },
     {
@@ -7286,7 +7288,7 @@
     {
       "path": "docs/design/conduit-runtime-integration.md",
       "documentDigest": "92b017dfab71e1bd1ed9c41545c8e5aab4373b8093c9246f80667d544a9f32f0",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "fee791801711ba5b3f41ac24ab4f0dbbcc52d1ec",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete Station-engine hook projection against actual VoltAgent and Strands callers, before/after-tool and completion forwarding, public Conduit adapter, capability classification, lockfile identity and generated conformance report. Clarified what the host-bound label and portable probes establish.",
@@ -7322,7 +7324,7 @@
         },
         {
           "path": "src-server/runtime/frameworks/strands-adapter.ts",
-          "digest": "46bbc874f00500f6a960b5913e831e24196de0f12283d2c48dfc2a4a675b8459"
+          "digest": "a5a68fde71c92f0469051912c4374f9a1836ac70778125412e4d01accfacbf77"
         },
         {
           "path": "src-server/runtime/frameworks/strands-agent-hooks.ts",
@@ -7339,7 +7341,8 @@
         "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
         "Integration source review through d1e0facc2: Tests now call the real adapter capability/projection surface. Capabilities became a private immutable constant with the same availability values. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: package.json and pnpm-lock.yaml only removed the root bearing/forage dependencies. Conduit 0.7.1 and the VoltAgent/Strands lockfile identities are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract."
       ]
     },
     {
@@ -14500,7 +14503,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "fee791801711ba5b3f41ac24ab4f0dbbcc52d1ec",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14536,7 +14539,7 @@
         },
         {
           "path": "docs/reference/api.md",
-          "digest": "3b5d2e09a30b6c2e39c51535dffe2e291c06d18b80f4c67223639d99c462ab54"
+          "digest": "8fef9f1d827bf024405c68ebcbc66c4c85eefde5d0bd049eaf77737c61a428b4"
         },
         {
           "path": "docs/reference/cli.md",
@@ -14593,7 +14596,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Linked documents changed only in branding entries: plugins.md getTheme comment, api.md theme paragraph, sdk.md useBrandingQuery entry. SDK BrandingData.theme became unknown and fetchBranding rejects non-OK or unsuccessful answers; provider-interfaces adds the BrandingTheme type; main.tsx adds the branding pre-render apply. This guide makes no branding claim; its routing remains accurate. Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed docs/guides/documentation.md, covered by its notes above; this branch changed docs/guides/plugins.md, docs/reference/api.md, docs/reference/sdk.md, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by api.md (legacy-provider receipt sentence removed); claims unaffected.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Reviewed after docs/reference/api.md gained the failed-turn marker contract paragraph (served [CHAT_ERROR] text is outward-safe; pre-fix markers served as the generic). This guide only routes integrators to the API reference and makes no claim about marker text; its routing remains accurate."
       ]
     },
     {
@@ -15842,7 +15846,7 @@
     {
       "path": "docs/guides/monitoring.md",
       "documentDigest": "5b225dd4842009417c702a0552af67974e38eaa1b9e8d726a3a7a3389e1c1595",
-      "sourceRevision": "63a3f83ab328bc5bbe66c65f090aed034ed6e009",
+      "sourceRevision": "fee791801711ba5b3f41ac24ab4f0dbbcc52d1ec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide reviewed: local versus OTLP/usage paths, pinned resource defaults, async startup, retention, historical shadow evidence, recording populations/attributes, tokens/costs, dashboard queries, spans, schema/history and Insights. All 28 prior rendered anchors preserved.",
@@ -15870,7 +15874,7 @@
         },
         {
           "path": "src-server/routes/chat/chat-lifecycle.ts",
-          "digest": "dc05e958286878c04d38c02aebbe87a107e59fad53ae944058f99a326872556b"
+          "digest": "9b8c9f752c22eb9d3986331263f5ce25f5c86f91466fb8fbd1f65cd4db36efb8"
         },
         {
           "path": "src-server/routes/operations/insights.ts",
@@ -15926,7 +15930,8 @@
         "Reviewed source deltas: Tenant execution dimensions now validate closed vocabularies at runtime and use invalid for foreign values. Instrument declaration count remains309; regenerated declaration source hashes/line links, not emitted metric evidence.",
         "Integration source review through e0314c727: telemetry.ts inlined resolveOtelResourceAttributes and removed the createInstallationIdHash seam. The resource attributes are unchanged (service.installation.id from the persisted otel-installation-id hash, os.type), and the header now says import order is insufficient. pnpm-lock only dropped bearing/forage. Resource-attribute and async-startup prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-record.ts (outcome list made an as-const literal with comments (same members)); claims unaffected.",
-        "Reviewed against the failure-reason follow-up: a zero-output /chat turn's persisted [SYSTEM_EVENT] [CHAT_ERROR] marker now carries outwardTurnFailureText (provider status sentence, Station's abort constant, or the fixed outward generic) instead of the thrown error's message; writeSSEError and the station-agent relay share the status wording in providers/model-provider-failure.ts, credential-shaped 401 precedence unchanged. This document makes no claim about the marker text, the /chat error frame or runtime.error wording; its cost-tracking, env-var, agent, pipeline, adapter and ownership claims remain accurate."
+        "Reviewed against the failure-reason follow-up: a zero-output /chat turn's persisted [SYSTEM_EVENT] [CHAT_ERROR] marker now carries outwardTurnFailureText (provider status sentence, Station's abort constant, or the fixed outward generic) instead of the thrown error's message; writeSSEError and the station-agent relay share the status wording in providers/model-provider-failure.ts, credential-shaped 401 precedence unchanged. This document makes no claim about the marker text, the /chat error frame or runtime.error wording; its cost-tracking, env-var, agent, pipeline, adapter and ownership claims remain accurate.",
+        "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract."
       ]
     },
     {
@@ -21646,12 +21651,12 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "fee791801711ba5b3f41ac24ab4f0dbbcc52d1ec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
       "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
-      "documentDigest": "3b5d2e09a30b6c2e39c51535dffe2e291c06d18b80f4c67223639d99c462ab54",
+      "documentDigest": "8fef9f1d827bf024405c68ebcbc66c4c85eefde5d0bd049eaf77737c61a428b4",
       "sources": [
         {
           "path": "packages/cli/src/commands/environment.ts",
@@ -21891,7 +21896,7 @@
         },
         {
           "path": "src-server/routes/chat/conversations.ts",
-          "digest": "919104312a529ed63f517fc75017bc29d868b782306c0d04726fdc19f522ba17"
+          "digest": "ac5779152fcd11c2dbcfccc8a0edde75bb2adc33e891f6fb51d12a9d77988882"
         },
         {
           "path": "src-server/routes/connections/bedrock.ts",
@@ -22355,7 +22360,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Added a theme paragraph under Get Branding Config: flat and per-mode shape, the route passes it through unvalidated, and the UI applies it only when every key is allowlisted, every value hex and every contrast check passes in both modes. Checked against src-server/routes/system/branding.ts and src-ui/src/lib/branding-theme.ts (added as a source). Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/chat/chat.ts, src-server/routes/orchestration/orchestration.ts, src-server/routes/system/install-provenance.ts, src-server/routes/system/system-update-routes.ts, covered by its notes above; this branch changed the document, src-ui/src/lib/branding-theme.ts (added), covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
-        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract."
       ]
     },
     {
@@ -22780,7 +22786,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "fee791801711ba5b3f41ac24ab4f0dbbcc52d1ec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -22933,7 +22939,7 @@
         },
         {
           "path": "src-server/runtime/frameworks/strands-adapter.ts",
-          "digest": "46bbc874f00500f6a960b5913e831e24196de0f12283d2c48dfc2a4a675b8459"
+          "digest": "a5a68fde71c92f0469051912c4374f9a1836ac70778125412e4d01accfacbf77"
         },
         {
           "path": "src-server/runtime/frameworks/strands-tool-loader.ts",
@@ -23056,7 +23062,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read leaf to pairing-route-scopes. a290454b4 (#2919) makes ChatDock's agentIdentityFromSession private. Neither changes the config fields, the diagnostics-logs scope tier or the chat-dock re-send claims; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); strands-tool-loader.ts now imports the shared tool-load-failure classifier instead of its private copy of the same redaction decision; mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected.",
-        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract."
       ]
     },
     {
@@ -24069,7 +24076,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "63a3f83ab328bc5bbe66c65f090aed034ed6e009",
+      "sourceRevision": "fee791801711ba5b3f41ac24ab4f0dbbcc52d1ec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24542,7 +24549,7 @@
         },
         {
           "path": "src-server/providers/adapters/station-agent-adapter.ts",
-          "digest": "d64cebf20e915608a2d660a03762328a5bb1d39b05532f747bd186d5112bdde5"
+          "digest": "f39ae6f86a6048adce9bd1b44c18c988c91592d01b88a5ac471fded9cb472ecf"
         },
         {
           "path": "src-server/routes/agents/invoke-agent.ts",
@@ -25071,7 +25078,8 @@
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the station-agent failure-reason change: writeSSEError now forwards only a 4xx/5xx provider HTTP status beside the fixed outward text, and the station-agent relay composes its runtime.error message from that status (code/retriable unchanged). This document makes no claim about the /chat error frame, the relay's runtime.error wording, or provider-text exposure; its pipeline, adapter and module-ownership claims remain accurate.",
-        "Reviewed against the failure-reason follow-up: a zero-output /chat turn's persisted [SYSTEM_EVENT] [CHAT_ERROR] marker now carries outwardTurnFailureText (provider status sentence, Station's abort constant, or the fixed outward generic) instead of the thrown error's message; writeSSEError and the station-agent relay share the status wording in providers/model-provider-failure.ts, credential-shaped 401 precedence unchanged. This document makes no claim about the marker text, the /chat error frame or runtime.error wording; its cost-tracking, env-var, agent, pipeline, adapter and ownership claims remain accurate."
+        "Reviewed against the failure-reason follow-up: a zero-output /chat turn's persisted [SYSTEM_EVENT] [CHAT_ERROR] marker now carries outwardTurnFailureText (provider status sentence, Station's abort constant, or the fixed outward generic) instead of the thrown error's message; writeSSEError and the station-agent relay share the status wording in providers/model-provider-failure.ts, credential-shaped 401 precedence unchanged. This document makes no claim about the marker text, the /chat error frame or runtime.error wording; its cost-tracking, env-var, agent, pipeline, adapter and ownership claims remain accurate.",
+        "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract."
       ]
     },
     {
@@ -26823,7 +26831,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "fee791801711ba5b3f41ac24ab4f0dbbcc52d1ec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26876,7 +26884,7 @@
         },
         {
           "path": "src-server/routes/chat/conversations.ts",
-          "digest": "919104312a529ed63f517fc75017bc29d868b782306c0d04726fdc19f522ba17"
+          "digest": "ac5779152fcd11c2dbcfccc8a0edde75bb2adc33e891f6fb51d12a9d77988882"
         },
         {
           "path": "src-server/routes/knowledge/knowledge-source-routes.ts",
@@ -27021,7 +27029,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval buttons (Approve once/Deny) are a different surface; no claim touched.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
+        "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract."
       ]
     },
     {
