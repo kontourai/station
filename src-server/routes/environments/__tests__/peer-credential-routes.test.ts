@@ -196,46 +196,23 @@ describe('peer credential routes (station#1123 slice 2)', () => {
     ]);
   });
 
-  test("the credential leaf 403s any request not carrying this Station's own internal API token", async () => {
+  // #2377 C2b: the outbound peer bearer is read only in-process, by the
+  // runtime's remote forwarder. No leaf of this router answers it, attested
+  // or not.
+  test('no request, even with the internal API token, reads a stored credential', async () => {
     const mock = store();
     const app = createPeerCredentialRoutes(mock as any);
-
-    const noToken = await app.request('/environment-peer-b/credential');
-    expect(noToken.status).toBe(403);
+    for (const path of [
+      '/environment-peer-b/credential',
+      '/environment-peer-b',
+      '/',
+    ]) {
+      const response = await app.request(path, {
+        headers: { 'x-station-internal-token': getInternalApiToken() },
+      });
+      expect(await response.text()).not.toContain('the-actual-secret');
+    }
     expect(mock.get).not.toHaveBeenCalled();
-
-    const wrongToken = await app.request('/environment-peer-b/credential', {
-      headers: { 'x-station-internal-token': 'not-the-real-token' },
-    });
-    expect(wrongToken.status).toBe(403);
-    expect(mock.get).not.toHaveBeenCalled();
-  });
-
-  test('the credential leaf returns the raw secret only to an internally attested caller', async () => {
-    const mock = store();
-    const app = createPeerCredentialRoutes(mock as any);
-
-    const response = await app.request('/environment-peer-b/credential', {
-      headers: { 'x-station-internal-token': getInternalApiToken() },
-    });
-    expect(response.status).toBe(200);
-    const body = await json<{
-      success: boolean;
-      data: { credential: string; apiBase: string };
-    }>(response);
-    expect(body.data.credential).toBe('the-actual-secret');
-    expect(body.data.apiBase).toBe('https://box-b.example.test');
-  });
-
-  test('the credential leaf 404s a missing environmentId even when internally attested', async () => {
-    const mock = store();
-    mock.get.mockReturnValueOnce(null);
-    const app = createPeerCredentialRoutes(mock as any);
-
-    const response = await app.request('/environment-nowhere/credential', {
-      headers: { 'x-station-internal-token': getInternalApiToken() },
-    });
-    expect(response.status).toBe(404);
   });
 
   describe('SSH-precedence warning (review fix, PR #1178)', () => {

@@ -21,14 +21,35 @@
 
 /* A development build installs alongside a real one — same name, same window,
    one letter of difference in the application id. Retinting the brand token is
-   enough to make the whole app unmistakable, because accents, selection,
-   focus rings and active states all derive from it. Scoped to the class the
-   native host sets, so the web app and release builds are untouched. The
-   vendor `.theme-*` classes also set `--k-brand`, but none is applied
-   anywhere in this app; if one ever is, this needs an arm that outranks it. */
+   enough to make the whole app unmistakable, because accents, selection and
+   active states derive from it. Scoped to the class the native host sets, so
+   the web app and release builds are untouched. The vendor `.theme-*` classes
+   also set `--k-brand`, but none is applied anywhere in this app; if one ever
+   is, this needs an arm that outranks it.
+
+   Each channel block also sets the interaction roles (`--k-action`,
+   `--k-action-contrast`, `--k-focus`). Station reads them with a `--k-brand`
+   fallback, and from @kontourai/ui 1.14 the shared primitives read them
+   instead of the brand, so without them buttons and focus rings would drop
+   back to the release accent.
+
+   The brand is also painted as text: the sidebar channel badge and the kit's
+   `.eyebrow` read it directly. So every channel value passes the same rules
+   a white-label theme has to (lib/branding-theme.ts), per mode: brand and
+   action as text at 4.5:1 on page and panel, each fill with its text at
+   4.5:1, focus at 3:1. `branding-role-cascade.test.ts` checks those rules
+   and `channel-text-contrast.test.tsx` measures the rendered text on its
+   real surfaces, including the raised rows the panel links sit on and the
+   sidebar home button's hover fill behind the badge. Where a channel's
+   signature hue fails (nightly #8b5cf6, beta #5865f2, the dev light
+   #a75f0d), the mode uses a nearby shade of it for brand and roles alike. A dark-mode fill light enough to read on the dark page cannot
+   carry white text at 4.5:1, so dark modes pair it with dark text. */
 :root.is-dev-build {
   --k-brand: #e08b2f;
   --k-brand-contrast: #1b1205;
+  --k-action: #e08b2f;
+  --k-action-contrast: #1b1205;
+  --k-focus: #e08b2f;
 }
 
 /* The mark is a raster asset, so retinting --k-brand cannot reach it: the dev
@@ -45,18 +66,43 @@
 }
 
 :root.is-dev-build[data-theme="light"] {
-  --k-brand: #a75f0d;
+  --k-brand: #98560c;
   --k-brand-contrast: #ffffff;
+  --k-action: #98560c;
+  --k-action-contrast: #ffffff;
+  --k-focus: #98560c;
 }
 
 :root[data-app-channel="beta"] {
-  --k-brand: #5865f2;
+  --k-brand: #7983f4;
+  --k-brand-contrast: #06080b;
+  --k-action: #7983f4;
+  --k-action-contrast: #06080b;
+  --k-focus: #7983f4;
+}
+
+:root[data-app-channel="beta"][data-theme="light"] {
+  --k-brand: #4f5bd5;
   --k-brand-contrast: #ffffff;
+  --k-action: #4f5bd5;
+  --k-action-contrast: #ffffff;
+  --k-focus: #4f5bd5;
 }
 
 :root[data-app-channel="nightly"] {
-  --k-brand: #8b5cf6;
+  --k-brand: #9d7bf8;
+  --k-brand-contrast: #06080b;
+  --k-action: #9d7bf8;
+  --k-action-contrast: #06080b;
+  --k-focus: #9d7bf8;
+}
+
+:root[data-app-channel="nightly"][data-theme="light"] {
+  --k-brand: #7c3aed;
   --k-brand-contrast: #ffffff;
+  --k-action: #7c3aed;
+  --k-action-contrast: #ffffff;
+  --k-focus: #7c3aed;
 }
 
 :root[data-app-channel="beta"] img[src="/favicon.png"] {
@@ -81,7 +127,7 @@
   [role="link"],
   [tabindex]:not([tabindex="-1"])
 ):focus-visible {
-  outline: 2px solid var(--accent-primary) !important;
+  outline: 2px solid var(--k-focus, var(--accent-primary)) !important;
   outline-offset: 2px !important;
 }
 
@@ -199,13 +245,16 @@
   --border-primary: var(--k-line);
   --border-secondary: var(--k-line-strong);
 
-  --accent-primary: var(--k-brand);
+  /* The action and focus roles (@kontourai/ui 1.14+) with a brand fallback, so
+     the same rule works before and after that release; see the channel
+     blocks at the top of this file and lib/branding-theme.ts. */
+  --accent-primary: var(--k-action, var(--k-brand));
   /* Contrast partner of --accent-primary. This declaration covers the
      built-in brand only: a device accent override sets BOTH custom
      properties on the root together (src-ui/src/lib/accent-contrast.ts),
      because moving the background without the foreground is what put the
      shipped indigo preset under the 4.5:1 AA floor (station#3305). */
-  --text-on-accent: var(--k-brand-contrast);
+  --text-on-accent: var(--k-action-contrast, var(--k-brand-contrast));
   --accent-hover: color-mix(in srgb, var(--k-brand) 12%, transparent);
   --accent-yellow: #c9a854;
   /* Text on a yellow-tinted chip fill. Dark keeps --accent-yellow (measured
@@ -337,7 +386,7 @@
 
   --warning-primary: #ffb74d;
 
-  --accent-darker: var(--k-brand);
+  --accent-darker: var(--k-action, var(--k-brand));
   /* Fill for the hover state of the accented controls whose foreground is
      --text-on-accent. Defaults to --accent-darker (which both themes define
      as the brand itself, so the built-in hover changes no color); a custom
@@ -448,10 +497,10 @@
   --border-dashed: var(--k-line);
 
   /* Accent / Brand */
-  --accent-primary: var(--k-brand);
-  --text-on-accent: var(--k-brand-contrast);
+  --accent-primary: var(--k-action, var(--k-brand));
+  --text-on-accent: var(--k-action-contrast, var(--k-brand-contrast));
   --accent-hover: color-mix(in srgb, var(--k-brand) 12%, transparent);
-  --accent-darker: var(--k-brand);
+  --accent-darker: var(--k-action, var(--k-brand));
   /* Same derivation as the dark block above. */
   --accent-hover-fill: var(--accent-darker);
   --accent-yellow: #ca8a04;
@@ -1521,11 +1570,15 @@ button:hover {
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
+/* On hover and focus the grip sits on the handle's brand tint. The primary
+   text colour contrasts with that tint in every mode and channel; the brand's
+   own contrast partner (`--text-inverted`) is chosen for the solid brand, not
+   a 30% tint, and fell below 3:1 in both modes. */
 .chat-dock__resize-handle:hover .chat-dock__resize-grip,
 .chat-dock__resize-handle:focus-visible .chat-dock__resize-grip,
 .chat-dock__resize-handle:hover::after,
 .chat-dock__resize-handle:focus-visible::after {
-  background: var(--text-inverted);
+  background: var(--text-primary);
 }
 
 /* Rotated grip for the side-panel (width) handle. */
@@ -4550,8 +4603,14 @@ button.background-tasks-banner:focus-visible {
   margin: 2px 0;
 }
 
+/* #2917: the row wraps rather than squeezing. With the approval actions
+   beside it, a line allowed to shrink to nothing collapsed its label to 0px
+   and let its non-shrinking glyphs paint over the first button. The line's
+   10rem basis is the narrowest it may get while sharing the row; below that
+   the actions drop to their own line and the label keeps the full width. */
 .tool-call__row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -4559,7 +4618,7 @@ button.background-tasks-banner:focus-visible {
 
 .tool-call__line {
   display: flex;
-  flex: 1;
+  flex: 1 1 10rem;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -4620,12 +4679,17 @@ button.tool-call__line:hover {
 }
 
 /* Named to the shared action-row vocabulary so its direct buttons inherit
-   the inventory-wide mobile wrap/44px floor. */
+   the inventory-wide mobile wrap/44px floor. #2917: it may shrink to the
+   row and wrap its own buttons, so it never forces the line below its
+   basis or overflows a narrow column. */
 .tool-call__actions {
   display: flex;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Expanded detail: a subtle bounded monospace panel with a truthful status
@@ -4708,13 +4772,15 @@ button.tool-call__line:hover {
 }
 
 /* The kit's filled tone rules bind all four semantic fills to the unrelated
-   --k-brand-contrast token. Beta/nightly override that token to white, making
-   every dark-theme tone fail AA. Station already has proven quiet pairs for
-   success, warning and error, so StatusBadge uses those complete trios here.
-   Border follows the quiet semantic border instead of retaining a saturated
-   ring around a muted chip. The kit has no info trio; its existing quiet
-   Active treatment is the toast contract: raised panel, normal text, active
-   border. Reuse that exact treatment rather than minting new info colors. */
+   --k-brand-contrast token, whose value follows the brand fill (channel
+   retints and white-label themes change it), not the tones; when it was
+   white, every dark-theme tone failed AA. Station already has proven
+   quiet pairs for success, warning and error, so StatusBadge uses those
+   complete trios here. Border follows the quiet semantic border instead of
+   retaining a saturated ring around a muted chip. The kit has no info trio;
+   its existing quiet Active treatment is the toast contract: raised panel,
+   normal text, active border. Reuse that exact treatment rather than minting
+   new info colors. */
 .tone-positive {
   background: var(--success-bg);
   color: var(--success-text);
@@ -4804,24 +4870,28 @@ button.tool-call__line:hover {
   border-radius: 3px;
   cursor: pointer;
   font-weight: 400;
-  transition:
-    transform var(--motion-fast) var(--ease-standard),
-    opacity var(--motion-fast) var(--ease-standard);
+  transition: transform var(--motion-fast) var(--ease-standard);
 }
 
 .tool-call__approve-btn:active {
   transform: scale(0.95);
 }
 
+/* #2917: --text-on-accent is --accent-primary's contrast partner (a device
+   accent override sets both together). White on dark's mint brand was
+   1.62:1. The filled variants carry a transparent 1px border so the
+   disabled state changes only its colour and style, never the size. */
 .tool-call__approve-btn--primary {
-  background: var(--color-primary);
-  color: white;
-  border: none;
-  margin-left: 0.25rem;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border: 1px solid transparent;
 }
 
+/* #2917: each filled variant sets its own hover fill. With only `opacity`
+   here, the global `button:hover` (0,1,1) outranked the variant background
+   and hover painted white text on --bg-tertiary: 1.03:1 in light. */
 .tool-call__approve-btn--primary:hover {
-  opacity: 0.8;
+  background: var(--accent-hover-fill);
 }
 
 .tool-call__approve-btn--secondary {
@@ -4837,29 +4907,37 @@ button.tool-call__line:hover {
 .tool-call__approve-btn--danger {
   background: var(--error-fill);
   color: white;
-  border: none;
+  border: 1px solid transparent;
 }
 
+/* #2917: see the primary hover above. */
 .tool-call__approve-btn--danger:hover {
-  opacity: 0.8;
+  background: var(--error-dark);
 }
 
-/* #2316: a decision in flight (or already accepted) cannot be sent twice. */
-.tool-call__approve-btn:disabled {
-  opacity: 0.5;
+/* #2316: a decision in flight (or already accepted) cannot be sent twice.
+   #2917: unfilled, dashed and in the row label's own --text-muted rather
+   than 50% opacity, which took every variant's text as low as 1.43:1.
+   Visibly quieter than an enabled control, yet still legible: the #2917
+   journey holds it to 3:1 (inactive controls are exempt from 4.5:1). */
+.tool-call__approve-btn:disabled,
+.tool-call__approve-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+  border-style: dashed;
+  border-color: var(--border-primary);
+  opacity: 1;
   cursor: default;
 }
 
 /* #2316: a decision Station did not accept is named on the card itself,
-   on its own line beneath the buttons. */
-.tool-call__actions:has(.tool-call__approve-error),
-.tool-call__actions:has(.tool-call__approve-status) {
-  flex-wrap: wrap;
-}
-
+   on its own line beneath the buttons. #2917: `contain: inline-size` keeps
+   the sentence out of the actions' intrinsic width, so it wraps under the
+   buttons instead of widening the actions until the label has no room. */
 .tool-call__approve-error,
 .tool-call__approve-status {
   flex-basis: 100%;
+  contain: inline-size;
   margin: 2px 0 0;
   font-size: 0.75em;
 }

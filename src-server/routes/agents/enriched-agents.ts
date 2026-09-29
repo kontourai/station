@@ -574,7 +574,6 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       ? runtimeConnectionsById.get(spec.execution.agentConnectionId)
       : undefined;
     const sessionAgentUnavailableReason = sessionAgentStartUnavailableReason({
-      provider: connection?.provider,
       agentSlug: metadata.slug,
       // A successfully loaded authored spec and the narrow runtime-owned
       // Station identity are exactly the two sources the session resolver

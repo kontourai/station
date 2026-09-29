@@ -179,7 +179,9 @@
 .trust-panel__claim-toggle {
   border: none;
   background: none;
-  color: var(--k-brand);
+  /* An interactive control reads the action role, not the brand (an
+     identity slot only). The fallback covers @kontourai/ui before 1.14. */
+  color: var(--k-action, var(--k-brand));
   font-size: var(--k-text-xs);
   cursor: pointer;
   padding: 0;

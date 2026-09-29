@@ -15,7 +15,7 @@ import {
   createPlannedHomeTransferCoordinator,
 } from '../planned-home-transfer-coordinator.js';
 import {
-  createSqlitePlannedHomeTransferStore,
+  createAuthorizedSqlitePlannedHomeTransferStore,
   type PlannedHomeTransferStore,
 } from '../planned-home-transfer-store.js';
 import type { ProjectTaskRoomCapabilityAuthority } from '../project-task-room-history.js';
@@ -112,7 +112,10 @@ function decisionStore(
   const database = new DatabaseSync(join(root, 'controller.sqlite'));
   databases.push(database);
   database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
-  const store = createSqlitePlannedHomeTransferStore(database);
+  const store = createAuthorizedSqlitePlannedHomeTransferStore(
+    database,
+    () => true,
+  );
   expect(store.initialize(owner)).toMatchObject({ kind: 'stored' });
   beforePrepare?.(database);
   expect(store.prepare(intent)).toMatchObject({

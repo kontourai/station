@@ -68,7 +68,9 @@ describe('mobile device host', () => {
   test('missing configuration never contacts a helper', async () => {
     const fetch = fixtureFetch();
     expect(
-      await new LocalMobileDeviceHost({ fetch }).inventory(),
+      await new LocalMobileDeviceHost({
+        hub: explicitDeviceHubEndpoint(undefined, { fetch }),
+      }).inventory(),
     ).toMatchObject({
       state: 'unavailable',
       failure: 'not-configured',
@@ -79,8 +81,7 @@ describe('mobile device host', () => {
   test('captures the exact freshly discovered target and passes no caller credentials', async () => {
     const fetch = fixtureFetch();
     const host = new LocalMobileDeviceHost({
-      endpoint: 'http://127.0.0.1:43871',
-      fetch,
+      hub: explicitDeviceHubEndpoint('http://127.0.0.1:43871', { fetch }),
     });
     const result = await host.capture(target);
     expect(result).toMatchObject({
@@ -113,8 +114,7 @@ describe('mobile device host', () => {
       ],
     });
     const host = new LocalMobileDeviceHost({
-      endpoint: 'http://127.0.0.1:43871',
-      fetch,
+      hub: explicitDeviceHubEndpoint('http://127.0.0.1:43871', { fetch }),
     });
     await host.capture({
       hostId: 'local',
@@ -131,8 +131,7 @@ describe('mobile device host', () => {
       simulators: [{ ...device, physical: true }],
     });
     const host = new LocalMobileDeviceHost({
-      endpoint: 'http://127.0.0.1:43871',
-      fetch,
+      hub: explicitDeviceHubEndpoint('http://127.0.0.1:43871', { fetch }),
     });
     await expect(host.capture(target)).rejects.toMatchObject({
       code: 'device-unavailable',
@@ -157,8 +156,7 @@ describe('mobile device host', () => {
   test('does not reuse a previously discovered device after it disappears', async () => {
     const fetch = fixtureFetch();
     const host = new LocalMobileDeviceHost({
-      endpoint: 'http://127.0.0.1:43871',
-      fetch,
+      hub: explicitDeviceHubEndpoint('http://127.0.0.1:43871', { fetch }),
     });
     expect((await host.inventory()).devices).toHaveLength(1);
     fetch.mockResolvedValue(Response.json({ simulators: [], emulators: [] }));
@@ -173,8 +171,9 @@ describe('mobile device host', () => {
     { simulators: [], emulators: 'invalid' },
   ])('malformed inventories never become ready', async (rows) => {
     const host = new LocalMobileDeviceHost({
-      endpoint: 'http://127.0.0.1:43871',
-      fetch: fixtureFetch(rows),
+      hub: explicitDeviceHubEndpoint('http://127.0.0.1:43871', {
+        fetch: fixtureFetch(rows),
+      }),
     });
     expect(await host.inventory()).toMatchObject({
       state: 'unavailable',
@@ -183,10 +182,11 @@ describe('mobile device host', () => {
   });
   test('retains working platforms without forwarding raw discovery errors', async () => {
     const host = new LocalMobileDeviceHost({
-      endpoint: 'http://127.0.0.1:43871',
-      fetch: fixtureFetch({
-        ...inventory(),
-        errors: [{ message: 'secret-path' }],
+      hub: explicitDeviceHubEndpoint('http://127.0.0.1:43871', {
+        fetch: fixtureFetch({
+          ...inventory(),
+          errors: [{ message: 'secret-path' }],
+        }),
       }),
     });
     const result = await host.inventory();
@@ -200,7 +200,9 @@ describe('mobile device host', () => {
       res.end();
     });
     expect(
-      await new LocalMobileDeviceHost({ endpoint }).inventory(),
+      await new LocalMobileDeviceHost({
+        hub: explicitDeviceHubEndpoint(endpoint),
+      }).inventory(),
     ).toMatchObject({ failure: 'response-too-large' });
   });
   test('deadline includes a stalled response body', async () => {
@@ -209,7 +211,10 @@ describe('mobile device host', () => {
       res.write('{');
     });
     expect(
-      await new LocalMobileDeviceHost({ endpoint, timeoutMs: 100 }).inventory(),
+      await new LocalMobileDeviceHost({
+        hub: explicitDeviceHubEndpoint(endpoint),
+        timeoutMs: 100,
+      }).inventory(),
     ).toMatchObject({ failure: 'hub-unavailable' });
   });
   test('refuses a redirect before contacting its destination', async () => {
@@ -223,7 +228,9 @@ describe('mobile device host', () => {
       res.end();
     });
     expect(
-      await new LocalMobileDeviceHost({ endpoint }).inventory(),
+      await new LocalMobileDeviceHost({
+        hub: explicitDeviceHubEndpoint(endpoint),
+      }).inventory(),
     ).toMatchObject({ failure: 'hub-unavailable' });
     expect(visits).toBe(0);
   });
@@ -238,8 +245,7 @@ describe('mobile device host', () => {
     );
     await expect(
       new LocalMobileDeviceHost({
-        endpoint: 'http://127.0.0.1:43871',
-        fetch,
+        hub: explicitDeviceHubEndpoint('http://127.0.0.1:43871', { fetch }),
       }).capture(target),
     ).rejects.toMatchObject({ code: 'invalid-response' });
   });
@@ -259,8 +265,7 @@ describe('read lanes (#1970)', () => {
       return Response.json(inventory());
     });
     const host = new LocalMobileDeviceHost({
-      endpoint: 'http://127.0.0.1:43871',
-      fetch,
+      hub: explicitDeviceHubEndpoint('http://127.0.0.1:43871', { fetch }),
     });
     const shots = [host.screenshot(target), host.screenshot(target)];
     // The screenshot lane is full...
@@ -331,7 +336,6 @@ describe('mobile device host: the managed hub (#1970)', () => {
   test('no running managed hub and no explicit endpoint reads as not-configured', async () => {
     const fetch = fixtureFetch();
     const host = new LocalMobileDeviceHost({
-      fetch,
       hub: deviceHubEndpointFromToolchain(
         { ensureHub: async () => undefined },
         explicitDeviceHubEndpoint(undefined, { fetch }),

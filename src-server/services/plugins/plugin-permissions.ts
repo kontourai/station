@@ -1166,20 +1166,6 @@ export function snapshotPluginGrantEntry(
     : null;
 }
 
-/** @deprecated A snapshot is observation, not rollback authority. Use an owned mutation scope. */
-export async function restorePluginGrantEntry(
-  projectHomeDir: string,
-  pluginName: string,
-  entry: PluginGrantRecord | null,
-): Promise<void> {
-  void projectHomeDir;
-  void pluginName;
-  void entry;
-  throw new Error(
-    'Plugin permission restoration requires an owned mutation receipt.',
-  );
-}
-
 /**
  * Withdraws specific permissions from a plugin (archive#3815).
  *

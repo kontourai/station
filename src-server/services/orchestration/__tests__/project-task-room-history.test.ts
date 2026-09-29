@@ -21,7 +21,7 @@ import {
   readPlannedHomeAdmissionJournal,
 } from '../planned-home-admission-schema.js';
 import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
-import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
+import { createAuthorizedSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 import { projectTaskRoomReceiptLookupIdentifier } from '../project-task-room-append-receipt.js';
 import {
   createProjectTaskRoomHistoryForTest,
@@ -767,7 +767,10 @@ describe('ProjectTaskRoomHistory v2', () => {
     it('asks for no admission when the transaction cannot reach its first write', async () => {
       const authority = new DatabaseSync(databasePath());
       authority.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
-      const transfers = createSqlitePlannedHomeTransferStore(authority);
+      const transfers = createAuthorizedSqlitePlannedHomeTransferStore(
+        authority,
+        () => true,
+      );
       const admissions = createPlannedHomeAdmissionStore(authority, () => true);
       const owner = {
         tenantId: 'personal-controller:test',
@@ -2722,7 +2725,10 @@ it('does not invent document integrity evidence for an older source seal', async
 it('holds real controller ownership until a durable room receipt settles after restart', async () => {
   const database = new DatabaseSync(databasePath());
   database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
-  const transfers = createSqlitePlannedHomeTransferStore(database);
+  const transfers = createAuthorizedSqlitePlannedHomeTransferStore(
+    database,
+    () => true,
+  );
   const admissions = createPlannedHomeAdmissionStore(database, () => true);
   const owner = {
     tenantId: 'personal-controller:test',

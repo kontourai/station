@@ -264,6 +264,8 @@ describe('Play upload retry', () => {
       ownedPids.add(wrapper.pid as number);
       await waitForFile(readyPath);
       const uploadPid = Number(readFileSync(readyPath, 'utf8'));
+      // afterEach SIGKILLs every owned pid; pid 0 would be this process group.
+      expect(Number.isSafeInteger(uploadPid) && uploadPid > 0).toBe(true);
       ownedPids.add(uploadPid);
       const closedPromise = waitForChild(wrapper);
       wrapper.kill(signal);

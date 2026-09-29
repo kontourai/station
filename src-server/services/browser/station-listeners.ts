@@ -159,19 +159,6 @@ export function deriveStationListeners(
   };
 }
 
-/** The enforcement rule on a resolved destination. */
-export function isStationListenerDestination(
-  address: string,
-  port: number,
-  listeners: StationListeners,
-  interfaceAddresses: readonly string[],
-): boolean {
-  return (
-    listeners.ports.includes(port) &&
-    isLocalAddress(address, interfaceAddresses)
-  );
-}
-
 /**
  * URL-level approximation for the CDP Fetch defence-in-depth layer, which
  * cannot see resolved addresses: a Station port on a loopback spelling, a

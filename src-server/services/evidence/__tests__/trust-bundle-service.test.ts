@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { buildTrustReport, type TrustBundle } from '@kontourai/surface';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -53,6 +54,7 @@ describe('TrustBundleService', () => {
   const tempDirs: string[] = [];
 
   afterEach(() => {
+    vi.useRealTimers();
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -212,6 +214,11 @@ describe('TrustBundleService', () => {
 
   describe('getTrustReport', () => {
     test('derives a trust report from a valid bundle', async () => {
+      // The report stamps generatedAt and freshness from the clock, so pin it:
+      // the service's call and the expected value's call can land a
+      // millisecond apart.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-09-28T12:00:00.000Z'));
       const cwd = createWorkspace();
       writeWorkspaceBundle(cwd, 'survey-session.json', validBundle());
       const result = await new TrustBundleService().getTrustReport(
@@ -220,15 +227,11 @@ describe('TrustBundleService', () => {
       );
       expect(result.valid).toBe(true);
       expect(result.source).toBe('workspace');
-      expect(result.report?.claims).toHaveLength(1);
-      expect(result.report?.claims[0]).toMatchObject({
-        id: 'claim-1',
-        claimType: 'quality.static-checks',
-      });
-      expect(result.report?.claims[0].status).toBeTruthy();
-      expect(result.report?.evidence).toHaveLength(1);
-      expect(result.report?.summary.totalClaims).toBe(1);
-      expect(Array.isArray(result.report?.transparencyGaps)).toBe(true);
+      // Surface owns the derivation; Station resolves the bundle and passes
+      // Surface's report through unchanged.
+      expect(result.report).toEqual(
+        buildTrustReport(validBundle() as unknown as TrustBundle),
+      );
     });
 
     test('prefers the workspace bundle when ids collide with station-home', async () => {
@@ -252,14 +255,17 @@ describe('TrustBundleService', () => {
 
     test('returns valid:false with the validation error for a bad bundle', async () => {
       const cwd = createWorkspace();
-      writeWorkspaceBundle(cwd, 'invalid.json', { claims: 'nope' });
+      writeWorkspaceBundle(cwd, 'invalid.json', {
+        ...validBundle(),
+        claims: 'nope',
+      });
       const result = await new TrustBundleService().getTrustReport(
         { workspacePath: cwd },
         'invalid',
       );
       expect(result.valid).toBe(false);
       expect(result.report).toBeNull();
-      expect(result.error).toBeTruthy();
+      expect(result.error).toContain('claims');
     });
 
     test('throws not-found for an unknown bundle id', async () => {

@@ -60,8 +60,22 @@ describe('IntegrationIconAssets', () => {
     ['../outside.png', 'traversal'],
     ['/tmp/mark.png', 'absolute path'],
   ])('rejects %s manifest input (%s)', async (icon) => {
-    const { assets } = await fixture(icon);
-    expect((await assets.resolve('local')).status).not.toBe('found');
+    // A real PNG waits at the traversal target and a favicon in the
+    // integration, so an escape would be served rather than merely missing.
+    // The filename check and the realpath containment check are redundant
+    // layers; this pins the no-escape outcome, not either layer alone.
+    const { root, dir, assets } = await fixture(icon);
+    await writeFile(
+      join(root, 'integrations', 'outside.png'),
+      Buffer.concat([PNG, Buffer.from('outside')]),
+    );
+    const favicon = Buffer.concat([PNG, Buffer.from('favicon')]);
+    await writeFile(join(dir, 'favicon.png'), favicon);
+    const result = await assets.resolve('local');
+    expect(result.status).toBe('found');
+    if (result.status === 'found') {
+      expect(result.asset.body.equals(favicon)).toBe(true);
+    }
   });
 
   test('rejects forged extensions, oversized files, and symlink escape', async () => {

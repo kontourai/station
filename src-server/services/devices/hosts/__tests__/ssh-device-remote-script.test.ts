@@ -59,6 +59,25 @@ const OWNER = 'a'.repeat(24);
 const VERSION = '0.10.1';
 
 /** The remote program, run the way sshd runs it: `$SHELL -c "<words>"`. */
+/** A session PATH with the system shell tools but no user-installed node. */
+const SESSION_PATH = '/usr/bin:/bin';
+
+/** The constant loader, run by a login shell with a minimal system PATH. */
+async function runLoader(home: string) {
+  const child = spawn('/bin/sh', ['-c', remoteLoaderCommand().join(' ')], {
+    env: { HOME: home, PATH: SESSION_PATH },
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  let stderr = '';
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  child.stdin.end();
+  const code = await new Promise((resolve) => child.once('exit', resolve));
+  return { code, stderr };
+}
+
 function runRemote(home: string) {
   // The prelude puts `$HOME/.local/bin` first on PATH (a common user-level
   // Node location); pin it to THIS node so the run does not depend on
@@ -200,28 +219,35 @@ describe('the device-host program', () => {
     expect(existsSync(join(home, '.station-device-host'))).toBe(false);
   });
 
-  test('the loader finds node on the session PATH, or reports it missing (typed)', async () => {
+  test('the loader runs the node it finds first on the session PATH', async () => {
     const home = tempDir('station-remote-home-');
-    const child = spawn('/bin/sh', ['-c', remoteLoaderCommand().join(' ')], {
-      env: { HOME: home, PATH: '/nonexistent' },
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-    let stderr = '';
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-    child.stdin.end();
-    const code = await new Promise((resolve) => child.once('exit', resolve));
-    // Only when no node sits in the prelude's fixed directories either.
-    if (
-      !['/opt/homebrew/bin/node', '/usr/local/bin/node'].some((path) =>
-        existsSync(path),
-      )
-    ) {
-      expect(code).toBe(REMOTE_NODE_MISSING_EXIT);
-      expect(stderr).toContain('STATION_DEVICE_HOST_NODE_MISSING');
-    } else expect(code).not.toBe(REMOTE_NODE_MISSING_EXIT);
+    // $HOME/.local/bin precedes the prelude's fixed directories.
+    const bin = join(home, '.local', 'bin');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(
+      join(bin, 'node'),
+      '#!/bin/sh\necho "STATION_TEST_FAKE_NODE $1" >&2\nexit 0\n',
+      { mode: 0o755 },
+    );
+    const { code, stderr } = await runLoader(home);
+    expect(stderr).toContain('STATION_TEST_FAKE_NODE -e');
+    expect(code).toBe(0);
+  });
+
+  // The prelude prepends fixed directories, so the missing branch runs only
+  // on a host with no node there or on the session PATH; elsewhere this
+  // reports a skip.
+  test.skipIf(
+    [
+      '/opt/homebrew/bin/node',
+      '/usr/local/bin/node',
+      ...SESSION_PATH.split(':').map((dir) => join(dir, 'node')),
+    ].some((path) => existsSync(path)),
+  )('the loader reports a missing node as a typed exit', async () => {
+    const { code, stderr } = await runLoader(tempDir('station-remote-home-'));
+    expect(REMOTE_NODE_MISSING_EXIT).toBe(97);
+    expect(code).toBe(REMOTE_NODE_MISSING_EXIT);
+    expect(stderr).toContain('STATION_DEVICE_HOST_NODE_MISSING');
   });
 
   test('install publishes exactly the manifest, and probe then sees that digest', async () => {

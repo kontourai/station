@@ -6,7 +6,6 @@ import {
   parseServePublicOrigins,
   TAILSCALE_MACOS_APP_CLI,
   type TailscaleCliResult,
-  tailscaleCliExecutableCandidates,
 } from '../public-ingress-origin.js';
 
 /**
@@ -277,12 +276,21 @@ describe('createPublicIngressOriginResolver', () => {
 });
 
 describe('Tailscale CLI executable discovery', () => {
-  test('tries the official macOS app-bundle binary before the ordinary PATH command', () => {
-    expect(tailscaleCliExecutableCandidates('darwin')).toEqual([
-      TAILSCALE_MACOS_APP_CLI,
-      'tailscale',
-    ]);
-    expect(tailscaleCliExecutableCandidates('linux')).toEqual(['tailscale']);
+  test('outside macOS it invokes only the ordinary PATH command', async () => {
+    const calls: string[] = [];
+    const cli = createTailscaleCli({
+      platform: 'linux',
+      execute: async (executable) => {
+        calls.push(executable);
+        return { stdout: '', exitCode: null };
+      },
+    });
+
+    await expect(cli(['status', '--json'])).resolves.toEqual({
+      stdout: '',
+      exitCode: null,
+    });
+    expect(calls).toEqual(['tailscale']);
   });
 
   test('uses the official macOS app-bundle binary when the GUI PATH has no tailscale command', async () => {
@@ -303,9 +311,9 @@ describe('Tailscale CLI executable discovery', () => {
   });
 
   test.each([
-    ['missing', { stdout: '', exitCode: null }],
-    ['non-executable', { stdout: '', exitCode: null }],
-    ['timed out', { stdout: '', exitCode: null }],
+    // The executor reports a missing, non-executable, or timed-out command
+    // alike: no exit code.
+    ['unrunnable', { stdout: '', exitCode: null }],
     ['non-zero', { stdout: 'daemon unavailable', exitCode: 1 }],
   ] as const)(
     'falls back from a %s official candidate and remains fail-closed when PATH also fails',

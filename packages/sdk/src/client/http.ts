@@ -33,25 +33,16 @@ import {
 } from './api-error-message';
 import { boundResponse } from './bounded-response.js';
 import { withClientOriginHeaders } from './client-origin.js';
+import {
+  rethrowDeadline,
+  SAFE_HTTP_METHODS,
+  StationRequestTimeoutError,
+  unlessDeadline,
+} from './request-deadline';
 
 // Defined beside the envelope rule that builds it (#2708), so the rule and
 // the error need no import cycle; every existing `./http` import still works.
 export { StationHttpError };
-
-/**
- * The HTTP methods that cannot change server state. Mirrors the runtime's own
- * `SAFE_HTTP_METHODS` (`src-server/runtime/bootstrap/runtime-http.ts`) — the
- * two are the same concept read from opposite ends of the same request, and
- * both mean "this method is not, by itself, a mutation".
- *
- * What it deliberately does NOT mean is "every other method IS a mutation".
- * Station uses POST for several genuine reads that need a request body
- * (`POST /api/knowledge/index/search`, `POST /api/connections/:id/test`,
- * `POST /api/runs/output`), and no property of the request distinguishes
- * those from a write. That distinction belongs to the operation, which
- * declares it with `ClientRequestOptions['readOnly']`.
- */
-const SAFE_HTTP_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export interface ClientRequestOptions {
   headers?: Record<string, string>;
@@ -210,49 +201,6 @@ export function getClientRequestTimeout(): number | undefined {
   return clientRequestTimeoutMs;
 }
 
-/** A Station request that exceeded its deadline rather than failing outright. */
-export class StationRequestTimeoutError extends Error {
-  readonly url: string;
-  readonly timeoutMs: number;
-  /**
-   * The HTTP method the aborted request used, uppercased — an observed fact,
-   * `undefined` when the constructing call site did not supply one. It is
-   * deliberately not defaulted: this class is exported from the published SDK,
-   * so a default would stamp an external two-argument construction with a
-   * method nobody observed.
-   */
-  readonly method?: string;
-  /**
-   * Whether the aborted request could have changed server state. `true` makes
-   * the deadline miss *indeterminate* — the server may have applied the write
-   * after the client stopped waiting, so the outcome is unknown rather than
-   * failed. `false` means it genuinely failed and may be retried freely.
-   * `undefined` means nothing derived it (no method was supplied) and no
-   * caller may claim either.
-   *
-   * Derived here rather than by each reporter, from the two things that can
-   * answer the question: the method, and the operation's own `readOnly`
-   * declaration for the write-shaped methods Station uses for reads.
-   */
-  readonly mutation?: boolean;
-
-  constructor(
-    url: string,
-    timeoutMs: number,
-    request?: { method?: string; readOnly?: boolean },
-  ) {
-    super(`Request to ${url} timed out after ${timeoutMs}ms`);
-    this.name = 'StationRequestTimeoutError';
-    this.url = url;
-    this.timeoutMs = timeoutMs;
-    const method = request?.method?.toUpperCase();
-    if (method !== undefined) this.method = method;
-    if (request?.readOnly === true) this.mutation = false;
-    else if (method !== undefined)
-      this.mutation = !SAFE_HTTP_METHODS.has(method);
-  }
-}
-
 /**
  * Resolves the deadline for one call. Precedence: an explicit `timeoutMs`
  * wins; otherwise a caller-supplied `signal` means the caller owns cancellation
@@ -289,17 +237,71 @@ async function fetchWithDeadline(
   // derivation of what was actually sent, not a stand-in for an unknown.
   const method =
     init?.method ?? (input instanceof Request ? input.method : 'GET');
+  const timedOut = () =>
+    new StationRequestTimeoutError(url, timeoutMs, {
+      method,
+      ...(opts?.readOnly !== undefined ? { readOnly: opts.readOnly } : {}),
+    });
+  let response: Response;
   try {
-    return await request(input, { ...(init ?? {}), signal });
+    response = await request(input, { ...(init ?? {}), signal });
   } catch (error) {
-    if (deadline.aborted) {
-      throw new StationRequestTimeoutError(url, timeoutMs, {
-        method,
-        ...(opts?.readOnly !== undefined ? { readOnly: opts.readOnly } : {}),
-      });
-    }
+    if (deadline.aborted) throw timedOut();
     throw error;
   }
+  return deadlineBoundBody(response, deadline, timedOut);
+}
+
+const BODY_READERS = new Set<PropertyKey>([
+  'json',
+  'text',
+  'arrayBuffer',
+  'blob',
+  'formData',
+  'bytes',
+]);
+
+/**
+ * The deadline also governs the body readers (`json`, `text`, `arrayBuffer`,
+ * `blob`, `formData`, `bytes`; not `response.body` streams, which a caller
+ * reads itself): `fetch`'s signal aborts a body read still in progress when
+ * it fires. A body reader that fails that way raises the same
+ * `StationRequestTimeoutError` (with the same `mutation` fact) as a deadline
+ * missed before the headers, so a caller can tell "the server answered 200
+ * and then stalled" (a write may have been applied) from a malformed body.
+ * Any other body failure is rethrown unchanged.
+ *
+ * Only readers the runtime's `Response` actually has are wrapped (a runtime
+ * without `bytes` still reports it absent), and non-reader members are
+ * passed through as they are: methods are bound to the real response so its
+ * internal slots resolve, but `constructor` is not, so
+ * `response.constructor === Response` still holds.
+ */
+function deadlineBoundBody(
+  response: Response,
+  deadline: AbortSignal,
+  timedOut: () => StationRequestTimeoutError,
+): Response {
+  return new Proxy(response, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      if (BODY_READERS.has(property) && typeof value === 'function') {
+        const read = value as () => Promise<unknown>;
+        return async () => {
+          try {
+            return await read.call(target);
+          } catch (error) {
+            if (deadline.aborted) throw timedOut();
+            throw error;
+          }
+        };
+      }
+      if (property === 'clone' && typeof value === 'function')
+        return () => deadlineBoundBody(target.clone(), deadline, timedOut);
+      if (property === 'constructor') return value;
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  }) as Response;
 }
 
 export type ClientAuthenticatedRequestInit = RequestInit & {
@@ -451,7 +453,8 @@ export function envelopeErrorCode(body: unknown): string | undefined {
 export async function readJsonBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     return undefined;
   }
 }
@@ -1850,7 +1853,8 @@ export async function readEnvelopeOrThrow<T>(
   let payload: unknown;
   try {
     payload = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) throw envelopeError(response, undefined, fallback);
     throw new Error('Expected JSON response');
   }
@@ -1862,3 +1866,5 @@ export async function readEnvelopeOrThrow<T>(
 
   return envelope.data;
 }
+
+export { rethrowDeadline, StationRequestTimeoutError, unlessDeadline };

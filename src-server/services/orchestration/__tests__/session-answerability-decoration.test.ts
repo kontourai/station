@@ -48,7 +48,7 @@ import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { RequestAnswerability } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import type {
   ProviderAdapterMetadata,
@@ -500,41 +500,36 @@ describe('session-summary answerability decoration (station#1778)', () => {
    * Nothing checked its content before — the verifier froze it at the epoch
    * and 71 tests stayed green. A timestamp that is always the same value is
    * the label-vs-derivation defect in its purest form: it reads as
-   * provenance while recording nothing. The window is deliberately generous
-   * (the assertion is "stamped at emission", not "stamped within 5ms") but
-   * it is bounded on BOTH sides, so neither a frozen constant nor a value
-   * copied from the session's own `createdAt` can satisfy it.
+   * provenance while recording nothing. Only `Date` is faked, after the
+   * service has settled, so each read's stamp must equal the clock at THAT
+   * read: a frozen constant, the session's own `createdAt`, or a stamp taken
+   * once at initialization or per session all fail.
    */
   test('observedAt records when the read happened, not a constant', async () => {
     seedSessions();
     const service = await settledService();
+    const readStamp = async () => {
+      const answerability = (
+        await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
+      ).find(
+        (session) => session.threadId === 'thread-stranded',
+      )?.answerability;
+      if (answerability?.answerable !== false) throw new Error('unreachable');
+      return answerability.observedAt;
+    };
 
-    const before = Date.now();
-    const observed = (
-      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
-    ).find((session) => session.threadId === 'thread-stranded')?.answerability;
-    const after = Date.now();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2031-01-01T00:00:00.000Z'));
+      expect(await readStamp()).toBe('2031-01-01T00:00:00.000Z');
 
-    expect(observed?.answerable).toBe(false);
-    if (observed?.answerable !== false) throw new Error('unreachable');
-    const stamped = Date.parse(observed.observedAt);
-    expect(Number.isNaN(stamped)).toBe(false);
-    // Bounded on both sides by the call that produced it.
-    expect(stamped).toBeGreaterThanOrEqual(before - 1_000);
-    expect(stamped).toBeLessThanOrEqual(after + 1_000);
-    // And explicitly NOT the fixture's own timestamps, which is what a
-    // copied-from-the-session mistake would produce.
-    expect(observed.observedAt).not.toBe('2026-08-03T00:00:00.000Z');
-    expect(observed.observedAt).not.toBe('2026-08-03T00:00:02.000Z');
-
-    // A LATER read stamps a LATER moment: one observation per read, not one
-    // per session lifetime.
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const second = (
-      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
-    ).find((session) => session.threadId === 'thread-stranded')?.answerability;
-    if (second?.answerable !== false) throw new Error('unreachable');
-    expect(Date.parse(second.observedAt)).toBeGreaterThanOrEqual(stamped);
+      // A LATER read stamps the LATER moment: one observation per read, not
+      // one per session lifetime.
+      vi.setSystemTime(new Date('2031-01-01T00:05:00.000Z'));
+      expect(await readStamp()).toBe('2031-01-01T00:05:00.000Z');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   /**
