@@ -18,7 +18,7 @@ When an ACP connection is active, Station:
 - Persists orchestration session/turn events through the same pipeline every
   other provider uses (see [docs/reference/session-api.md](../reference/session-api.md))
   — not the retired `.station/agents/` conversation-record path (see
-  [History note](#history-note-accepted-gap) below)
+  [ACP adapter cutover](../adr/0008-drive-acp-through-the-canonical-adapter-seam.md))
 
 The external engine only needs to implement the [Agent Client Protocol SDK](https://github.com/agentclientprotocol/sdk). For a chat turn it never talks to Station's HTTP API directly.
 
@@ -58,12 +58,17 @@ graph TD
 
 There is no `.station/agents/` write path in this pipeline — that was the
 pre-cutover chat-SSE substrate's persistence, retired (see
-[History note](#history-note-accepted-gap) below). Orchestration session/turn
+[ACP adapter cutover](../adr/0008-drive-acp-through-the-canonical-adapter-seam.md)). Orchestration session/turn
 events are persisted through the orchestration event store instead, replayed
 via `GET /api/orchestration/sessions/:threadId/events` (see
 [docs/reference/session-api.md](../reference/session-api.md)).
 
-There is no chat-SSE bridge anymore. ACP chats ride the same orchestration session/event pipeline as every other provider (Claude, Codex, Bedrock): the UI sends an Environment + Agent execution target, the server resolves the persisted Agent's ACP engine binding, and the `acp` provider adapter (`src-server/providers/adapters/acp-adapter.ts`, `ProviderAdapterShape`) drives the runtime over stdio using the ACP SDK's `ClientSideConnection`. Every runtime event — text, reasoning, tool calls, plan updates, app-specific notifications — is translated into a [Canonical runtime event](../glossary.md) before it reaches the UI. The adapter is the only place ACP vocabulary exists; nothing downstream of it (event handlers, chat UI, Plan panel) knows ACP is involved.
+ACP chats use the orchestration Session/event pipeline. The UI sends an
+Environment + Agent target, the server resolves the persisted Agent's ACP
+binding, and `src-server/providers/adapters/acp-adapter.ts` drives the external
+process using the ACP SDK. Supported protocol updates become canonical events
+for shared chat rendering. The publication path can reject or coalesce updates;
+persisted history is not a recording of every raw protocol emission.
 
 The connection-management substrate — `ACPProbe`, `ACPProcess`, `createACPBridgeClient`, and `ACPManager`'s probe-backed status/lifecycle tracking — is unchanged from before this cutover and is reused directly by the adapter. It is what backs the Connections Hub (`/acp/status`, `/acp/connections`, `/acp/registry`) and periodic availability probing; it is unrelated to how a chat turn is executed.
 
@@ -78,7 +83,17 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
 1. Receives the server-resolved ACP connection binding (the raw connection id never comes from the UI request)
 2. Spawns the configured command as a subprocess via `ACPProcess`
 3. Calls `connection.initialize()` with `clientCapabilities` (fs read/write, terminal)
-4. Calls `connection.newSession()` to create a fresh ACP session for the orchestration thread
+4. For a fresh start, calls `connection.newSession()`. A restored Session uses
+   its persisted resume cursor only after validating the connection identity,
+   execution fingerprint and live `agentCapabilities.loadSession` capability;
+   then the adapter calls `connection.loadSession()` for that native session.
+
+`OrchestrationService` reconstructs the start input with `existing.resumeCursor`
+when it must re-establish an adapter Session. A malformed cursor, changed
+connection fingerprint, or unsupported loading capability refuses restoration.
+It never silently substitutes a fresh native session with empty engine context.
+See `src-server/providers/adapters/acp-adapter.ts` and
+`src-server/services/orchestration/orchestration-service.ts`.
 
 ### Connection Lifecycle (Connections Hub)
 
@@ -98,11 +113,12 @@ This is a deliberate, adapter-inherited scope reduction: per-mode virtual agents
 
 Advertised session modes are honored on that one agent (station#1945). `ProviderSessionStartInput`/`ProviderSendTurnInput` carry the requested id as `modelOptions.mode`. The adapter prefers `session/set_config_option` when the fresh session advertised a `category: "mode"` config option, and otherwise calls `session/set_mode`. Ids and labels are whatever the agent advertised — Station does not map them onto `ask`/`auto`/`never`. The composer shows that advertised picker when the connection has modes, and shows nothing when it advertised none. Remaining permission-policy gaps (OpenCode HTTP rulesets, engines that never advertise modes, ACP v2 dropping `session/set_mode`, `_meta.permission`) are tracked in station#1944.
 
-The agent entry still surfaces:
-- `model` — current model name from the connection's config options
-- `modelOptions` — available models if the runtime provides them
-- `icon` — from the connection config
-- `connectionName` — names the connection-derived Agent under its engine group in the New Chat picker
+The current Agent catalog reports `engineId`, `engineDisplayName` and
+`engineConnectionType` for engine grouping and connection-method display.
+`execution.agentConnectionId` is the persisted binding. The Agent ID remains
+independent of how the connection is implemented; do not use a legacy
+`source: 'acp'` discriminator. Model choices and image support depend on the
+connection's current capability observations, not the name of its default Agent.
 
 Image support is **not** carried on the Agent row. It was, as `supportsAttachments`, but no server code ever wrote that field — the composer read `undefined` and refused every image while the adapter declared `image-input` and built real image `ContentBlock`s (station#3344). It is now derived from two places that are actually written: the connection's `capabilities` (the adapter's own declaration, spread from `ACP_ADAPTER_CAPABILITIES`) and, for the per-connection answer, `capabilityInventory.sessionSurfaces.promptImage` — this connection's live `initialize` handshake reporting `agentCapabilities.promptCapabilities.image`.
 
@@ -213,7 +229,11 @@ Station holds no credential belonging to an engine at all: **Station does
 not become an engine's auth host.** Answering that request is not a feature
 to be added carefully — it is the thing that cannot be built.
 
-A refused credential request also publishes one `runtime.warning` per
+After refusing the credential callback on the wire, the adapter attempts at
+most one bounded re-establishment from its own validated resume cursor. It
+requires the same connection/fingerprint and live `loadSession` support; it
+does not read, refresh, or forward an engine credential. A missing safe cursor,
+failed recovery, or repeated refusal falls back to one `runtime.warning` per
 session per method (`code: acp.credential-request-refused`) telling the user
 to sign in with the engine's own CLI and start a new chat, since a fresh
 engine process re-reads the saved credential. It surfaces as a **5-second
@@ -224,7 +244,8 @@ compute.
 
 ### Measured effect of the refusal (live, `kiro-cli 2.16.0`, 2026-08-03)
 
-`initialize` and `session/new` were driven against a real `kiro-cli` with
+This dated observation is retained as history, not qualification of a current
+CLI release. `initialize` and `session/new` were driven against a real `kiro-cli` with
 the client answering each way:
 
 | engine | inbound ext requests | old `{}` | `-32601` refusal |
@@ -334,11 +355,15 @@ A static list of available commands is exposed through the generic, provider-agn
 GET /api/orchestration/providers/acp/commands
 ```
 
-This calls the adapter's `getCommands()` (`ProviderAdapterShape`), aggregating whatever slash commands the external engine connections have advertised. The UI's command-autocomplete hook consumes this the same way it would for any other provider that implements `getCommands()`.
+This calls the adapter's `getCommands()` (`ProviderAdapterShape`), aggregating
+commands advertised by Sessions currently held in that adapter, deduplicated
+by command name. It is not a durable catalog of every configured connection;
+with no held Session it can be empty. The UI's command-autocomplete hook reads
+this generic provider surface.
 
 ### Accepted gap: per-keystroke argument autocomplete
 
-`ProviderAdapterShape` has no equivalent of the old per-keystroke, per-agent argument-autocomplete endpoint (no `getCommandOptions`-style method exists on the shape). Option-fetching for ACP-connected Agents always resolves to an empty list today. This is an explicitly accepted, adapter-inherited gap — filed as a follow-up, not silently absorbed into the static command list.
+`ProviderAdapterShape` has no equivalent of the old per-keystroke, per-agent argument-autocomplete endpoint (no `getCommandOptions`-style method exists on the shape). The UI offers no per-keystroke option-fetching for ACP-connected Agents; the static command list is the only ACP command surface. This is an explicitly accepted, adapter-inherited gap — filed as a follow-up, not silently absorbed into the static command list.
 
 ---
 
@@ -381,9 +406,9 @@ Connections are managed at runtime via the REST API — unchanged by this cutove
 ```
 GET    /acp/connections                List all connections with live status
 POST   /acp/connections                Add a new connection
-PUT    /acp/connections/:id            Update a connection (restarts it)
+PUT    /acp/connections/:id            Update connection configuration and its probe
 DELETE /acp/connections/:id            Remove and shut down a connection
-POST   /acp/connections/:id/reconnect  Force reconnect a connection
+POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
 ```
 
@@ -394,14 +419,18 @@ The `/events` SSE stream replays ACP connection status on connect and emits upda
 ```
 event: acp:status
 data: {
-  "connected": true,
   "connections": [
-    { "id": "kiro", "status": "connected" }
-  ]
+    { "id": "kiro", "name": "Kiro", "status": "available", "sessionId": null }
+  ],
+  "activeSessions": 0
 }
 ```
 
-The `agents:changed` event fires whenever the agent registry changes (e.g., after a successful connection).
+This is a shortened status example: entries also carry model/config options,
+capability observations and, when unavailable, the latest `lastError`. The
+probe manager currently supplies `activeSessions: 0`; it does not count the
+ACP adapter’s execution Sessions. There is no top-level `connected` boolean.
+The `agents:changed` event reports Agent registry changes separately.
 
 ---
 
@@ -409,7 +438,9 @@ The `agents:changed` event fires whenever the agent registry changes (e.g., afte
 
 ### Connection stays `unavailable`
 
-The configured `command` was not found on PATH. Verify the binary is installed and accessible:
+Read the connection’s `lastError` first: unavailable can mean a missing command,
+a handshake failure, or another probe failure. For a missing binary, verify it
+is installed and accessible to the Station process:
 
 ```bash
 which kiro-cli
@@ -417,7 +448,7 @@ which kiro-cli
 
 If the binary is installed but not on the server's PATH, use an absolute path in `command`.
 
-### Connection stays `connecting` or goes to `error`
+### Probe does not establish availability
 
 Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
 
@@ -429,15 +460,24 @@ Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Com
 
 Every configured connection should surface as one External agent with the same clean ID, even while disabled, unprobed, unavailable, or in error. If it is missing, inspect `config/agent-registry.json` and the connection lifecycle error; probe state should change availability, never Agent existence.
 
-### Every orchestration session starts a fresh ACP session
+### A previous ACP session cannot be restored
 
-The adapter always calls `connection.newSession()` when an orchestration session starts for an ACP-connected agent — it does not call the ACP SDK's `loadSession` to resume a runtime-native session across Station restarts. Each orchestration `threadId` maps to exactly one ACP session for its lifetime; there is currently no cross-restart ACP session resumption wired through the adapter.
+Fresh starts use `newSession`; restoration uses the persisted ACP session ID
+and connection fingerprint with `loadSession`. Inspect the refusal when the
+CLI does not advertise loading, the cursor is missing/invalid, or the connection
+identity changed. Visible Station history alone does not prove that the engine
+can restore its private context. Start a new conversation explicitly if safe
+restoration is unavailable.
 
-### Reconnect loop
+### Refreshing an unavailable connection
 
-If the subprocess keeps exiting and reconnecting, check:
-- The subprocess is not crashing on startup (run it manually)
-- `maxReconnectAttempts` may be exhausted — after repeated failures the connection stops retrying and stays in `error` state. Restart Station or use `POST /acp/connections/:id/reconnect` to trigger a fresh start.
+Reconnect requests a probe and may join an already-running probe. It does not
+restart every chat Session. Background refresh also reprobes stale observations;
+status remains `available`, `probing`, or `unavailable`. Read `lastError` and the
+server’s `ACPProbe` diagnostics instead of looking for a connection-level
+`maxReconnectAttempts` counter or `error` state. The owners are
+`src-server/services/acp/acp-manager-orchestration.ts` and
+`src-server/services/acp/acp-manager-view.ts`.
 
 ### When delegation reports an unavailable ACP connection
 

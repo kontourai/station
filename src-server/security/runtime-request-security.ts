@@ -44,7 +44,7 @@ export type RuntimeDevicePairingSource =
  * Mint-time proof that issuance presented the local-grant secret or the
  * per-boot internal token to a same-machine process. Written onto the
  * stored credential (or the ephemeral internal-token principal) only by
- * those mint paths. `isLocalRuntimeCaller` reads this field and nothing
+ * those mint paths. `bindRuntimeLocalOperator` reads this field and nothing
  * else.
  */
 export type CredentialLocality = 'home-possession';
@@ -228,6 +228,17 @@ export interface RuntimeHttpSecurityOptions {
       activity?: RuntimeCredentialActivityContext;
     },
   ) => boolean | Promise<boolean>;
+  /**
+   * Whether `credential` is a live Station credential, independent of route
+   * admission. Production `verifyCredential` is admission
+   * (`authorizeCredential`) and returns false for an ordinary paired device
+   * on routes that device may not use. Callers that supply this receive
+   * `403 insufficient_scope` for that case instead of
+   * `401 authentication_required`. The 401 is reserved for a credential the
+   * server does not recognize, because the browser treats it as a dead
+   * device session.
+   */
+  recognizeCredential?: (credential: string) => boolean | Promise<boolean>;
   /** Resolves a verified credential's concrete authority for route handlers. */
   resolveCredentialAuthority?: (
     credential: string,
@@ -556,16 +567,18 @@ export interface RuntimeCallerRequest {
 /** The local-operator predicate reads only `principal.locality`. */
 export interface LocalOperatorRequest {
   principal?: RuntimeAuthenticatedRequestPrincipal;
-  /** Ignored. Accepted so a RuntimeCallerRequest still typechecks. */
-  environment?: unknown;
-  header?: (name: string) => string | undefined;
 }
 
 /**
- * Live predicate object so a test can replace `evaluate` and have both
- * {@link isLocalRuntimeCaller} (boundary) and {@link bindRuntimeLocalOperator}
- * (the write diagnostics later reads) move together. Same-file function
- * bindings are not live under `vi.mock`.
+ * The ONE derivation of "is this caller the local operator?" (unredacted
+ * server-log reads and every other local-operator gate). Reads only the
+ * mint-time `locality: 'home-possession'` field recorded on the principal.
+ * Socket, proxy stamp, pairing source, and credential authority are
+ * irrelevant here.
+ *
+ * A live object rather than a function so a test can replace `evaluate`
+ * and prove every consumer of {@link bindRuntimeLocalOperator} moved
+ * together; same-file function bindings are not live under `vi.mock`.
  */
 export const localRuntimeCaller = {
   evaluate(request: LocalOperatorRequest): boolean {
@@ -574,25 +587,10 @@ export const localRuntimeCaller = {
 };
 
 /**
- * The ONE derivation of "is this caller the local operator?" for
- * unredacted server-log reads. Reads only the mint-time
- * `locality: 'home-possession'` field recorded on the principal.
- * Socket, proxy stamp, pairing source, and credential authority are
- * irrelevant here.
- *
- * Do not reimplement this in a route handler. The auth boundary calls
- * {@link bindRuntimeLocalOperator} once; diagnostics reads the bound
- * flag, not a second call. Replace {@link localRuntimeCaller}.evaluate
- * in a test to prove every consumer moved together.
- */
-export function isLocalRuntimeCaller(request: LocalOperatorRequest): boolean {
-  return localRuntimeCaller.evaluate(request);
-}
-
-/**
- * Auth-boundary write of the one local-operator predicate. Diagnostics
- * and any later consumer must read {@link isBoundRuntimeLocalOperator}
- * rather than calling {@link isLocalRuntimeCaller} again.
+ * Auth-boundary write of the one local-operator predicate. Do not
+ * reimplement it in a route handler: the auth boundary calls this once,
+ * and diagnostics and any later consumer read
+ * {@link isBoundRuntimeLocalOperator} rather than evaluating again.
  */
 export function bindRuntimeLocalOperator(
   request: Request,
@@ -613,6 +611,30 @@ export function bindRuntimeLocalOperator(
     local && principal?.mintKind === 'local-grant',
   );
   return local;
+}
+
+/**
+ * #2377 slice B: the per-boot internal token carries home-possession because
+ * Station minted it for its own process, so every consumer of
+ * {@link isBoundRuntimeLocalOperator} and of the principal's `locality`
+ * (unredacted logs, the operator-only Project and membership gates, the
+ * orchestration principal resolver's local-operator path) read any internal
+ * request as the operator. A station-control tool call is an agent acting for
+ * its session's owner, not the operator in person, so the station-control
+ * authority guard withdraws that fact for every internal request except
+ * Station's own server code and a bound operator caller. It re-stamps the
+ * principal without `locality` and re-binds the local-operator flags from
+ * it, at the one write point, so every consumer moves together.
+ *
+ * A no-op for anything but an internal principal: a real credential's
+ * locality is a mint-time fact about that credential and is never withdrawn.
+ */
+export function withdrawInternalHomePossession(request: Request): void {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (principal?.kind !== 'internal') return;
+  const { locality: _withdrawn, ...withoutLocality } = principal;
+  setRuntimeAuthenticatedRequestPrincipal(request, withoutLocality);
+  bindRuntimeLocalOperator(request);
 }
 
 /** Bound by the auth boundary; absent means redact (fail closed). */
@@ -824,30 +846,13 @@ const STREAMING_MUTATION_PREFIXES: readonly string[] = [
 ];
 
 /**
- * Authenticated read routes that stream a long-lived SSE response. These are
- * GETs, so they are `'unbudgeted'` purely because a GET is never a mutation
- * (no body, no mutation-rate accounting) — NOT because they appear here. The
- * classifier never consults this constant: unlike its sibling
- * `STREAMING_MUTATION_PREFIXES`, which gates the streaming rate bucket, this
- * list is documentary only. It exists so the unbudgeted SSE read surface stays
- * a reviewed, enumerable decision — and so the per-entry test can pin that
- * documenting a read does NOT exempt a mutating verb on the same path.
- */
-export const DOCUMENTED_SSE_READ_SURFACES: readonly string[] = [
-  '/events', // createEventRoutes — the primary SSE event stream
-  '/api/orchestration/events', // createOrchestrationRoutes — orchestration SSE
-  '/monitoring/events', // createMonitoringRoutes — live agent monitoring SSE
-  '/scheduler/events', // createSchedulerRoutes — scheduler job output SSE
-];
-
-/**
  * Classifies a request for mutation-budget purposes.
  *
  * - `'unbudgeted'` — GET/HEAD/OPTIONS, or a public route. No body-size check,
- *   no rate check. This is where every SSE read surface lands; the
- *   {@link DOCUMENTED_SSE_READ_SURFACES} list above records each one
- *   explicitly (documentary — the classifier never consults it; GETs are
- *   unbudgeted by the non-mutation rule above).
+ *   no rate check. Every SSE read surface (`GET /events`,
+ *   `GET /api/orchestration/events`, `GET /monitoring/events`,
+ *   `GET /scheduler/events`) lands here by the non-mutation rule alone; no
+ *   path is exempted, so a mutating verb on the same path is still budgeted.
  * - `'streaming'` — a mutating verb on an enumerated streaming surface. Gets
  *   its own rate bucket; body-size ceiling still applies.
  * - `'standard'` — every other mutating verb on a protected route. Body-size +
@@ -1116,10 +1121,6 @@ export class RuntimeMutationBudget {
       expiresAt: now + this.#windowMs,
     };
     this.#entries.set(principalKey, fresh);
-  }
-
-  clearBudget(principalKey: string): void {
-    this.#entries.delete(principalKey);
   }
 
   #prune(now: number): void {

@@ -1,15 +1,21 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { pairingScopePresetString } from '@kontourai/station-contracts/environment-security';
 import {
   parseHostedTenantRegistry,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createHostedTenantMiddleware } from '../../../runtime/bootstrap/runtime-tenant-context.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { OrchestrationService as RealOrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import {
   OrchestrationStreamPresence,
   orchestrationStreamPresenceSubjectForSession,
 } from '../../../services/orchestration/orchestration-stream-presence.js';
+import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import { orchestrationStreamDuration } from '../../../telemetry/metrics.js';
 import {
   getInternalApiToken,
@@ -57,6 +63,10 @@ function makeMinimalService() {
     conversationStreamBinding: () => undefined,
     readEventGlobalSequence: () => undefined,
     readEventStreamReplay: () => [],
+    // Each caller may read only its own sessions in these fixtures.
+    readableSessionOwnerIds: (authority: { userId: string }) => [
+      authority.userId,
+    ],
   };
 }
 
@@ -294,21 +304,6 @@ describe('GET /events registers connections with the shared presence tracker (st
     expect(record.mock.calls[0]?.[1]).toEqual({ scope: 'thread' });
     consoleErrorSpy.mockRestore();
   });
-
-  test('omitting `presence` still leaves the route functional (route-local fallback instance)', async () => {
-    const eventBus = new EventBus();
-    const app = createOrchestrationRoutes(makeMinimalService() as any, {
-      getUserId: () => 'user-1',
-      eventBus,
-      logger: { debug: vi.fn() },
-    });
-
-    const res = await app.request('/events');
-    expect(res.status).toBe(200);
-    const reader = res.body!.getReader();
-    activeReaders.push(reader);
-    await readUntilCaughtUp(reader);
-  });
 });
 
 /**
@@ -321,6 +316,7 @@ describe('GET /events registers connections with the shared presence tracker (st
  * real `PrincipalRef` the route can retain.
  */
 describe('GET /presence/summary (station#4075 stage 3 slice 2)', () => {
+  const makeTempDir = trackTempDirs();
   const activeReaders: Array<ReadableStreamDefaultReader<Uint8Array>> = [];
 
   afterEach(async () => {
@@ -364,6 +360,153 @@ describe('GET /presence/summary (station#4075 stage 3 slice 2)', () => {
       { id: 'human:local:operator', kind: 'human', connections: 1 },
     ]);
     expect(typeof body.observedAt).toBe('number');
+  });
+
+  test('lists only principals whose sessions the caller may read', async () => {
+    const presence = new OrchestrationStreamPresence();
+    const eventBus = new EventBus();
+    const principalFor = (id: string) => ({
+      id,
+      kind: 'human' as const,
+      display: id,
+    });
+    const app = createOrchestrationRoutes(
+      {
+        ...makeMinimalService(),
+        // A paired phone shares the operator's personal account; a stranger
+        // shares nobody's.
+        readableSessionOwnerIds: (authority: { userId: string }) =>
+          authority.userId === 'human:device:phone'
+            ? ['human:device:phone', 'human:local:operator']
+            : [authority.userId],
+      } as any,
+      {
+        eventBus,
+        logger: { debug: vi.fn() },
+        resolvePrincipal: (c: {
+          req: { header(n: string): string | undefined };
+        }) => principalFor(c.req.header('x-test-principal') ?? 'none'),
+        presence,
+      } as never,
+    );
+    for (const id of ['human:local:operator', 'human:test:stranger']) {
+      const res = await app.request('/events', {
+        headers: { 'x-test-principal': id },
+      });
+      const reader = res.body!.getReader();
+      activeReaders.push(reader);
+      await readUntilCaughtUp(reader);
+    }
+    const rosterFor = async (id: string) =>
+      (
+        (await (
+          await app.request('/presence/summary', {
+            headers: { 'x-test-principal': id },
+          })
+        ).json()) as { principals: Array<{ id: string }> }
+      ).principals.map((entry) => entry.id);
+    await expect(rosterFor('human:device:phone')).resolves.toEqual([
+      'human:local:operator',
+    ]);
+    await expect(rosterFor('human:test:stranger')).resolves.toEqual([
+      'human:test:stranger',
+    ]);
+  });
+
+  test("a delegation peer outside the personal account sees only itself, while the account's device sees the account", async () => {
+    const home = makeTempDir('station-presence-roster-');
+    mkdirSync(join(home, 'security'), { mode: 0o700 });
+    {
+      const pairing = new DevicePairingService({
+        homeDir: home,
+        environmentId: '33333333-3333-4333-8333-333333333333',
+      });
+      const pair = (kind: 'device' | 'delegation') => {
+        const offer = pairing.createOffer({
+          endpoint: 'https://station.example.test',
+          scope: pairingScopePresetString(
+            kind === 'delegation' ? 'delegation' : 'standard',
+          ),
+          kind,
+        });
+        const request = pairing.requestPairing({
+          requesterPosition: 'off-box',
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          deviceName: kind,
+        });
+        pairing.confirmRequest(request.requestId, {
+          kind: 'presented-credential',
+        });
+        return `human:device:${
+          pairing.exchange({
+            offerId: offer.offerId,
+            proof: offer.challenge,
+            requestId: request.requestId,
+          }).device.id
+        }`;
+      };
+      const phone = pair('device');
+      const peer = pair('delegation');
+      // The production owner-set policy: the real SessionAuthorization over
+      // the real pairing store's personal-account membership.
+      const service = new RealOrchestrationService({
+        adapterRegistry: {
+          register() {},
+          get: () => undefined,
+          list: () => [],
+        },
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        personalConversationAccess: {
+          canRead: (requester: string, owner: string) =>
+            pairing.canSharePersonalConversation(requester, owner),
+          ownerIds: (requester: string) =>
+            pairing.personalConversationOwnerIds(requester),
+        },
+      } as never);
+      const presence = new OrchestrationStreamPresence();
+      const app = createOrchestrationRoutes(
+        {
+          ...makeMinimalService(),
+          readableSessionOwnerIds: (authority: never) =>
+            service.readableSessionOwnerIds(authority),
+        } as any,
+        {
+          eventBus: new EventBus(),
+          logger: { debug: vi.fn() },
+          resolvePrincipal: (c: {
+            req: { header(n: string): string | undefined };
+          }) => {
+            const id = c.req.header('x-test-principal') ?? 'none';
+            return { id, kind: 'human' as const, display: id };
+          },
+          presence,
+        } as never,
+      );
+      for (const id of ['human:local:operator', phone, peer]) {
+        const res = await app.request('/events', {
+          headers: { 'x-test-principal': id },
+        });
+        const reader = res.body!.getReader();
+        activeReaders.push(reader);
+        await readUntilCaughtUp(reader);
+      }
+      const rosterFor = async (id: string) =>
+        (
+          (await (
+            await app.request('/presence/summary', {
+              headers: { 'x-test-principal': id },
+            })
+          ).json()) as { principals: Array<{ id: string }> }
+        ).principals
+          .map((entry) => entry.id)
+          .sort();
+      await expect(rosterFor(peer)).resolves.toEqual([peer]);
+      await expect(rosterFor(phone)).resolves.toEqual(
+        ['human:local:operator', phone].sort(),
+      );
+    }
   });
 
   test('disconnect (a setup-time throw releasing the connection) removes the principal from the roster', async () => {
@@ -415,18 +558,28 @@ describe('GET /presence/summary (station#4075 stage 3 slice 2)', () => {
 
   test('hosted mode 404s, the same mechanism /api/live-activity uses, regardless of roster content', async () => {
     const presence = new OrchestrationStreamPresence();
+    // A connected principal the caller could otherwise read: only the hosted
+    // guard stands between this roster entry and the response body.
+    presence.connect('hosted-session', operatorPrincipal);
+    expect(presence.roster()).toHaveLength(1);
     const eventBus = new EventBus();
     const app = new Hono();
     app.use('*', createHostedTenantMiddleware(hostedRegistry));
     app.route(
       '/',
-      createOrchestrationRoutes(makeMinimalService() as any, {
-        eventBus,
-        logger: { debug: vi.fn() },
-        getUserId: () => 'shared-user',
-        hostedTenantRegistry: hostedRegistry,
-        presence,
-      }),
+      createOrchestrationRoutes(
+        {
+          ...makeMinimalService(),
+          readableSessionOwnerIds: () => [operatorPrincipal.id],
+        } as any,
+        {
+          eventBus,
+          logger: { debug: vi.fn() },
+          getUserId: () => 'shared-user',
+          hostedTenantRegistry: hostedRegistry,
+          presence,
+        },
+      ),
     );
 
     const request = new Request('http://station.test/presence/summary', {
@@ -437,5 +590,6 @@ describe('GET /presence/summary (station#4075 stage 3 slice 2)', () => {
     });
     const response = await app.fetch(request, loopbackEnv);
     expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain(operatorPrincipal.id);
   });
 });

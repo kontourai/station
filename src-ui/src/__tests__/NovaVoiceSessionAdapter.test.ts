@@ -3,6 +3,7 @@
 import { setClientRawEgressPolicyResolver } from '@kontourai/station-sdk/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createNovaVoiceSessionAdapterDependencies,
   NovaVoiceSessionAdapter,
   type NovaVoiceSessionAdapterDependencies,
 } from '../providers/voice/NovaVoiceSessionAdapter';
@@ -107,7 +108,10 @@ function createHarness(options?: {
   };
 }
 
-afterEach(() => setClientRawEgressPolicyResolver(undefined));
+afterEach(() => {
+  setClientRawEgressPolicyResolver(undefined);
+  vi.unstubAllGlobals();
+});
 
 async function startHarness(harness: ReturnType<typeof createHarness>) {
   const started = harness.adapter.start();
@@ -343,5 +347,49 @@ describe('NovaVoiceSessionAdapter', () => {
     await expect(started).resolves.toMatchObject({ ok: false });
     expect(harness.socket.close).not.toHaveBeenCalled();
     expect(harness.adapter.getSnapshot().state).toBe('disconnected');
+  });
+
+  // The production dependencies build the URL and the auth gate; only the
+  // socket constructor and the port lookup are stubbed.
+  it('sends a remote Station credential only in the first frame, never in the socket URL or subprotocols', async () => {
+    const credential = 'sentinel-station-credential-7f3a';
+    const opened: Array<{
+      url: string;
+      protocols: unknown;
+      socket: FakeSocket;
+    }> = [];
+    vi.stubGlobal(
+      'WebSocket',
+      class extends FakeSocket {
+        static OPEN = 1;
+        constructor(url: string | URL, protocols?: string | string[]) {
+          super();
+          opened.push({ url: String(url), protocols, socket: this });
+        }
+      },
+    );
+    const adapter = new NovaVoiceSessionAdapter({
+      ...createNovaVoiceSessionAdapterDependencies(
+        'https://station.example.test',
+        { getCredential: () => credential, getProtocolVersion: () => 1 },
+      ),
+      fetchVoicePort: async () => 3002,
+    });
+
+    void adapter.start();
+    await flush();
+    expect(opened).toHaveLength(1);
+    const [{ url, protocols, socket }] = opened;
+    socket.open();
+
+    expect(url).toBe('wss://station.example.test:3002/?agent=station-voice');
+    expect(url).not.toContain(credential);
+    expect(JSON.stringify(protocols ?? null)).not.toContain(credential);
+    // The control: the credential did resolve, and went in-band.
+    expect(JSON.parse(socket.send.mock.calls[0]![0])).toMatchObject({
+      type: 'auth',
+      credential,
+    });
+    await adapter.stop();
   });
 });

@@ -1052,6 +1052,37 @@ export function ChatDockBody({
           )}
         </div>
       )}
+      {(activeSession.unacknowledgedDecisions?.length ?? 0) > 0 && (
+        // #2880: a decision Station recorded that the engine has not
+        // acknowledged. Shown beside the transcript, not in the streaming
+        // row: a turn stuck after an approval often has no streaming row.
+        // "Not yet": a late acknowledgement removes it, and it never claims
+        // the reply failed or that the engine applied it. A refused reply
+        // (`invalid-reply`) was never sent, so it gets its own statement.
+        <div
+          className="chat-stream-status"
+          role="status"
+          data-chat-decision-delivery={activeSession.id}
+        >
+          {activeSession.unacknowledgedDecisions?.some(
+            (decision) => decision.reason === 'invalid-reply',
+          ) && (
+            <span>
+              Your decision is recorded, but Station did not send it because the
+              engine would not accept that reply. The engine is still waiting
+              for an answer.
+            </span>
+          )}
+          {activeSession.unacknowledgedDecisions?.some(
+            (decision) => decision.reason === 'no-acknowledgement',
+          ) && (
+            <span>
+              Your decision is recorded, but the engine has not acknowledged it
+              yet. Station has not re-sent it.
+            </span>
+          )}
+        </div>
+      )}
       {activeSession.unsentMessages?.length ? (
         <LazyBoundary
           load={loadUnsentMessages}
@@ -1340,6 +1371,35 @@ export function ChatDockBody({
             </div>
           }
         />
+      ) : null}
+      {/*
+        The way out of a stale wait. A `busy` resolution is an authoritative
+        wait on the active turn, and only three things re-prove it: the
+        terminal turn event (turnHandlers), a child change (snapshotHandlers),
+        or a reload (hydrate seeds pending). Miss the terminal — a backgrounded
+        phone across a long turn — and the composer sits draft-only with Send
+        dead: `recoveryOpen` owns Retry + Start new, `resolvingOpen` owns
+        Start new, `busy` owned nothing. When this tab itself sees no turn in
+        flight, the wait may be that stale one, so offer the same re-resolve
+        the recovery notice owns. A genuine wait (turn in flight) keeps the
+        current draft-only behavior below.
+      */}
+      {busyOpen && !isTurnInFlight(activeSession) ? (
+        <div className="session-history-controls" role="status">
+          <span>
+            Still waiting on the active turn. If it already finished, check
+            again to send.
+          </span>
+          {onRetryConversationOpen ? (
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => void onRetryConversationOpen()}
+            >
+              Check again
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {/*
         #765 A2/A3: the turn-stall watchdog's projection, surfaced IN the

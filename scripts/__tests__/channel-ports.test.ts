@@ -1,17 +1,17 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { cpSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
+import { STATION_CHANNEL_PORTS_DATA } from '../../packages/shared/src/channel-ports.generated.js';
+import { CHANNEL_VERSION } from '../../packages/shared/src/release-manifest.mjs';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   CHANNEL_PORTS,
   checkGeneratedChannelPorts,
+  RELEASE_RINGS,
   syncGeneratedChannelPorts,
 } from '../channel-ports.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
-const generatedTypeScript = resolve(
-  root,
-  'packages/shared/src/channel-ports.generated.ts',
-);
 type ChannelPortAllocation = {
   instanceDirectory: string;
   serverPort: number;
@@ -21,8 +21,22 @@ type ChannelPortAllocation = {
 const channelPorts = CHANNEL_PORTS as Record<string, ChannelPortAllocation>;
 const releaseChannels = ['stable', 'beta', 'nightly'] as const;
 
-let restoreGenerated: (() => void) | undefined;
-afterEach(() => restoreGenerated?.());
+const makeTempDir = trackTempDirs();
+
+/** A copy of the checked-in generated consumers, so drift never touches the worktree. */
+function generatedTreeCopy() {
+  const copy = makeTempDir('station-channel-ports-');
+  for (const path of [
+    'packages/shared/src/channel-ports.generated.ts',
+    'packages/shared/src/release-rings.generated.mjs',
+    'src-desktop/src/channel_ports_generated.rs',
+    'src-desktop/Info.stable.plist',
+    'src-desktop/Info.beta.plist',
+    'src-desktop/Info.nightly.plist',
+  ])
+    cpSync(resolve(root, path), join(copy, path));
+  return copy;
+}
 
 describe('channel port generation', () => {
   test('allocates complete, disjoint channel homes and ports across every generated consumer', () => {
@@ -37,16 +51,12 @@ describe('channel port generation', () => {
     expect(new Set(allPorts).size).toBe(allPorts.length);
     expect(new Set(instances).size).toBe(instances.length);
 
-    const typescript = readFileSync(generatedTypeScript, 'utf8');
+    expect(STATION_CHANNEL_PORTS_DATA).toEqual(channelPorts);
     const rust = readFileSync(
       resolve(root, 'src-desktop/src/channel_ports_generated.rs'),
       'utf8',
     );
     for (const [channel, ports] of Object.entries(channelPorts)) {
-      expect(typescript).toContain(`${channel}:`);
-      expect(typescript).toContain(String(ports.serverPort));
-      expect(typescript).toContain(String(ports.uiPort));
-      expect(typescript).toContain(String(ports.consentPort));
       if (channel !== 'development') {
         expect(rust).toContain(`Some("${channel}")`);
         expect(rust).toContain(
@@ -66,13 +76,70 @@ describe('channel port generation', () => {
   });
 
   test('detects generated TypeScript drift and sync restores the contract', () => {
-    const original = readFileSync(generatedTypeScript, 'utf8');
-    restoreGenerated = () => writeFileSync(generatedTypeScript, original);
-    writeFileSync(generatedTypeScript, `${original}// drift\n`);
-    expect(() => checkGeneratedChannelPorts()).toThrow(/stale/);
-    syncGeneratedChannelPorts();
-    expect(() => checkGeneratedChannelPorts()).not.toThrow();
-    restoreGenerated = undefined;
+    const outputRoot = generatedTreeCopy();
+    const generated = join(
+      outputRoot,
+      'packages/shared/src/channel-ports.generated.ts',
+    );
+    expect(() => checkGeneratedChannelPorts({ outputRoot })).not.toThrow();
+    writeFileSync(generated, `${readFileSync(generated, 'utf8')}// drift\n`);
+    expect(() => checkGeneratedChannelPorts({ outputRoot })).toThrow(/stale/);
+    syncGeneratedChannelPorts({ outputRoot });
+    expect(() => checkGeneratedChannelPorts({ outputRoot })).not.toThrow();
+  });
+
+  test('detects generated release-ring module drift and sync restores it', () => {
+    const outputRoot = generatedTreeCopy();
+    const generated = join(
+      outputRoot,
+      'packages/shared/src/release-rings.generated.mjs',
+    );
+    const original = readFileSync(generated, 'utf8');
+    const drifted = original.replace('prerelease: true', 'prerelease: false');
+    expect(drifted).not.toBe(original);
+    writeFileSync(generated, drifted);
+    expect(() => checkGeneratedChannelPorts({ outputRoot })).toThrow(/stale/);
+    syncGeneratedChannelPorts({ outputRoot });
+    expect(readFileSync(generated, 'utf8')).toBe(original);
+    expect(() => checkGeneratedChannelPorts({ outputRoot })).not.toThrow();
+  });
+
+  test('the manifest verifier takes its ring grammar from the generated ring table', async () => {
+    // A ring that exists only in the mocked projection proves the verifier
+    // reads the table rather than a copy of today's rings.
+    vi.resetModules();
+    vi.doMock('../../packages/shared/src/release-rings.generated.mjs', () => ({
+      STATION_RELEASE_RINGS: {
+        stable: {
+          runtimeChannel: 'stable',
+          prerelease: false,
+          launcher: 'station',
+        },
+        canary: {
+          runtimeChannel: 'canary',
+          prerelease: true,
+          launcher: 'station-canary',
+        },
+      },
+    }));
+    try {
+      const mocked = await import(
+        '../../packages/shared/src/release-manifest.mjs'
+      );
+      expect(Object.keys(mocked.CHANNEL_VERSION)).toEqual(['stable', 'canary']);
+      expect(mocked.CHANNEL_VERSION.canary.test('1.2.3-canary.4')).toBe(true);
+      expect(mocked.CHANNEL_VERSION.canary.test('1.2.3')).toBe(false);
+    } finally {
+      vi.doUnmock('../../packages/shared/src/release-rings.generated.mjs');
+      vi.resetModules();
+    }
+
+    const rings = RELEASE_RINGS as Record<string, { prerelease: boolean }>;
+    expect(Object.keys(CHANNEL_VERSION)).toEqual(Object.keys(rings));
+    for (const [ring, { prerelease }] of Object.entries(rings)) {
+      expect(CHANNEL_VERSION[ring].test('1.2.3')).toBe(!prerelease);
+      expect(CHANNEL_VERSION[ring].test(`1.2.3-${ring}.4`)).toBe(prerelease);
+    }
   });
 
   test('projects every release channel port block into Station-owned installer consumers', () => {
@@ -97,7 +164,7 @@ describe('channel port generation', () => {
         uiPort,
       ]).toEqual(expectedBlocks[channel]);
     }
-    for (const channel of ['stable', 'beta'] as const) {
+    for (const channel of ['stable', 'beta', 'nightly'] as const) {
       const { serverPort, uiPort } = channelPorts[channel];
       expect(installer).toContain(`runtime_server_port=${serverPort}`);
       expect(installer).toContain(`runtime_ui_port=${uiPort}`);

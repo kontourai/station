@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, expectTypeOf, test } from 'vitest';
 import {
   LEARNING_REVIEW_SCHEMA_VERSION,
   LEARNING_REVIEW_STAGE_IDS,
@@ -20,14 +20,13 @@ describe('learning review contract', () => {
   });
 
   test('restricted and unavailable outcomes carry no owner identity', () => {
-    const outcomes: LearningReviewProjectionOutcome[] = [
-      { state: 'restricted' },
-      { state: 'unavailable' },
-    ];
-    expect(outcomes).toEqual([
-      { state: 'restricted' },
-      { state: 'unavailable' },
-    ]);
-    expect(JSON.stringify(outcomes)).not.toContain('owner');
+    // Type assertions, checked by `typecheck:contracts`: any field added to
+    // either arm (a projection, a sourceRef) fails, optional or not.
+    expectTypeOf<
+      Extract<LearningReviewProjectionOutcome, { state: 'restricted' }>
+    >().toEqualTypeOf<{ readonly state: 'restricted' }>();
+    expectTypeOf<
+      Extract<LearningReviewProjectionOutcome, { state: 'unavailable' }>
+    >().toEqualTypeOf<{ readonly state: 'unavailable' }>();
   });
 });

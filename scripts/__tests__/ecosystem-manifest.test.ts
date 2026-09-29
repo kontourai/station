@@ -1,26 +1,44 @@
 import { spawnSync } from 'node:child_process';
-import { createHash, generateKeyPairSync } from 'node:crypto';
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+} from 'node:crypto';
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { type AddressInfo, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import {
+  buildPrebuiltArchive,
+  type PrebuiltArchive,
+  signArchiveManifest,
+} from './fixtures/prebuilt-archive.js';
+import { platformPayload } from './fixtures/release-manifest-v2.js';
 
 const root = resolve(import.meta.dirname, '../..');
 const script = join(root, 'scripts/ecosystem-manifest.mjs');
 const installer = join(root, 'install.sh');
 const publishBoundary = join(root, 'scripts/ecosystem-publish-boundary.sh');
 const workflow = join(root, '.github/workflows/ecosystem-packaging.yml');
+const keyTablePath = join(root, 'config/release-manifest-keys.json');
 const roots: string[] = [];
+const makeTempDir = trackTempDirs();
+const RELEASE_KEY_ID = 'station-portable-release-2026-09';
+const NIGHTLY_KEY_ID = 'station-portable-nightly-2026-09';
 
 function digest(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -86,6 +104,7 @@ describe('ecosystem manifest', () => {
         privatePath,
         '--key-id',
         'station-ecosystem-v1',
+        '--allow-unpinned-key',
         '--output',
         join(dir, `${channel}.json`),
       ]);
@@ -182,6 +201,7 @@ describe('ecosystem manifest', () => {
         privatePath,
         '--key-id',
         'station-ecosystem-v1',
+        '--allow-unpinned-key',
         '--output',
         manifestPath,
       ]).status,
@@ -327,7 +347,7 @@ exit 0
             '--private-key',
             privatePath,
             '--key-id',
-            'station-ecosystem-v1',
+            RELEASE_KEY_ID,
             '--output',
             manifestPath,
           ],
@@ -405,4 +425,947 @@ exit 0
       expect(rejected.status).toBe(1);
     },
   );
+});
+
+type InstallFixture = {
+  dir: string;
+  fakeBin: string;
+  testKeyPath: string;
+  privateKeyPath: string;
+};
+
+function makeInstallFixture(prefix: string): InstallFixture {
+  const dir = makeTempDir(prefix);
+  const fakeBin = join(dir, 'bin');
+  mkdirSync(fakeBin, { recursive: true });
+  writeFileSync(
+    join(fakeBin, 'npm'),
+    '#!/bin/sh\ntouch "$PWD/.npm-ci-complete"\n',
+  );
+  writeFileSync(
+    join(fakeBin, 'gh'),
+    '#!/bin/sh\necho gh-must-not-run >&2\nexit 99\n',
+  );
+  writeFileSync(
+    join(fakeBin, 'node'),
+    `#!/bin/sh\nif [ "$1" = -p ]; then printf '24\\n'; exit 0; fi\nexec "${process.execPath}" "$@"\n`,
+  );
+  for (const name of ['npm', 'gh', 'node'])
+    chmodSync(join(fakeBin, name), 0o755);
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const privateKeyPath = join(dir, 'private.pem');
+  const testKeyPath = join(dir, 'test-public.pem');
+  writeFileSync(
+    privateKeyPath,
+    privateKey.export({ format: 'pem', type: 'pkcs8' }),
+  );
+  writeFileSync(testKeyPath, publicKey.export({ format: 'pem', type: 'spki' }));
+  return { dir, fakeBin, testKeyPath, privateKeyPath };
+}
+
+/**
+ * Builds a prebuilt server archive for this host whose provenance names
+ * `version` (the builder's exact layout; see fixtures/prebuilt-archive.ts).
+ */
+function buildArchive(
+  fixture: InstallFixture,
+  version: string,
+  variant = '',
+): PrebuiltArchive {
+  return buildPrebuiltArchive(fixture.dir, version, { variant });
+}
+
+/**
+ * Signs a per-platform schema 2 manifest for `archive` with the fixture's
+ * test key. The channel follows the version (preview for `-preview.N`,
+ * nightly for `-nightly.N`, otherwise stable), and so does the pinned key id
+ * it is labelled with. The keyId labels which pinned entry's policy applies;
+ * the bytes are the fixture key's (through the test-only key override).
+ */
+function signManifest(
+  fixture: InstallFixture,
+  version: string,
+  archive: PrebuiltArchive,
+  overrides: { channel?: string; keyId?: string; url?: string } = {},
+): string {
+  return signArchiveManifest(
+    fixture.dir,
+    archive,
+    createPrivateKey(readFileSync(fixture.privateKeyPath)),
+    overrides.keyId ??
+      (version.includes('-nightly.') ? NIGHTLY_KEY_ID : RELEASE_KEY_ID),
+    {
+      payload: overrides.channel ? { channel: overrides.channel } : {},
+      artifact: overrides.url ? { url: overrides.url } : {},
+    },
+  );
+}
+
+function runInstaller(
+  fixture: InstallFixture,
+  manifestPath: string,
+  env: Record<string, string> = {},
+  script = installer,
+) {
+  const { STATION_CHANNEL: _channel, ...inherited } = process.env;
+  return spawnSync('sh', [script], {
+    encoding: 'utf8',
+    env: {
+      ...inherited,
+      HOME: join(fixture.dir, 'home'),
+      PATH: `${fixture.fakeBin}:${process.env.PATH ?? ''}`,
+      GH_TOKEN: '',
+      GITHUB_TOKEN: '',
+      STATION_ROOT: '',
+      STATION_HOME: '',
+      STATION_INSTALL_ROOT: '',
+      STATION_BIN_DIR: '',
+      STATION_VERSION: '',
+      STATION_INSTALL_ALLOW_ROLLBACK: '',
+      STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifestPath).href,
+      STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: pathToFileURL(
+        fixture.testKeyPath,
+      ).href,
+      STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
+      STATION_FIXTURE_CLI_LOG: cliLog(fixture),
+      ...env,
+    },
+  });
+}
+
+/** Every `<version dir>|<argv>` the installed archives' CLI ran, in order. */
+function cliLog(fixture: InstallFixture): string {
+  return join(fixture.dir, 'cli.log');
+}
+
+function cliCalls(fixture: InstallFixture): string[] {
+  return existsSync(cliLog(fixture))
+    ? readFileSync(cliLog(fixture), 'utf8').trim().split('\n').filter(Boolean)
+    : [];
+}
+
+/** Whether the installer's last start ran `release` (the fake's running file). */
+function launchedFrom(fixture: InstallFixture, release: string): boolean {
+  const running = `${cliLog(fixture)}.running`;
+  return (
+    existsSync(running) &&
+    realpathSync(readFileSync(running, 'utf8')) === release
+  );
+}
+
+function currentRelease(fixture: InstallFixture, ring = 'stable'): string {
+  return realpathSync(
+    join(fixture.dir, 'home', '.station', 'installs', ring, 'current'),
+  );
+}
+
+function installedTag(fixture: InstallFixture, ring = 'stable'): string {
+  return JSON.parse(
+    readFileSync(
+      join(currentRelease(fixture, ring), '.station-release.json'),
+      'utf8',
+    ),
+  ).ref;
+}
+
+describe('pinned manifest signing keys', () => {
+  // install.sh embeds this table through a generated block; its freshness
+  // and single assignment are checked in install-script-generated.test.ts.
+  it('pins exactly the real release/nightly key pair', () => {
+    const config = JSON.parse(readFileSync(keyTablePath, 'utf8'));
+    // The table the installer carries is the real release/nightly pair.
+    expect(
+      config.keys.map((entry: { keyId: string; channels: string[] }) => [
+        entry.keyId,
+        entry.channels,
+      ]),
+    ).toEqual([
+      [NIGHTLY_KEY_ID, ['nightly']],
+      [RELEASE_KEY_ID, ['stable', 'preview']],
+    ]);
+    for (const entry of config.keys)
+      expect(createPublicKey(entry.publicKeySpkiPem).asymmetricKeyType).toBe(
+        'ed25519',
+      );
+  });
+
+  it('verifies with --keys only for a pinned key authorized for the channel', () => {
+    const fixture = makeInstallFixture('station-manifest-keys-');
+    const table = join(fixture.dir, 'keys.json');
+    writeFileSync(
+      table,
+      JSON.stringify({
+        keys: [
+          {
+            keyId: 'station-fixture-nightly',
+            algorithm: 'ed25519',
+            publicKeySpkiPem: readFileSync(fixture.testKeyPath, 'utf8'),
+            channels: ['nightly'],
+          },
+          {
+            keyId: 'station-fixture-release',
+            algorithm: 'ed25519',
+            publicKeySpkiPem: readFileSync(fixture.testKeyPath, 'utf8'),
+            channels: ['stable', 'preview'],
+          },
+        ],
+      }),
+    );
+    const payloadPath = join(fixture.dir, 'payload.json');
+    writeFileSync(
+      payloadPath,
+      JSON.stringify(
+        platformPayload({
+          channel: 'stable',
+          version: '1.2.3',
+          releaseTag: 'v1.2.3',
+        }),
+      ),
+    );
+    let sequence = 0;
+    const verifyAs = (keyId: string) => {
+      sequence += 1;
+      const manifestPath = join(fixture.dir, `manifest-${sequence}.json`);
+      const created = run([
+        'create',
+        '--payload',
+        payloadPath,
+        '--private-key',
+        fixture.privateKeyPath,
+        '--key-id',
+        keyId,
+        '--allow-unpinned-key',
+        '--output',
+        manifestPath,
+      ]);
+      expect(created.status, created.stderr).toBe(0);
+      return run(['verify', '--manifest', manifestPath, '--keys', table]);
+    };
+    const good = verifyAs('station-fixture-release');
+    expect(good.status, good.stderr).toBe(0);
+    expect(JSON.parse(good.stdout).version).toBe('1.2.3');
+    const wrongChannel = verifyAs('station-fixture-nightly');
+    expect(wrongChannel.status).toBe(1);
+    expect(wrongChannel.stderr).toContain(
+      'signing key station-fixture-nightly is not authorized for channel stable',
+    );
+    const unknown = verifyAs('station-fixture-unknown');
+    expect(unknown.status).toBe(1);
+    expect(unknown.stderr).toContain(
+      'manifest signing key station-fixture-unknown is not pinned',
+    );
+  });
+
+  it('refuses to sign a channel the pinned key id is not authorized for', () => {
+    const fixture = makeInstallFixture('station-manifest-sign-policy-');
+    const payloadPath = join(fixture.dir, 'payload.json');
+    writeFileSync(payloadPath, JSON.stringify(platformPayload()));
+    const result = run(
+      [
+        'create',
+        '--payload',
+        payloadPath,
+        '--private-key',
+        fixture.privateKeyPath,
+        '--key-id',
+        RELEASE_KEY_ID,
+        '--output',
+        join(fixture.dir, 'out.json'),
+      ],
+      { STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1' },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `signing key ${RELEASE_KEY_ID} is not authorized for channel nightly`,
+    );
+  });
+});
+
+describe('install.sh public manifest verification', () => {
+  it('installs a v2 manifest signed under the pinned release key id', {
+    timeout: 60_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-good-');
+    const archive = buildArchive(fixture, '1.2.3');
+    const result = runInstaller(
+      fixture,
+      signManifest(fixture, '1.2.3', archive),
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(installedTag(fixture)).toBe('v1.2.3');
+    expect(launchedFrom(fixture, currentRelease(fixture))).toBe(true);
+  });
+
+  it('rejects a tampered payload', { timeout: 60_000 }, () => {
+    const fixture = makeInstallFixture('station-pinned-tampered-');
+    const archive = buildArchive(fixture, '1.2.3');
+    const manifestPath = signManifest(fixture, '1.2.3', archive);
+    const envelope = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    envelope.payload.sourceSha = 'b'.repeat(40);
+    writeFileSync(manifestPath, JSON.stringify(envelope));
+    const result = runInstaller(fixture, manifestPath);
+    expect(result.stderr).toContain(
+      'public ecosystem manifest signature did not verify',
+    );
+    expect(result.status).toBe(1);
+    expect(existsSync(join(fixture.dir, 'home', '.station', 'installs'))).toBe(
+      false,
+    );
+  });
+
+  it('rejects an envelope whose keyId is not pinned', {
+    timeout: 60_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-unknown-');
+    const archive = buildArchive(fixture, '1.2.3');
+    const result = runInstaller(
+      fixture,
+      signManifest(fixture, '1.2.3', archive, {
+        keyId: 'station-portable-rogue-2026-09',
+      }),
+    );
+    expect(result.stderr).toContain(
+      'public ecosystem manifest is signed by a key this installer does not pin',
+    );
+    expect(result.status).toBe(1);
+  });
+
+  it('rejects the nightly key signing a stable manifest', {
+    timeout: 60_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-channel-');
+    const archive = buildArchive(fixture, '1.2.3');
+    const result = runInstaller(
+      fixture,
+      signManifest(fixture, '1.2.3', archive, { keyId: NIGHTLY_KEY_ID }),
+    );
+    expect(result.stderr).toContain(
+      'public ecosystem manifest signing key is not authorized for the manifest channel',
+    );
+    expect(result.status).toBe(1);
+  });
+
+  it('verifies against the pinned public key when no test override is set', {
+    timeout: 60_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-real-key-');
+    const archive = buildArchive(fixture, '1.2.3');
+    const manifestPath = signManifest(fixture, '1.2.3', archive);
+    const noOverride = { STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: '' };
+    const config = JSON.parse(readFileSync(keyTablePath, 'utf8'));
+    const releasePem: string = config.keys.find(
+      (entry: { keyId: string }) => entry.keyId === RELEASE_KEY_ID,
+    ).publicKeySpkiPem;
+    // The owner-provided public half, written out so a config edit alone
+    // cannot swap the trusted key unnoticed.
+    expect(releasePem).toBe(
+      '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAk8YKOCVgKcXsNNMjkGwYOfE53pV1zrajakwI91oxbPo=\n-----END PUBLIC KEY-----\n',
+    );
+    const pristine = readFileSync(installer, 'utf8');
+    expect(pristine).toContain(JSON.stringify(releasePem).slice(1, -1));
+
+    // The real pinned key rejects the fixture signature...
+    const result = runInstaller(fixture, manifestPath, noOverride);
+    expect(result.stderr).toContain(
+      'public ecosystem manifest signature did not verify',
+    );
+    expect(result.status).toBe(1);
+
+    // ...and the key it used is the embedded one: a copy of install.sh whose
+    // embedded release PEM is swapped for the fixture key installs the same
+    // manifest with no override at all.
+    const swapped = join(fixture.dir, 'install-swapped-key.sh');
+    const fixturePem = readFileSync(fixture.testKeyPath, 'utf8');
+    writeFileSync(
+      swapped,
+      pristine.replace(
+        JSON.stringify(releasePem).slice(1, -1),
+        JSON.stringify(fixturePem).slice(1, -1),
+      ),
+    );
+    const accepted = runInstaller(fixture, manifestPath, noOverride, swapped);
+    expect(accepted.status, accepted.stderr).toBe(0);
+    expect(installedTag(fixture)).toBe('v1.2.3');
+  });
+
+  it('refuses the test-only key URL without the insecure test flag', {
+    timeout: 60_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-key-url-');
+    const archive = buildArchive(fixture, '1.2.3');
+    const result = runInstaller(
+      fixture,
+      signManifest(fixture, '1.2.3', archive),
+      { STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '' },
+    );
+    expect(result.stderr).toContain(
+      'STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL is a test-only override',
+    );
+    expect(result.status).toBe(1);
+  });
+
+  it('treats a reinstall of the same version and bytes as a no-op', {
+    timeout: 120_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-same-');
+    const archive = buildArchive(fixture, '1.2.3');
+    const manifestPath = signManifest(fixture, '1.2.3', archive);
+    const first = runInstaller(fixture, manifestPath);
+    expect(first.status, first.stderr).toBe(0);
+    const calls = cliCalls(fixture).length;
+    const again = runInstaller(fixture, manifestPath);
+    expect(again.status, again.stderr).toBe(0);
+    expect(again.stdout).toContain(
+      'Station v1.2.3 is already installed; nothing to do.',
+    );
+    // Nothing was stopped or started.
+    expect(cliCalls(fixture)).toHaveLength(calls);
+  });
+
+  it('refuses a downgrade unless an exact version and the rollback flag are both given', {
+    timeout: 180_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-downgrade-');
+    const current = signManifest(
+      fixture,
+      '1.2.3',
+      buildArchive(fixture, '1.2.3'),
+    );
+    const installed = runInstaller(fixture, current);
+    expect(installed.status, installed.stderr).toBe(0);
+    const older = signManifest(
+      fixture,
+      '1.2.2',
+      buildArchive(fixture, '1.2.2'),
+    );
+
+    for (const env of <Record<string, string>[]>[
+      {},
+      { STATION_INSTALL_ALLOW_ROLLBACK: '1' },
+      { STATION_VERSION: 'v1.2.2' },
+    ]) {
+      const refused = runInstaller(fixture, older, env);
+      expect(refused.stderr).toContain(
+        'refusing to downgrade Station from v1.2.3 to v1.2.2',
+      );
+      expect(refused.status).toBe(1);
+      expect(installedTag(fixture)).toBe('v1.2.3');
+    }
+
+    const rolledBack = runInstaller(fixture, older, {
+      STATION_VERSION: 'v1.2.2',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(rolledBack.status, rolledBack.stderr).toBe(0);
+    expect(rolledBack.stdout).toContain(
+      'Rolling back Station from v1.2.3 to v1.2.2',
+    );
+    expect(installedTag(fixture)).toBe('v1.2.2');
+
+    // Control: an upgrade still proceeds without any flag.
+    const newer = runInstaller(
+      fixture,
+      signManifest(fixture, '1.2.4', buildArchive(fixture, '1.2.4')),
+    );
+    expect(newer.status, newer.stderr).toBe(0);
+    expect(installedTag(fixture)).toBe('v1.2.4');
+  });
+
+  it('refuses the same version with different bytes unless explicitly requested', {
+    timeout: 180_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-same-version-');
+    const original = buildArchive(fixture, '1.2.3', 'A');
+    const installed = runInstaller(
+      fixture,
+      signManifest(fixture, '1.2.3', original),
+    );
+    expect(installed.status, installed.stderr).toBe(0);
+    const installedRelease = currentRelease(fixture);
+    // A different archive signed as the same version: a republish, or a
+    // superseded archive replayed by a hostile host. The two look identical.
+    const other = signManifest(
+      fixture,
+      '1.2.3',
+      buildArchive(fixture, '1.2.3', 'B'),
+    );
+    for (const env of <Record<string, string>[]>[
+      {},
+      { STATION_INSTALL_ALLOW_ROLLBACK: '1' },
+      { STATION_VERSION: 'v1.2.3' },
+    ]) {
+      const refused = runInstaller(fixture, other, env);
+      expect(refused.stderr).toContain(
+        'refusing to replace the installed Station v1.2.3 with different bytes published as the same version',
+      );
+      expect(refused.status).toBe(1);
+      expect(currentRelease(fixture)).toBe(installedRelease);
+    }
+    const replaced = runInstaller(fixture, other, {
+      STATION_VERSION: 'v1.2.3',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(replaced.status, replaced.stderr).toBe(0);
+    // A prebuilt archive's directory is its version, so the replacement takes
+    // the same path with the new bytes; the old bytes were moved aside and
+    // stay as the rollback target.
+    expect(currentRelease(fixture)).toBe(installedRelease);
+    expect(existsSync(join(currentRelease(fixture), 'variant-B'))).toBe(true);
+    expect(existsSync(join(currentRelease(fixture), 'variant-A'))).toBe(false);
+    expect(
+      readdirSync(dirname(installedRelease)).filter((name) =>
+        name.startsWith('1.2.3.replaced.'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('treats an unset STATION_CHANNEL as stable when the manifest says preview', {
+    timeout: 120_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-default-channel-');
+    const manifestPath = signManifest(
+      fixture,
+      '1.3.0-preview.1',
+      buildArchive(fixture, '1.3.0-preview.1'),
+    );
+    const refused = runInstaller(fixture, manifestPath);
+    expect(refused.stderr).toContain(
+      'requested channel does not match public ecosystem manifest',
+    );
+    expect(refused.status).toBe(1);
+    expect(
+      existsSync(join(fixture.dir, 'home', '.local', 'bin', 'station-beta')),
+    ).toBe(false);
+    // Control: asking for beta installs the same manifest.
+    const beta = runInstaller(fixture, manifestPath, {
+      STATION_CHANNEL: 'beta',
+    });
+    expect(beta.status, beta.stderr).toBe(0);
+    expect(installedTag(fixture, 'beta')).toBe('v1.3.0-preview.1');
+  });
+
+  it('orders preview builds numerically, not as strings', {
+    timeout: 180_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-preview-order-');
+    const beta = { STATION_CHANNEL: 'beta' };
+    const preview = (build: number) =>
+      signManifest(
+        fixture,
+        `1.3.0-preview.${build}`,
+        buildArchive(fixture, `1.3.0-preview.${build}`),
+      );
+    const tenth = runInstaller(fixture, preview(10), beta);
+    expect(tenth.status, tenth.stderr).toBe(0);
+    // preview.9 < preview.10 numerically; as strings "9" > "10".
+    const ninth = runInstaller(fixture, preview(9), beta);
+    expect(ninth.stderr).toContain(
+      'refusing to downgrade Station from v1.3.0-preview.10 to v1.3.0-preview.9',
+    );
+    expect(ninth.status).toBe(1);
+    const eleventh = runInstaller(fixture, preview(11), beta);
+    expect(eleventh.status, eleventh.stderr).toBe(0);
+    expect(installedTag(fixture, 'beta')).toBe('v1.3.0-preview.11');
+  });
+
+  it('refuses a signed artifact URL that is not its own canonical form', {
+    timeout: 120_000,
+  }, () => {
+    // The reviewer's probe: a newline in the signed URL used to shift the
+    // next field, so the installer checked a hash other than the signed one.
+    const fixture = makeInstallFixture('station-pinned-url-form-');
+    const archive = buildArchive(fixture, '1.2.3');
+    const href = pathToFileURL(archive.archive).href;
+    for (const url of [
+      `${href}\n${archive.sha256}`,
+      `${href.slice(0, 12)}\t${href.slice(12)}`,
+      href.replace('file://', 'FILE://'),
+      // A plain file name and nothing else: no query, fragment or userinfo.
+      `${href}?x=1`,
+      `${href}#x`,
+    ]) {
+      const result = runInstaller(
+        fixture,
+        signManifest(fixture, '1.2.3', archive, { url }),
+      );
+      expect(result.stderr, JSON.stringify(url)).toContain(
+        'public ecosystem manifest artifact URL is not in canonical form',
+      );
+      expect(result.status).toBe(1);
+    }
+    // Control: the same payload with the canonical URL installs.
+    const good = runInstaller(fixture, signManifest(fixture, '1.2.3', archive));
+    expect(good.status, good.stderr).toBe(0);
+
+    // The signer refuses to emit such a URL in the first place.
+    const signerPayload = platformPayload({
+      channel: 'stable',
+      version: '1.2.3',
+      releaseTag: 'v1.2.3',
+    });
+    const [first, ...rest] = signerPayload.artifacts as Array<
+      Record<string, unknown>
+    >;
+    const payloadPath = join(fixture.dir, 'newline-payload.json');
+    writeFileSync(
+      payloadPath,
+      JSON.stringify({
+        ...signerPayload,
+        artifacts: [
+          { ...first, url: `${first.url}\n${archive.sha256}` },
+          ...rest,
+        ],
+      }),
+    );
+    const signed = run(
+      [
+        'create',
+        '--payload',
+        payloadPath,
+        '--private-key',
+        fixture.privateKeyPath,
+        '--key-id',
+        RELEASE_KEY_ID,
+        '--output',
+        join(fixture.dir, 'newline.json'),
+      ],
+      { STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1' },
+    );
+    expect(signed.status).toBe(1);
+    expect(signed.stderr).toContain(
+      'platform artifact darwin-arm64 url is not a canonical HTTPS URL',
+    );
+  });
+
+  it('replaces an install whose version cannot be read only when explicitly requested', {
+    timeout: 180_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-unreadable-');
+    const installed = runInstaller(
+      fixture,
+      signManifest(fixture, '1.2.3', buildArchive(fixture, '1.2.3')),
+    );
+    expect(installed.status, installed.stderr).toBe(0);
+    const provenance = join(currentRelease(fixture), '.station-release.json');
+    const value = JSON.parse(readFileSync(provenance, 'utf8'));
+    chmodSync(provenance, 0o644);
+    writeFileSync(provenance, JSON.stringify({ ...value, ref: 'garbage' }));
+    const target = signManifest(
+      fixture,
+      '1.2.2',
+      buildArchive(fixture, '1.2.2'),
+    );
+    for (const env of <Record<string, string>[]>[
+      {},
+      { STATION_INSTALL_ALLOW_ROLLBACK: '1' },
+      { STATION_VERSION: 'v1.2.2' },
+    ]) {
+      const refused = runInstaller(fixture, target, env);
+      // The refusal's advice is the combination proven to work below.
+      expect(refused.stderr).toContain(
+        'cannot compare the installed release with v1.2.2; set STATION_VERSION=v1.2.2 and STATION_INSTALL_ALLOW_ROLLBACK=1',
+      );
+      expect(refused.status).toBe(1);
+    }
+    const replaced = runInstaller(fixture, target, {
+      STATION_VERSION: 'v1.2.2',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(replaced.status, replaced.stderr).toBe(0);
+    expect(replaced.stderr).toContain(
+      'cannot read the installed Station version; replacing it with v1.2.2',
+    );
+    expect(installedTag(fixture)).toBe('v1.2.2');
+  });
+
+  it('refuses to sign under an unpinned key id without --allow-unpinned-key', () => {
+    const fixture = makeInstallFixture('station-manifest-unpinned-');
+    const payloadPath = join(fixture.dir, 'payload.json');
+    writeFileSync(payloadPath, JSON.stringify(platformPayload()));
+    const args = [
+      'create',
+      '--payload',
+      payloadPath,
+      '--private-key',
+      fixture.privateKeyPath,
+      '--key-id',
+      'station-unpinned-signer',
+      '--output',
+      join(fixture.dir, 'out.json'),
+    ];
+    const env = { STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1' };
+    const refused = run(args, env);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain(
+      'signing key id station-unpinned-signer is not pinned',
+    );
+    expect(existsSync(join(fixture.dir, 'out.json'))).toBe(false);
+    const allowed = run([...args, '--allow-unpinned-key'], env);
+    expect(allowed.status, allowed.stderr).toBe(0);
+  });
+});
+
+/** A loopback port nothing listens on at the moment it is returned. */
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const { port } = server.address() as AddressInfo;
+  await new Promise<void>((done) => server.close(() => done()));
+  return port;
+}
+
+function nightlyPaths(fixture: InstallFixture) {
+  const stationRoot = join(fixture.dir, 'home', '.station');
+  return {
+    stationRoot,
+    installRoot: join(stationRoot, 'installs', 'nightly'),
+    stationHome: join(stationRoot, 'instances', 'nightly'),
+    launcher: join(fixture.dir, 'home', '.local', 'bin', 'station-nightly'),
+  };
+}
+
+describe('install.sh nightly channel (#2675)', () => {
+  const nightly = { STATION_CHANNEL: 'nightly' };
+  // Nothing binds a port without a start, so these runs do not depend on
+  // what the host happens to be running on 38141/38000.
+  const noStart = { ...nightly, STATION_INSTALL_NO_START: '1' };
+
+  it('installs a nightly manifest signed under the pinned nightly key into the nightly runtime', {
+    timeout: 60_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-nightly-install-');
+    const manifestPath = signManifest(
+      fixture,
+      '0.7.0-nightly.242704',
+      buildArchive(fixture, '0.7.0-nightly.242704'),
+    );
+    expect(JSON.parse(readFileSync(manifestPath, 'utf8')).keyId).toBe(
+      NIGHTLY_KEY_ID,
+    );
+    const result = runInstaller(fixture, manifestPath, noStart);
+    expect(result.status, result.stderr).toBe(0);
+
+    const paths = nightlyPaths(fixture);
+    expect(installedTag(fixture, 'nightly')).toBe('v0.7.0-nightly.242704');
+    const state = JSON.parse(
+      readFileSync(
+        join(paths.installRoot, '.station-release-state.json'),
+        'utf8',
+      ),
+    );
+    expect(state).toEqual({
+      schemaVersion: 4,
+      channel: 'nightly',
+      releaseChannel: 'nightly',
+      installRoot: realpathSync(paths.installRoot),
+      stationRoot: realpathSync(paths.stationRoot),
+      stationHome: realpathSync(paths.stationHome),
+      manifestUrl: pathToFileURL(manifestPath).href,
+      // The nightly channel's ports, which an upgrade reuses (#2675 C).
+      serverPort: 38141,
+      uiPort: 38000,
+    });
+    const launcher = readFileSync(paths.launcher, 'utf8');
+    expect(launcher).toContain("export STATION_CHANNEL='nightly'\n");
+    expect(launcher).toContain(
+      `export STATION_HOME='${realpathSync(paths.stationHome)}'\n`,
+    );
+    expect(launcher).toContain(
+      `export STATION_INSTALL_ROOT='${realpathSync(paths.installRoot)}'\n`,
+    );
+    // A prebuilt archive is installed as its signed version, and nothing is
+    // built: without a start, its CLI never ran.
+    expect(currentRelease(fixture, 'nightly')).toBe(
+      join(realpathSync(paths.installRoot), 'versions', '0.7.0-nightly.242704'),
+    );
+    expect(cliCalls(fixture)).toEqual([]);
+    // Stable and beta roots are untouched.
+    for (const other of ['stable', 'beta'])
+      expect(existsSync(join(paths.stationRoot, 'installs', other))).toBe(
+        false,
+      );
+    expect(
+      existsSync(join(fixture.dir, 'home', '.local', 'bin', 'station')),
+    ).toBe(false);
+  });
+
+  it('refuses a nightly manifest labelled with the release key', {
+    timeout: 60_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-nightly-release-key-');
+    const result = runInstaller(
+      fixture,
+      signManifest(
+        fixture,
+        '0.7.0-nightly.3',
+        buildArchive(fixture, '0.7.0-nightly.3'),
+        { keyId: RELEASE_KEY_ID },
+      ),
+      noStart,
+    );
+    expect(result.stderr).toContain(
+      'public ecosystem manifest signing key is not authorized for the manifest channel',
+    );
+    expect(result.status).toBe(1);
+    expect(existsSync(nightlyPaths(fixture).installRoot)).toBe(false);
+  });
+
+  it.each(['1.2.3', '1.3.0-preview.2'])(
+    'refuses a %s manifest when nightly is requested',
+    { timeout: 60_000 },
+    (version) => {
+      const fixture = makeInstallFixture('station-nightly-wrong-ring-');
+      const result = runInstaller(
+        fixture,
+        signManifest(fixture, version, buildArchive(fixture, version)),
+        noStart,
+      );
+      expect(result.stderr).toContain(
+        'requested channel does not match public ecosystem manifest',
+      );
+      expect(result.status).toBe(1);
+      expect(existsSync(nightlyPaths(fixture).installRoot)).toBe(false);
+    },
+  );
+
+  it('refuses nightly on the authenticated GitHub-release path', {
+    timeout: 60_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-nightly-gh-path-');
+    const result = runInstaller(fixture, join(fixture.dir, 'unused.json'), {
+      ...noStart,
+      STATION_INSTALL_PUBLIC_MANIFEST_URL: '',
+      GH_TOKEN: 'fixture-token',
+    });
+    expect(result.stderr).toContain(
+      'STATION_CHANNEL=nightly installs only from a signed public manifest',
+    );
+    expect(result.status).toBe(1);
+  });
+
+  it('refuses an exact pin from another ring before downloading', {
+    timeout: 60_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-nightly-pin-ring-');
+    const result = runInstaller(fixture, join(fixture.dir, 'missing.json'), {
+      ...noStart,
+      STATION_VERSION: 'v1.3.0-preview.1',
+    });
+    expect(result.stderr).toContain(
+      'STATION_VERSION v1.3.0-preview.1 is a preview release; it cannot be installed as STATION_CHANNEL=nightly',
+    );
+    expect(result.status).toBe(1);
+  });
+
+  it('orders nightly builds numerically and rolls back only to an exact pin', {
+    timeout: 240_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-nightly-order-');
+    const build = (code: number) =>
+      signManifest(
+        fixture,
+        `0.7.0-nightly.${code}`,
+        buildArchive(fixture, `0.7.0-nightly.${code}`),
+      );
+    const tenth = runInstaller(fixture, build(10), noStart);
+    expect(tenth.status, tenth.stderr).toBe(0);
+    // nightly.9 < nightly.10 numerically; as strings "9" > "10".
+    const ninth = build(9);
+    const refused = runInstaller(fixture, ninth, noStart);
+    expect(refused.stderr).toContain(
+      'refusing to downgrade Station from v0.7.0-nightly.10 to v0.7.0-nightly.9',
+    );
+    expect(refused.status).toBe(1);
+    expect(installedTag(fixture, 'nightly')).toBe('v0.7.0-nightly.10');
+
+    const newer = runInstaller(fixture, build(11), noStart);
+    expect(newer.status, newer.stderr).toBe(0);
+    expect(installedTag(fixture, 'nightly')).toBe('v0.7.0-nightly.11');
+
+    // A nightly rollback names its exact target.
+    const rolledBack = runInstaller(fixture, ninth, {
+      ...noStart,
+      STATION_VERSION: 'v0.7.0-nightly.9',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(rolledBack.status, rolledBack.stderr).toBe(0);
+    expect(installedTag(fixture, 'nightly')).toBe('v0.7.0-nightly.9');
+  });
+
+  it('refuses to adopt a default nightly home another Station owns, unless it is chosen explicitly', {
+    timeout: 120_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-nightly-foreign-home-');
+    const paths = nightlyPaths(fixture);
+    // What the Station Nightly desktop app leaves in its (default) home.
+    mkdirSync(paths.stationHome, { recursive: true });
+    writeFileSync(join(paths.stationHome, 'instances.json'), '{}\n');
+    const manifestPath = signManifest(
+      fixture,
+      '0.7.0-nightly.4',
+      buildArchive(fixture, '0.7.0-nightly.4'),
+    );
+    const refused = runInstaller(fixture, manifestPath, noStart);
+    expect(refused.stderr).toContain(
+      'already holds Station data this installer does not own',
+    );
+    expect(refused.status).toBe(1);
+    expect(existsSync(paths.installRoot)).toBe(false);
+    expect(existsSync(paths.launcher)).toBe(false);
+    expect(
+      readFileSync(join(paths.stationHome, 'instances.json'), 'utf8'),
+    ).toBe('{}\n');
+
+    // Choosing the same path explicitly is a decision, not a silent share.
+    const shared = runInstaller(fixture, manifestPath, {
+      ...noStart,
+      STATION_HOME: paths.stationHome,
+    });
+    expect(shared.status, shared.stderr).toBe(0);
+    expect(shared.stdout).toContain(
+      'Using existing Station data without claiming purge ownership',
+    );
+  });
+
+  it('refuses to start over a nightly port another Station holds', {
+    timeout: 120_000,
+  }, async () => {
+    const fixture = makeInstallFixture('station-nightly-port-');
+    const manifestPath = signManifest(
+      fixture,
+      '0.7.0-nightly.5',
+      buildArchive(fixture, '0.7.0-nightly.5'),
+    );
+    const uiPort = await freePort();
+    const occupant = createServer((socket) => socket.destroy());
+    await new Promise<void>((done) =>
+      occupant.listen(0, '127.0.0.1', () => done()),
+    );
+    const serverPort = (occupant.address() as AddressInfo).port;
+    try {
+      const refused = runInstaller(fixture, manifestPath, {
+        ...nightly,
+        STATION_INSTALL_SERVER_PORT: String(serverPort),
+        STATION_INSTALL_UI_PORT: String(uiPort),
+      });
+      expect(refused.stderr).toContain(
+        `port ${serverPort} is already in use on this host, and no portable nightly Station is installed to own it`,
+      );
+      expect(refused.status).toBe(1);
+      expect(existsSync(nightlyPaths(fixture).installRoot)).toBe(false);
+    } finally {
+      await new Promise<void>((done) => occupant.close(() => done()));
+    }
+
+    // Control: the same install starts once the port is free.
+    const installed = runInstaller(fixture, manifestPath, {
+      ...nightly,
+      STATION_INSTALL_SERVER_PORT: String(serverPort),
+      STATION_INSTALL_UI_PORT: String(uiPort),
+    });
+    expect(installed.status, installed.stderr).toBe(0);
+    expect(launchedFrom(fixture, currentRelease(fixture, 'nightly'))).toBe(
+      true,
+    );
+  });
 });

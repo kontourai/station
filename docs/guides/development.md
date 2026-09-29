@@ -1,17 +1,26 @@
 # Developer Guide
 
-This guide keeps contributor and operator detail out of the public README while preserving the commands and conventions needed to work on Station.
+This guide describes the checkout workflow and routes to its command owners.
+Commands below are instructions, not evidence that this revision has completed
+all builds or platform checks. Use [testing](testing.md) for diagnostic versus
+completion evidence and [documentation maintenance](documentation.md) when a
+change alters a guide, diagram, example or public contract.
 
 ## Source Prerequisites
 
-Working from source needs Node.js 24.x, npm 10 or newer, and git. On Linux,
+Working from source needs Node.js 24.x, npm for the script/bootstrap interface,
+the exact pnpm version in `package.json`, and Git. The managed dependency runner
+resolves and checks that package-manager pin. On Linux,
 `npm run dependencies:install` additionally needs a C++ toolchain (`g++`,
-`make`, `python3`) to compile the `node-pty` terminal module — the only
-source-built native addon; macOS and Windows use upstream prebuilds. When
-`packaging/node-pty-prebuilds/manifest.json` pins attested Linux artifacts
-(#1245), the dependency lifecycle stages those instead and the Linux
-toolchain requirement disappears; `npm_config_build_from_source=true` opts
-back into compiling. Rust is optional and only needed for desktop builds.
+`make`, `python3`) when the `node-pty` terminal module must be compiled.
+macOS and Windows normally use the supported prebuild paths. The Linux
+[prebuild manifest](../../packaging/node-pty-prebuilds/manifest.json) is currently
+empty. Its future artifact channel needs the libc compatibility admission in
+[#2813](https://github.com/kontourai/station/issues/2813) before it can replace
+source builds on supported hosts. `npm_config_build_from_source=true` opts out
+of prebuild staging. Other native dependencies retain their own platform
+requirements. Rust and platform SDKs are needed for native builds/checks; a server/UI-only
+loop need not run them.
 
 ## Optional `just` contributor Interface
 
@@ -70,8 +79,9 @@ checks and launches the canonical driver outside the dependency tree being
 retired. An alias does not relax the exact pnpm pin: an unconfigured shim or
 a different manager version still refuses before installation.
 
-The npm download cache does not share installed dependency trees between
-worktrees. If installation fails with `ENOSPC`, check free space and treat the
+Each worktree keeps its own writable dependency tree; pnpm's shared package
+store does not make another worktree's `node_modules` safe to delete or reuse
+as a symlink. If installation fails with `ENOSPC`, check free space and treat the
 partial install as unverified before diagnosing downstream build/test errors.
 Do not reclaim another active worktree's dependencies to repair your own.
 
@@ -133,7 +143,7 @@ addition to `--force`; the shared root is not a runtime cleanup target.
 
 ### Read-only recovery planning
 
-`station home recovery-plan --base=<existing-home> --json` (or `--home=`)
+`./station home recovery-plan --base=<existing-home> --json` (or `--home=`)
 reports a bounded observation of schema and selected Engine/Agent identity
 fields. An explicit target is required; no default home is selected and no
 `--temp-home`, `--confirm`, or mutation flags are accepted. This command does
@@ -165,20 +175,20 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-contracts` | `packages/contracts/` | Published (npm, Apache-2.0) | Canonical cross-package API, runtime, provider, catalog, and orchestration types |
 | `@kontourai/station-sdk` | `packages/sdk/` | Published (npm, Apache-2.0) | Plugin SDK hooks, components, query domains, and client helpers |
 | `@kontourai/station-shared` | `packages/shared/` | Published (npm, Apache-2.0) | Shared runtime helpers and compatibility re-exports |
-| `@kontourai/station-connect` | `packages/connect/` | Private (`private: true`) | Standalone bidirectional pairing library |
+| `@kontourai/station-connect` | `packages/connect/` | Private in this checkout (`private: true`) | Standalone bidirectional pairing library |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
 The contracts, SDK, and shared packages ship raw TypeScript source, so their
 consumers need a bundler or a TS-aware loader; each README documents that
-constraint. The CLI ships a bundled executable. Connect remains private and is
-marked `private: true` in its `package.json`. The repo-root `./station` launcher
+constraint. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
+never published historically. The repo-root `./station` launcher
 remains the checkout entry point for host and contributor commands.
 
 New cross-package types should live in the owning `@kontourai/station-contracts/*` module. Keep compatibility re-exports in `shared` only when needed for older callers.
 
 Root `npm run dependencies:ci` also provisions development examples that depend on Station
 workspace packages. Those examples are declared in the root `workspaces` list
-so npm links host-provided peers locally — which is required for private
+and `pnpm-workspace.yaml`, so the managed pnpm install links workspace dependencies locally — which is required for private
 workspace packages that cannot be resolved from the registry, and keeps the
 published ones pinned to the in-repo source rather than the last release. Add a
 new example there when its tests are part of the root verification corpus and
@@ -191,9 +201,10 @@ example.
 The dependency bootstrap gives the inert pnpm install step a finite
 deadline — twenty minutes on Windows, ten minutes elsewhere — so a wedged
 install fails instead of hanging forever. That default is not a claim about the
-slowest supported machine. A cold 1552-package install takes about eleven
-minutes on an ARM64 handset, which the fixed bound killed outright with
-`npm error signal SIGTERM` and an already-emptied `node_modules/`.
+slowest supported machine. A historical cold 1552-package install on an ARM64 handset took about eleven
+minutes and exceeded its then-fixed bound. That observation, including the
+reported `npm error signal SIGTERM`, is retained as sizing rationale; it is
+not a current pnpm install benchmark.
 
 Raise it on a host that is slow rather than stuck:
 
@@ -203,8 +214,9 @@ STATION_DEPENDENCY_INSTALL_TIMEOUT_MS=1800000 npm run dependencies:ci
 
 The value is whole milliseconds and must be positive; a malformed value fails
 loudly rather than silently restoring the default. Lifecycle hooks keep their
-separate two-minute bound — the `node-pty` compile, the only one that builds
-native code, takes about 27 seconds on that same handset.
+separate two-minute bound — the earlier `node-pty` compile measurement was about 27 seconds on that
+handset. Re-measure the current graph and host rather than treating it as a
+present build-time guarantee.
 
 ## Project Structure
 
@@ -245,43 +257,32 @@ See [../reference/cli.md](../reference/cli.md) for the complete command referenc
 
 ## Plugin Development
 
-Create a plugin:
+Use the [plugin guide](plugins.md) for scaffold templates, package formats,
+build, preview and installation. The scaffold's `npm run build` calls the
+public `@kontourai/station-shared/build` helper; it is distinct from rebuilding
+Station's application bundles. A build does not install or grant the plugin.
+Preview effects and approve the current installation before expecting runtime
+contributions to become active.
+
+Inside this checkout, use the managed root dependency lifecycle and declared
+workspace packages. Do not use `npm link` or raw installs to replace pinned
+SDK/CLI dependencies; a global link hides which checkout supplies the running
+code. A standalone plugin outside this repository follows its own package and
+lockfile contract. For SDK development, use the existing workspace build and
+its consumer tests, then restart any consumer whose bundle must be rebuilt.
+Do not assume a rebuilt SDK silently refreshes an already loaded plugin.
+
+For an npm-owned standalone plugin outside this repository and its managed
+workspaces, the plugin's own workflow can be:
 
 ```bash
-./station plugin create my-plugin --template=full
 cd my-plugin
 npm install
-npm run build            # tsx build.ts — what the scaffold emits
-./station plugin build   # equivalent wrapper, needs this checkout
+npm run build
 ```
 
-Both call `buildPlugin()` from `@kontourai/station-shared`. The scaffold uses
-the `npm run build` form so a plugin stays buildable without a Station
-checkout.
-
-Install or preview a plugin:
-
-```bash
-./station plugin preview git@github.com:org/my-plugin.git
-./station plugin install git@github.com:org/my-plugin.git
-./station plugin list
-./station plugin remove my-plugin
-```
-
-For local SDK development:
-
-```bash
-cd packages/sdk && npm link && cd ../..
-cd packages/cli && npm link && cd ../..
-cd /path/to/my-plugin
-npm link @kontourai/station-sdk
-```
-
-If the SDK changes, rebuild it and restart the plugin dev server:
-
-```bash
-npm run build:sdk
-```
+That example is not a root-checkout install command or a way to replace
+Station's pinned workspace dependencies.
 
 ## Commit Messages
 
@@ -311,8 +312,9 @@ release commits already conform (`chore: version packages`).
 Enforcement is **forward-only** — new commits, never history:
 
 - `.githooks/commit-msg` refuses a non-conforming subject at `git commit`
-  time with a message that teaches the format. Deliberate exception:
-  `git commit --no-verify`.
+  time with a message that teaches the format. Git has a technical bypass,
+  but it is not the normal repair path or permission to bypass repository
+  verification.
 - `.githooks/pre-push` validates exactly the commits a push introduces (the
   push range), quoting each offending subject.
 
@@ -326,14 +328,15 @@ that stops fitting the repo fails a gate rather than its contributors.
 
 ## Verification
 
-Start every implementation loop with the selector, then run the smallest named
-proof:
+Before editing, route the intended paths with `gate:for`. Use the changed
+selector when choosing affected evidence, then run the smallest named proof:
 
 ```bash
+npm run gate:for -- <paths...>
 npm run test:changed -- --base=origin/main --explain
 npm run test:focused -- <selected-test-file>
-npx tsc -p <affected-tsconfig> --noEmit
-npx biome check <affected-paths>
+npm run typecheck:<affected-lane>
+npm exec -- biome check <affected-paths>
 ```
 
 The changed selector prints a bounded summary of selected targets and lanes;
@@ -347,8 +350,15 @@ host-coordinated lanes consume shared CPU and mutable-output leases.
 
 Use `npm run ci:fast` for bounded per-push feedback: it runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
-and verification-policy invariants—never broad static verification or the full
-corpus.
+evidence-check registration, generated-output, documentation,
+verification-policy, lint, governance and typecheck invariants. It is not
+the full static/build chain or full Vitest corpus.
+Hosted CI splits that work: `fast-checks-plan` selects once, four
+`fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
+the fixed invariants plus browser/performance smoke and the UI bundle budget.
+The required `fast-checks` result combines job outcomes with exact-plan shard
+receipts. Local `ci:fast` remains unsharded; see the
+[testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
 GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
@@ -375,7 +385,7 @@ npm run basis:mcp:generate   # git-ignored Basis MCP app bundles; dependencies:c
 npm run build:server
 npm run build:ui
 npm run test:connected-agents
-PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test tests/<spec>.spec.ts
+npm run test:e2e:product -- --spec=tests/<owned-product-spec>.spec.ts
 ```
 
 Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manifest.mjs`.
@@ -396,15 +406,18 @@ past it: no required CI check re-runs it.
 
 Every runtime feature should include OpenTelemetry instrumentation unless the plan explicitly explains why telemetry is not applicable. Add instruments in `src-server/telemetry/metrics.ts` using the existing `station.<domain>.<metric>` naming pattern.
 
-Meaningful attributes include provider, runtime type, connection type, source, outcome, reason, fallback source, freshness, and project scope.
+Choose bounded, privacy-reviewed attributes such as provider, operation or
+outcome; do not emit credentials, arbitrary paths or unbounded identifiers.
+Instrumentation is observation, not a durable product receipt or proof of
+collector delivery. [Monitoring](monitoring.md) owns the current export limits.
 
 ## Docs And Pages
 
 Public positioning belongs in `README.md` and the hand-authored Pages home.
-Only Markdown listed in `docs/pages/public-docs.json` is published. Contributor,
-API, architecture, design, strategy, plan, audit, and historical evidence
-documents remain repository documentation unless intentionally reviewed and
-added to that manifest.
+Only Markdown listed in `docs/pages/public-docs.json` is published. Publication also follows the reader's public source/disclosure policy; tracked
+bytes alone are not authority to expose arbitrary filesystem content. Source
+review and Pages admission are separate decisions. Follow the
+[documentation guide](documentation.md) before adding a public page.
 
 Build the public site locally with:
 

@@ -118,7 +118,10 @@ describe('builder-delivery-viewer import gate', () => {
       expect(scanFile('evil.mjs', source).length).toBeGreaterThan(0);
   });
   it('passes the tracked plugin source', () => {
-    const findings = scopedFiles().flatMap((file) =>
+    const files = scopedFiles();
+    // Non-vacuity: an empty scope would pass the findings check below.
+    expect(files).toContain('examples/builder-delivery-viewer/src/index.tsx');
+    const findings = files.flatMap((file) =>
       scanFile(file, readFileSync(file, 'utf8')),
     );
     expect(findings).toEqual([]);

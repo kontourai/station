@@ -31,6 +31,7 @@ type TransactionRunOptions = {
   timeoutMs?: number;
   allowTimeoutResult?: boolean;
   withFeed?: boolean;
+  cwdOutsideRepo?: boolean;
 };
 
 async function run({
@@ -45,6 +46,7 @@ async function run({
   timeoutMs,
   allowTimeoutResult,
   withFeed = true,
+  cwdOutsideRepo = false,
 }: TransactionRunOptions = {}) {
   const root = mkdtempSync(join(tmpdir(), 'station-feed-transaction-'));
   roots.push(root);
@@ -81,7 +83,7 @@ async function run({
       ...(withFeed ? [feed] : []),
     ],
     {
-      cwd: resolve('.'),
+      cwd: cwdOutsideRepo ? root : resolve('.'),
       env: {
         ...process.env,
         PATH: `${root}:${process.env.PATH}`,
@@ -128,6 +130,18 @@ async function run({
 }
 
 describe('mobile feed publication compensation', () => {
+  test('runs the feed tool beside the script, never the cwd copy', async () => {
+    // publish-release.yml runs the default-branch copy of this script with a
+    // tag checkout as cwd; a cwd-relative tool path would execute the tag's.
+    const { result, nodeLog } = await run({ cwdOutsideRepo: true });
+    expect(result.status).toBe(0);
+    const tool = resolve('scripts/native-update-feed.mjs');
+    const [validate, deploy, ...rest] = nodeLog.trim().split('\n');
+    expect(validate).toBe(`${tool} validate-config`);
+    expect(deploy.startsWith(`${tool} deploy `), deploy).toBe(true);
+    expect(rest).toEqual([]);
+  });
+
   test('publishes without feed deployment when the custom feed is absent', async () => {
     const { result, log, nodeLog, state } = await run({ withFeed: false });
     expect(result.status).toBe(0);
@@ -147,29 +161,9 @@ describe('mobile feed publication compensation', () => {
     FIXTURE_TEST_TIMEOUT_MS,
   );
 
-  test('fails closed when a fixture command cannot launch', async () => {
-    await expect(
-      runBoundedFixture('/definitely/not/a/fixture-command', []),
-    ).rejects.toMatchObject({ code: 'ENOENT', status: null });
-  });
-
-  test('fails closed when bounded fixture output is truncated', async () => {
-    await expect(
-      runBoundedFixture('bash', ['-c', "printf 'overflow'"], {
-        maxOutputBytes: 4,
-      }),
-    ).rejects.toThrow('fixture process output was truncated');
-  });
-
   test.runIf(process.platform !== 'win32')(
     'bounds a hung transaction root process',
     async () => {
-      await expect(
-        runBoundedFixture('bash', ['-c', 'exec sleep 60'], {
-          timeoutMs: 250,
-        }),
-      ).rejects.toMatchObject({ code: 'ETIMEDOUT', status: null });
-
       const { result } = await run({
         hangRoot: true,
         timeoutMs: 250,
@@ -179,31 +173,6 @@ describe('mobile feed publication compensation', () => {
         'ETIMEDOUT',
       );
       expect(result.status).toBeNull();
-    },
-    FIXTURE_TEST_TIMEOUT_MS,
-  );
-
-  test.runIf(process.platform !== 'win32')(
-    'reaps a timed-out fixture descendant process group',
-    async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-fixture-descendant-'));
-      roots.push(root);
-      const childPidPath = join(root, 'child.pid');
-      const result = await runBoundedFixture(
-        'bash',
-        [
-          '-c',
-          `sleep 60 </dev/null >/dev/null 2>&1 & echo $! > ${JSON.stringify(childPidPath)}; wait`,
-        ],
-        { allowTimeoutResult: true, timeoutMs: 250 },
-      );
-      const childPid = Number(readFileSync(childPidPath, 'utf8').trim());
-      expect(Number.isSafeInteger(childPid)).toBe(true);
-      expect((result.error as NodeJS.ErrnoException | undefined)?.code).toBe(
-        'ETIMEDOUT',
-      );
-      expect(result.status).toBeNull();
-      expect(() => process.kill(childPid, 0)).toThrow();
     },
     FIXTURE_TEST_TIMEOUT_MS,
   );

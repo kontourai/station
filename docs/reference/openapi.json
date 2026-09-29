@@ -1756,6 +1756,10 @@
                 "minLength": 1,
                 "maxLength": 256
               },
+              "gitMetadata": {
+                "type": "string",
+                "const": "excluded"
+              },
               "dependencies": {
                 "type": "array",
                 "items": {
@@ -1880,6 +1884,10 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 256
+              },
+              "gitMetadata": {
+                "type": "string",
+                "const": "excluded"
               },
               "dependencies": {
                 "type": "array",

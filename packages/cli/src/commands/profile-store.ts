@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   closeSync,
@@ -40,20 +39,8 @@ import {
   assertWindowsPathsTrusted,
   ensureWindowsDirectoriesTrusted,
   hardenWindowsPathsTrusted,
+  runWindowsTrustCommand as windowsTrustRun,
 } from './windows-path-trust.js';
-
-function windowsTrustRun(command: string, args: string[]) {
-  const result = spawnSync(command, args, {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  return {
-    error: result.error,
-    status: result.status,
-    stderr: typeof result.stderr === 'string' ? result.stderr : undefined,
-    stdout: typeof result.stdout === 'string' ? result.stdout : undefined,
-  };
-}
 
 function ensureWindowsProfileDirectories(home: string): void {
   ensureWindowsDirectoriesTrusted(windowsTrustRun, [
@@ -275,7 +262,9 @@ function profileStoreGenesisAdmissible(home: string): boolean {
     // CLI setup creates an empty config parent before first metadata
     // publication. It is not history by itself; any content is.
     if (entry === 'config') return readdirSync(join(home, entry)).length === 0;
-    return entry === 'installs';
+    // Installed releases and prebuilt-archive lifecycle state (#2675) are
+    // installer and process bookkeeping, never saved-Station history.
+    return entry === 'installs' || entry === 'state';
   });
 }
 

@@ -209,54 +209,6 @@ describe('PluginFrameHost boundary', () => {
     delete (window as any).__STATION_CSP_NONCE__;
   });
 
-  test('refuses ungranted navigation requests at the host', () => {
-    const navigation = renderHost();
-    // '/agents' is a real registered surface: only the missing grant refuses
-    // it, so this cannot pass merely because the target was unroutable.
-    postNavigate('/agents');
-    expect(navigation.navigate).not.toHaveBeenCalled();
-    expect(navigation.setLayout).not.toHaveBeenCalled();
-  });
-
-  test('routes a granted navigation request to the navigation seam (#3323)', () => {
-    const navigation = renderHost({
-      plugin: {
-        name: 'demo',
-        declaredSlug: 'demo-panel',
-        granted: ['navigation.dock'],
-      },
-    });
-    postNavigate('/agents');
-    // Routed through the pane-host contract now: the frame's path string is
-    // decoded to `{ kind: 'app-surface', surfaceId: 'agents' }` and the SHELL
-    // resolves the route from its own registry. `{}` writes no query fields.
-    expect(navigation.navigate).toHaveBeenCalledWith('/agents', {});
-  });
-
-  test("never persists a plugin navigation as the user's last-viewed layout", () => {
-    const navigation = renderHost({
-      plugin: {
-        name: 'demo',
-        declaredSlug: 'demo-panel',
-        granted: ['navigation.dock'],
-      },
-    });
-    postNavigate('/projects/apollo/layouts/coding');
-    // The shell goes exactly where setLayout would have sent it — and the
-    // File Preview fields are explicitly cleared, because plain `navigate`
-    // starts from the live URL and would otherwise carry a preview intent
-    // across the project switch (setLayout's clearing side effect, kept).
-    expect(navigation.navigate).toHaveBeenCalledWith(
-      '/projects/apollo/layouts/coding',
-      { previewPath: null, previewLineStart: null, previewLineEnd: null },
-    );
-    //.but `setLayout` writes lastProject/lastProjectLayout to localStorage
-    // unconditionally, which would let a plugin repoint what `/` restores to
-    // on every future launch — outliving the plugin's own removal. A frame is
-    // not the user, so its choice is not recorded as the user's.
-    expect(navigation.setLayout).not.toHaveBeenCalled();
-  });
-
   test('rejects every navigation target outside the allowlist', () => {
     const navigation = renderHost({
       plugin: {

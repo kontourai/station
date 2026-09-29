@@ -95,12 +95,11 @@ const loadDeviceAccessibilityOverlay = () =>
 
 /**
  * Below this container width the Tools drawer overlays the device stage;
- * at or above it the drawer docks as a 288px column beside it (t3code's
- * DevicePanel, `@[560px]`).
+ * at or above it the drawer docks as a 288px column beside it.
  */
-export const DEVICE_TOOLS_DOCK_MIN_WIDTH = 560;
+const DEVICE_TOOLS_DOCK_MIN_WIDTH = 560;
 
-export function deviceToolsLayout(width: number): 'overlay' | 'docked' {
+function deviceToolsLayout(width: number): 'overlay' | 'docked' {
   return width >= DEVICE_TOOLS_DOCK_MIN_WIDTH ? 'docked' : 'overlay';
 }
 
@@ -138,10 +137,6 @@ function useElementWidth(ref: RefObject<HTMLElement | null>): number {
  *   iOS. Power off shuts the device down; Close only stops watching.
  * - Video and input are shown separately: a picture that keeps streaming
  *   while input reconnects says so, and the buttons pause.
- *
- * Adapted in shape from t3code's device panel (apps/web/src/components/
- * device/DevicePanel.tsx, DeviceStreamView.tsx, DeviceLoadingView.tsx;
- * MIT License, Copyright (c) 2026 T3 Tools Inc.).
  *
  * One Device pane per region set: which device it shows is pane STATE, not
  * pane identity. Instance-keyed panes (#2049's prefix mechanism) could hold
@@ -198,8 +193,6 @@ function hostLabel(
   if (hostId === 'local') return 'Local';
   return hosts?.find((host) => host.hostId === hostId)?.label ?? hostId;
 }
-
-export { DEVICE_PLACEHOLDER_ASPECT, deviceCornerRadius };
 
 /**
  * How long a pane asked to show a device (the float's "Open in right panel")

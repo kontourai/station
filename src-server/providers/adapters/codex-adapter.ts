@@ -58,7 +58,11 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
 } from '../adapter-shape.js';
-import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
+import {
+  buildCliRuntimePrerequisites,
+  type CliCommandResult,
+  runCliCommand,
+} from '../auth/cli-auth.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
@@ -100,6 +104,7 @@ import {
   codexTurnAlreadyTerminal,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
+import { CODEX_APPROVAL_ACKNOWLEDGEMENT } from './codex-approval-delivery.js';
 import {
   codexSandboxModeOfPolicy,
   mapCodexKnobsToApprovalMode,
@@ -151,6 +156,19 @@ interface CodexAdapterOptions {
    * credentials, so it never blocks a spawn.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  /**
+   * Readiness seams, injectable so the installed branch and the probe's
+   * environment are exercised on any host (a host without `codex` would
+   * otherwise short-circuit before the login probe runs). Default to
+   * `findCliBinary` and `runCliCommand`.
+   */
+  findBinary?: (command: string) => string | null;
+  runCommand?: (
+    command: string,
+    args: string[],
+    signal?: AbortSignal,
+    envOverlay?: Record<string, string>,
+  ) => Promise<CliCommandResult | null>;
   /** Resolve only a source-owned affinity registered by runtime composition. */
   resolveSourceHome?: (
     affinity: ProviderSessionSourceAffinity,
@@ -660,6 +678,8 @@ export class CodexAdapter implements ProviderAdapterShape {
   readonly adoptionLifecycle = 'reported' as const;
   readonly provider = 'codex' as const;
   readonly metadata = {
+    // #2880: Codex's `serverRequest/resolved` acknowledges the request closed.
+    approvalAcknowledgement: CODEX_APPROVAL_ACKNOWLEDGEMENT,
     displayName: 'Codex',
     description: 'Codex app-server runtime over the local Codex CLI.',
     capabilities: [
@@ -754,11 +774,23 @@ export class CodexAdapter implements ProviderAdapterShape {
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
+    // The `codex login status` probe runs under the connection env, as every
+    // `codex app-server` child of this connection does — so a configured
+    // configHome (→ CODEX_HOME) is the account readiness reports on. The
+    // app-home / credential-profile layer is not modelled: resolving it can
+    // create profile directories, which a readiness read must not do.
+    const connectionEnv = await this.resolveConnectionEnv();
+    const runCommand = this.options.runCommand ?? runCliCommand;
     return buildCliRuntimePrerequisites({
       command: 'codex',
       displayName: 'Codex',
       versionArgs: ['--version'],
       authArgs: ['login', 'status'],
+      runCommand: (command, args, signal) =>
+        runCommand(command, args, signal, connectionEnv),
+      ...(this.options.findBinary
+        ? { findBinary: this.options.findBinary }
+        : {}),
       installStep: 'Install the Codex CLI and ensure `codex` is on PATH.',
       authStep: 'Run `codex login` before starting Station.',
       signal: options?.signal,
@@ -815,10 +847,9 @@ export class CodexAdapter implements ProviderAdapterShape {
         } catch {
           return;
         }
-        const id =
-          typeof message?.id === 'string' || typeof message?.id === 'number'
-            ? String(message.id)
-            : null;
+        // Only string ids are ours (`send` below); a numeric id is a Codex
+        // server request, never a reply, and must not settle `"1"` (#562).
+        const id = typeof message?.id === 'string' ? message.id : null;
         if (!id || !pending.has(id)) return;
         const entry = pending.get(id)!;
         pending.delete(id);
@@ -1179,10 +1210,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       } catch {
         return;
       }
-      const id =
-        typeof payload?.id === 'string' || typeof payload?.id === 'number'
-          ? String(payload.id)
-          : null;
+      // Only string ids are ours; a numeric id is a Codex server request,
+      // never a reply to `model/list` (#562).
+      const id = typeof payload?.id === 'string' ? payload.id : null;
       if (!id) return;
       const pendingRequest = pending.get(id);
       if (!pendingRequest) return;
@@ -2563,7 +2593,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       // interrupt RPC succeeded. A rejected RPC used to throw past this, and
       // the approvals stayed pending — a late "Allow <tool> for this session"
       // then minted a grant for a call that never ran.
-      this.cancelPendingApprovals(record, threadId);
+      this.cancelPendingApprovals(record);
     }
 
     // `targetTurnId` really was interrupted — that fact does not depend on
@@ -2710,24 +2740,18 @@ export class CodexAdapter implements ProviderAdapterShape {
    * (`request.resolved`), so no later answer lands on a dead request and no
    * session grant is minted for it.
    */
-  private cancelPendingApprovals(
-    record: CodexSessionRecord,
-    threadId: string,
-  ): void {
+  private cancelPendingApprovals(record: CodexSessionRecord): void {
     for (const [requestId, pending] of record.pendingApprovals) {
       const outcome = resolveApprovalOutcome(
         pending.method,
         pending.payload,
         'cancel',
       );
-      this.transport.sendResponse(record, pending.rpcRequestId, outcome.result);
-      this.transport.publish({
-        eventId: crypto.randomUUID(),
-        provider: this.provider,
-        threadId,
-        createdAt: this.now().toISOString(),
+      this.transport.replyToApproval(record, {
         requestId,
-        method: 'request.resolved',
+        rpcRequestId: pending.rpcRequestId,
+        method: pending.method,
+        result: outcome.result,
         status: mapApprovalResolutionStatus(outcome.decision),
       });
     }
@@ -2742,7 +2766,9 @@ export class CodexAdapter implements ProviderAdapterShape {
     const record = this.transport.requireSession(threadId);
     const pending = record.pendingApprovals.get(requestId);
     if (!pending) {
-      throw new Error(`Unknown Codex approval request: ${requestId}`);
+      // Answered already, closed by Codex, or never opened: in each case
+      // there is nothing open to answer, so the copy says only that.
+      throw new Error('This Codex approval request is not open.');
     }
 
     record.pendingApprovals.delete(requestId);
@@ -2751,9 +2777,10 @@ export class CodexAdapter implements ProviderAdapterShape {
       pending.payload,
       decision,
     );
-    // Tool-level session grant (mirrors claude-adapter `approvedTools`): the
-    // command/file-change/elicitation wire responses carry no session scope,
-    // so Station remembers the tool itself. Recorded only when the wire
+    // Tool-level session grant (mirrors claude-adapter `approvedTools`): on
+    // top of the decision `resolveApprovalOutcome` sends Codex, Station
+    // remembers the tool itself so a later, different call of it does not
+    // prompt. Recorded only when the wire
     // outcome actually accepts — a data-collecting elicitation declines on
     // the wire even for `acceptForSession`, and must not mint a grant.
     if (
@@ -2763,15 +2790,11 @@ export class CodexAdapter implements ProviderAdapterShape {
     ) {
       record.approvedTools.add(pending.toolName);
     }
-    this.transport.sendResponse(record, pending.rpcRequestId, outcome.result);
-
-    this.transport.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt: this.now().toISOString(),
+    this.transport.replyToApproval(record, {
       requestId,
-      method: 'request.resolved',
+      rpcRequestId: pending.rpcRequestId,
+      method: pending.method,
+      result: outcome.result,
       status: mapApprovalResolutionStatus(outcome.decision),
     });
   }

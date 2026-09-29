@@ -618,6 +618,52 @@ describe('NewProjectModal starter layout picker', () => {
     );
   });
 
+  // #2708 A-2: a create refused by the validation middleware, as the REAL
+  // project fetcher throws it, shows the server's reason — not
+  // "Validation failed: slug …".
+  test('a refused create shows the server reason, not the field key', async () => {
+    const { createProject } = await import('@kontourai/station-sdk/client');
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: {
+              slug: ['Slug may contain lowercase letters, digits and dashes.'],
+            },
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    let refusal: unknown;
+    try {
+      refusal = await createProject('http://station.test', {
+        name: 'My Project',
+      }).catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    createProjectMock.mockRejectedValueOnce(refusal);
+
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    fireEvent.change(screen.getByPlaceholderText('My Project'), {
+      target: { value: 'My Project' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Slug may contain lowercase letters, digits and dashes.',
+        ),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByText(/Validation failed/)).toBeNull();
+  });
+
   test('retries a failed starter apply without creating the project again', async () => {
     applyProjectLayoutMock.mockRejectedValueOnce(
       new Error('Starter could not apply'),
@@ -673,32 +719,27 @@ describe('NewProjectModal starter layout picker', () => {
 
   test('derives the project name from the working directory until edited', async () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    const nameInput = screen.getByPlaceholderText(
+      'My Project',
+    ) as HTMLInputElement;
 
     fireEvent.change(screen.getByLabelText('Working Directory'), {
       target: { value: '/tmp/launch-pad' },
     });
+    await waitFor(() => expect(nameInput.value).toBe('Launch Pad'));
 
-    await waitFor(() => {
-      const nameInput = screen.getByPlaceholderText(
-        'My Project',
-      ) as HTMLInputElement;
-      expect(nameInput.value).toBe('Launch Pad');
-    });
-  });
-
-  test('derives the project name from the working directory until edited', async () => {
-    render(<NewProjectModal isOpen onClose={onCloseMock} />);
-
+    // Once the user edits the name, a later directory change must not
+    // overwrite it.
+    fireEvent.change(nameInput, { target: { value: 'Custom Name' } });
     fireEvent.change(screen.getByLabelText('Working Directory'), {
-      target: { value: '/tmp/launch-pad' },
+      target: { value: '/tmp/other-dir' },
     });
-
-    await waitFor(() => {
-      const nameInput = screen.getByPlaceholderText(
-        'My Project',
-      ) as HTMLInputElement;
-      expect(nameInput.value).toBe('Launch Pad');
-    });
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText('Working Directory') as HTMLInputElement).value,
+      ).toBe('/tmp/other-dir'),
+    );
+    expect(nameInput.value).toBe('Custom Name');
   });
 });
 

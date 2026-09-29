@@ -103,29 +103,39 @@ describe('FeedbackService', () => {
     expect(svc.getBehaviorGuidelines()).toBe('');
   });
 
-  test('hasAnalyzeCallback false by default', () => {
+  test('status tracks ratings and the analyze callback as they are set', () => {
     expect(svc.hasAnalyzeCallback()).toBe(false);
-  });
-
-  test('getStatus reflects state', () => {
-    const status = svc.getStatus();
-    expect(status.totalRatings).toBe(0);
-    expect(status.isAnalyzing).toBe(false);
-    expect(status.analyzeCallbackAvailable).toBe(false);
-  });
-
-  test('clearAnalysis resets analysis data', () => {
-    svc.rateMessage({
-      agentSlug: 'a',
-      conversationId: 'c1',
-      messageIndex: 0,
-      messagePreview: 'x',
-      rating: 'thumbs_up',
+    expect(svc.getStatus()).toMatchObject({
+      totalRatings: 0,
+      pendingAnalysis: 0,
+      isAnalyzing: false,
+      analyzeCallbackAvailable: false,
     });
+
+    svc.rateMessage(ratingInput);
+    svc.setAnalyzeCallback(async (prompt) => modelReply(prompt));
+
+    expect(svc.hasAnalyzeCallback()).toBe(true);
+    expect(svc.getStatus()).toMatchObject({
+      totalRatings: 1,
+      pendingAnalysis: 1,
+      analyzeCallbackAvailable: true,
+    });
+  });
+
+  test('clearAnalysis removes a completed analysis and its summary', async () => {
+    svc.rateMessage(ratingInput);
+    svc.setAnalyzeCallback(async (prompt) => modelReply(prompt));
+    await svc.runAnalysisPipeline();
+    expect(svc.getRatings()[0]?.analysis).toBe('useful');
+    expect(svc.getSummary()?.reinforce).toEqual(['useful']);
+
     svc.clearAnalysis();
-    const ratings = svc.getRatings();
-    expect(ratings[0].analysis).toBeUndefined();
+
+    expect(svc.getRatings()[0]?.analysis).toBeUndefined();
+    expect(svc.getRatings()[0]?.analyzedAt).toBeUndefined();
     expect(svc.getSummary()).toBeNull();
+    expect(svc.getStatus().pendingAnalysis).toBe(1);
   });
 
   test.each(['mini', 'full'])(
@@ -251,6 +261,16 @@ describe('FeedbackService', () => {
       async () => '[{"index":1,"analysis":{"invalid":true}}]',
     );
     await expect(svc.runAnalysisPipeline()).rejects.toThrow();
+    expect(svc.getRatings()[0]?.analysis).toBeUndefined();
+    expect(svc.getStatus().pendingAnalysis).toBe(1);
+  });
+
+  test('rejects a reply with no JSON without marking the rating analyzed', async () => {
+    svc.rateMessage(ratingInput);
+    svc.setAnalyzeCallback(async () => 'I could not rate these responses.');
+    await expect(svc.runAnalysisPipeline()).rejects.toThrow(
+      /did not return JSON/,
+    );
     expect(svc.getRatings()[0]?.analysis).toBeUndefined();
     expect(svc.getStatus().pendingAnalysis).toBe(1);
   });

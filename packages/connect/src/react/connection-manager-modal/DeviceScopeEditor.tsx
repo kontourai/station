@@ -4,6 +4,7 @@ import {
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
   PAIRING_SCOPE_CODING_EXEC,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_DESCRIPTIONS,
   PAIRING_SCOPE_ENGINE_LOGIN,
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_HOME_TRANSFER,
@@ -103,6 +104,12 @@ const NO_BASE_OPTION = {
   detail: 'Cannot read or operate. Use with a capability below.',
 } as const;
 
+/** Each token's label and meaning, from the contracts (#1796). */
+function scopeCopy(token: PairingScope): { label: string; detail: string } {
+  const { label, summary } = PAIRING_SCOPE_DESCRIPTIONS[token];
+  return { label, detail: summary };
+}
+
 const ELEVATED_GRANTS: ReadonlyArray<{
   token: PairingScope;
   label: string;
@@ -111,57 +118,44 @@ const ELEVATED_GRANTS: ReadonlyArray<{
 }> = [
   {
     token: 'inference:invoke' as PairingScope,
-    label: 'Fleet inference',
-    detail: 'Can request model completions from this Station.',
+    ...scopeCopy('inference:invoke' as PairingScope),
     // Not elevated: it is a `preset` grant path, offered at pairing time.
     elevated: false,
   },
   {
     token: PAIRING_SCOPE_HOME_TRANSFER,
-    label: 'Home transfer',
-    detail:
-      'Identifies this device for transfer setup. Moving homes and resuming agents are not available yet.',
+    ...scopeCopy(PAIRING_SCOPE_HOME_TRANSFER),
     // This is a dedicated pairing preset, not an operator-promotion grant.
     elevated: false,
   },
   {
     token: PAIRING_SCOPE_HOME_CONTROL,
-    label: 'Home control',
-    detail:
-      'Allows home-control sessions. Room access and Agent execution still require their own permissions.',
+    ...scopeCopy(PAIRING_SCOPE_HOME_CONTROL),
     elevated: true,
   },
   {
     token: PAIRING_SCOPE_ACCESS_APPROVE,
-    label: 'Approve pairing requests',
-    detail: 'Can approve or deny other devices asking to pair.',
+    ...scopeCopy(PAIRING_SCOPE_ACCESS_APPROVE),
     elevated: true,
   },
   {
     token: PAIRING_SCOPE_CONSENT_DECIDE,
-    label: 'Decide consent requests',
-    detail: 'Can approve or deny consent requests on the consent page.',
+    ...scopeCopy(PAIRING_SCOPE_CONSENT_DECIDE),
     elevated: true,
   },
   {
     token: PAIRING_SCOPE_ENGINE_LOGIN,
-    label: 'Start engine sign-in',
-    detail:
-      "Can start an engine's own device-code sign-in on this Station and see the code to approve. The engine stores the account in this Station's credential profile, so agents using that profile run as it; Station never sees the token.",
+    ...scopeCopy(PAIRING_SCOPE_ENGINE_LOGIN),
     elevated: true,
   },
   {
     token: PAIRING_SCOPE_CODING_EXEC,
-    label: 'Run commands',
-    detail:
-      "Can run one-off shell commands on this Station's computer (the Coding terminal's command box), as you and with your keys. Without it the device still reads and edits the Project's files.",
+    ...scopeCopy(PAIRING_SCOPE_CODING_EXEC),
     elevated: true,
   },
   {
     token: PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
-    label: 'Allow full access',
-    detail:
-      "Can put a chat, or an Agent's default, at full access: the agent runs with no sandbox and no approval prompts, as you. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
+    ...scopeCopy(PAIRING_SCOPE_APPROVAL_FULL_ACCESS),
     elevated: true,
   },
 ];
@@ -179,14 +173,6 @@ export function closestBasePreset(scope: string): PairingScopePreset | null {
   // one: initialising generously would make the first Apply a silent
   // widening.
   return null;
-}
-
-/** The tokens the editor's current selection resolves to. */
-export function scopeSelectionTokens(
-  preset: PairingScopePreset | null,
-  capabilities: ReadonlySet<PairingScope>,
-): PairingScope[] {
-  return scopeChoiceTokens(preset, capabilities);
 }
 
 /** True when the scope holds exactly the delegation token set, no more. */

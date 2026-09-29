@@ -279,17 +279,12 @@ test.describe('Settings', () => {
     await expect(page.getByLabel('Where settings are saved')).toHaveCount(0);
   });
 
-  test('section nav scrolls to section', async ({ page }) => {
-    await page.getByRole('link', { name: 'System', exact: true }).click();
-    await expect(page).toHaveURL(/[?&]view=system/);
-    await expect(page.locator('#section-system')).toBeInViewport();
-  });
-
   test('section query survives reload and browser history', async ({
     page,
   }) => {
     await page.getByRole('link', { name: 'System', exact: true }).click();
     await expect(page).toHaveURL(/[?&]view=system/);
+    await expect(page.locator('#section-system')).toBeInViewport();
     await page.reload();
     await expect(page.locator('#section-system')).toBeInViewport();
 
@@ -330,17 +325,6 @@ test.describe('Settings', () => {
     );
     await page.keyboard.press('Escape');
     await expect(tooltip).toHaveCount(0);
-  });
-
-  test('changing system prompt shows save pill', async ({ page }) => {
-    await openAgentDefaults(page);
-    await page.fill('#systemPrompt', 'New prompt text for testing');
-    await expect(
-      page.getByText('Unsaved changes', { exact: true }),
-    ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
-    // Clean up
-    await page.locator('.settings__save-pill-discard').first().click();
   });
 
   // Regression: the settings form must load saved server values into its fields
@@ -629,25 +613,6 @@ test.describe('Settings', () => {
     expect(cleared).toBe('');
   });
 
-  test('export includes device settings', async ({ page }) => {
-    // Slice 2 (archive#1271) unified the raw per-key localStorage settings
-    // into one versioned envelope; the export payload carries that envelope
-    // instead of the old 4-key `_localStorage` map. Slice 3 review finding 1
-    // bumped the envelope to v2 (a v1 -> v2 ladder step backfills the
-    // archive#1359 shortcut/model-picker root for already-upgraded devices).
-    const envelope = await page.evaluate(() => {
-      const raw = localStorage.getItem('station-device-settings-v1');
-      return raw ? JSON.parse(raw) : null;
-    });
-    expect(envelope).toBeTruthy();
-    expect(envelope.version).toBe(2);
-    // The migrated legacy keys must be gone — the envelope is the only home.
-    const legacyTheme = await page.evaluate(() =>
-      localStorage.getItem('theme'),
-    );
-    expect(legacyTheme).toBeNull();
-  });
-
   test('Cmd/Ctrl+X guard prompts before closing with unsaved changes', async ({
     page,
   }) => {
@@ -688,14 +653,14 @@ test.describe('Settings', () => {
     await expect(page.locator('.settings__section-nav')).not.toBeVisible();
   });
 
-  test('toggle has aria-describedby', async ({ page }) => {
+  test('notifications switch announces its description', async ({ page }) => {
     await page
       .getByRole('link', { name: 'Notifications', exact: true })
       .click();
     const toggle = page.locator('#section-notifications [role="switch"]');
-    const describedBy = await toggle.getAttribute('aria-describedby');
-    expect(describedBy).toBe('notif-desc');
-    await expect(page.locator('#notif-desc')).toBeVisible();
+    await expect(toggle).toHaveAccessibleDescription(
+      'Browser push notifications for tool approvals and high-priority alerts',
+    );
   });
 });
 

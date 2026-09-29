@@ -18,7 +18,6 @@ export const PREPUSH_TEST_GROUPS = Object.freeze({
     'scripts/__tests__/station-vocabulary-gate.test.ts',
     'scripts/__tests__/unsaved-guard-gate.test.ts',
     'scripts/__tests__/state-primitives-ratchet.test.ts',
-    'scripts/__tests__/responsive-surface-ratchet.test.ts',
     'scripts/__tests__/focus-visible-ratchet.test.ts',
     'scripts/__tests__/shell-conformance-ratchet.test.ts',
     'scripts/__tests__/knowledge-kit-import-gate.test.ts',
@@ -52,10 +51,7 @@ export const PREPUSH_TEST_GROUPS = Object.freeze({
   contracts: Object.freeze([
     'packages/contracts/src/__tests__/runtime-events.test.ts',
     'packages/contracts/src/__tests__/task-graph-contracts.test.ts',
-    'packages/contracts/src/__tests__/orchestration-session-contracts.test.ts',
-    'packages/contracts/src/__tests__/registry-lifecycle.test.ts',
     'packages/contracts/src/__tests__/environment-security.test.ts',
-    'packages/contracts/src/__tests__/workspace-isolation-contracts.test.ts',
     'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
     'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
     'packages/connect/src/__tests__/ConnectionStore.test.ts',
@@ -82,7 +78,9 @@ export const PREPUSH_TEST_GROUPS = Object.freeze({
     'src-ui/src/__tests__/connectionInventory.test.ts',
     'src-ui/src/__tests__/resolve-home-surface.test.ts',
     'src-ui/src/__tests__/app-routing.test.ts',
-    'src-ui/src/__tests__/websocket-secret-inventory.test.ts',
+    // Browser WebSocket credentials stay out of URLs and subprotocols.
+    'src-ui/src/__tests__/NovaVoiceSessionAdapter.test.ts',
+    'src-ui/src/components/coding-layout/__tests__/TerminalPanel.test.tsx',
   ]),
 });
 

@@ -46,6 +46,8 @@
  * (`check-generated-pages-links.mjs` also gets a pair below. It is NOT one of
  * the 54: the Pages workflow runs it, not `verify:static:raw`. It is here
  * because the fixture was free once the harness existed.)
+ * (`test-fixture-policy.mjs` later joined the accept runs, when
+ * `verification:policy:gate` was added to that file's derivation.)
  *
  * ## What this suite deliberately does NOT do
  *
@@ -255,6 +257,11 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
     reason:
       'a ratchet over the real src tree whose baseline entries must each still match a live finding; a fixture cannot carry the production baseline and a synthetic one would test nothing the unit test does not',
   },
+  {
+    script: 'test-fixture-policy.mjs',
+    reason:
+      'reached through verification:policy:gate; its classification rules are proven in-process by test-fixture-policy.test.ts, and the subject here is the real test corpus and its checked-in baseline',
+  },
 ];
 
 describe('every unexecuted guardrail reaches a verdict on this repo', () => {
@@ -371,6 +378,21 @@ function linkNodeModules(dir: string): void {
 
 describe('check-markdown-links rejects a broken relative link', () => {
   const SCRIPT = 'check-markdown-links.mjs';
+  // The gate renders each document through the learning reader, so the
+  // scratch tree needs that module graph and its Markdown toolchain.
+  const linkRepo = (files: Record<string, string>) => {
+    const dir = scratchRepo({
+      script: SCRIPT,
+      libs: [
+        'documentation-model.mjs',
+        'learning-markdown.mjs',
+        'learning-source-reader.mjs',
+      ],
+      files,
+    });
+    linkNodeModules(dir);
+    return dir;
+  };
 
   const clean = {
     'README.md': '[Guide](docs/guide.md)\n',
@@ -380,41 +402,35 @@ describe('check-markdown-links rejects a broken relative link', () => {
   it('accepts the clean tree — the negative control', {
     timeout: CASE_TIMEOUT,
   }, () => {
-    const result = runGuardrail(
-      scratchRepo({ script: SCRIPT, files: clean }),
-      SCRIPT,
-    );
+    const result = runGuardrail(linkRepo(clean), SCRIPT);
     expect(result.status, result.output).toBe(0);
     expect(result.stdout).toContain(
-      'Validated relative links in 2 Markdown files.',
+      'Validated local paths and rendered anchors in 2 Markdown files.',
     );
   });
 
   it('rejects a link whose target does not exist', {
     timeout: CASE_TIMEOUT,
   }, () => {
-    const dir = scratchRepo({
-      script: SCRIPT,
-      files: { ...clean, 'README.md': '[Guide](docs/missing.md)\n' },
+    const dir = linkRepo({
+      ...clean,
+      'README.md': '[Guide](docs/missing.md)\n',
     });
     const result = runGuardrail(dir, SCRIPT);
     // `check-markdown-links.mjs` sets `process.exitCode = 1` and returns
     // rather than calling `process.exit(1)`. Nothing had ever proved that
     // still leaves a non-zero status.
     expect(result.status, result.output).toBe(1);
-    expect(result.stderr).toContain('Broken relative Markdown links:');
+    expect(result.stderr).toContain('Broken local Markdown links:');
     expect(result.stderr).toContain(
-      '- README.md: [Guide](docs/missing.md) — missing target',
+      '- README.md:1: [Guide](docs/missing.md) — missing target',
     );
   });
 
   it('rejects a link that escapes the repository', {
     timeout: CASE_TIMEOUT,
   }, () => {
-    const dir = scratchRepo({
-      script: SCRIPT,
-      files: { ...clean, 'README.md': '[Up](../escape.md)\n' },
-    });
+    const dir = linkRepo({ ...clean, 'README.md': '[Up](../escape.md)\n' });
     const result = runGuardrail(dir, SCRIPT);
     expect(result.status, result.output).toBe(1);
     expect(result.stderr).toContain('— outside repository');
@@ -733,6 +749,23 @@ describe('builder-delivery-viewer-import:gate rejects an unpublished import', ()
     expect(result.status, result.output).toBe(1);
     expect(result.stderr).toContain(
       `unapproved-module-capability: ${ROOT}/evil.ts:1`,
+    );
+  });
+
+  it('refuses an empty scope rather than reporting it clean', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const dir = scratchRepo({
+      script: SCRIPT,
+      files: {
+        'examples/other-plugin/src/plugin.tsx': clean[`${ROOT}/plugin.tsx`],
+      },
+    });
+    linkNodeModules(dir);
+    const result = runGuardrail(dir, SCRIPT);
+    expect(result.status, result.output).toBe(1);
+    expect(result.stderr).toContain(
+      'Builder Delivery Viewer import gate failed: no source files under examples/builder-delivery-viewer.',
     );
   });
 });
@@ -1149,6 +1182,8 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
+      // The ratchet lints the roots named by the real lint:check script.
+      productionFiles: ['package.json'],
       files: {
         ...config,
         'src-ui/clean.tsx':
@@ -1169,6 +1204,7 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
+      productionFiles: ['package.json'],
       files: {
         ...config,
         'src-ui/clean.tsx': 'export const A = () => <button>x</button>;\n',
@@ -1192,6 +1228,7 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
+      productionFiles: ['package.json'],
       files: {
         ...config,
         'scripts/a11y-baseline.json': `${JSON.stringify(
@@ -1429,6 +1466,7 @@ describe('docs:reference:gate rejects a doc naming a path that does not exist', 
   // so the clean tree is the scope, not a convenience.
   const scope: Record<string, string> = {};
   for (const dir of [
+    'docs/user',
     'docs/guides',
     'docs/reference',
     'docs/architecture',
@@ -1448,6 +1486,7 @@ describe('docs:reference:gate rejects a doc naming a path that does not exist', 
     'CONTEXT.md',
     'CONTEXT-MAP.md',
     'SECURITY.md',
+    'CONTRIBUTING.md',
   ]) {
     scope[file] = '# x\n';
   }

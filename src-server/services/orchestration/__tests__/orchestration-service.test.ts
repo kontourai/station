@@ -20,6 +20,7 @@ import {
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
@@ -133,10 +134,7 @@ import {
   OrchestrationService as RawOrchestrationService,
 } from '../orchestration-service.js';
 import { recoverOrchestrationSessions } from '../orchestration-session-state.js';
-import {
-  anyPersonalOrchestrationStreamPresenceSubject,
-  OrchestrationStreamPresence,
-} from '../orchestration-stream-presence.js';
+import { OrchestrationStreamPresence } from '../orchestration-stream-presence.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import {
@@ -1038,6 +1036,39 @@ describe('OrchestrationService', () => {
         projectIdSource: 'slug-lookup',
       });
     });
+
+    test('#2601 L3: the started engine comes from the SAME record as the started metadata', () => {
+      // A metadata-less `session.started` is skipped for the metadata, so its
+      // provider must be skipped too: a caller's Agent-less identity (its
+      // engine) and its `adoptedFromThreadId` never come from two events.
+      const now = new Date().toISOString();
+      eventStore.appendEvent({
+        provider: 'codex',
+        threadId: 'split-record-session',
+        eventId: 'evt-split-started',
+        createdAt: now,
+        method: 'session.started',
+        sessionId: 'split-record-session',
+      } as CanonicalRuntimeEvent);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'split-record-session',
+        eventId: 'evt-split-configured',
+        createdAt: now,
+        method: 'session.configured',
+        sessionId: 'split-record-session',
+        metadata: { adoptedFromThreadId: 'thread-attached-1' },
+      } as CanonicalRuntimeEvent);
+      expect(
+        service.firstStartedMetadataOfThread('split-record-session'),
+      ).toEqual({ adoptedFromThreadId: 'thread-attached-1' });
+      expect(service.firstStartedEngineOfThread('split-record-session')).toBe(
+        'claude',
+      );
+      expect(
+        service.firstStartedEngineOfThread('no-such-session'),
+      ).toBeUndefined();
+    });
   });
 
   test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
@@ -1531,6 +1562,135 @@ describe('OrchestrationService', () => {
     ).toEqual({ kind: 'bound' });
   });
 
+  // A dispatched Task's session belongs to the principal that dispatched it,
+  // on both the engine-start path and the default seeded (`task-dispatch`)
+  // path. This suite's service denies ownerless reads, so a session with no
+  // recorded owner would be invisible to the dispatcher itself.
+  test.each([
+    ['an engine start', 'claude'],
+    ['the default seeded dispatch', undefined],
+  ] as const)(
+    'a Task session started by %s records its dispatcher as owner',
+    async (_label, provider) => {
+      const root = join(tmp, `owned-dispatch-${provider ?? 'seeded'}`);
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'owned-project',
+        title: 'Owned dispatch',
+        agentId: 'codex',
+      });
+      const dispatcher = composeTaskDispatcher(graph, {
+        orchestrationService: service,
+      });
+      const dispatched = await dispatcher.dispatch(task.id, {
+        ownerUserId: 'human:device:phone',
+        fullAccessGrant: null,
+        ...(provider ? { runtimeConfig: { provider, cwd: tmp } } : {}),
+      });
+      expect(dispatched.kind).toBe('dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      if (provider) {
+        // An engine records the owner from its start metadata in the
+        // `session.started` it publishes (this suite's fake engine publishes
+        // nothing), so the start must carry it.
+        expect(claude.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            threadId: sessionId,
+            metadata: expect.objectContaining({ userId: 'human:device:phone' }),
+          }),
+        );
+        return;
+      }
+      expect(eventStore.findSessionOwnerUserId(sessionId)).toBe(
+        'human:device:phone',
+      );
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('human:device:phone'),
+        ),
+      ).toBe(true);
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('stranger'),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  // B2: an unverified agent's (or an external sender's) dispatch is the
+  // operator's to read but acts for no one, on both dispatch paths.
+  test.each([
+    ['an engine start', 'claude'],
+    ['the default seeded dispatch', undefined],
+  ] as const)(
+    'an unattributed Task session started by %s is readable by its owner and acts for no one',
+    async (_label, provider) => {
+      const root = join(tmp, `unattributed-dispatch-${provider ?? 'seeded'}`);
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'unattributed-project',
+        title: 'Agent dispatch',
+        agentId: 'codex',
+      });
+      const dispatched = await composeTaskDispatcher(graph, {
+        orchestrationService: service,
+      }).dispatch(task.id, {
+        ownerUserId: 'human:local:operator',
+        ownerAttribution: 'unattributed-agent',
+        fullAccessGrant: null,
+        ...(provider ? { runtimeConfig: { provider, cwd: tmp } } : {}),
+      });
+      expect(dispatched.kind).toBe('dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      if (provider) {
+        // The start choke point stamps the marker the engine records.
+        expect(claude.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            threadId: sessionId,
+            metadata: expect.objectContaining({
+              userId: 'human:local:operator',
+              ownerAttribution: 'unattributed-agent',
+            }),
+          }),
+        );
+        return;
+      }
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('human:local:operator'),
+        ),
+      ).toBe(true);
+      expect(service.resolveSessionActingPrincipal(sessionId)).toBeUndefined();
+    },
+  );
+
   test.each([false, true])(
     'boot recovers only completed dispatch finalization (provider start uncertain: %s)',
     async (uncertain) => {
@@ -1568,6 +1728,7 @@ describe('OrchestrationService', () => {
         },
       );
       const dispatched = await dispatcher.dispatch(task.id, {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         runtimeConfig: { provider: 'claude', cwd: tmp },
       });
@@ -1767,6 +1928,7 @@ describe('OrchestrationService', () => {
       return original(input);
     });
     const dispatched = dispatcher.dispatch(task.id, {
+      ownerUserId: 'test-owner',
       fullAccessGrant: null,
       runtimeConfig: { provider: 'claude', cwd: tmp },
     });
@@ -5921,7 +6083,6 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([stationAgent]),
       eventBus: new EventBus(),
       eventStore,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     const threadId = peerService.recordPeerDelegationActivityDispatch({
@@ -7018,24 +7179,22 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([bedrock]),
       eventBus,
       eventStore,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    // A personal Station refuses an ownerless session too.
     await expect(
       local.readSession('ownerless-thread', personal),
-    ).resolves.toEqual(
+    ).resolves.toBeNull();
+    await expect(local.readSession('alpha-thread', personal)).resolves.toEqual(
       expect.objectContaining({
-        session: expect.objectContaining({ threadId: 'ownerless-thread' }),
+        session: expect.objectContaining({ threadId: 'alpha-thread' }),
       }),
     );
   });
 
-  test('resolves a personal ownerless session to the any-personal presence subject (slice 6 I10 guard)', () => {
-    // The personal fallback branch of `resolveSessionPresenceSubject` — a
-    // session with no recorded owner in a non-hosted deployment falls back
-    // to the any-personal subject rather than resolving no subject at all.
-    // Before this fixture, deleting the fallback ran the whole suite green:
-    // the hosted test above only exercises tenant-bound subjects.
+  test('resolves no presence subject for a personal ownerless session: nobody may read it (slice 6 I10 guard)', () => {
+    // A session with no recorded owner has no one to notify, so a
+    // completion must not borrow any connected user's presence.
     const threadId = 'ownerless-presence-thread';
     eventStore.upsertSession({
       provider: 'bedrock',
@@ -7044,8 +7203,7 @@ describe('OrchestrationService', () => {
       createdAt: '2026-08-08T00:00:00.000Z',
       updatedAt: '2026-08-08T00:00:00.000Z',
     });
-    const subject = service.resolveSessionPresenceSubject(threadId);
-    expect(subject).toEqual(anyPersonalOrchestrationStreamPresenceSubject());
+    expect(service.resolveSessionPresenceSubject(threadId)).toBeUndefined();
   });
 
   test('#2312: discardDraft stops a live Draft engine, and a late session.exited cannot bring the row back', async () => {
@@ -8947,6 +9105,72 @@ describe('OrchestrationService', () => {
     await bounded.shutdown();
   });
 
+  // archive#1399 M4: a tool-emitted UI block's provenance is sanitized once,
+  // before both persistence and the live publish, so a replay from storage
+  // and the SSE frame carry the same host-derived claim.
+  test('persists and publishes the same sanitized UI block provenance for a forged tool claim', async () => {
+    const threadId = 'ui-block-provenance-parity';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'bedrock' },
+    });
+    service.initialize();
+    const published: CanonicalRuntimeEvent[] = [];
+    const unsubscribe = eventBus.subscribe((message) => {
+      const event = (message.data as { event?: CanonicalRuntimeEvent })?.event;
+      if (
+        message.event === 'orchestration:event' &&
+        event?.eventId === 'forged-ui-block'
+      ) {
+        published.push(event);
+      }
+    });
+
+    bedrock.events.push({
+      eventId: 'forged-ui-block',
+      provider: 'bedrock',
+      threadId,
+      createdAt: new Date().toISOString(),
+      itemId: 'item-1',
+      toolCallId: 'call-1',
+      method: 'tool.completed',
+      toolName: 'report',
+      status: 'success',
+      output: {
+        uiBlock: {
+          type: 'table',
+          columns: ['Name'],
+          rows: [['a']],
+          attestationState: 'attested',
+          provenanceDigest: 'forged-digest',
+        },
+      },
+    } as CanonicalRuntimeEvent);
+
+    const persisted = await waitFor(
+      () =>
+        eventStore
+          .listEvents(threadId)
+          .map((entry) => entry.payload)
+          .find((event) => event.eventId === 'forged-ui-block'),
+      (event) => event !== undefined,
+    );
+    unsubscribe();
+
+    expect(published).toHaveLength(1);
+    const persistedBlock = (
+      persisted as { output: { uiBlock: Record<string, unknown> } }
+    ).output.uiBlock;
+    const publishedBlock = (
+      published[0] as unknown as {
+        output: { uiBlock: Record<string, unknown> };
+      }
+    ).output.uiBlock;
+    expect(persistedBlock).toEqual(publishedBlock);
+    expect(persistedBlock.provenanceDigest).not.toBe('forged-digest');
+    expect(persistedBlock.attestationState).toBe('unattested');
+  });
+
   describe('content delta coalescing at the publish seam (station#3350)', () => {
     /** Every delta this suite streams belongs to one item of one turn. */
     function textDelta(
@@ -9432,7 +9656,11 @@ describe('OrchestrationService', () => {
     // (forgetLiveUserSession losing policyThreads) stayed green under the
     // whole suite — so both the call sites' declared subsets AND the seam
     // docblock's table are derived from the source and compared to each
-    // other: ONE truth, no third transcription to rot. Same genre as
+    // other: ONE truth, no third transcription to rot. Only the
+    // evictCollidingAttachedAliases ownerCache flag also has a behavioural
+    // observer (its eviction test reads the owner afterwards); the policy
+    // binding cache has no public read, so this gate stays until every
+    // site has one. Same genre as
     // orchestration-source-invariants.test.ts (read its header before
     // extending this — the docblock never writes the call form, which is why
     // the call-site regex cannot match its own rationale). A site changing
@@ -9445,12 +9673,40 @@ describe('OrchestrationService', () => {
         join(__dirname, '..', 'orchestration-service.ts'),
         'utf8',
       );
+      const lines = source.split('\n');
+      const MEMBER =
+        /^ {2}(?:(?:private|public|protected|static|async|readonly|override)\s+)*(constructor|[A-Za-z_]\w*)\s*(?:<[^>]*>)?\(/;
+      // A site is keyed by its enclosing class member, or, for the dep
+      // closures handed to a collaborator in the constructor, by that
+      // collaborator's class. The docblock row is keyed by the first segment
+      // of its caller label. Keys, not source order, pair them, so moving a
+      // method does not change the verdict.
+      const callerOf = (offset: number): string => {
+        const line = source.slice(0, offset).split('\n').length - 1;
+        for (let index = line; index >= 0; index -= 1) {
+          const member = MEMBER.exec(lines[index] ?? '');
+          if (!member) continue;
+          if (member[1] !== 'constructor') return member[1]!;
+          for (let inner = line; inner > index; inner -= 1) {
+            const collaborator = /new (\w+)\(/.exec(lines[inner] ?? '');
+            if (collaborator) return collaborator[1]!;
+          }
+          return 'constructor';
+        }
+        throw new Error(`no enclosing member for offset ${offset}`);
+      };
       const sites = [
         ...source.matchAll(
           /forgetThreadState\(\s*[^,)]+,\s*\{([^}]*)\}\s*,?\s*\)/g,
         ),
-      ].map((match) =>
-        [...match[1].matchAll(/(\w+):\s*true/g)].map((flag) => flag[1]).sort(),
+      ].map(
+        (match) =>
+          [
+            callerOf(match.index ?? 0),
+            [...match[1]!.matchAll(/(\w+):\s*true/g)]
+              .map((flag) => flag[1])
+              .sort(),
+          ] as const,
       );
       const FLAG_COLUMNS = [
         'policyThreads',
@@ -9462,183 +9718,22 @@ describe('OrchestrationService', () => {
         ...source.matchAll(
           /^\s*\* \| ([A-Za-z.]+) \| (yes|—) \| (yes|—) \| (yes|—) \| (yes|—) \|$/gm,
         ),
-      ].map((row) =>
-        FLAG_COLUMNS.filter((_flag, index) => row[index + 2] === 'yes').sort(),
+      ].map(
+        (row) =>
+          [
+            row[1]!.split('.')[0]!,
+            FLAG_COLUMNS.filter(
+              (_flag, index) => row[index + 2] === 'yes',
+            ).sort(),
+          ] as const,
       );
       expect(docblockRows).toHaveLength(7);
-      expect(sites).toEqual(docblockRows);
-    });
-  });
-
-  /** A class-member declaration at the file's two-space member indent. */
-  const MEMBER_DECLARATION =
-    /^ {2}(?:private |public |protected )?(?:static )?(?:readonly )?(?:async )?[A-Za-z_$][\w$]*\(/gm;
-
-  /**
-   * One method's body: from its declaration to whatever member is declared
-   * NEXT, whichever that turns out to be.
-   *
-   * Review L6 (archive#4218) called out the previous form — a slice between two
-   * NAMED markers — as not-a-body, since a member declared between them but
-   * CALLED from above the gate keeps every relative index intact while
-   * inverting the ordering the invariant exists to protect. That was not
-   * hypothetical: applying this helper immediately showed
-   * `captureUsagePricingSnapshot` had already landed between
-   * `consumeAdapterEvents` and `isAdapterCurrent`, so the ingest scan was
-   * reading two members as one body. Naming the next marker is what rots;
-   * this finds it, so an insertion narrows the slice instead of widening it.
-   */
-  function readMethodBody(source: string, declaration: string): string {
-    const start = source.indexOf(declaration);
-    expect(
-      start,
-      `declaration not found: ${declaration}`,
-    ).toBeGreaterThanOrEqual(0);
-    const rest = source.slice(start + declaration.length);
-    const next = [...rest.matchAll(MEMBER_DECLARATION)][0];
-    expect(next, 'no member follows the scanned declaration').toBeDefined();
-    return declaration + rest.slice(0, next?.index ?? rest.length);
-  }
-
-  describe('the cooperative-stop settle-read precedes the quarantine gate (source invariant)', () => {
-    /**
-     * Slice 10 (archive#4204): moving `settleCompletedTurn` below the quarantine
-     * gate changes observable behavior ONLY for a quarantined thread with
-     * an in-flight cooperative stop — a state no runtime fixture had ever
-     * constructed, so the perturbation was 100% green under the whole
-     * suite. The ordering's owner is this scan; its behavioral complement
-     * is the I2 guard fixture beside the stop tests.
-     */
-    test('publishCanonicalEvent settles a completed stop before it can decline the event', () => {
-      const source = readFileSync(
-        join(__dirname, '..', 'orchestration-service.ts'),
-        'utf8',
-      );
-      const body = readMethodBody(source, '\n  private publishCanonicalEvent(');
-      const settle = body.indexOf('.settleCompletedTurn(');
-      const gate = body.indexOf('this.quarantinedThreads.has(');
-      expect(settle).toBeGreaterThanOrEqual(0);
-      expect(gate).toBeGreaterThanOrEqual(0);
-      expect(settle).toBeLessThan(gate);
-      // Exactly one dispatch of the settle, file-wide (double-settle guard).
-      // RAW scan, comments included: a service-side comment that writes the
-      // literal call form `.settleCompletedTurn(` would red this on its own
-      // rationale — keep prose references name-only (same warning as the
-      // forgetThreadState invariant above).
-      expect(source.split('.settleCompletedTurn(').length - 1).toBe(1);
-    });
-  });
-
-  describe('the ingest policy/spool calls sit below the publish continue-gate (source invariant)', () => {
-    /**
-     * Slice 11 (archive#4218): the two FlowPolicySidecar ingest calls must run
-     * ONLY for events the publish seam accepted — moving either above the
-     * continue-gate changes observable behavior only for events the gate
-     * declines (coalesced deltas, quarantined threads), populations no
-     * runtime fixture combined with tool events before this slice. The
-     * ordering's owner is this scan; its behavioral complement is the
-     * quarantined-ingest guard in the S3 policy band. Prose that names the
-     * calls stays name-only (no `this.flowPolicy.` + paren call form) or
-     * this scan reds on its own rationale — same warning as the two
-     * invariants above.
-     */
-    test('consumeAdapterEvents orders gate < post-hoc policy < command spool, each dispatched once file-wide', () => {
-      const source = readFileSync(
-        join(__dirname, '..', 'orchestration-service.ts'),
-        'utf8',
-      );
-      const body = readMethodBody(
-        source,
-        '\n  private async consumeAdapterEvents(',
-      );
-      const gate = body.indexOf('if (!this.projectAndPublishEvent(');
-      const postHoc = body.indexOf('.applyPostHocToolPolicies(');
-      const spool = body.indexOf('.spoolCommandEvidence(');
-      expect(gate).toBeGreaterThanOrEqual(0);
-      expect(postHoc).toBeGreaterThan(gate);
-      expect(spool).toBeGreaterThan(postHoc);
-      // The gate must be the ONLY one in the body: with two, the ingest
-      // calls could sit above the real gate and still be `> gate`.
-      expect(body.split('if (!this.projectAndPublishEvent(').length - 1).toBe(
-        1,
-      );
-      // Exactly one dispatch of each across the SERVICES TREE, not just this
-      // file (review M2): before slice 11 both were private members of this
-      // class, so "file-wide" was "everywhere". They are public members of an
-      // exported class now — any module holding the sidecar can dispatch
-      // them, and a second appender spooling the same event would double
-      // every command into durable Flow evidence. RAW scan, comments
-      // included, so prose naming them stays name-only.
-      const servicesTree = readdirSync(join(__dirname, '..', '..'), {
-        recursive: true,
-        withFileTypes: true,
-      })
-        .filter((entry) => entry.isFile() && String(entry.name).endsWith('.ts'))
-        .map((entry) => join(String(entry.parentPath), String(entry.name)))
-        .filter((file) => !file.includes('__tests__'))
-        .map((file) => readFileSync(file, 'utf8'))
-        .join('\n');
-      expect(servicesTree.split('.applyPostHocToolPolicies(').length - 1).toBe(
-        1,
-      );
-      expect(servicesTree.split('.spoolCommandEvidence(').length - 1).toBe(1);
-    });
-  });
-
-  describe('shutdown reads the retiring set before it drains (source invariant)', () => {
-    /**
-     * Slice 12 (archive#4024): `retiringAdapters()` and `shutdownRetirementTasks()`
-     * used to be one expression over one map. Split across a module seam,
-     * they are two calls that MUST happen at the same synchronous tick —
-     * an await between them lets a retirement settle and drop out of the
-     * set, after which the second arm stops an adapter the first arm is
-     * already stopping. Nothing at any level observes that ordering, so
-     * this scan owns it.
-     */
-    test('the two retirement reads are adjacent, with no await between them', () => {
-      const source = readFileSync(
-        join(__dirname, '..', 'orchestration-service.ts'),
-        'utf8',
-      );
-      const body = readMethodBody(
-        source,
-        '\n  async shutdown(): Promise<void> {',
-      );
-      const set = body.indexOf('.retiringAdapters()');
-      const drain = body.indexOf('.shutdownRetirementTasks()');
-      expect(set).toBeGreaterThanOrEqual(0);
-      expect(drain).toBeGreaterThan(set);
-      // The window starts at the read, so an await IMMEDIATELY BEFORE it —
-      // `const x = await this.adapterRetirement.retiringAdapters()`, if that
-      // ever became async — would suspend outside the scan and stay green
-      // while a retirement settles out of the drain map (review L2). Pin the
-      // call's awaitless form directly.
-      expect(body).toContain(
-        'const retiringAdapters = this.adapterRetirement.retiringAdapters();',
-      );
-      // The ONLY await permitted between them is the one that opens the
-      // `Promise.allSettled([` whose array literal CONTAINS the drain: that
-      // await does not suspend until after the array is built, so the two
-      // reads still happen at one tick. Any OTHER await does suspend, and
-      // that is the hazard. RAW scan, comments included, so prose between
-      // them stays name-only.
-      const between = body
-        .slice(set, drain)
-        .replace('await Promise.allSettled([', '');
-      expect(between).not.toMatch(/\bawait\b/);
-      // Exactly one dispatch of each across the services tree: a second
-      // drain would double-stop every retiring adapter.
-      const servicesTree = readdirSync(join(__dirname, '..', '..'), {
-        recursive: true,
-        withFileTypes: true,
-      })
-        .filter((entry) => entry.isFile() && String(entry.name).endsWith('.ts'))
-        .map((entry) => join(String(entry.parentPath), String(entry.name)))
-        .filter((file) => !file.includes('__tests__'))
-        .map((file) => readFileSync(file, 'utf8'))
-        .join('\n');
-      expect(servicesTree.split('.shutdownRetirementTasks(').length - 1).toBe(
-        1,
+      expect(sites).toHaveLength(7);
+      // Unique keys on both sides, so the maps below cannot merge two sites.
+      expect(new Set(sites.map(([caller]) => caller)).size).toBe(7);
+      expect(new Set(docblockRows.map(([caller]) => caller)).size).toBe(7);
+      expect(Object.fromEntries(sites)).toEqual(
+        Object.fromEntries(docblockRows),
       );
     });
   });
@@ -10484,6 +10579,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'both-halves-turn-1-started',
       provider: 'codex',
@@ -10661,6 +10767,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'failed-restart-turn-1-started',
       provider: 'codex',
@@ -10789,20 +10906,113 @@ describe('OrchestrationService', () => {
       false,
     );
     expect(isRestarting?.('loop-guard-thread')).toBe(false);
-    // The WRITER edge — the ctor's `setRestarting` closure handed to
-    // createCredentialRecoveryModule — is a closure no runtime probe can
-    // reach without driving a full recovery dispatch, so it is pinned as a
-    // source invariant: the option must forward to the module's method
-    // (review round 1: neutering that one closure would leave isRestarting
-    // permanently false and let a credential-restart loop run unbounded).
-    const ctorSource = readFileSync(
-      join(__dirname, '..', 'orchestration-service.ts'),
-      'utf8',
-    );
-    expect(ctorSource).toContain(
-      'setRestarting: (threadId, restarting) =>\n' +
-        '            this.credentialProfileRecovery.setRestarting(threadId, restarting),',
-    );
+  });
+
+  test('a real credential-profile recovery marks its thread restarting for exactly the dispatch (slice 7 I5 writer)', async () => {
+    // The WRITER edge of the loop guard: the ctor's `setRestarting` closure
+    // handed to createCredentialRecoveryModule. Neutering it leaves
+    // isCredentialRestarting permanently false, and the coordinator then
+    // cancels the recovery it is running when the restart exits the session
+    // (review round 1). Driven through the composed module, dispatch adapter
+    // and provider restart; observed through the coordinator's own reader.
+    const adapter = new FakeAdapter('codex');
+    const now = () => new Date().toISOString();
+    const restartService = new OrchestrationService({
+      adapterRegistry: createRegistry([adapter]),
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      credentialProfileRecoveryAdapter: {
+        stage: async (input) => {
+          const application = eventStore
+            .createCredentialApplicationFactory()
+            .start({
+              recoveryFingerprint: input.recoveryFingerprint,
+              connectionId: input.provider,
+              candidateProfileRef: 'loop-guard-profile',
+              now: now(),
+            });
+          if (application.kind !== 'owner') return { kind: 'indeterminate' };
+          application.claim.staged(now());
+          return {
+            kind: 'staged',
+            attempt: {
+              candidateProfileRef: 'loop-guard-profile',
+              capability: 'restart_resume',
+              commit: async () => ({ kind: 'adopted' }),
+              rollback: async () => ({ kind: 'rolled-back' }),
+              inspect: async () => ({ kind: 'staged' }),
+              acknowledge: async () => ({ kind: 'applied' }),
+            },
+          };
+        },
+      },
+    });
+    const internals = restartService as unknown as {
+      credentialRecovery?: {
+        recover(observation: {
+          intent: ConnectionRecoveryIntent;
+          replay: {
+            threadId: string;
+            input: string;
+            recoveryCorrelationId: string;
+            signal: AbortSignal;
+          };
+        }): Promise<{ kind: string }>;
+      };
+      recoveryCoordinator?: {
+        options: { isCredentialRestarting?: (threadId: string) => boolean };
+      };
+    };
+    const isRestarting =
+      internals.recoveryCoordinator?.options.isCredentialRestarting;
+    expect(internals.credentialRecovery).toBeDefined();
+    expect(isRestarting).toBeDefined();
+
+    const threadId = 'loop-guard-real-recovery';
+    await restartService.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'codex' },
+    });
+    const restartObservations: boolean[] = [];
+    const startDefault = adapter.startSession.getMockImplementation()!;
+    adapter.startSession.mockImplementationOnce(async (input) => {
+      restartObservations.push(isRestarting!(threadId));
+      return startDefault(input);
+    });
+    const intent = eventStore.createRecoveryLedger().arm({
+      fingerprint: `${threadId}:turn-1:capacity:account`,
+      threadId,
+      provider: 'codex',
+      sourceEventId: 'loop-guard-source',
+      sourceTurnId: 'turn-1',
+      failureKind: 'capacity',
+      scope: 'account',
+      decision: 'retry-now',
+      dueAt: now(),
+      maxAttempts: 1,
+      outcome: 'armed',
+      createdAt: now(),
+      updatedAt: now(),
+    });
+
+    expect(isRestarting!(threadId)).toBe(false);
+    const outcome = await internals.credentialRecovery!.recover({
+      intent,
+      replay: {
+        threadId,
+        input: 'replayed prompt',
+        recoveryCorrelationId: 'loop-guard-correlation',
+        signal: new AbortController().signal,
+      },
+    });
+
+    // The restart reached the provider, and the guard was up while it ran.
+    expect(restartObservations).toEqual([true]);
+    expect(outcome.kind).not.toBe('conflicted');
+    // ...and is released afterwards, so a later exit is not suppressed.
+    expect(isRestarting!(threadId)).toBe(false);
+    await restartService.shutdown();
   });
 
   test('BOTH REAL HALVES: a restart whose REPLAY dispatch fails still pushes "needs attention" for the stopped turn (slice 7 I7 guard)', async () => {
@@ -10849,6 +11059,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'replay-fail-turn-1-started',
       provider: 'codex',
@@ -11033,6 +11254,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'teardown-failed-turn-1-started',
       provider: 'codex',
@@ -12609,47 +12841,6 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'bedrock' },
     });
     expect(started).toEqual(expect.objectContaining({ threadId }));
-  });
-
-  test('monitoring drop-log fires once per unconfigured thread and re-arms after attribution (slice 8 G4 guard)', () => {
-    // C18 closed as already-resolved (no extraction); this pins its ONLY
-    // untested behavior — the log-once dedupe and the re-arm delete —
-    // which had zero coverage repo-wide ("Monitoring dropped turn" matched
-    // only the write site).
-    const debug = vi.fn();
-    const g4Service = new RawOrchestrationService({
-      adapterRegistry: createRegistry([bedrock]),
-      eventBus: new EventBus(),
-      eventStore,
-      logger: { debug, warn: vi.fn() },
-    });
-    const internals = g4Service as unknown as {
-      monitoringContextFor(threadId: string): unknown;
-      monitoringUnconfiguredThreads: Set<string>;
-    };
-    expect(internals.monitoringContextFor('g4-unconfigured')).toBeNull();
-    expect(internals.monitoringContextFor('g4-unconfigured')).toBeNull();
-    expect(
-      debug.mock.calls.filter(
-        ([message]) =>
-          message === 'Monitoring dropped turn for unconfigured session',
-      ),
-    ).toHaveLength(1);
-    // Attribution arrives: the set entry is deleted so a LATER unconfigured
-    // drop would log again rather than being swallowed forever.
-    eventStore.appendEvent({
-      eventId: 'g4-configured',
-      provider: 'bedrock',
-      threadId: 'g4-unconfigured',
-      createdAt: '2026-08-01T00:00:00.000Z',
-      method: 'session.configured',
-      sessionId: 'g4-unconfigured',
-      metadata: { userId: 'g4-user', agentSlug: 'station' },
-    } as CanonicalRuntimeEvent);
-    expect(internals.monitoringContextFor('g4-unconfigured')).not.toBeNull();
-    expect(internals.monitoringUnconfiguredThreads.has('g4-unconfigured')).toBe(
-      false,
-    );
   });
 
   test('gives undeclared adapters an explicit legacy omission plan but fails overrides closed', async () => {
@@ -16546,12 +16737,10 @@ describe('OrchestrationService', () => {
     expect(claude.startSession).not.toHaveBeenCalled();
   });
 
-  test('the internal skipModelOptionSupportCheck flag is not part of the public HTTP-reachable dispatch contract (review r1 HIGH fix)', async () => {
-    // Proves the bypass mechanism works when explicitly invoked (as
-    // runConnectionSmoke does internally) while the ordinary two-argument
-    // call every route uses stays fully enforced — see
-    // `dispatchWithReceipt`'s docblock for why a client-supplied JSON body
-    // has no channel to populate this third argument.
+  test('the internal model-option bypass works when explicitly invoked', async () => {
+    // The mechanism runConnectionSmoke relies on. The ordinary two-argument
+    // call stays enforced (the test above); that a request body cannot
+    // populate this third argument is owned by the /commands route test.
     const bypassed = await service.dispatch(
       {
         type: 'startSession',
@@ -17376,6 +17565,66 @@ describe('OrchestrationService', () => {
     },
   );
 
+  test.each([
+    ['a device grant records that device beside the host stamp', true],
+    ['a grant naming no grantor is refused, and nothing is adopted', false],
+  ] as const)('#1796 H1: %s', async (_label, named) => {
+    const tag = named ? 'named' : 'anonymous';
+    const sourceThreadId = `external:claude:grantor-${tag}`;
+    const projectRoot = join(tmp, `grantor-project-${tag}`);
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({
+      slug: `grantor-project-${tag}`,
+      workingDirectory: projectRoot,
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: sourceThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: `vendor-grantor-${tag}`,
+        affinity: { kind: 'test', ref: 'fixture' },
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    const adopt = service.dispatch(
+      { type: 'adoptSession', sourceThreadId },
+      {
+        fullAccessGrant: fullAccessGrantForTesting(
+          named ? { kind: 'device', deviceId: 'device-1' } : null,
+        ),
+      },
+    );
+    if (!named) {
+      await expect(adopt).rejects.toThrow(/must name who granted it/);
+      expect(claude.adoptSession).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            adoptedFromThreadId: sourceThreadId,
+          }),
+        }),
+        expect.anything(),
+      );
+      return;
+    }
+    await adopt;
+    expect(claude.adoptSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        confinement: 'host',
+        metadata: expect.objectContaining({
+          adoptedFromThreadId: sourceThreadId,
+          stationConfinement: 'host',
+          stationConfinementGrantor: { kind: 'device', deviceId: 'device-1' },
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
   test('adopts an attached source into a new writable child without mutating the source', async () => {
     const sourceThreadId = 'external:claude:source';
     const projectRoot = join(tmp, 'project');
@@ -17543,11 +17792,9 @@ describe('OrchestrationService', () => {
     // (`orchestration.ts`'s `userId: deps.getUserId?.() ?? getCachedUser().alias`),
     // so the resulting session.started/session.configured event carries a
     // real owner instead of leaving the adopted thread permanently
-    // ownerless. `ownerlessSessionAccess: 'single-user-compat'` mirrors
-    // `runtime-initialize.ts`'s production default so this test exercises
-    // the exact policy archive#1165 is about (under this suite's default `deny`
-    // policy, the pre-existing source-thread precheck wouldn't even let a
-    // userId-bearing dispatch through, masking the bug this test targets).
+    // ownerless. The attached source is owned by the adopting user, as the
+    // follow service records an attached transcript's owner (the local
+    // operator in production), so the source precheck admits the adoption.
     const sourceThreadId = 'external:claude:source-1165';
     const projectRoot = join(tmp, 'project-1165');
     mkdirSync(projectRoot, { recursive: true });
@@ -17571,7 +17818,6 @@ describe('OrchestrationService', () => {
       flowRunService,
       listProjects: () => localProjects,
       workflowSidecarService,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     localService.initialize();
@@ -17589,6 +17835,15 @@ describe('OrchestrationService', () => {
       createdAt: '2026-07-28T00:00:00.000Z',
       updatedAt: '2026-07-28T00:00:00.000Z',
     });
+    eventStore.appendEvent({
+      eventId: 'source-1165-owner',
+      provider: 'claude',
+      threadId: sourceThreadId,
+      createdAt: '2026-07-28T00:00:00.000Z',
+      method: 'session.started',
+      sessionId: sourceThreadId,
+      metadata: { controlMode: 'read-only-attached', userId: 'adopter-user' },
+    } as CanonicalRuntimeEvent);
 
     const child = await localService.dispatch(
       { type: 'adoptSession', sourceThreadId },
@@ -18086,6 +18341,18 @@ describe('OrchestrationService', () => {
       createdAt: '2026-07-22T00:00:01.000Z',
       updatedAt: '2026-07-22T00:00:01.000Z',
     });
+    eventStore.appendEvent({
+      eventId: 'alias-owner-configured',
+      provider: 'claude',
+      threadId: aliasThreadId,
+      createdAt: '2026-07-22T00:00:00.500Z',
+      method: 'session.configured',
+      sessionId: aliasThreadId,
+      metadata: { userId: 'alias-owner' },
+    } as CanonicalRuntimeEvent);
+    const aliasOwner = personalReadAuthority('alias-owner');
+    // The read caches the alias's owner before eviction runs.
+    expect(service.canUserReadSession(aliasThreadId, aliasOwner)).toBe(true);
 
     service.initialize();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -18094,6 +18361,9 @@ describe('OrchestrationService', () => {
     expect(sessions.map((session) => session.threadId)).not.toContain(
       aliasThreadId,
     );
+    // Eviction forgets the cached owner with the row, so the evicted id
+    // reads as nobody's rather than as its former owner's.
+    expect(service.canUserReadSession(aliasThreadId, aliasOwner)).toBe(false);
     expect(
       eventStore.readSessions().map((session) => session.threadId),
     ).not.toContain(aliasThreadId);
@@ -18992,23 +19262,27 @@ describe('OrchestrationService', () => {
       timeoutMs: 1_000,
     });
     expect(result).toMatchObject({ ok: true });
-    const smokeCalls = invalidate.mock.calls.filter(([threadId]) =>
-      String(threadId).startsWith('station-smoke-claude-'),
-    );
-    // >= 1, not === 1: publishCanonicalEvent ALSO invalidates on
-    // session.started/configured (a real adapter emits those), and pinning
-    // an exact count would false-pass a dropped tail invalidation the
-    // moment the fixture grows one (review round 1). The ORDERING pin
-    // below is what proves the tail pair: the smoke's own invalidation
-    // runs after its deleteThread.
-    expect(smokeCalls.length).toBeGreaterThanOrEqual(1);
     const smokeDelete = deleteSpy.mock.calls.findIndex(([threadId]) =>
       String(threadId).startsWith('station-smoke-claude-'),
     );
     expect(smokeDelete).toBeGreaterThanOrEqual(0);
-    const lastInvalidate = invalidate.mock.invocationCallOrder.at(-1);
+    const smokeThreadId = deleteSpy.mock.calls[smokeDelete]?.[0];
     const smokeDeleteOrder = deleteSpy.mock.invocationCallOrder[smokeDelete];
-    expect(lastInvalidate).toBeGreaterThan(smokeDeleteOrder ?? Infinity);
+    // Only the smoke thread's own invalidations count, and one of them must
+    // follow its deleteThread. publishCanonicalEvent ALSO invalidates on
+    // session.started/configured, before the delete, so presence alone or
+    // "the last invalidation of any thread" would pass without the tail one.
+    const smokeInvalidationOrders = invalidate.mock.calls.flatMap(
+      ([threadId], index) =>
+        threadId === smokeThreadId
+          ? [invalidate.mock.invocationCallOrder[index]!]
+          : [],
+    );
+    expect(
+      smokeInvalidationOrders.some(
+        (order) => order > (smokeDeleteOrder ?? Infinity),
+      ),
+    ).toBe(true);
     deleteSpy.mockRestore();
     invalidate.mockRestore();
   });
@@ -20021,44 +20295,54 @@ describe('OrchestrationService', () => {
   });
 
   test('shares one bounded cleanup grace between ownership detection and cleanup', async () => {
-    claude.startSession.mockImplementationOnce((input) => {
-      const now = new Date().toISOString();
-      claude.sessions.set(input.threadId, {
-        provider: 'claude',
-        threadId: input.threadId,
-        status: 'ready',
-        createdAt: now,
-        updatedAt: now,
+    vi.useFakeTimers();
+    try {
+      claude.startSession.mockImplementationOnce((input) => {
+        const now = new Date().toISOString();
+        claude.sessions.set(input.threadId, {
+          provider: 'claude',
+          threadId: input.threadId,
+          status: 'ready',
+          createdAt: now,
+          updatedAt: now,
+        });
+        return new Promise<ProviderSession>(() => {});
       });
-      return new Promise<ProviderSession>(() => {});
-    });
-    vi.spyOn(claude, 'hasSession').mockImplementation(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 8));
-      return true;
-    });
-    claude.stopSession.mockImplementationOnce(
-      () => new Promise<void>(() => {}),
-    );
-    const boundedService = new OrchestrationService({
-      adapterRegistry: createRegistry([bedrock, claude]),
-      eventBus,
-      eventStore,
-      adapterStopTimeoutMs: 10,
-      logger: { debug: vi.fn(), warn: vi.fn() },
-    });
+      vi.spyOn(claude, 'hasSession').mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 8));
+        return true;
+      });
+      claude.stopSession.mockImplementationOnce(
+        () => new Promise<void>(() => {}),
+      );
+      const boundedService = new OrchestrationService({
+        adapterRegistry: createRegistry([bedrock, claude]),
+        eventBus,
+        eventStore,
+        adapterStopTimeoutMs: 10,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
 
-    const result = await boundedService.runConnectionSmoke({
-      connectionId: 'claude',
-      provider: 'claude',
-      modelId: 'claude-sonnet',
-      cwd: tmp,
-      timeoutMs: 20,
-    });
+      const resultPromise = boundedService.runConnectionSmoke({
+        connectionId: 'claude',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+        cwd: tmp,
+        timeoutMs: 20,
+      });
+      // Past both candidate deadlines, so a regression settles rather than
+      // hangs: one shared 10 ms grace ends at 20 + 10 = 30, while a fresh
+      // grace for the stop after the 8 ms ownership check would end at
+      // 20 + 8 + 10 = 38.
+      await vi.advanceTimersByTimeAsync(50);
+      const result = await resultPromise;
 
-    expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
-    expect(result.durationMs).toBeGreaterThanOrEqual(20);
-    expect(result.durationMs).toBeLessThan(100);
-    expect(claude.stopSession).toHaveBeenCalledOnce();
+      expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
+      expect(result.durationMs).toBe(30);
+      expect(claude.stopSession).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('arms internal-stop suppression when a timed-out smoke is cleaned through adapter ownership (slice 9 I6 guard)', async () => {
@@ -22331,8 +22615,8 @@ describe('OrchestrationService', () => {
   // BEHAVIOURALLY bit-identical to folding the full log — dropping
   // `turn.completed`, `runtime.error`, or `session.exited` from the literal
   // would still pass a spy assertion built the same way. This is the
-  // differential proof: append one event of EVERY canonical method (all 27
-  // — `packages/contracts/src/runtime-events.ts`'s `CanonicalRuntimeEvent`
+  // differential proof: append one event of EVERY canonical method (the whole
+  // `packages/contracts/src/runtime-events.ts`'s `CanonicalRuntimeEvent`
   // union), fold `listEvents` (the full log) and `listEventsByMethods`
   // narrowed to `ACTIVE_TURN_FOLD_METHODS` through the SAME
   // `activeTurnIdForEvents`, and assert the results agree — CHECKED AFTER
@@ -22355,15 +22639,15 @@ describe('OrchestrationService', () => {
   //
   // Independent review, delta round: everything above proves the 5 methods
   // in `ACTIVE_TURN_FOLD_METHODS` are NECESSARY — it does not prove the
-  // other 22 are SAFE TO OMIT while a turn is actually open, because the
+  // others are SAFE TO OMIT while a turn is actually open, because the
   // first pass only ever fired them before any `turn.started`, where
   // `activeTurnId` is already `undefined` on both sides and any divergence
   // is unobservable. Proven live by injection: adding a 6th method to
   // `nextActiveTurnId`'s branches (`session.stop-settled` closing the turn)
   // WITHOUT adding it to `ACTIVE_TURN_FOLD_METHODS` — exactly the future
   // change these comments warn about — passed every test in this file,
-  // including this one, at 332/332 green. The remedy below replays all 22
-  // no-ops a SECOND time, this time while `turn-open` is live, so a 6th
+  // including this one, at 332/332 green. The remedy below replays every
+  // no-op a SECOND time, this time while `turn-open` is live, so a 6th
   // fold-relevant method the narrowed query excludes now diverges from the
   // full log observably (`fromNarrowed` keeps reporting the turn open,
   // `fromFullLog` does not) instead of firing into a state neither side is
@@ -22378,54 +22662,52 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-08-20T00:00:00.000Z',
     });
 
-    // The 22 methods `nextActiveTurnId` treats as pass-through no-ops —
-    // every canonical method NOT in `ACTIVE_TURN_FOLD_METHODS`. Typed as
-    // `CanonicalRuntimeEvent['method'][]`, not a bare `as const` string
-    // array, so a typo (e.g. 'tool.complete') is a compile error here at
-    // zero runtime cost — a better guard than the fixed-length assertion
-    // below, which only catches a WRONG COUNT, not a wrong NAME.
-    //
-    // What it does NOT catch: a 28th canonical method this list fails to
-    // grow into. A `readonly T[]` accepts any SUBSET, so a missing member
-    // typechecks, and the count assertion stays 22 on both sides — proven
-    // by adding a 28th union member and getting zero new tsc errors.
-    // Coverage would silently decay to 27-of-28. Real exhaustiveness needs
-    // a mapped-type construction, deliberately not added: the typo guard
-    // is worth having on its own, and a comment claiming protection the
-    // types do not provide is worse than no comment.
-    const NON_FOLD_METHODS: readonly CanonicalRuntimeEvent['method'][] = [
-      'session.started',
-      'session.configured',
-      'session.state-changed',
-      'session.stop-settled',
-      'content.text-delta',
-      'content.reasoning-delta',
-      'tool.started',
-      'tool.progress',
-      'tool.completed',
-      'request.opened',
-      'request.resolved',
-      'runtime.warning',
-      'token-usage.updated',
-      'flow.run-attached',
-      'flow.gate-verdict',
-      'policy.hooks-attached',
-      'policy.stop-verdict',
-      'platform.mutation',
-      'workflow.state-changed',
-      'plan.updated',
-      'extension.notification',
-      'conversation.forked',
-    ];
-    // 22 no-ops + the 5 fold-relevant methods = all 27 canonical methods.
-    // Deliberately a fixed literal, NOT `27 - ACTIVE_TURN_FOLD_METHODS.length`
-    // — that form was tried first and self-defeated the differential proof
-    // below: shrinking `ACTIVE_TURN_FOLD_METHODS` (the exact injection this
-    // test exists to catch) also shrinks the expected side of THIS
-    // assertion, so it fails here on a count mismatch instead of failing
-    // below on an actual fold divergence, and the failure message stops
-    // naming which method or turn was affected.
-    expect(NON_FOLD_METHODS.length).toBe(22);
+    // Every canonical method, classified by hand as fold-relevant or a
+    // pass-through no-op for `nextActiveTurnId`. A `Record` over the method
+    // union makes tsc demand an entry for each member, so a new canonical
+    // method fails to compile here until someone classifies it, and a typo
+    // is an excess-key error. The classification is written independently
+    // of `ACTIVE_TURN_FOLD_METHODS` on purpose: deriving it from that set
+    // would shrink the expected side whenever the production set shrinks,
+    // which is the exact injection the differential below exists to catch.
+    const METHOD_ROLE: Record<
+      CanonicalRuntimeEvent['method'],
+      'fold' | 'non-fold'
+    > = {
+      'session.started': 'non-fold',
+      'session.configured': 'non-fold',
+      'session.state-changed': 'non-fold',
+      'session.stop-settled': 'non-fold',
+      'session.approval-mode-set': 'non-fold',
+      'session.exited': 'fold',
+      'turn.started': 'fold',
+      'turn.completed': 'fold',
+      'turn.aborted': 'fold',
+      'runtime.error': 'fold',
+      'content.text-delta': 'non-fold',
+      'content.reasoning-delta': 'non-fold',
+      'tool.started': 'non-fold',
+      'tool.progress': 'non-fold',
+      'tool.completed': 'non-fold',
+      'request.opened': 'non-fold',
+      'request.resolved': 'non-fold',
+      'request.delivery': 'non-fold',
+      'runtime.warning': 'non-fold',
+      'token-usage.updated': 'non-fold',
+      'flow.run-attached': 'non-fold',
+      'flow.gate-verdict': 'non-fold',
+      'policy.hooks-attached': 'non-fold',
+      'policy.stop-verdict': 'non-fold',
+      'platform.mutation': 'non-fold',
+      'workflow.state-changed': 'non-fold',
+      'plan.updated': 'non-fold',
+      'extension.notification': 'non-fold',
+      'conversation.forked': 'non-fold',
+      'child-work.updated': 'non-fold',
+    };
+    const NON_FOLD_METHODS = (
+      Object.keys(METHOD_ROLE) as CanonicalRuntimeEvent['method'][]
+    ).filter((method) => METHOD_ROLE[method] === 'non-fold');
 
     let seq = 0;
     let ts = Date.parse('2026-08-20T00:00:00.000Z');
@@ -22503,7 +22785,7 @@ describe('OrchestrationService', () => {
     assertFoldsAgree('turn-open');
 
     // Replay every non-fold-relevant method a SECOND time, now while
-    // `turn-open` is genuinely live — this is what proves the 22 are safe
+    // `turn-open` is genuinely live — this is what proves the rest are safe
     // to OMIT, not just that the 5 are necessary (the first pass above only
     // fired them before any turn existed, where excluding one is
     // unobservable on either side). If `nextActiveTurnId` ever gains a 6th
@@ -23602,8 +23884,8 @@ describe('OrchestrationService', () => {
         ),
       ).toBe(false);
       // Unknown thread: never seen by the store at all — falls through to
-      // a full (miss) read every time and is denied by this suite's
-      // default `ownerlessSessionAccess` (fail-closed, unset === deny).
+      // a full (miss) read every time and is denied: a session with no
+      // recorded owner is readable by no caller.
       expect(
         service.canUserReadSession(
           'thread-never-existed',

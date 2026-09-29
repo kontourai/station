@@ -7,6 +7,7 @@ import {
 } from '../../hooks/useACPConnections';
 import { CodingTerminalPanel } from './CodingTerminalPanel';
 import './CodingLayout.css';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { NewTerminalModal } from './NewTerminalModal';
 import type { TerminalTab } from './types';
 
@@ -139,7 +140,9 @@ export function CodingTerminalPane({
       setCloseErrors((current) => ({
         ...current,
         [id]:
-          error instanceof Error ? error.message : 'Unable to close terminal',
+          error instanceof Error
+            ? userFacingErrorMessage(error)
+            : 'Unable to close terminal',
       }));
     } finally {
       setClosingTabIds((current) => {

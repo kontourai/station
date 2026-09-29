@@ -1,6 +1,5 @@
 /** `/chat` facade over the orchestration SQLite turn-claim store. */
 
-import { orchestrationStorePath } from '@kontourai/station-shared/orchestration-store-quarantine';
 import { EventStore } from '../../services/orchestration/event-store.js';
 
 // Re-exported from the store that enforces it, so the bound cannot drift
@@ -35,9 +34,6 @@ export class ChatTurnDedupStore {
   release(clientTurnId: string): void {
     this.eventStore.releaseChatTurn(clientTurnId);
   }
-  read(clientTurnId: string): string | undefined {
-    return this.eventStore.readChatTurn(clientTurnId);
-  }
   awaitResolution(
     clientTurnId: string,
     timeoutMs?: number,
@@ -46,23 +42,3 @@ export class ChatTurnDedupStore {
     return this.eventStore.awaitChatTurn(clientTurnId, timeoutMs, intervalMs);
   }
 }
-
-const instances = new Map<EventStore | string, ChatTurnDedupStore>();
-export function getChatTurnDedupStore(
-  eventStore: EventStore | string,
-): ChatTurnDedupStore {
-  let instance = instances.get(eventStore);
-  if (!instance) {
-    instance = new ChatTurnDedupStore(
-      typeof eventStore === 'string'
-        ? // Resolved, never spelled: a hand-assembled third copy of
-          // `data/orchestration.sqlite` is a path the quarantine
-          // (archive#3217) silently stops matching.
-          orchestrationStorePath(eventStore)
-        : eventStore,
-    );
-    instances.set(eventStore, instance);
-  }
-  return instance;
-}
-export function resetChatTurnDedupStoresForTest(): void {}

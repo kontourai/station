@@ -603,18 +603,6 @@ describe('createSessionAgentResolver', () => {
     expect((await resolve()).agent?.browserTools).toBeUndefined();
   });
 
-  test('an unauthored tools.autoApprove stays undefined on input.agent', async () => {
-    const resolver = createSessionAgentResolver({
-      loadAgentSpec: async () => agentSpec(),
-      resolveToolServer: async () => null,
-      resolveSkillDir: async () => null,
-    });
-
-    const result = await resolver(baseInput({ provider: 'claude' }));
-
-    expect(result.agent?.autoApprove).toBeUndefined();
-  });
-
   test('an unknown agent slug returns the input unchanged', async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () => null,

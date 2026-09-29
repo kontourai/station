@@ -176,18 +176,6 @@ describe('NotificationHistory', () => {
     expect(dismiss).not.toHaveBeenCalled();
   });
 
-  test('uses the shared concise empty-state copy', () => {
-    render(
-      <NotificationHistory
-        isOpen={true}
-        onClose={vi.fn()}
-        onViewAll={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText('All caught up')).toBeTruthy();
-  });
-
   test('treats an incomplete attention response as empty instead of crashing the shell', () => {
     attention = {} as AttentionProjection;
 
@@ -785,21 +773,6 @@ describe('NotificationHistory answerability annotation', () => {
     ).toBeTruthy();
     expect(screen.queryByText('All caught up')).toBeNull();
   });
-
-  test('claims "All caught up" only once both queries have settled empty', () => {
-    listsLoading = false;
-    notifications = [];
-    attention = { items: [], pendingCount: 0 };
-
-    render(
-      <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
-    );
-
-    expect(screen.getByText('All caught up')).toBeTruthy();
-    expect(
-      screen.queryByRole('status', { name: 'Loading notifications' }),
-    ).toBeNull();
-  });
 });
 
 /**
@@ -840,7 +813,9 @@ describe('NotificationHistory error state (Review H1)', () => {
     expect(screen.queryByText('All caught up')).toBeNull();
   });
 
-  test('a settled-empty read (no error) still renders "All caught up", with no error state', () => {
+  // The positive control for both the loading and the error negatives.
+  test('a settled-empty read renders "All caught up", with no loading or error state', () => {
+    listsLoading = false;
     notifications = [];
     attention = { items: [], pendingCount: 0 };
 
@@ -849,6 +824,9 @@ describe('NotificationHistory error state (Review H1)', () => {
     );
 
     expect(screen.getByText('All caught up')).toBeTruthy();
+    expect(
+      screen.queryByRole('status', { name: 'Loading notifications' }),
+    ).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 

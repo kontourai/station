@@ -1,5 +1,12 @@
 # Multi-agent delivery protocol
 
+> The independent review and evidence practices in this record remain guidance.
+> Its dated outage-era merge examples do not override the current
+> [root instructions](../../AGENTS.md#landing-a-pull-request) or
+> [testing guide](../guides/testing.md). Use the merge queue and hosted promotion
+> receipt policy there; this page grants no exception to required checks.
+
+
 > Status: **active practice, codified 2026-08-01** from a measured delivery arc
 > (issues #189, #1410, #1424, #1426, #1432, #1398 slice 1, #189 S4 — eight
 > branches, six merged at time of writing). This document records *how agents
@@ -388,7 +395,7 @@ that perfectly mimic real defects. The triage ladder, in order:
    `node scripts/run-verification.mjs status` before starting another heavy
    lane, and join or reuse equivalent work instead of stacking it.
 
-## 5. The merge lane (selector-first, batch-final)
+## 5. Historical merge-lane lessons (selector-first, batch-final)
 
 Per `local-merge-readiness.md`, extended by measured practice:
 
@@ -576,10 +583,12 @@ skips.
   a live gate has died. Use `pgrep -f vitest | wc -l`. This is the
   absence-of-signal-as-measurement failure in its smallest form.
 
-### 5.3 `ci:fast` outlives a foreground tool call
+### 5.3 Historical tool-runner background constraint
 
-A full `ci:fast` runs roughly 15–20 minutes, past the 10-minute foreground
-cap. "Poll in the foreground" therefore cannot mean "run it in the foreground":
+The following procedure describes a former tool runner. Current root
+instructions prohibit backgrounding `ci:fast` or full typecheck to poll a
+sentinel. Use the current coordinated execution route and collect its terminal
+result. The older runner had a ten-minute foreground cap:
 
 - Start the gate with `run_in_background`, then poll in the **foreground**
   across successive tool calls until the sentinel file exists. That keeps the
@@ -676,11 +685,10 @@ to any surface that makes claims:
   claim that substantiates none of it, and the human audience takes it as a
   result (station#1552). On an attestation claim, either name the class in
   the sentence — *"recorded as a session-local attestation, not a
-  CI-reconcilable test_output claim"* — or omit the count. Pinned by
-  `scripts/__tests__/trust-bundle-claim-prose.test.ts`; the two
-  pre-existing instances are disclosed in `delivery/README.md` rather than
-  reworded, because a claim's id is derived from its prose and the
-  checkpoint keys off that id.
+  CI-reconcilable test_output claim"* — or omit the count. This is a
+  review rule, not an automated check: Station's trust-bundle writer emits
+  no attestation evidence, so no committed bundle exists for a test to
+  scan.
 - **A documented capability needs a producer, not just a reader.** A
   contract that describes a live dereference path while nothing writes the
   field is the same defect as a fabricated value, arriving through the docs

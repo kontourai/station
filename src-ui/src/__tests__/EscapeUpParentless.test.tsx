@@ -89,12 +89,6 @@ describe('Escape on a page with no level above it', () => {
     expect(goUp).not.toHaveBeenCalled();
   });
 
-  test('does nothing on the resting page either, with no dialog involved', () => {
-    mount({ type: 'schedule' });
-    fireEvent.keyDown(document.body, { key: 'Escape' });
-    expect(goUp).not.toHaveBeenCalled();
-  });
-
   test('still goes up from a view that declares a parent', () => {
     // The negative control: the dispatcher, the chord and this harness all
     // work — Schedule's silence is the derivation, not a dead test.

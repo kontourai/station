@@ -5,7 +5,6 @@ import {
 import { describe, expect, test } from 'vitest';
 import { createMCPToolProvenanceGeneration } from '../mcp-tool-provenance.js';
 import {
-  deriveGithubIssueHttpsLink,
   mintWorkItemResultProjectorProvenanceForReviewedLoader,
   projectSessionWorkItemRead,
   SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS,
@@ -183,7 +182,7 @@ describe('WorkItemResultProjector', () => {
     expect(new WorkItemResultProjector().project(input())).not.toBeNull();
   });
 
-  test('normalizes GitHub identity casing before durable association and links', () => {
+  test('normalizes GitHub identity casing before durable association', () => {
     const projector = new WorkItemResultProjector();
     const mixed = projector.project(
       input(
@@ -204,9 +203,6 @@ describe('WorkItemResultProjector', () => {
     if (!mixed) throw new Error('expected mixed-case association');
     expect(mixed.repository).toEqual({ owner: 'kontourai', name: 'station' });
     expect(mixed.workItemRef).toBe('github:kontourai/station#235');
-    expect(deriveGithubIssueHttpsLink(durable(mixed, 'event-mixed'))).toBe(
-      'https://github.com/kontourai/station/issues/235',
-    );
     const lowercase = projector.project(input());
     if (!lowercase) throw new Error('expected lowercase association');
     const read = projectSessionWorkItemRead(

@@ -5,7 +5,6 @@ import {
   admitEngineStartForIntent,
   ConcurrentEngineStartCapacityError,
   computeRuntimeCpuBusyPercent,
-  createEnvironmentRuntimeResourcePostureProbe,
   createRuntimeCpuSampler,
   createRuntimeResourcePostureController,
   deriveRuntimeResourcePosture,
@@ -84,20 +83,6 @@ describe('runtime resource diagnostics', () => {
       }),
     ).resolves.toBeDefined();
     expect(sample).toHaveBeenCalledOnce();
-  });
-
-  test('environment cannot override the production diagnostic factory', async () => {
-    const probe = createEnvironmentRuntimeResourcePostureProbe(
-      {
-        STATION_INSTANCE_ID: 'diagnostics-test',
-      },
-      { sample: async () => observation(99) },
-    );
-    await expect(probe.observe()).resolves.toMatchObject({
-      kind: 'critical',
-      busyPercent: 99,
-      source: 'test',
-    });
   });
 
   test('classifies malformed observations as unavailable', () => {

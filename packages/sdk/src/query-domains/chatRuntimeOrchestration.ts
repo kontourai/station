@@ -13,7 +13,8 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { apiErrorMessage } from '../api-core';
-import { ChatHttpError } from '../client/chatHttpError';
+import { StationHttpError } from '../client/api-error-message';
+import { ChatHttpError, isStationEnvelope } from '../client/chatHttpError';
 import {
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
@@ -45,6 +46,7 @@ import {
   type SessionBuilderRunView,
   type SessionFlowRunView,
 } from '../client/orchestration';
+import { StationRequestTimeoutError } from '../client/request-deadline';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -477,13 +479,22 @@ export async function dispatchOrchestrationCommand<T = unknown>(
     data?: T;
     error?: string;
     code?: string;
+    details?: unknown;
   };
   if (!response.ok || !result.success) {
     const message = apiErrorMessage(result, `HTTP ${response.status}`);
     // A stable refusal code (e.g. #2436's `approval-full-access-not-granted`)
     // is kept, so a caller can tell a refusal from a transport failure.
+    // Its `details` too (#1796's full-access refusal is rendered from them),
+    // on the field `StationHttpError` carries them in.
     throw typeof result.code === 'string'
-      ? new ChatHttpError(response.status, message, result.code)
+      ? new ChatHttpError(
+          new StationHttpError(response.status, message, {
+            code: result.code,
+            details: result.details ?? undefined,
+          }),
+          isStationEnvelope(result),
+        )
       : new Error(message);
   }
   return result.data as T;
@@ -515,6 +526,23 @@ export interface AdoptOrchestrationSessionIntent {
 /** One user Continue intent; reuse this object for every retry of that intent. */
 export function createAdoptOrchestrationSessionIntent(): AdoptOrchestrationSessionIntent {
   return Object.freeze({ idempotencyKey: randomCorrelationId() });
+}
+
+/** Station answered and refused the continuation: certain, with its status. */
+function rejectedContinuation(
+  status: number,
+  detail?: string,
+): AdoptSessionError {
+  const statusMessage =
+    status === 401 || status === 403
+      ? `Permission denied by Station (HTTP ${status}).`
+      : `Station rejected the continuation request (HTTP ${status}).`;
+  return new AdoptSessionError({
+    failureClass: 'certain-response',
+    message: detail ? `${statusMessage} ${detail}` : statusMessage,
+    retryable: true,
+    status,
+  });
 }
 
 export async function adoptOrchestrationSession(input: {
@@ -568,6 +596,19 @@ export async function adoptOrchestrationSession(input: {
   try {
     result = (await response.json()) as typeof result;
   } catch (error) {
+    // A request deadline that fired while the body was read. After 2xx
+    // headers Station may have created the continuation (uncertain, as when
+    // it fires before the headers); after a refusal Station did answer, so
+    // the refusal is certain and carries its status.
+    if (error instanceof StationRequestTimeoutError)
+      throw response.ok
+        ? new AdoptSessionError({
+            failureClass: 'uncertain-no-response',
+            message: 'Station did not answer before the request ended.',
+            retryable: true,
+            cause: error,
+          })
+        : rejectedContinuation(response.status);
     if (response.ok) {
       // A 2xx whose body cannot be read may have CREATED the continuation
       // (the native relay resolves on headers; the stream can reset while
@@ -582,19 +623,8 @@ export async function adoptOrchestrationSession(input: {
     }
     result = {};
   }
-  if (!response.ok || !result.success) {
-    const detail = result.error?.trim();
-    const statusMessage =
-      response.status === 401 || response.status === 403
-        ? `Permission denied by Station (HTTP ${response.status}).`
-        : `Station rejected the continuation request (HTTP ${response.status}).`;
-    throw new AdoptSessionError({
-      failureClass: 'certain-response',
-      message: detail ? `${statusMessage} ${detail}` : statusMessage,
-      retryable: true,
-      status: response.status,
-    });
-  }
+  if (!response.ok || !result.success)
+    throw rejectedContinuation(response.status, result.error?.trim());
   return result.data as AdoptedSessionResult;
 }
 

@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const REQUIRED_ANDROID_PERMISSIONS = new Set([
   'android.permission.INTERNET',
@@ -322,4 +323,4 @@ function main() {
   console.log('mobile permission audit: PASS');
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+if (invokedDirectly(import.meta.url)) main();

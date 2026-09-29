@@ -9,13 +9,14 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   parsePublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
-import { ChatHttpError } from './chatHttpError';
+import { ChatHttpError, isStationEnvelope } from './chatHttpError';
 import {
   assertClientRawEgressAllowed,
   type ClientRequestOptions,
   getJson,
   mutateJson,
 } from './http';
+import { unlessDeadline } from './request-deadline';
 
 const ROOT = '/api/orchestration/attachment-staging';
 
@@ -125,7 +126,9 @@ function descriptor(
 }
 
 async function read<T>(response: Response, fallback: string): Promise<T> {
-  const body = (await response.json().catch(() => ({}))) as { error?: unknown };
+  const body = (await response.json().catch(unlessDeadline(() => ({})))) as {
+    error?: unknown;
+  };
   if (!response.ok) {
     throw new ChatHttpError(
       response.status,
@@ -133,6 +136,7 @@ async function read<T>(response: Response, fallback: string): Promise<T> {
       typeof (body as { code?: unknown }).code === 'string'
         ? (body as { code: string }).code
         : undefined,
+      isStationEnvelope(body),
     );
   }
   return body as T;

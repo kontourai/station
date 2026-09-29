@@ -2,9 +2,9 @@
  * archive#1195 e2e (the Codex analog of archive#1157's own round-2 review fix):
  * end-to-end regression through the FULL seam a unit-level test of either
  * layer alone can't prove — a real (realistically-shaped) `station-control`
- * integration record, exactly as `runtime-default-agent.ts`'s
- * `createRuntimeSelfIntegration` persists it (env-bearing:
- * `STATION_API_BASE`/`STATION_PORT`), through `createSessionAgentResolver`
+ * integration record, exactly as `ConfigLoader.loadIntegration` returns it
+ * (the persisted `createRuntimeSelfIntegration` record overlaid with the
+ * env-bearing `stationControlRuntimeIdentity`), through `createSessionAgentResolver`
  * (`session-agent-resolution.ts`) and then `CodexAdapter`
  * (`codex-adapter.ts`), proving it reaches the spawn argv as a wire-safe
  * `-c mcp_servers.station-control.url=...` override — never env, never the
@@ -28,7 +28,11 @@ vi.mock('../../telemetry/metrics.js', () => ({
   codexToolServersDelivered: { add: vi.fn() },
 }));
 
-import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { createRuntimeSelfIntegration } from '../../runtime/agents/runtime-default-agent.js';
+import {
+  builtinStationControlServerPath,
+  stationControlRuntimeIdentity,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
 import { resolveAcpPassthroughMcpServers } from '../adapters/acp-mcp-passthrough.js';
 import { toPassthroughToolDef } from '../adapters/agent-tool-server-mapping.js';
@@ -76,22 +80,16 @@ function writeServerMessage(
 }
 
 /**
- * Mirrors `runtime-default-agent.ts`'s `createRuntimeSelfIntegration` output
- * EXACTLY — this is what `configLoader.loadIntegration('station-control')`
- * actually returns in production (env-bearing), not a test-only env-less
- * fixture.
+ * What `configLoader.loadIntegration('station-control')` returns in
+ * production, composed from the real writers: the instance-independent record
+ * `createRuntimeSelfIntegration` persists, overlaid with this instance's
+ * env-bearing `stationControlRuntimeIdentity` (ConfigLoader's
+ * builtin-runtime-identity overlay). Not a test-only env-less fixture.
  */
 function realStationControlToolDef(): ToolDef {
   return {
-    id: 'station-control',
-    kind: 'mcp',
-    transport: 'stdio',
-    command: 'node',
-    args: [builtinStationControlServerPath()],
-    env: {
-      STATION_API_BASE: 'http://127.0.0.1:9999',
-      STATION_PORT: '9999',
-    },
+    ...createRuntimeSelfIntegration().selfIntegration,
+    ...stationControlRuntimeIdentity(9999),
   };
 }
 
@@ -133,7 +131,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     expect(resolved.agent?.toolServers).toEqual([
       {
         id: 'station-control',
-        displayName: undefined,
+        displayName: 'Station Control',
         transport: 'stdio',
         command: 'node',
         args: [builtinStationControlServerPath()],

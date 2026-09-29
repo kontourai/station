@@ -1,12 +1,3 @@
-/**
- * ElevenLabs Voice plugin — client bundle entry point.
- *
- * Called by the plugin loader when the bundle is executed. Registers both
- * STT and TTS providers into the voiceRegistry.
- *
- * The plugin loader injects `station.apiBase` via a global before running
- * this bundle.
- */
 import { voiceRegistry } from '@kontourai/station-sdk';
 import type {
   RealtimeVoiceSessionAdapterOptions,

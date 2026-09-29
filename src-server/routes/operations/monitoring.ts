@@ -35,11 +35,14 @@ import {
 } from '../../monitoring/monitoring-session-identity.js';
 import { readFleetRoutingReceipts } from '../../runtime/conversation/fleet-routing-receipt-log.js';
 import { readFleetServeReceipts } from '../../services/inference/fleet-serve-receipt-log.js';
+import {
+  stationControlRefusal,
+  stationControlRefusalBody,
+} from '../../tools/station-control-policy.js';
 import { streamSSE } from '../sse-response.js';
 
-/** Hard cap on a historical event query, so a read stays a read. */
+/** Ceiling for an explicitly requested history limit; omission is unbounded. */
 const MAX_EVENT_QUERY_LIMIT = 5000;
-/** Applied when a caller names none — an unbounded default is how a tool call eats a context window. */
 
 export interface MonitoringDeps {
   activeAgents: Map<string, MonitoringAgent>;
@@ -84,6 +87,14 @@ export interface MonitoringDeps {
     event: unknown,
     authority: SessionReadAuthority,
   ) => boolean;
+  /**
+   * #2377 slice B (decision 2): the one user whose rows this request may
+   * read, when it may not choose — a station-control agent acting for its
+   * session's owner. `undefined`: the request names the user as before
+   * (the operator's own clients, a bound operator caller). `null`: it acts
+   * for no one and reads no rows.
+   */
+  eventOwnerForRequest?: (request: Request) => string | null | undefined;
 }
 
 /** Shared by both receipt leaves so they cannot bound differently. */
@@ -329,23 +340,29 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
     const authority = deps.readAuthorityForRequest?.(c.req.raw);
     const startTime = c.req.query('start');
     const endTime = c.req.query('end');
-    const userId =
-      c.req.query('userId') ||
-      c.req.header('x-user-id') ||
-      getCachedUser().alias;
+    const requestedUserId = c.req.query('userId') || c.req.header('x-user-id');
+    const fixedOwner = deps.eventOwnerForRequest?.(c.req.raw);
+    if (
+      fixedOwner === null ||
+      (fixedOwner !== undefined &&
+        requestedUserId !== undefined &&
+        requestedUserId !== fixedOwner)
+    ) {
+      // An agent reads its session owner's rows. Another person's rows (or
+      // every user's) are an operator-wide read: a bound operator caller's.
+      return c.json(
+        stationControlRefusalBody(
+          stationControlRefusal('station_control_role_required'),
+        ),
+        403,
+      );
+    }
+    const userId = fixedOwner ?? requestedUserId ?? getCachedUser().alias;
 
     // If time range specified, return historical events as JSON
     if (startTime || endTime) {
-      // Accept BOTH an ISO string and epoch milliseconds: the docs promised
-      // epoch-ms and `new Date("1785813308984")` is NaN, so every
-      // `eventTime >= NaN` was false and the query silently returned nothing
-      // (archive#3076 review). A time filter that reads as "no results" is
-      // worse than one that errors.
-      // A SUPPLIED bound that does not parse is an error, not a wider
-      // window. The first version fell back to 0/now, so `start=abc` — or
-      // the far likelier `start=<epoch SECONDS>` that most shells emit —
-      // silently returned the whole retained corpus while looking like a
-      // successful narrow read. Only an ABSENT bound gets a default.
+      // Parse digit strings as epoch milliseconds before ISO dates (archive#3076).
+      // Invalid supplied bounds must fail rather than silently widen the window.
       const parseBound = (value: string | undefined, fallback: number) => {
         if (!value) return fallback;
         const asNumber = /^\d+$/.test(value) ? Number(value) : Number.NaN;
@@ -498,6 +515,13 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
 
       const eventHandler = (event: any) => {
         if (event.userId && event.userId !== userId) return;
+        // An agent's stream carries only rows its owner is named on.
+        if (
+          fixedOwner !== undefined &&
+          event.userId !== fixedOwner &&
+          event['station.user.id'] !== fixedOwner
+        )
+          return;
         if (!canReadMonitoringEvent(event, authority, deps)) return;
         stream
           .writeSSE({

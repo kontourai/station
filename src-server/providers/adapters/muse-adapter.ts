@@ -51,6 +51,7 @@ import type { CliAuthState, CliCommandResult } from '../auth/cli-auth.js';
 import {
   buildCliRuntimePrerequisites,
   findCliBinary,
+  resolveAugmentedPathSync,
 } from '../auth/cli-auth.js';
 import {
   AsyncEventQueue,
@@ -90,6 +91,7 @@ import type {
 import { museUuidV7 } from './muse-serve-rpc.js';
 import {
   MUSE_APPROVAL_DEADLINE_MS,
+  MUSE_SERVE_APPROVAL_ACKNOWLEDGEMENT,
   MUSE_SERVE_HANDSHAKE_TIMEOUT_MS,
   MUSE_SERVE_INTERRUPT_SETTLE_MS,
   MUSE_SERVE_REQUEST_TIMEOUT_MS,
@@ -653,7 +655,12 @@ function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
   // running cleanup — a per-turn process leaks worse than a per-session one.
   const { proc, release } = spawnOwnedChild(binary, args, {
     cwd,
-    env: childProcessEnvironment({ TMPDIR: ensureEngineSpawnTmpDir() }),
+    // #2663: the PATH `muse` was resolved from, so a launcher script found
+    // off the service PATH can find its interpreter (see spawnCodexProcess).
+    env: childProcessEnvironment({
+      PATH: resolveAugmentedPathSync(),
+      TMPDIR: ensureEngineSpawnTmpDir(),
+    }),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   return { process: proc as unknown as MuseProcessLike, release };
@@ -686,6 +693,7 @@ function createMuseServeHost(
     {
       cwd,
       env: childProcessEnvironment({
+        PATH: resolveAugmentedPathSync(),
         TMPDIR: ensureEngineSpawnTmpDir(),
         ...museServeEnvOverrides(dataHome),
       }),
@@ -891,6 +899,10 @@ export class MuseAdapter implements ProviderAdapterShape {
         'image-input',
         ...(options.serve ? (['approvals'] as const) : []),
       ],
+      // #2880: only serve sessions ask; exec opens no requests.
+      ...(options.serve
+        ? { approvalAcknowledgement: MUSE_SERVE_APPROVAL_ACKNOWLEDGEMENT }
+        : {}),
     };
     this.processFactory = options.processFactory ?? createMuseProcess;
     this.now = options.now ?? (() => new Date());

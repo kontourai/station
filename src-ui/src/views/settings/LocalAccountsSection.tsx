@@ -14,7 +14,7 @@ import { PageSection } from '../../components/PageSection';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { errorText } from '../../utils/errorText';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 export function LocalAccountsSection() {
   const authority = useHostRequestAuthorityScope();
@@ -71,7 +71,7 @@ function AccountControls({
       setPending(undefined);
       await client.invalidateQueries({ queryKey: key });
     } catch (cause) {
-      setError(errorText(cause));
+      setError(userFacingErrorMessage(cause));
     } finally {
       mutation.reset();
     }
@@ -87,7 +87,7 @@ function AccountControls({
       ) : query.isError ? (
         <ErrorState
           title="Account administration unavailable"
-          description={errorText(query.error)}
+          description={userFacingErrorMessage(query.error)}
         />
       ) : query.data.kind === 'none' ? (
         <p>Local accounts are not enabled on this Station.</p>

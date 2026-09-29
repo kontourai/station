@@ -1,5 +1,12 @@
 # Keep browser-preview hosting adapter-local
 
+> **Historical record:** the `2.0` Browser pane state and migration mentioned
+> below now have an implementation. See the
+> [current glossary and source links](../glossary.md#browser-pane-live-surface-control-lease).
+> The dated decisions and platform observations below are retained as history.
+> Current operator instructions and source boundaries are in the
+> [Browser workspace guide](../guides/browser-workspace.md).
+
 **Status (2026-09-22):** Superseded in part by
 [ADR 0019](0019-host-the-browser-pane-server-side-behind-a-host-adapter.md).
 The text below is the original record and is unchanged.
@@ -35,12 +42,15 @@ enabled on desktop and unsupported on mobile; this report is not a production
 browser-preview host. This spike must not attach a host to that capability or
 change any release configuration.
 
-The audited t3code snapshot is `c2f8cb7ca` (remote main later advanced to
-`be01b287`): Electron `41.5.0`, a hardened
-partitioned `webviewTag` preview path, and `WebContentsView`-specific
-interaction handling. Its host is useful evidence, not an implementation to
-copy. Electron documents `WebContentsView` as the embedded-content API for a
-separately justified future migration.
+An external Electron-based preview host was also audited: Electron `41.5.0`
+with a hardened, partitioned `webviewTag` preview path and
+`WebContentsView`-specific interaction handling. The audit's source and
+snapshot are no longer cited, so these observations cannot be traced or
+re-checked from this record; treat them as `NOT_VERIFIED` context. It is
+useful evidence about the security and lifecycle questions, not an
+implementation to copy. Electron documents
+`WebContentsView` as the embedded-content API for a separately justified
+future migration.
 
 ## Decision
 

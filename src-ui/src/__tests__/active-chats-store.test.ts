@@ -181,10 +181,13 @@ describe('ActiveChatsStore', () => {
       agentName: 'Planner',
       title: 'Planner Chat',
     });
-    store.updateChat('agent:2', {
-      input: 'draft',
-      inputHistory: ['first', 'second'],
-    });
+    store.addToInputHistory('agent:2', 'first');
+    store.addToInputHistory('agent:2', 'second');
+    store.updateChat('agent:2', { input: 'draft' });
+    expect(store.getSnapshot()['agent:2'].inputHistory).toEqual([
+      'first',
+      'second',
+    ]);
 
     store.navigateHistoryUp('agent:2');
     expect(store.getSnapshot()['agent:2']).toMatchObject({

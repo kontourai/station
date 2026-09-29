@@ -46,8 +46,16 @@ export interface PendingRpcRequest {
   turnId?: string;
 }
 
+/**
+ * A JSON-RPC 2.0 request id exactly as the peer sent it (#562). Codex issues
+ * its server requests with numeric ids and matches replies by value AND type,
+ * so a reply carrying `"0"` for request `0` is silently dropped. Never
+ * normalize this to a string; echo it back unchanged.
+ */
+export type JsonRpcId = string | number;
+
 export interface PendingApprovalRequest {
-  rpcRequestId: string;
+  rpcRequestId: JsonRpcId;
   method: string;
   title: string;
   threadId: string;
@@ -60,6 +68,21 @@ export interface PendingApprovalRequest {
   toolName?: string;
 }
 
+/**
+ * #2880: a decision Station wrote to Codex and is waiting to see
+ * acknowledged (`serverRequest/resolved` naming `rpcRequestId`).
+ */
+export interface AwaitingApprovalAcknowledgement {
+  /** Station's canonical request id (the one events carry). */
+  requestId: string;
+  rpcRequestId: JsonRpcId;
+  /** `Date.now()`-style milliseconds when the reply was written. */
+  sentAt: number;
+  timer?: ReturnType<typeof setTimeout>;
+  /** An `unacknowledged` has been published; a late ack supersedes it. */
+  warned: boolean;
+}
+
 export interface CodexSessionRecord {
   externalThreadId: string;
   codexThreadId: string;
@@ -70,12 +93,25 @@ export interface CodexSessionRecord {
   pendingApprovals: Map<string, PendingApprovalRequest>;
   /**
    * Tool-level session grants from `acceptForSession` (mirrors
-   * claude-adapter/station-agent-adapter `approvedTools`). The Codex wire
-   * responses for `commandExecution`/`fileChange`/elicitation carry no
-   * session scope, so Station remembers the tool name itself and
+   * claude-adapter/station-agent-adapter `approvedTools`). Station's own
+   * grant, on top of the decision Codex is sent: Station remembers the
+   * tool name itself and
    * auto-accepts later calls without re-prompting. Dies with the session.
    */
   approvedTools: Set<string>;
+  /**
+   * #2880: replies written and not yet acknowledged, keyed by
+   * `jsonRpcIdKey(rpcRequestId)` so the wire id's type is part of the match.
+   * Optional so hand-built fixtures stay valid; created on first use.
+   * Settled at every session-end door (see `settleAcknowledgementWatches`).
+   */
+  awaitingAcknowledgements?: Map<string, AwaitingApprovalAcknowledgement>;
+  /**
+   * #2880: set at every session-end door once waiting replies are settled.
+   * A reply written after that (a #2316 cancel run by a turn/interrupt the
+   * teardown rejected) settles `unacknowledged` at once, with no window.
+   */
+  acknowledgementsClosed?: boolean;
   /**
    * #2559: the sandbox the thread runs in, from `thread/start`,
    * `thread/resume` or `thread/fork`'s own report, updated whenever a turn

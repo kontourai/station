@@ -14,7 +14,10 @@ import type {
   AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
-import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type {
+  ClientOrigin,
+  ClientOriginActor,
+} from '@kontourai/station-contracts/client-origin';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -24,6 +27,7 @@ import {
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -68,6 +72,7 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
   type SessionReattachConflictReason,
+  STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   stripReservedOrchestrationMetadata,
   unsupportedModelOptionError,
@@ -150,7 +155,9 @@ import {
 } from '../../runtime/native-output-turn-grant.js';
 import {
   type FullAccessGrant,
+  fullAccessGrantor,
   isFullAccessGrant,
+  UnattributedFullAccessGrantError,
 } from '../../security/coding-authority.js';
 import {
   adapterSessionStartDuration,
@@ -219,7 +226,10 @@ import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
 import { ApprovalPosture, approvalKnobSupported } from './approval-posture.js';
-import { AttachedSessionAdoption } from './attached-session-adoption.js';
+import {
+  type AdoptionConfinement,
+  AttachedSessionAdoption,
+} from './attached-session-adoption.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
@@ -748,14 +758,6 @@ interface OrchestrationServiceOptions {
   validateRecoveredTenantExecutionContext?: (
     context: TenantExecutionContext | undefined,
   ) => TenantExecutionContext | undefined;
-  /**
-   * Explicit bridge for installations that still have pre-ownership sessions.
-   * Multi-user hosts must leave this at the secure default (`deny`) and
-   * migrate or quarantine ownerless rows before exposing them.
-   */
-  ownerlessSessionAccess?: 'deny' | 'single-user-compat';
-  /** Exact legacy OS-alias owner for the local-home principal migration only. */
-  legacyPersonalOwner?: string;
   personalConversationAccess?: PersonalConversationAccess;
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
@@ -779,6 +781,14 @@ interface OrchestrationServiceOptions {
    * Loaded per call, like the workspace default above.
    */
   resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
+  /**
+   * #1796: whether the device that granted a session's `host` stamp still
+   * holds `approval:full-access` (live, not revoked). Read at every turn
+   * start and respawn: a stamp whose device grantor no longer holds it is
+   * applied as `workspace`, so revoking the grant re-confines the session at
+   * its next turn. Absent: stamps apply as written.
+   */
+  isFullAccessGrantorCurrent?: (deviceId: string) => boolean;
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -1888,12 +1898,6 @@ export class OrchestrationService {
               options.validateRecoveredTenantExecutionContext,
           }
         : {}),
-      ...(options.ownerlessSessionAccess !== undefined
-        ? { ownerlessSessionAccess: options.ownerlessSessionAccess }
-        : {}),
-      ...(options.legacyPersonalOwner !== undefined
-        ? { legacyPersonalOwner: options.legacyPersonalOwner }
-        : {}),
       ...(options.sessionOwnerCacheMaxEntries !== undefined
         ? { sessionOwnerCacheMaxEntries: options.sessionOwnerCacheMaxEntries }
         : {}),
@@ -2293,8 +2297,6 @@ export class OrchestrationService {
           this.observeAnswerability(threadId, provider, observedAt),
         readConversationActivity: (conversationId) =>
           this.conversationActivity?.readConversation(conversationId),
-        ownerlessPersonalAccess:
-          options.ownerlessSessionAccess === 'single-user-compat',
       });
     }
     // ConversationLineage captures `turnDeduplicator` and
@@ -2440,9 +2442,9 @@ export class OrchestrationService {
         this.sessionReadModel.get(threadId)?.provider,
       providerForThread: (threadId) => this.threadProviders.get(threadId),
       // The divergent teardown flags are declared HERE, not in the module:
-      // the slice-2 source invariant scans only this file and pins all six
-      // flagged forgetThreadState call sites (quarantine's row is first in
-      // the seam docblock table, and this ctor site keeps that order).
+      // the slice-2 source invariant scans only this file and keys this
+      // site by the collaborator it is handed to (the seam docblock table's
+      // CredentialProfileRecovery row).
       forgetThreadState: (threadId) =>
         this.forgetThreadState(threadId, {
           policyThreads: true,
@@ -2549,10 +2551,9 @@ export class OrchestrationService {
       },
       // The divergent teardown flags are declared HERE, not in the module
       // (slice-2 source invariant, T10(3)): the scan reads only this file,
-      // and an inline literal is the only form it can see. This is the
-      // SECOND ctor-declared seam site; CredentialProfileRecovery's sorts
-      // first and this one second, mirrored by the docblock table's first
-      // two rows.
+      // and an inline literal is the only form it can see. The scan keys
+      // this site by the collaborator it is handed to (the docblock table's
+      // CooperativeStop row).
       forgetThreadState: (threadId) =>
         this.forgetThreadState(threadId, {
           policyThreads: true,
@@ -3055,7 +3056,6 @@ export class OrchestrationService {
       ? await this.options.resolveSessionAgent(withCredentialProfile, captured)
       : withCredentialProfile;
     const unavailableReason = sessionAgentStartUnavailableReason({
-      provider: input.provider,
       agentSlug,
       // Providers with no session-delivery concept — Station's own engine
       // and the managed model runtimes, for which `sessionDeliveryChannels`
@@ -4032,13 +4032,51 @@ export class OrchestrationService {
   firstStartedMetadataOfThread(
     threadId: string,
   ): Record<string, unknown> | undefined {
+    return this.firstStartedRecordOfThread(threadId)?.metadata;
+  }
+
+  /**
+   * #2377 slice C2a: whether Station recorded a start for this session, so a
+   * station-control call that names it is a follow-up, not a new session.
+   */
+  hasSessionStartRecord(threadId: string): boolean {
+    return this.firstStartedRecordOfThread(threadId) !== undefined;
+  }
+
+  /**
+   * #2377 slice C2a: the owner the session's start recorded
+   * (`metadata.userId`), the owner every session read and command compares
+   * against. Unlike `resolveSessionActingPrincipal`, a session an agent
+   * started unattributed still names its owner here: it acts for no one,
+   * but it belongs to that person.
+   */
+  sessionRecordedOwnerId(threadId: string): string | undefined {
+    return this.sessionAuthz.sessionOwnerUserId(threadId);
+  }
+
+  /**
+   * #2601: the engine (`provider`) of the SAME record
+   * `firstStartedMetadataOfThread` reads, so a caller's Agent-less identity
+   * and its metadata can never come from two different events.
+   */
+  firstStartedEngineOfThread(threadId: string): string | undefined {
+    return this.firstStartedRecordOfThread(threadId)?.provider;
+  }
+
+  private firstStartedRecordOfThread(
+    threadId: string,
+  ): { metadata: Record<string, unknown>; provider?: string } | undefined {
     const store = this.options.eventStore;
     for (const method of ['session.started', 'session.configured'] as const) {
-      const payload = store?.firstEventByMethod(threadId, method)?.payload as
-        | { metadata?: unknown }
-        | undefined;
+      const event = store?.firstEventByMethod(threadId, method);
+      const payload = event?.payload as { metadata?: unknown } | undefined;
       if (payload?.metadata && typeof payload.metadata === 'object')
-        return payload.metadata as Record<string, unknown>;
+        return {
+          metadata: payload.metadata as Record<string, unknown>,
+          ...(typeof event?.provider === 'string'
+            ? { provider: event.provider }
+            : {}),
+        };
     }
     return undefined;
   }
@@ -4770,14 +4808,19 @@ export class OrchestrationService {
    * authorization: `canUserReadSession` stays the final check.
    */
   attachmentCandidateOwnerIds(authority: SessionReadAuthority): string[] {
+    return this.readableSessionOwnerIds(authority);
+  }
+
+  /**
+   * The owner principals whose sessions `authority` may read: its own id,
+   * plus (personal mode) every owner of the personal conversation account
+   * it belongs to. The same set transcript search binds.
+   */
+  readableSessionOwnerIds(authority: SessionReadAuthority): string[] {
     this.initialize();
     const constraint = this.sessionAuthz.transcriptOwnerConstraint(authority);
     return [
-      ...new Set([
-        constraint.ownerUserId,
-        ...(constraint.ownerUserIds ?? []),
-        ...(constraint.legacyOwnerUserId ? [constraint.legacyOwnerUserId] : []),
-      ]),
+      ...new Set([constraint.ownerUserId, ...(constraint.ownerUserIds ?? [])]),
     ];
   }
 
@@ -5164,6 +5207,10 @@ export class OrchestrationService {
             this.latestStartedMetadataOfThread(threadId),
         },
         prepareStart: async (postureInput, context, internal, adapter) => {
+          // #1796: a full-access grant that names no grantor would stamp an
+          // unconfined session nothing could revoke. Refused before the
+          // start does anything.
+          assertAttributedFullAccessGrant(context.fullAccessGrant);
           // #2436: the session starts in the conversation's recorded posture
           // (a continuation child, a handoff, or a pick its first send
           // carried, recorded before this start), else in the defaults
@@ -5294,16 +5341,25 @@ export class OrchestrationService {
           // `never` is re-read at every later turn and respawn instead, so a
           // decision that later moves off `never` does not leave a stamp
           // behind it.
+          const hostGranted = isFullAccessGrant(context.fullAccessGrant);
+          // #1796: beside a `host` stamp, who granted it: the grantor the
+          // grant itself names (checked at the top of `prepareStart`), so
+          // revoking that device finds this start whichever path carried it.
+          const grantor =
+            hostGranted && context.fullAccessGrant
+              ? (fullAccessGrantor(context.fullAccessGrant) ?? undefined)
+              : undefined;
           startInput = {
             ...startInput,
             confinement,
             metadata: {
               ...startInput.metadata,
-              [STATION_CONFINEMENT_METADATA_KEY]: isFullAccessGrant(
-                context.fullAccessGrant,
-              )
+              [STATION_CONFINEMENT_METADATA_KEY]: hostGranted
                 ? 'host'
                 : 'workspace',
+              ...(grantor
+                ? { [STATION_CONFINEMENT_GRANTOR_METADATA_KEY]: grantor }
+                : {}),
             },
           };
           // archive#2821 hardening L3: `stripReservedCapabilityMetadata`
@@ -5875,8 +5931,9 @@ export class OrchestrationService {
             command.idempotencyKey,
             effectiveOwnerAttribution(context ?? {}),
             // #2493: the adopted child's stamp records the adopting
-            // request's grant, like every other start.
-            isFullAccessGrant(context?.fullAccessGrant) ? 'host' : 'workspace',
+            // request's grant, like every other start, and (#1796) who
+            // granted it. A grant naming no grantor is refused.
+            adoptionConfinement(context?.fullAccessGrant),
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke
@@ -6962,8 +7019,8 @@ export class OrchestrationService {
           // which reads only `ACTIVE_TURN_FOLD_METHODS` and treats every
           // other canonical method as a pass-through no-op — so narrowing
           // the query to that shared list is bit-identical to folding the
-          // full log (pinned by a differential test against all 27 canonical
-          // methods, alongside `InternalStopSuppression.arm`'s narrowing —
+          // full log (pinned by a differential test against every canonical
+          // method, alongside `InternalStopSuppression.arm`'s narrowing —
           // see its docblock for the same idiom and the cost breakdown: row
           // count and `JSON.parse` savings, NOT attachment-blob hydration,
           // which fires only on `turn.started` and is paid identically
@@ -7747,6 +7804,16 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * Owner-cache invalidation for an ownership-shaped event published outside
+   * `projectAndPublishEvent` (the attached-session envelope).
+   */
+  invalidateSessionOwner(threadId: string): void {
+    if (this.sessionAuthz.invalidateSessionOwner(threadId)) {
+      sessionOwnerCacheOps.add(1, { outcome: 'invalidated' });
+    }
+  }
+
   seedSessionRecord(input: {
     threadId: string;
     provider: EngineId;
@@ -7754,9 +7821,39 @@ export class OrchestrationService {
     status?: ProviderSession['status'];
     controlMode?: ProviderSession['controlMode'];
     attachedSource?: ProviderSession['attachedSource'];
+    /**
+     * The principal the seeded session belongs to. A session with no
+     * recorded owner is readable by no caller, so a seeded row that a person
+     * should open records its owner in an ownership-shaped event, exactly as
+     * a started session does.
+     */
+    ownerUserId?: string;
+    /** See `SessionOwnerStamp`: an unverified start acts for no one. */
+    ownerAttribution?: StartOwnerAttribution;
   }): ProviderSession {
     this.initialize();
     const now = new Date().toISOString();
+    if (input.ownerUserId !== undefined) {
+      this.projectAndPublishEvent({
+        eventId: `session-seeded:${input.threadId}`,
+        provider: input.provider,
+        threadId: input.threadId,
+        createdAt: now,
+        method: 'session.started',
+        sessionId: input.threadId,
+        initialState: 'created',
+        metadata: {
+          userId: input.ownerUserId,
+          ...sessionOwnerAttributionMetadata(
+            effectiveOwnerAttribution({
+              ...(input.ownerAttribution
+                ? { ownerAttribution: input.ownerAttribution }
+                : {}),
+            }),
+          ),
+        },
+      } as CanonicalRuntimeEvent);
+    }
     const session: ProviderSession = {
       provider: input.provider,
       threadId: input.threadId,
@@ -8273,10 +8370,10 @@ export class OrchestrationService {
    * review, instead of six copies drifting silently.
    *
    * Current declared subsets (update this table when a caller changes;
-   * rows 1 AND 2's flags are DECLARED at the ctor seam — the
-   * `forgetThreadState` dep closures handed to CredentialProfileRecovery
-   * and CooperativeStop, in that construction order — which is also why
-   * those sites sort first and second in file order). `discardDraftSession`
+   * the first segment of each caller names the enclosing method, or, for
+   * the `forgetThreadState` dep closures DECLARED at the ctor seam, the
+   * collaborator they are handed to — CredentialProfileRecovery and
+   * CooperativeStop). `discardDraftSession`
    * (#2312) clears everything: the thread is deleted, so no binding, cached
    * owner or progress record of it may outlive the delete:
    * | caller | policyThreads | flowBoundThreads | ownerCache | turnProgress |
@@ -8424,6 +8521,8 @@ export class OrchestrationService {
     basedOnSequence: number | null;
     clientOrigin?: ClientOrigin;
     principal?: PrincipalRef;
+    /** #1796: set only by `resetFullAccessGrantedBy`. */
+    revocation?: SessionApprovalModeSetEvent['revocation'];
   }): SetApprovalModeResult {
     const standing = this.approvalPosture.supersedingDecision(
       input.threadId,
@@ -8450,6 +8549,7 @@ export class OrchestrationService {
           sessionId: input.threadId,
           approvalMode: input.approvalMode,
           ...(input.principal ? { principal: input.principal } : {}),
+          ...(input.revocation ? { revocation: input.revocation } : {}),
         },
         input.clientOrigin,
       ),
@@ -8464,6 +8564,338 @@ export class OrchestrationService {
       approvalMode: input.approvalMode,
       sequence,
     };
+  }
+
+  /**
+   * #1796 (owner decision, G3): revoking a device's full access resets the
+   * full access it had already granted. Called when the operator removes
+   * `approval:full-access` from a device, or revokes the device.
+   *
+   * Per conversation the device touched (a decision it recorded, or a
+   * session it started or adopted, each read from the server-derived
+   * `clientOrigin` of the event or command receipt):
+   *
+   * - Its standing decision is `never`, or a Default that resolves to
+   *   unconfined `never` (`approvalPickReachesFullAccess`): an Ask is
+   *   recorded.
+   * - No decision stands, and it started a session `host`: an Ask is
+   *   recorded, unless that session's `never` comes from its Agent's or the
+   *   Station's default, which is listed and left alone.
+   * - A standing decision by anyone else is left alone, and listed when it
+   *   keeps the conversation at full access.
+   *
+   * Each Ask is a new decision attributed to the operator (`clientOrigin`
+   * of the revoking request) carrying `revocation`; history is never
+   * deleted. Recording a decision does not touch a running turn: the next
+   * turn start or respawn applies it (`ApprovalPosture.resolve`, where a
+   * decision wins over a start's carried mode). A `host` start stamp stays,
+   * so the next turn runs unconfined but at Ask: the engine asks before
+   * acting. `never` decisions from before decisions carried an actor are
+   * listed as unattributed, never reset.
+   */
+  async resetFullAccessGrantedBy(input: {
+    deviceId: string;
+    cause: 'scope-removed' | 'device-revoked';
+    clientOrigin: ClientOrigin;
+  }): Promise<FullAccessRevocationReport> {
+    const store = this.options.eventStore;
+    const reset: Array<FullAccessRevocationReport['reset'][number]> = [];
+    const stillFullAccess: Array<
+      FullAccessRevocationReport['stillFullAccess'][number]
+    > = [];
+    const reconfined: Array<FullAccessRevocationReport['reconfined'][number]> =
+      [];
+    const stillUnconfined: Array<
+      FullAccessRevocationReport['stillUnconfined'][number]
+    > = [];
+    if (!store)
+      return {
+        cause: input.cause,
+        reset,
+        stillFullAccess,
+        reconfined,
+        stillUnconfined,
+        unattributedHostStarts: { sessions: [], total: 0 },
+      };
+    const conversationOf = (threadId: string) =>
+      store.conversationForSession(threadId)?.conversationId ?? threadId;
+    const threadsOf = (conversationId: string, seed: string) => [
+      seed,
+      ...store.conversationSessions(conversationId).map((s) => s.sessionId),
+    ];
+    const byDevice = (actor: ClientOriginActor | undefined) =>
+      actor?.kind === 'device' && actor.deviceId === input.deviceId;
+    const started = new Set(
+      store.hostStartThreadsGrantedByDevice(input.deviceId),
+    );
+    const conversations = new Map<string, string>();
+    for (const threadId of [
+      ...store.approvalModeDecisionThreadsByDevice(input.deviceId),
+      ...started,
+    ])
+      if (!conversations.has(conversationOf(threadId)))
+        conversations.set(conversationOf(threadId), threadId);
+    const unattributed = new Map<string, string>();
+    for (const threadId of store.unattributedFullAccessDecisionThreads())
+      if (!conversations.has(conversationOf(threadId)))
+        unattributed.set(conversationOf(threadId), threadId);
+
+    const recordAsk = (
+      conversationId: string,
+      threadId: string,
+      basedOn: number | null,
+      was: FullAccessRevocationReport['reset'][number]['was'],
+    ) => {
+      const provider = this.threadProviderForPosture(threadId);
+      if (!provider || !approvalKnobSupported(provider)) return;
+      this.recordApprovalModeDecision({
+        threadId,
+        provider,
+        approvalMode: 'ask',
+        basedOnSequence: basedOn,
+        clientOrigin: input.clientOrigin,
+        revocation: {
+          reason: 'device-full-access-revoked',
+          deviceId: input.deviceId,
+          cause: input.cause,
+        },
+      });
+      reset.push({ conversationId, was });
+    };
+    const decisionReason = (
+      actor: ClientOriginActor | undefined,
+    ): FullAccessRevocationReport['stillFullAccess'][number]['reason'] =>
+      actor?.kind === 'operator'
+        ? 'operator-decision'
+        : actor?.kind === 'device'
+          ? 'another-device-decision'
+          : 'unattributed-decision';
+    /** The default that puts a `host` session of the conversation at `never`. */
+    const hostDefaultSource = async (threads: readonly string[]) => {
+      for (const threadId of new Set(threads)) {
+        if (this.readStartConfinementStamp(threadId) !== 'host') continue;
+        const agentSlug =
+          this.readLatestSessionStartMetadata(threadId)?.agentSlug;
+        const source = await this.approvalPosture.fullAccessDefaultSource(
+          typeof agentSlug === 'string' ? agentSlug : undefined,
+        );
+        if (source) return source;
+      }
+      return undefined;
+    };
+
+    const grantedConversations: Array<[string, string, string[]]> = [];
+    for (const [conversationId, seed] of conversations) {
+      const threads = threadsOf(conversationId, seed);
+      const standing = this.approvalPosture.decision(seed);
+      // The sessions this device's grant unconfined, from the stamp as
+      // written (the grant is already gone, so the applied stamp says
+      // `workspace` for them now).
+      const grantedHere = threads.filter((threadId) => {
+        const grantor = this.readStartConfinementGrantor(threadId);
+        return (
+          this.readStartConfinementStampAsWritten(threadId) === 'host' &&
+          grantor?.kind === 'device' &&
+          grantor.deviceId === input.deviceId
+        );
+      });
+      if (grantedHere.length > 0)
+        grantedConversations.push([conversationId, seed, grantedHere]);
+      if (standing && byDevice(standing.actor)) {
+        if (standing.approvalMode === 'never') {
+          recordAsk(
+            conversationId,
+            standing.threadId,
+            standing.sequence,
+            'never',
+          );
+        } else if (
+          standing.approvalMode === 'connection-default' &&
+          (await this.approvalPickReachesFullAccess({
+            threadId: standing.threadId,
+            pick: 'connection-default',
+          }))
+        ) {
+          recordAsk(
+            conversationId,
+            standing.threadId,
+            standing.sequence,
+            'default-reaching-full-access',
+          );
+        } else if (standing.approvalMode === 'auto' && grantedHere.length > 0) {
+          // Auto on a session this device's grant unconfined acts without
+          // asking, outside the workspace: full access in effect.
+          recordAsk(
+            conversationId,
+            standing.threadId,
+            standing.sequence,
+            'auto-on-host',
+          );
+        }
+        continue;
+      }
+      if (standing) {
+        // Someone else's decision governs: never changed here.
+        if (standing.approvalMode === 'never')
+          stillFullAccess.push({
+            conversationId,
+            reason: decisionReason(standing.actor),
+          });
+        else if (
+          standing.approvalMode === 'connection-default' &&
+          (await this.approvalPickReachesFullAccess({
+            threadId: standing.threadId,
+            pick: 'connection-default',
+          }))
+        ) {
+          const source = await hostDefaultSource(threads);
+          if (source) stillFullAccess.push({ conversationId, reason: source });
+        }
+        continue;
+      }
+      // A session this device started at full access, with no decision
+      // since: its engine keeps the start's mode, so record Ask. A `never`
+      // that comes from a default on a session still unconfined for
+      // another reason is listed instead.
+      const source = await hostDefaultSource(threads);
+      if (source) {
+        stillFullAccess.push({ conversationId, reason: source });
+      } else if (grantedHere[0]) {
+        // Its `never` came from the Agent's or Station's default: that
+        // default is not this device's to take back. Re-confinement (listed
+        // above) is what revoking its grant changes there.
+        const agentSlug = this.readLatestSessionStartMetadata(
+          grantedHere[0],
+        )?.agentSlug;
+        const fromDefault = await this.approvalPosture.fullAccessDefaultSource(
+          typeof agentSlug === 'string' ? agentSlug : undefined,
+        );
+        if (!fromDefault)
+          recordAsk(conversationId, grantedHere[0], null, 'host-start');
+      }
+    }
+    // Sessions this device's grant unconfined. The applied stamp reads the
+    // grant live, so each is confined from the next time Station hands its
+    // engine a posture: every turn while a decision stands (the decision's
+    // mode is re-applied under `workspace`), or its next start or respawn.
+    // A live engine with no decision standing is sent no posture on a turn
+    // (#2144 slice 6), so it keeps what it started with until it restarts:
+    // listed as still unconfined. So is everything when this Station cannot
+    // check the grant. A standing `never` from someone else keeps the
+    // conversation unconfined anyway and is listed as still at full access.
+    for (const [conversationId, seed, granted] of grantedConversations) {
+      const standing = this.approvalPosture.decision(seed);
+      if (standing?.approvalMode === 'never') continue;
+      if (!this.options.isFullAccessGrantorCurrent)
+        stillUnconfined.push({ conversationId, until: 'grant-not-checked' });
+      else if (
+        !standing &&
+        granted.some((threadId) => this.sessionAdapters.has(threadId))
+      )
+        stillUnconfined.push({ conversationId, until: 'engine-restart' });
+      else reconfined.push({ conversationId });
+    }
+    // Live `host` sessions started before the grantor was recorded: listed,
+    // never reset. Only sessions this process tracks, and at most
+    // UNATTRIBUTED_HOST_START_LIMIT of them.
+    const unattributedHostStarts: Array<
+      NonNullable<
+        FullAccessRevocationReport['unattributedHostStarts']
+      >['sessions'][number]
+    > = [];
+    let unattributedHostStartCount = 0;
+    const listed = new Set(conversations.keys());
+    const unattributedSeeds = new Map<string, string>();
+    for (const session of this.sessionReadModel.values()) {
+      if (session.status === 'closed' || session.status === 'dead') continue;
+      const threadId = session.threadId;
+      if (this.readStartConfinementStamp(threadId) !== 'host') continue;
+      if (this.readStartConfinementGrantor(threadId)) continue;
+      const conversationId = conversationOf(threadId);
+      if (listed.has(conversationId)) continue;
+      listed.add(conversationId);
+      unattributedSeeds.set(conversationId, threadId);
+      unattributedHostStartCount += 1;
+      if (unattributedHostStarts.length < UNATTRIBUTED_HOST_START_LIMIT)
+        unattributedHostStarts.push({
+          conversationId,
+          startedAt:
+            store.latestEventByMethod(threadId, 'session.started')?.createdAt ??
+            session.createdAt,
+        });
+    }
+    for (const [conversationId, seed] of unattributed) {
+      const standing = this.approvalPosture.decision(seed);
+      if (standing?.approvalMode === 'never' && !standing.actor)
+        stillFullAccess.push({
+          conversationId,
+          reason: 'unattributed-decision',
+        });
+    }
+    // Each entry names its conversation by title where it has one, and a
+    // session to open it by: plain data a client renders as text.
+    const describe = <T extends { conversationId: string }>(entry: T): T => {
+      const seed =
+        conversations.get(entry.conversationId) ??
+        unattributed.get(entry.conversationId) ??
+        unattributedSeeds.get(entry.conversationId);
+      if (!seed) return entry;
+      const title = store.conversationTitle([
+        entry.conversationId,
+        ...threadsOf(entry.conversationId, seed),
+      ]);
+      return { ...entry, sessionId: seed, ...(title ? { title } : {}) };
+    };
+    return {
+      cause: input.cause,
+      reset: reset.map(describe),
+      stillFullAccess: stillFullAccess.map(describe),
+      reconfined: reconfined.map(describe),
+      stillUnconfined: stillUnconfined.map(describe),
+      unattributedHostStarts: {
+        sessions: unattributedHostStarts.map(describe),
+        total: unattributedHostStartCount,
+      },
+    };
+  }
+
+  /**
+   * #2377 slice C1: whether `threadId` runs unconfined (`host`): its start
+   * stamp or a recorded `never`, exactly as its next turn reads it
+   * (`ApprovalPosture.standingConfinement`).
+   */
+  sessionRunsHost(threadId: string): boolean {
+    return (
+      this.approvalPosture.standingConfinement(
+        threadId,
+        this.readStartConfinementStamp(threadId),
+      ) === 'host'
+    );
+  }
+
+  /**
+   * #2377 slice C1: whether recording `pick` on `threadId` would run any
+   * engine of its conversation at full access
+   * (`ApprovalPosture.pickReachesFullAccess`), reading each session's start
+   * stamp and Agent the way a turn does (`agentSlug` stands in for a thread
+   * with no session yet).
+   */
+  async approvalPickReachesFullAccess(input: {
+    threadId: string;
+    pick: ApprovalMode;
+    agentSlug?: string;
+  }): Promise<boolean> {
+    return this.approvalPosture.pickReachesFullAccess({
+      ...input,
+      startOf: (threadId) => {
+        const agentSlug =
+          this.readLatestSessionStartMetadata(threadId)?.agentSlug;
+        return {
+          stamp: this.readStartConfinementStamp(threadId),
+          ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
+        };
+      },
+    });
   }
 
   /**
@@ -8502,6 +8934,10 @@ export class OrchestrationService {
     // Carry the stamp forward (the stored-metadata read strips reserved
     // keys), so the respawn's own start event still answers for the next
     // one. A missing stamp is written as the `workspace` it already meant.
+    const grantor =
+      stamp === 'host'
+        ? this.readStartConfinementGrantor(input.threadId)
+        : undefined;
     const restamped: ProviderSessionStartInput = {
       ...withoutOptions,
       confinement,
@@ -8509,6 +8945,10 @@ export class OrchestrationService {
         ...withoutOptions.metadata,
         [STATION_CONFINEMENT_METADATA_KEY]:
           stamp === 'host' ? 'host' : 'workspace',
+        // #1796: the grantor rides forward with the stamp it explains.
+        ...(grantor
+          ? { [STATION_CONFINEMENT_GRANTOR_METADATA_KEY]: grantor }
+          : {}),
       },
     };
     return modelOptions ? { ...restamped, modelOptions } : restamped;
@@ -8521,7 +8961,37 @@ export class OrchestrationService {
    * `prepareStart` and a respawn (`withApprovalPostureForStart`) write it,
    * each after the reserved-key strip.
    */
+  /** #1796: the grantor beside the thread's latest start stamp, if any. */
+  private readStartConfinementGrantor(
+    threadId: string,
+  ): ClientOriginActor | undefined {
+    const metadata = (
+      this.options.eventStore?.latestEventByMethod(threadId, 'session.started')
+        ?.payload as { metadata?: Record<string, unknown> } | undefined
+    )?.metadata;
+    return confinementGrantor({
+      actor: metadata?.[STATION_CONFINEMENT_GRANTOR_METADATA_KEY],
+    });
+  }
+
+  /**
+   * #1796: the start stamp as it applies now. A `host` stamp granted by a
+   * device that no longer holds `approval:full-access` applies as
+   * `workspace`: the grant it recorded has been taken back. The operator's
+   * stamps, and stamps with no recorded grantor, apply as written.
+   */
   private readStartConfinementStamp(threadId: string): unknown {
+    const stamp = this.readStartConfinementStampAsWritten(threadId);
+    if (stamp !== 'host' || !this.options.isFullAccessGrantorCurrent)
+      return stamp;
+    const grantor = this.readStartConfinementGrantor(threadId);
+    return grantor?.kind === 'device' &&
+      !this.options.isFullAccessGrantorCurrent(grantor.deviceId)
+      ? 'workspace'
+      : stamp;
+  }
+
+  private readStartConfinementStampAsWritten(threadId: string): unknown {
     const metadata = (
       this.options.eventStore?.latestEventByMethod(threadId, 'session.started')
         ?.payload as { metadata?: Record<string, unknown> } | undefined
@@ -8688,8 +9158,12 @@ export class OrchestrationService {
    * session is deliberately excluded from ordinary user-facing inventories.
    * Read the event-store marker as well as the live Set so restart cannot
    * turn an ephemeral webhook session back into a listed conversation.
+   *
+   * Public for the notification writers (#2589): an ephemeral session is not
+   * in `listSessionReadModel`, so it is never on the agent-activity card, and
+   * its notifications must not be marked as the card's to announce.
    */
-  private isEphemeralSession(threadId: string): boolean {
+  isEphemeralSession(threadId: string): boolean {
     if (this.ephemeralSessionThreads.has(threadId)) return true;
     if (this.sessionReadModel.get(threadId)?.ephemeral === true) return true;
     if (this.options.eventStore?.readSessionByThread(threadId)?.ephemeral)
@@ -9002,20 +9476,11 @@ export class OrchestrationService {
     // in practice every adapter-sourced event (consumeAdapterEvents ->
     // projectAndPublishEvent) plus this service's other same-path internal
     // publishes. It is NOT the only place a `session.started`/
-    // `session.configured` event can reach the event bus: two other paths
-    // publish independently of this function and are NOT covered by this
-    // invalidation —
-    //   - AttachedSessionFollowService.appendAndPublish (used for the
-    //     read-only-attached envelope built by attachedSessionEnvelope())
-    // The attached-session path is safe TODAY only because it never sets
-    // `metadata.userId`
-    // on a `session.started`/`session.configured` event, so
-    // sessionOwnerUserId() never resolves (and therefore never caches) an
-    // owner from them in the first place — see the cross-reference comments
-    // at each site. This is a structural gap, not a proof: if either path
-    // is ever changed to stamp `metadata.userId`, it must also route
-    // through (or replicate) this invalidation, or a cached owner could go
-    // stale silently.
+    // `session.configured` event can reach the event bus:
+    // AttachedSessionFollowService.appendAndPublish publishes the
+    // read-only-attached envelope (which records the local operator as
+    // owner) independently of this function, and replicates this
+    // invalidation through `invalidateSessionOwner()` below.
     if (
       (projectedEvent.method === 'session.started' ||
         projectedEvent.method === 'session.configured') &&
@@ -9739,3 +10204,41 @@ function bucketCount(count: number): string {
 }
 
 export { messageSearchExcerpt } from './session-transcript-reads.js';
+
+/**
+ * #1796: the actor a `host` stamp names as its grantor: a device or the
+ * operator, from a server-derived client origin (or a stored stamp read
+ * back). Anything else records no grantor.
+ */
+function confinementGrantor(
+  origin: { actor?: unknown } | undefined,
+): ClientOriginActor | undefined {
+  const actor = origin?.actor as
+    | { kind?: unknown; deviceId?: unknown }
+    | undefined;
+  if (actor?.kind === 'operator') return { kind: 'operator' };
+  if (
+    actor?.kind === 'device' &&
+    typeof actor.deviceId === 'string' &&
+    actor.deviceId
+  )
+    return { kind: 'device', deviceId: actor.deviceId };
+  return undefined;
+}
+
+/** #1796: how many unattributed live `host` sessions a revocation lists. */
+const UNATTRIBUTED_HOST_START_LIMIT = 50;
+
+/** #1796: refuse a start whose full-access grant names no grantor. */
+function assertAttributedFullAccessGrant(grant: unknown): void {
+  if (isFullAccessGrant(grant) && !fullAccessGrantor(grant))
+    throw new UnattributedFullAccessGrantError();
+}
+
+/** #1796: an adoption's confinement stamp and grantor, from its grant. */
+function adoptionConfinement(grant: unknown): AdoptionConfinement {
+  if (!isFullAccessGrant(grant)) return { stamp: 'workspace' };
+  assertAttributedFullAccessGrant(grant);
+  const grantor = fullAccessGrantor(grant);
+  return grantor ? { stamp: 'host', grantor } : { stamp: 'workspace' };
+}

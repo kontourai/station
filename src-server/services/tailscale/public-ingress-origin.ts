@@ -55,7 +55,7 @@ export const TAILSCALE_MACOS_APP_CLI =
  * packaged app does not inherit an interactive shell PATH, so macOS tries the
  * official app bundle before the ordinary PATH installation.
  */
-export function tailscaleCliExecutableCandidates(
+function tailscaleCliExecutableCandidates(
   platform: NodeJS.Platform = process.platform,
 ): readonly string[] {
   return platform === 'darwin'
@@ -198,21 +198,6 @@ export function parseServePublicOrigins(
     return leftPort - rightPort;
   });
   return candidates;
-}
-
-/**
- * The deterministic default from {@link parseServePublicOrigins}.
- *
- * Keep this narrow compatibility helper for callers that only need one
- * endpoint. New routing decisions must use all origins: a direct Serve hop
- * can prove exactly which listener accepted its request.
- */
-export function parseServePublicOrigin(
-  serveJson: string,
-  magicDnsHost: string,
-  localPorts: readonly number[],
-): string | undefined {
-  return parseServePublicOrigins(serveJson, magicDnsHost, localPorts)?.[0];
 }
 
 interface PublicIngressOriginResolver {

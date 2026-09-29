@@ -8,17 +8,21 @@
 //
 // This is the project half of the feature switch; STATION_IOS_LIVE_ACTIVITY=1
 // (plugins/agent-activity/build.rs) is the plugin half, and a build enables
-// both or neither. The committed gen/apple spec carries NEITHER, so no
-// existing build path (CI simulator builds, `build:ios:simulator`,
-// `tauri ios dev`, a local App Store export, TestFlight) embeds an extension
-// or needs provisioning for one. An enabled build runs this on the rendered
-// spec, then `xcodegen generate`, and needs an App ID and profile for
-// `<app bundle id>.AgentActivity` plus push on the app (#2513 slice D).
+// both or neither. The committed gen/apple spec carries NEITHER, so the
+// local and CI simulator builds, `build:ios:simulator`, `tauri ios dev` and a
+// local App Store export embed no extension and need no provisioning for one.
+// The TestFlight delivery enables both for the channels whose table entry
+// names an extension (Beta and Nightly; scripts/ios-testflight-channel.mjs):
+// it runs this on the re-rendered spec, signs the extension target
+// (ios-store-signing-config.mjs agent-activity), then `xcodegen generate`,
+// with an App Store profile for `<app bundle id>.AgentActivity` and push on
+// the app (#2513 slice D).
 //
 // `--aps-environment` names the APNs environment once and writes it to both
 // places that must agree: the app's `aps-environment` entitlement and the
 // Info.plist `StationApsEnvironment` the plugin reads it back from (iOS
-// cannot read its own entitlements at runtime). A later run without it is
+// cannot read its own entitlements at runtime). The same Info.plist step
+// declares `NSSupportsLiveActivities`, which ActivityKit requires. A later run without it is
 // refused while the spec still names one, so the two stay paired.
 //
 // The extension's bundle id cannot be derived from the app's in build
@@ -26,16 +30,25 @@
 // the station_iOS target's configurations, so `--app-bundle-id` (and the
 // simulator preparation in ios-simulator-build.mjs) sets it explicitly.
 //
+// `--notification-service` also adds the Notification Service Extension
+// (#2590), which opens the sealed alert push with the registrations the app
+// shares through the same keychain group. It is its own switch, layered on
+// this one, because it needs a third App ID and profile
+// (`<app bundle id>.NotificationService`): a build that has the widget's
+// profile but not yet this one keeps working without it, and an alert then
+// shows its fixed text.
+//
 //   node scripts/ensure-ios-agent-activity-extension.mjs <project.yml> \
-//     --app-bundle-id <id> \
+//     --app-bundle-id <id> [--notification-service] \
 //     [--aps-environment development|production --info-plist <Info.plist>]
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import YAML from 'yaml';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const EXTENSION_TARGET = 'StationAgentActivity';
+export const NOTIFICATION_SERVICE_TARGET = 'StationNotificationService';
 const APP_TARGET = 'station_iOS';
 const APP_BUNDLE_ID = /^io\.kontourai\.station(\.[a-z0-9-]+)*$/;
 const APS_ENVIRONMENTS = new Set(['development', 'production']);
@@ -89,6 +102,59 @@ function agentActivityExtensionTarget(appBundleId) {
   };
 }
 
+/**
+ * The Notification Service Extension: its own sources, the three shared
+ * files it opens alerts with, and the core the host tests cover. It links
+ * nothing beyond UserNotifications, which every extension of this kind uses,
+ * and deploys where the app does, so alerts open on every supported iOS.
+ */
+function notificationServiceExtensionTarget(appBundleId) {
+  const shared =
+    '../../plugins/agent-activity/ios/Sources/StationAgentActivityShared';
+  return {
+    type: 'app-extension',
+    platform: 'iOS',
+    deploymentTarget: '14.0',
+    sources: [
+      {
+        path: '../../ios/StationNotificationService',
+        excludes: ['Info.plist', '*.entitlements'],
+      },
+      { path: `${shared}/Base64URL.swift` },
+      { path: `${shared}/CardOpener.swift` },
+      { path: `${shared}/RegistrationKeychain.swift` },
+      {
+        path: '../../plugins/agent-activity/ios/Sources/StationNotificationServiceCore',
+      },
+    ],
+    settings: {
+      base: {
+        STATION_APP_BUNDLE_IDENTIFIER: appBundleId,
+        PRODUCT_BUNDLE_IDENTIFIER:
+          '$(STATION_APP_BUNDLE_IDENTIFIER).NotificationService',
+        PRODUCT_NAME: NOTIFICATION_SERVICE_TARGET,
+        INFOPLIST_FILE: '../../ios/StationNotificationService/Info.plist',
+        CODE_SIGN_ENTITLEMENTS:
+          '../../ios/StationNotificationService/StationNotificationService.entitlements',
+        TARGETED_DEVICE_FAMILY: '1,2',
+        SWIFT_VERSION: '5.0',
+        ENABLE_BITCODE: false,
+        ARCHS: ['arm64'],
+        SKIP_INSTALL: true,
+      },
+    },
+    postBuildScripts: [
+      {
+        name: 'Use the app version',
+        basedOnDependencyAnalysis: false,
+        inputFiles: ['$(PROJECT_DIR)/station_iOS/Info.plist'],
+        script: VERSION_SCRIPT,
+      },
+    ],
+    dependencies: [{ sdk: 'UserNotifications.framework' }],
+  };
+}
+
 const VERSION_SCRIPT = `set -eu
 app_plist="$PROJECT_DIR/station_iOS/Info.plist"
 built_plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
@@ -109,19 +175,46 @@ function apsEnvironmentValue(apsEnvironment) {
   return apsEnvironment;
 }
 
-/**
- * Info.plist `StationApsEnvironment`, the runtime copy of the
- * `aps-environment` entitlement. Replaces an existing value.
- */
-function ensureIosApsEnvironmentInfoPlist(plist, apsEnvironment) {
-  const value = apsEnvironmentValue(apsEnvironment);
-  const entry = `<key>StationApsEnvironment</key>\n\t<string>${value}</string>`;
-  const existing =
-    /<key>StationApsEnvironment<\/key>\s*<string>[^<]*<\/string>/;
+/** Sets one top-level Info.plist key to `value` XML, replacing any value. */
+function setInfoPlistKey(plist, key, value) {
+  const entry = `<key>${key}</key>\n\t${value}`;
+  const existing = new RegExp(
+    `<key>${key}</key>\\s*(?:<string>[^<]*</string>|<true\\s*/>|<false\\s*/>)`,
+  );
   if (existing.test(plist)) return plist.replace(existing, entry);
   const end = /\n?<\/dict>\s*<\/plist>\s*$/;
   if (!end.test(plist)) throw new Error('Unrecognized Info.plist shape');
   return plist.replace(end, `\n\t${entry}\n</dict>\n</plist>\n`);
+}
+
+/**
+ * The app Info.plist half of an enabled build:
+ *
+ * - `StationApsEnvironment`, the runtime copy of the `aps-environment`
+ *   entitlement;
+ * - `NSSupportsLiveActivities`, without which ActivityKit reports
+ *   activities disabled, `Activity.request` fails and no push-to-start token
+ *   is issued, however the rest is signed.
+ *
+ * `NSSupportsLiveActivitiesFrequentUpdates` is deliberately not set: it only
+ * raises the budget for priority-10 updates, and the gateway sends routine
+ * updates at priority 5 (`livePriority` in deploy/push-gateway), keeping 10
+ * for start, end and alerting updates. It would also add a "More Frequent
+ * Updates" switch in Settings that changes nothing Station sends.
+ *
+ * Existing values are replaced, so re-running moves them together.
+ */
+function ensureIosLiveActivityInfoPlist(plist, apsEnvironment) {
+  const value = apsEnvironmentValue(apsEnvironment);
+  return setInfoPlistKey(
+    setInfoPlistKey(
+      plist,
+      'StationApsEnvironment',
+      `<string>${value}</string>`,
+    ),
+    'NSSupportsLiveActivities',
+    '<true/>',
+  );
 }
 
 const APP_KEYCHAIN_GROUPS = [
@@ -172,9 +265,13 @@ function ensureDependency(document, dependencies, key, entry) {
   else dependencies.items[index] = node;
 }
 
+/**
+ * @param {string} project
+ * @param {{ appBundleId?: string, apsEnvironment?: string, notificationService?: boolean }} [options]
+ */
 export function ensureIosAgentActivityExtension(
   project,
-  { appBundleId, apsEnvironment } = {},
+  { appBundleId, apsEnvironment, notificationService = false } = {},
 ) {
   if (typeof appBundleId !== 'string' || !APP_BUNDLE_ID.test(appBundleId))
     throw new Error('Expected a Station iOS app bundle identifier');
@@ -221,6 +318,22 @@ export function ensureIosAgentActivityExtension(
     sdk: 'ActivityKit.framework',
     weak: true,
   });
+  if (notificationService) {
+    document.setIn(
+      ['targets', NOTIFICATION_SERVICE_TARGET],
+      document.createNode(notificationServiceExtensionTarget(appBundleId)),
+    );
+    ensureDependency(document, dependencies, 'target', {
+      target: NOTIFICATION_SERVICE_TARGET,
+      embed: true,
+    });
+  } else if (document.hasIn(['targets', NOTIFICATION_SERVICE_TARGET])) {
+    // Dropping it silently would ship a build without it that its caller
+    // believes has it, or the reverse; the switch is named on every run.
+    throw new Error(
+      'The spec already carries the Notification Service Extension; pass --notification-service again',
+    );
+  }
   return document.toString({ lineWidth: 0, flowCollectionPadding: false });
 }
 
@@ -237,11 +350,11 @@ function valueAfter(argv, flag) {
  * beside a spec re-rendered from scratch.
  *
  * @param {{ project: string, infoPlist?: string }} files
- * @param {{ appBundleId?: string, apsEnvironment?: string }} [options]
+ * @param {{ appBundleId?: string, apsEnvironment?: string, notificationService?: boolean }} [options]
  */
 export function ensureIosAgentActivity(
   { project, infoPlist },
-  { appBundleId, apsEnvironment } = {},
+  { appBundleId, apsEnvironment, notificationService = false } = {},
 ) {
   if ((apsEnvironment === undefined) !== (infoPlist === undefined))
     throw new Error(
@@ -251,11 +364,12 @@ export function ensureIosAgentActivity(
     project: ensureIosAgentActivityExtension(project, {
       appBundleId,
       apsEnvironment,
+      notificationService,
     }),
     infoPlist:
       infoPlist === undefined
         ? undefined
-        : ensureIosApsEnvironmentInfoPlist(infoPlist, apsEnvironment),
+        : ensureIosLiveActivityInfoPlist(infoPlist, apsEnvironment),
   };
 }
 
@@ -278,16 +392,14 @@ function main(argv) {
     {
       appBundleId: valueAfter(argv, '--app-bundle-id'),
       apsEnvironment: valueAfter(argv, '--aps-environment'),
+      notificationService: argv.includes('--notification-service'),
     },
   );
   rewrite(project, next.project);
   if (infoPlist !== undefined) rewrite(infoPlist, next.infoPlist);
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main(process.argv.slice(2));
   } catch (error) {

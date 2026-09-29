@@ -33,6 +33,7 @@ import type {
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { type Context, Hono } from 'hono';
+import { isPrincipalScopedAgentRequest } from '../../security/station-control-request-authority.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import {
   type PluginLifecycleProposalService,
@@ -72,6 +73,15 @@ interface PluginProposalRouteDeps {
    * proposals and keys a person's proposals by who they are.
    */
   resolvePrincipal(c: Context): PrincipalRef;
+  /**
+   * #2377 slice B: whether this request's principal may see an installed
+   * plugin (`PluginVisibilityService`, the projection `GET /api/plugins`
+   * applies). An update or remove proposal from a station-control agent names
+   * only a plugin its session's owner can see; one it cannot see answers
+   * exactly like one that is not installed. Absent: such a proposal is
+   * refused that way too (fail closed).
+   */
+  canSeePlugin?(c: Context, pluginId: string): boolean;
 }
 
 type ReportedContext = {
@@ -105,9 +115,11 @@ async function observeLocalDigest(
   | { proposedContentDigest: string }
   | { proposedContentDigestUnavailable: PluginProposalDigestUnavailableReason }
 > {
+  // Staged as the install will stage it: a proposed folder's preview leaves
+  // its git metadata out (#2719), so this digest does too.
   const observed = await observeLocalPluginSourceDigest(path);
   return 'digest' in observed
-    ? { proposedContentDigest: observed.digest }
+    ? { proposedContentDigest: observed.digestWithoutGitMetadata }
     : { proposedContentDigestUnavailable: observed.unavailable };
 }
 
@@ -328,7 +340,9 @@ export function createPluginProposalRoutes(deps: PluginProposalRouteDeps) {
       if (!mayProbeInventory) return c.json(UPDATE_REMOVE_OPERATOR_ONLY, 404);
       if (
         !isCanonicalPluginId(pluginName) ||
-        !existsInstalled(pluginsDir, pluginName)
+        !existsInstalled(pluginsDir, pluginName) ||
+        (isPrincipalScopedAgentRequest(c.req.raw) &&
+          deps.canSeePlugin?.(c, pluginName) !== true)
       ) {
         return c.json(
           {

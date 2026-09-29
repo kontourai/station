@@ -59,6 +59,8 @@ describe('readCheckoutRemotes is bounded', () => {
       timeoutMs: 25,
     });
 
+    // Never downgraded to "this directory has no remotes": an empty remote
+    // set means `drifted` to the resolver, so a timeout must not produce one.
     expect(result.ok).toBe(false);
     // The reason must name the timeout: an operator reading "command failed"
     // looks for a broken repo, not for a wedged mount.
@@ -66,15 +68,6 @@ describe('readCheckoutRemotes is bounded', () => {
     expect(result.ok === false && result.reason).toContain(
       '/mnt/stale-nfs/checkout',
     );
-  });
-
-  test('a killed read is NEVER downgraded to "this directory has no remotes"', async () => {
-    // The whole point of the discriminated union: an empty remote set means
-    // `drifted` to the resolver. A timeout must never produce one.
-    const result = await readCheckoutRemotes('/mnt/stale-nfs/checkout', {
-      timeoutMs: 25,
-    });
-    expect(result).not.toEqual({ ok: true, remotes: [] });
   });
 
   test('the bound applies with no options passed — every caller inherits it', async () => {

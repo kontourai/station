@@ -6,6 +6,7 @@ import {
   type FloatFrame,
   type FloatObstacles,
   fitFloatWidth,
+  isFloatArrowKey,
   nudgeFloatFrame,
   resizeFloatFrame,
   resolveFloatFrame,
@@ -101,6 +102,28 @@ describe('float-over-chat geometry (#90 D9)', () => {
     // Beside the composer, not on it: to its right with the gap.
     expect(moved.x).toBe(700 + FLOAT_EDGE_GAP);
     expect(bottom({ ...moved, ...player })).toBe(CHAT.height - FLOAT_EDGE_GAP);
+  });
+
+  test('composer avoidance: when moving up and sliding sideways are equally short, the player moves up', () => {
+    const player = { width: 100, height: 100 };
+    // Clamped to y = 588; rising above the composer is 120px, and sliding
+    // right to 700 + 12 is also 120px from x = 592.
+    const moved = clampFloatPosition(
+      { x: 592, y: 5000 },
+      CHAT,
+      player,
+      COMPOSER,
+    );
+    expect(moved).toEqual({ x: 592, y: 700 - 120 - FLOAT_EDGE_GAP - 100 });
+  });
+
+  test('only the four arrow keys drive the keyboard nudge', () => {
+    for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+      expect(isFloatArrowKey(key)).toBe(true);
+    }
+    for (const key of ['Enter', 'arrowup', '', 'toString', 'constructor']) {
+      expect(isFloatArrowKey(key)).toBe(false);
+    }
   });
 
   test('composer avoidance: with no room beside it the player sits above the composer', () => {

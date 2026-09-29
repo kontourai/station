@@ -35,7 +35,7 @@ Content-Type: application/json
     "workspace": {
       "kind": "project",
       "projectSlug": "station",
-      "cwd": "/optional/verified/override"
+      "cwd": "/work/project/subdir"
     }
   },
   "message": "Inspect this change",
@@ -43,13 +43,28 @@ Content-Type: application/json
 }
 ```
 
+`workspace.cwd` is optional for a Project target. When supplied, its path must
+exist and resolve inside that Project's configured working directory,
+including symlink resolution and whole path segments. The example assumes the
+selected Project contains `/work/project/subdir`. An outside or unresolvable
+override refuses before execution. A separately verified remote workspace keeps
+its remote-path admission; the controlling Station does not resolve that path
+against its own filesystem.
+
 For a saved Environment use `{ "kind": "saved", "id": "..." }`. The
 controlling Station reaches that Environment through its configured peer or SSH
 access, rewrites the forwarded target to `current`, and the target Station resolves
 its own Agent. Tunnel URLs, provider IDs, and connection IDs are never request inputs
 or response data.
 
-The response is a foreground handle containing `conversationId`, `sessionId`, the
+Calls made by a station-control Agent also pass the
+[dispatch authority checks](../guides/self-configuring-agent.md#dispatch-authority):
+owner and Project scope constrain local work, and remote reach requires a bound
+operator caller. These checks also cover input replies and follow-ups. They do
+not replace the operator UI or paired Device's own request authorization.
+
+The response is a foreground handle containing `conversationId`, `sessionId`,
+`providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
 Agent, engine kind, provider, and honest model launch plan.
 
@@ -85,7 +100,9 @@ memory paths or another Session's memory identity.
 ## Lifecycle control commands
 
 `POST /api/orchestration/commands` is a control surface, not an execution selector.
-It accepts `adoptSession`, `interruptTurn`, `respondToRequest`, and `stopSession`.
+It accepts `adoptSession`, `interruptTurn`, `steerTurn`, `respondToRequest`,
+`setApprovalMode`, `discardDraft`, and `stopSession`. Commands use the execution
+Session ID as `threadId`, not an assumed copy of the Conversation ID.
 Public `startSession` and `sendTurn` commands do not exist; adapter dispatch remains
 an internal service primitive.
 
@@ -96,6 +113,16 @@ clicking Allow/Deny on an approval card. Requests surface as `request.opened` ca
 runtime events (see [Reading session activity](#reading-session-activity)); resolve them
 by `requestId`.
 
+For Codex, this is Station's canonical string ID. The
+[adapter](../../src-server/providers/adapters/codex-adapter-transport.ts)
+maps it to Codex's original wire ID and preserves that ID's value and type in
+the reply. Numeric `0` and string `"0"` are different IDs: converting between
+them previously left an approval resolved in Station while Codex kept waiting
+([#562](https://github.com/kontourai/station/issues/562)). The
+[adapter tests](../../src-server/providers/__tests__/codex-adapter-rpc-id.test.ts)
+cover explicit decisions, session grants, interrupt cancellation, and unsupported
+requests through simulated process streams; they are not a live Codex receipt.
+
 ```jsonc
 {
   "type": "respondToRequest",
@@ -105,10 +132,50 @@ by `requestId`.
 }
 ```
 
+The command records the decision: the adapter publishes `request.resolved`
+when Station records it, on every engine. Whether the engine then received it
+is a separate fact (#2880), declared per adapter as
+`approvalAcknowledgement` and stamped on each decision's `request.resolved`
+as `acknowledgement`:
+
+- `engine` (Codex, Muse): a later `request.delivery` event reports
+  `outcome: 'acknowledged'` when the engine closes the request after
+  Station's well-formed reply, or `outcome: 'unacknowledged'` with `reason:
+  'no-acknowledgement'` (none within the adapter's window, or the session
+  ended first; Station does not re-send) or `'invalid-reply'` (Station refused a reply outside the
+  engine's decision vocabulary and never sent it). A late `acknowledged`
+  supersedes an earlier `unacknowledged`. "Acknowledged" never means the
+  engine applied the decision as given; Muse's `engineStatus` carries the
+  engine's own outcome. A request Codex closes itself before Station
+  answers resolves `cancelled` with `response.reason: 'closed-by-engine'`
+  and no `acknowledgement`; a later decision on it is refused. A close that
+  crosses Station's reply in flight still reads `acknowledged`, although
+  Codex discarded that reply: its close does not say which came first.
+- `in-process` (Station's own engine): consumed in-process; no delivery
+  event follows.
+- `none` (Claude Code, ACP): the protocol has no acknowledgement, so
+  delivery is not reported.
+
+An open request in the attention inbox closes on `request.resolved`, so an
+answered request leaves the inbox when the decision is recorded; an
+unacknowledged decision surfaces as a `runtime.warning` on its session, not
+as a reopened request.
+
 ### Other command types
 
-Three more command types exist on the same union but are outside this doc's session-lifecycle
-scope — see the zod schemas in `orchestration.ts` for their exact shapes: `adoptSession`
+The remaining controls are defined by
+`src-server/routes/orchestration/orchestration.ts`:
+
+- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId? }` sends steering
+  input where the engine supports it.
+- `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
+  basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
+  required: use the latest observed decision sequence, or `null` when none was
+  observed. A stale basis refuses the change.
+- `discardDraft`: `{ type: 'discardDraft', threadId }` asks the server to verify
+  and discard a Draft; it is not a general Session deletion.
+
+The other lifecycle controls are `adoptSession`
 (`{ type: 'adoptSession', sourceThreadId, idempotencyKey? }`, create an independent continuation of a
 read-only attached session; a UUID idempotency key safely replays the same
 Continue intent and returns the existing continuation with
@@ -156,24 +223,34 @@ turn-cutoff semantics. Both paths retain the source binding in the adoption
 ledger before native child creation and retain unresolved cleanup for recovery
 rather than blindly retrying an ambiguous fork.
 
-Codex continuation requires an available, authenticated local Codex adapter;
-native fork conformance is verified against Codex CLI 0.146.1. Forked Codex
+Codex continuation requires an available, authenticated local Codex adapter.
+The adapter validates the native fork and completed-turn cutoff; its fixture
+tests do not establish compatibility with a particular installed CLI version.
+This audit has not run a live native fork. Forked Codex
 sessions can replay inherited cumulative usage. Station marks continuation
 usage unavailable until it can establish a durable child-only baseline, rather
 than reporting inherited tokens as new spending. This limitation does not
 prevent transcript observation or continuation.
 
 `STATION_EXTERNAL_CODEX_SOURCE_ROOT` and `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`
-can select separate read-only history roots. Each root contains the engine's
-`sessions` or `projects` directory, respectively. These overrides affect
-transcript observation only; they do not change the CLI's authentication or
-execution configuration. Without an override, observation uses `CODEX_HOME`
-or `CLAUDE_CONFIG_DIR`, then the engine's default home directory.
+can select separate history roots for observation. Each root contains the engine's
+`sessions` or `projects` directory, respectively. Discovery does not change the
+process environment or ordinary launch configuration. Continuation has an
+additional binding: Codex adoption and resume set the child process's
+`CODEX_HOME` to the verified source home, ahead of a credential-profile home.
+That home therefore also supplies the continued process's account/configuration.
+Claude continuation requires the source home to match the SDK's globally
+configured home; an independently overridden observation root is not enough.
+Without an override, observation uses `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, then
+the engine's default home directory. See the
+[Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and
+[Claude source-home check](../../src-server/providers/adapters/claude-adapter.ts).
 
 ### The receipt envelope
 
-Every lifecycle-control dispatch — success or failure — returns a receipt so a caller can prove a command
-was accepted even if the eventual effect is asynchronous:
+A dispatch that reaches the command owner normally returns a receipt describing
+acceptance, rejection or failure. Early schema/authentication/authorization
+failures can occur before a receipt exists. Acceptance is not turn completion:
 
 ```jsonc
 // 200, command accepted
@@ -183,7 +260,7 @@ was accepted even if the eventual effect is asynchronous:
   "receipt": {
     "commandId": "uuid, generated server-side",
     "threadId": "string",
-    "commandType": "adoptSession | interruptTurn | respondToRequest | stopSession",
+    "commandType": "adoptSession | interruptTurn | steerTurn | respondToRequest | setApprovalMode | discardDraft | stopSession",
     "status": "accepted | rejected | failed",
     "createdAt": "ISO 8601 timestamp"
   }
@@ -198,9 +275,20 @@ was accepted even if the eventual effect is asynchronous:
 }
 ```
 
-Receipts are also independently durable and queryable after the fact — useful for a
-script that dispatched a command and wants to re-confirm it later without re-reading the
-whole session:
+Persisted receipts can be queried independently. A response may instead report
+`receiptStatus: "unavailable"`: the effect may have occurred while its receipt
+could not be made durable. Foreground execution can return
+`outcome: "indeterminate"` and `code: "foreground_message_indeterminate"` with
+the known Session/receipt detail. Inspect that Session; do not resend the
+request merely because it returned an error or the receipt lookup is empty.
+A transport failure after dispatch can also leave the outcome uncertain.
+In the [chat UI](../../src-ui/src/hooks/orchestration/queueDrain.ts), an intermediary's
+error page during a queued send leaves the message in the queue; the page does
+not establish a Station refusal. An uncertain
+[Agent change](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx)
+also retains its request. Use **Check status** or the
+offered retry for that request rather than starting another handoff.
+These endpoints establish recorded receipt state, not permission to retry:
 
 ```
 GET /api/orchestration/commands/receipts?threadId=<threadId>   # list, optionally filtered
@@ -247,7 +335,9 @@ correct:
 { "success": false, "error": "Session not found" }
 ```
 
-Every event the session has ever produced is persisted here — lifecycle events
+This is accepted canonical history, not a copy of every raw provider emission.
+Publication can coalesce streaming updates and reject invalid events before
+append; storage failure is not successful publication. History includes lifecycle events
 (`session.started`, `session.configured`, `session.state-changed`, ...), turn events
 (`turn.started`, `turn.completed`, `turn.aborted`), and content events
 (`content.text-delta`, `content.reasoning-delta`, `tool.*`, `request.*`, ...). See
@@ -261,10 +351,10 @@ which returns `{ session, events: {sequence, event}[], hasMore, nextSequence }`.
 **A polling gotcha:** if you call `/events` immediately after the foreground execution
 endpoint returns, you may see only lifecycle events — the accepted turn may not have
 produced its `turn.completed`/`content.text-delta` events yet. This is a timing race,
-not a limitation of the endpoint: every canonical event is
-unconditionally appended to the durable event store (`EventStore.appendEvent`, no
-per-method filtering), so the assistant's response *will* show up on a subsequent poll
-once the turn actually completes. Poll until you see it, with a timeout.
+not proof of completion or failure. Poll with a deadline for the returned
+`providerTurnId`, checking `turn.completed`, `turn.aborted`, errors and open
+requests. Accepted/coalesced publication is owned by the orchestration service;
+a timeout or missing terminal event must remain unverified, not inferred success.
 
 ### Reading assistant turn content programmatically
 
@@ -292,11 +382,21 @@ interface ConversationMessage {
 }
 ```
 
-An assistant turn's full text is `message.parts.find(p => p.type === 'text')?.text` —
-already assembled from every `content.text-delta` in that turn (with a fallback to
-`turn.completed.outputText` for providers that only emit the aggregate, never streamed
-deltas). This is the recommended read path for turn content; no new route was added for
-this slice because this one already exists and does the job.
+A message can have several text parts interleaved with tools or other structured
+parts. For a text-only diagnostic, collect every text part in order:
+
+```ts
+const text = message.parts
+  .filter((part) => part.type === 'text')
+  .map((part) => part.text)
+  .join('');
+```
+
+Keep the original ordered `parts` for faithful display; concatenation loses the
+tool/text boundaries. Match assistant messages by `metadata.turnId` to the
+handle's `providerTurnId` when proving one turn, so an earlier answer cannot
+satisfy a later check. The shared projection assembles streamed text and handles
+aggregate `turn.completed.outputText` where appropriate.
 
 ### Live SSE feed (`GET /events`)
 
@@ -305,105 +405,146 @@ GET /api/orchestration/events              # all sessions the caller can read
 GET /api/orchestration/events?threadId=X   # filtered to one session
 ```
 
-On connect, the stream immediately emits one `orchestration:snapshot` event (the current
-session read-model list), then streams `orchestration:event` events as they occur —
-each one `{ event: CanonicalRuntimeEvent }`, the same event shapes as the replay
-endpoint, filtered by `threadId` when the query param is set. A `ping` keepalive event
-fires periodically; ignore it. Use this for a live dashboard/tail; use the replay
-endpoint (or `/messages`) for "did the turn finish yet" polling in a script, since a
-one-shot JSON GET is simpler to poll with a plain `fetch`/`curl` loop than managing an
-SSE client.
+A connect without a usable cursor takes the snapshot path. A valid numeric
+`Last-Event-ID` can instead replay the authorized gap and catch up without an
+initial snapshot. Retain the server's SSE `id` and stream epoch; send the epoch
+back as `X-Station-Stream-Epoch`. A changed epoch, invalid/ahead cursor or gap
+outside the replay budget requires snapshot recovery. The
+`orchestration:caughtUp` marker carries the safe resume cursor (and epoch when
+available) after the replay/snapshot boundary, before buffered live delivery.
+Do not assume the first frame is a snapshot; keepalive frames may arrive while
+history is being read.
+
+Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
+`threadId` filters the stream and caller authorization still applies. Coalesced
+activity may also arrive as `orchestration:activity`, without a durable cursor.
+Ignore `ping` for application state. Use the JSON replay or message projection
+for bounded diagnostic polling; a live feed is not evidence that all provider
+output was persisted.
 
 ---
 
 ## `/api/agents/:id/chat`
 
 `POST /api/agents/:id/chat` accepts a persisted clean Agent ID. Station-engine
-Agents use the native Station runtime; an external-engine default or custom Agent
-enters the same binding-based orchestration path used by session commands. The
+Agents use the native Station runtime. An external-engine default or custom
+Agent receives HTTP 409 directing the caller to `POST /api/orchestration/chat`;
+the per-Agent route does not redispatch the request. The
 route never decodes an Agent ID into a connection ID and never manufactures an
 Agent from connection state. Missing and unavailable Agents return distinct,
 actionable diagnostics.
 
 ---
 
-## Complete curl walkthrough (external engine over ACP, end to end)
+## Local nonce diagnostic and curl walkthrough
 
-This is the exact sequence proven live against a running instance — see
-`scripts/session-api-roundtrip.mjs` for the scripted version this doc's proof standard
-requires (`docs/design/chat-composer.md` §4: "a scripted nonce-grade round-trip against
-a live instance using only documented endpoints").
-
-```bash
-PORT=3311
-BASE="http://localhost:${PORT}"
-THREAD_ID="session-api-demo-$(date +%s)"
-
-# 1. Install the OpenCode ACP connection (builtin registry entry; one-time per
-#    connection id — 409 if it already exists, which is fine to ignore).
-curl -sS -X POST "${BASE}/acp/registry/opencode/install"
-
-# 2. Start the default Agent persisted for that engine connection and send
-#    the first turn through the canonical execution target.
-curl -sS -X POST "${BASE}/api/orchestration/chat" \
-  -H 'Content-Type: application/json' \
-  -d "{
-    \"target\": {
-      \"environment\": { \"kind\": \"current\" },
-      \"agent\": \"opencode\",
-      \"workspace\": { \"kind\": \"directory\", \"cwd\": \"/tmp\" }
-    },
-    \"conversationId\": \"${THREAD_ID}\",
-    \"message\": \"Read the file /tmp/session-api-nonce.txt and reply with its exact contents.\"
-  }"
-# -> { "success": true, "data": { "conversationId": ..., "resolution": ... } }
-
-# 3. Send a follow-up through the persisted Environment + Agent binding.
-curl -sS -X POST "${BASE}/api/orchestration/chat/${THREAD_ID}/continue" \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"Confirm that value once more."}'
-# -> { "success": true, "data": { "conversationId": ..., "resolution": ... } }
-
-# 4. Poll for the assistant's reply (assembled text, not raw deltas).
-curl -sS "${BASE}/api/orchestration/sessions/${THREAD_ID}/messages" | jq \
-  '.data[] | select(.role == "assistant") | .parts[] | select(.type == "text") | .text'
-
-# (Alternative: poll the raw replay and search for the nonce across every
-#  content.text-delta's `delta` field, concatenated in order — this is what
-#  /messages already does for you.)
-curl -sS "${BASE}/api/orchestration/sessions/${THREAD_ID}/events" | jq \
-  '.data[] | select(.method == "content.text-delta") | .delta' | tr -d '"\n'
-```
-
-If the model needs to approve a tool call mid-turn, poll step 4's `/events` (or the SSE
-feed) for a `request.opened` event and resolve it:
+This diagnostic requires an already-running Station, an existing configured
+Agent, a paired bearer credential, and a directory visible at the same path to
+both this shell and the Station host. Configure and authenticate the engine
+separately; the script does not install connections, enroll credentials, or
+approve tools. It executes two real turns and can incur provider cost.
 
 ```bash
-curl -sS -X POST "${BASE}/api/orchestration/commands" \
-  -H 'Content-Type: application/json' \
-  -d "{
-    \"type\": \"respondToRequest\",
-    \"threadId\": \"${THREAD_ID}\",
-    \"requestId\": \"<requestId from request.opened>\",
-    \"decision\": \"accept\"
-  }"
+export STATION_API_BASE=http://127.0.0.1:3311
+export STATION_AGENT_ID=opencode
+export STATION_SESSION_CWD=/absolute/path/to/local/workspace
+# Supply STATION_API_CREDENTIAL from your existing paired credential.
+node scripts/session-api-roundtrip.mjs
 ```
+
+The script creates a private nonce file, starts a canonical chat, waits for the
+exact provider turn to complete and return the nonce, then continues the returned
+Conversation and verifies the second turn using its returned Session ID. It
+removes its nonce directory afterward. Open requests, aborted turns, missing
+identities and uncertain dispatches fail without approval or automatic retry.
+The conversation itself is retained. Its mocked schema/caller tests establish
+protocol behavior, **not live engine proof**. A live run is verified only by its
+own completed result for that instance and engine.
+
+The same sequence can be inspected with `curl` and `jq`:
+
+```bash
+set -e
+: "${STATION_API_BASE:?set the running Station API base}"
+: "${STATION_API_CREDENTIAL:?set a paired Station bearer}"
+: "${STATION_AGENT_ID:?select an existing Agent}"
+: "${STATION_SESSION_CWD:?use a directory visible to this shell and Station}"
+BASE="${STATION_API_BASE%/}"
+NONCE_DIR=$(mktemp -d "${STATION_SESSION_CWD}/.session-api.XXXXXX")
+trap 'rm -rf "$NONCE_DIR"' EXIT
+NONCE=$(openssl rand -hex 24)
+NONCE_FILE="$NONCE_DIR/nonce.txt"
+printf '%s' "$NONCE" > "$NONCE_FILE"
+chmod 600 "$NONCE_FILE"
+
+api() {
+  curl --fail-with-body -sS --max-time 120 \
+    -H "Authorization: Bearer $STATION_API_CREDENTIAL" \
+    -H 'Content-Type: application/json' "$@"
+}
+
+# Wait for this returned provider turn, not an earlier answer in the Session.
+wait_for_turn() {
+  for attempt in $(seq 1 60); do
+    EVENTS=$(api "$BASE/api/orchestration/sessions/$SESSION_ID/events")
+    if printf '%s' "$EVENTS" | jq -e --arg turn "$TURN_ID" \
+      '.success == true and any(.data[]; .turnId == $turn and .method == "turn.completed")' >/dev/null; then
+      TEXT=$(api "$BASE/api/orchestration/sessions/$SESSION_ID/messages" | jq -r --arg turn "$TURN_ID" \
+        '[.data[] | select(.role == "assistant" and .metadata.turnId == $turn) | .parts[] | select(.type == "text") | .text] | join("")')
+      case "$TEXT" in *"$NONCE"*) return 0;; esac
+      echo 'Completed turn did not return the nonce.' >&2
+      return 1
+    fi
+    sleep 2
+  done
+  echo 'No verified completion: inspect errors and open requests in Station; do not resend automatically.' >&2
+  return 1
+}
+
+BODY=$(jq -n --arg agent "$STATION_AGENT_ID" --arg cwd "$STATION_SESSION_CWD" \
+  --arg message "Read the file at $NONCE_FILE and reply with its exact contents." \
+  '{target:{environment:{kind:"current"},agent:$agent,workspace:{kind:"directory",cwd:$cwd}},message:$message}')
+FIRST=$(api -X POST "$BASE/api/orchestration/chat" -d "$BODY")
+CONVERSATION_ID=$(printf '%s' "$FIRST" | jq -er '.data.conversationId')
+SESSION_ID=$(printf '%s' "$FIRST" | jq -er '.data.sessionId')
+TURN_ID=$(printf '%s' "$FIRST" | jq -er '.data.providerTurnId')
+wait_for_turn
+
+# Only continue after the first turn completed. A new Session may be returned.
+NEXT=$(api -X POST "$BASE/api/orchestration/chat/$CONVERSATION_ID/continue" \
+  -d '{"message":"Repeat the exact file contents from your previous answer."}')
+SESSION_ID=$(printf '%s' "$NEXT" | jq -er '.data.sessionId')
+TURN_ID=$(printf '%s' "$NEXT" | jq -er '.data.providerTurnId')
+wait_for_turn
+```
+
+For an approval, inspect the Session's `request.opened` event and current exact
+request state before making an explicit decision. Send `respondToRequest` with
+`threadId: SESSION_ID`, the `requestId` and, for an exact inspector,
+`expectedRequestEventId`. A pending request can prevent the walkthrough from
+completing; the diagnostic deliberately does not answer it for you.
 
 
 ## Review work in the attention inbox
 
-`/api/attention` carries every item whose meaning is "a human must decide",
-including the two that used to be reachable only from `/review-queue`:
+`/api/attention` projects supported attention sources for the caller, including
+the two that used to be reachable only from `/review-queue`:
 
 - `kind: 'proposed-change'` — one pending proposed change, derived from
   `status: 'pending'` on the proposed-change store. Its `source.proposedChangeId`
   is what the existing `POST /api/proposed-changes/:id/approve|reject` routes
   act on; the projection itself decides nothing.
-- `kind: 'gate-review'` — one paused Survey/Flow gate review session with
-  unresolved items, derived from `summary.unresolved > 0` on the same aggregate
+- `kind: 'gate-review'` — one Survey/Flow gate review session with items awaiting
+  a recorded decision, derived from `pendingDecisions > 0` on the same aggregate
   `GET /api/survey-flow-reviews` serves. It carries no decision affordance:
   continuation runs through the review workbench
   (`POST /api/projects/:slug/flow/runs/:runId/reviews/continue`).
+
+`pendingDecisions` is counted by the review service. It is not
+`summary.unresolved`: an escalated or resolved item can still lack a decision
+and keep continuation blocked. The
+[attention projection](../../src-server/services/projects/attention-projection.ts)
+also reports unreadable gate-review sources separately from an empty queue.
 
 Neither is projected for a hosted tenant read. The proposed-change store and
 the review aggregate carry no tenancy predicate, so a tenant-scoped read has no

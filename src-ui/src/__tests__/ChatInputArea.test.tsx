@@ -121,6 +121,28 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  test.each([{ modifier: 'metaKey' }, { modifier: 'ctrlKey' }] as const)(
+    '$modifier+S opens portable drafts; Up still recalls history',
+    async ({ modifier }) => {
+      const { onHistoryUp } = renderChatInputArea();
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      const drafts = await screen.findByRole('button', { name: 'Drafts' });
+
+      fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+      expect(onHistoryUp).toHaveBeenCalledOnce();
+      fireEvent.keyDown(textarea, { key: 's' });
+      expect(drafts.getAttribute('aria-expanded')).toBe('false');
+
+      const delivered = fireEvent.keyDown(textarea, {
+        key: 's',
+        [modifier]: true,
+      });
+      expect(delivered).toBe(false);
+      expect(drafts.getAttribute('aria-expanded')).toBe('true');
+      expect(onHistoryUp).toHaveBeenCalledOnce();
+    },
+  );
+
   test('keeps a busy continuation draft focusable without sending or queueing it', () => {
     const onInputChange = vi.fn();
     const onSend = vi.fn(async () => {});
@@ -1210,7 +1232,9 @@ describe('ChatInputArea', () => {
     expect(screen.queryByRole('list', { name: 'Attached files' })).toBeNull();
   });
 
-  test('an engine that cannot see images refuses the paste in its own words', async () => {
+  // The refusal copy is the caller's `attachmentError`; deciding to refuse is
+  // `selectAttachmentFiles`'s job, not this component's.
+  test('forwards an image paste to the attachment owner and shows the refusal it reports', async () => {
     const selectAttachmentFiles = vi.fn(async () => {});
     renderChatInputArea({
       selectAttachmentFiles,
@@ -1313,22 +1337,6 @@ describe('ChatInputArea', () => {
       screen.getByRole('button', { name: /^Approval mode: Ask first\./ }),
     ).toBeTruthy();
     expect(onApprovalModeChange).not.toHaveBeenCalled();
-  });
-
-  test('omits the approval chip for an external engine with no native knob (station#1933)', () => {
-    render(
-      <ChatInputArea
-        {...renderProps({
-          executionMode: 'external',
-          agentConnectionId: 'acp',
-        })}
-      />,
-    );
-
-    expect(
-      screen.queryByRole('button', { name: /^Approval mode:/ }),
-    ).toBeNull();
-    expect(screen.queryByText(/Set by engine/)).toBeNull();
   });
 
   test('station#1945: advertised ACP modes replace the approval-mode chip', async () => {

@@ -18,10 +18,10 @@ const reservation: TaskDispatchReservation = {
 // Every graph seam member returns a Promise since archive#2646 (the durable
 // transitions await their cross-process lock), so the fakes are async too.
 function graph(
-  reserve: TaskDispatchGraphState['reserve'] = async () => ({
-    kind: 'reserved',
+  reserve: TaskDispatchGraphState['reserve'] = vi.fn(async () => ({
+    kind: 'reserved' as const,
     reservation,
-  }),
+  })),
 ): TaskDispatchGraphState {
   return {
     reserve,
@@ -79,7 +79,10 @@ describe('TaskDispatcher Interface', () => {
         { claim: async () => owned },
       );
       expect(
-        await dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+        await dispatcher.dispatch('task-1', {
+          ownerUserId: 'test-owner',
+          fullAccessGrant: null,
+        }),
       ).toMatchObject({
         kind: 'dispatched',
       });
@@ -92,18 +95,20 @@ describe('TaskDispatcher Interface', () => {
 
   test('rejects a monitor whose declared Task Agent differs before reservation', async () => {
     const state = graph();
+    const startOrSeed = vi.fn();
     const dispatcher = createTaskDispatcher(
       state,
       { claim: vi.fn(), compensate: vi.fn() },
       {
         readiness: () => ({ kind: 'ready' as const }),
         mayHaveStarted: () => false,
-        startOrSeed: vi.fn(),
+        startOrSeed,
       },
       telemetry,
     );
     await expect(
       dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         agentId: 'configured-agent',
         monitor: {
@@ -114,7 +119,13 @@ describe('TaskDispatcher Interface', () => {
           maxTokens: 1,
         },
       }),
-    ).resolves.toMatchObject({ kind: 'failed' });
+    ).resolves.toEqual({
+      kind: 'failed',
+      reason: 'Monitor Task Agent must exactly match the dispatched Task Agent',
+    });
+    expect(state.reserve).not.toHaveBeenCalled();
+    expect(state.releaseReservation).not.toHaveBeenCalled();
+    expect(startOrSeed).not.toHaveBeenCalled();
   });
 
   test('publishes the exact durable association after graph commit without changing dispatch success', async () => {
@@ -148,7 +159,10 @@ describe('TaskDispatcher Interface', () => {
       publisher,
     );
     await expect(
-      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+      }),
     ).resolves.toMatchObject({
       kind: 'dispatched',
     });
@@ -173,7 +187,10 @@ describe('TaskDispatcher Interface', () => {
         telemetry,
       );
       await expect(
-        dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+        dispatcher.dispatch('task-1', {
+          ownerUserId: 'test-owner',
+          fullAccessGrant: null,
+        }),
       ).resolves.toEqual({
         kind,
         reason: kind,
@@ -200,7 +217,10 @@ describe('TaskDispatcher Interface', () => {
     const dispatcher = createTaskDispatcher(state, claims, remote, telemetry);
 
     await expect(
-      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+      }),
     ).resolves.toEqual({
       kind: 'unavailable',
       reason: 'not ready',
@@ -236,7 +256,10 @@ describe('TaskDispatcher Interface', () => {
     );
 
     await expect(
-      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+      }),
     ).resolves.toEqual({
       kind: 'indeterminate',
       reason: 'reservation write failed',
@@ -261,6 +284,7 @@ describe('TaskDispatcher Interface', () => {
 
     await expect(
       dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         signal: AbortSignal.abort(),
       }),
@@ -269,6 +293,10 @@ describe('TaskDispatcher Interface', () => {
       reason: 'Task dispatch aborted',
       retryable: true,
     });
+    // The post-reservation abort check returns the same outcome, so only the
+    // untouched graph proves the abort was taken before admission.
+    expect(state.reserve).not.toHaveBeenCalled();
+    expect(state.releaseReservation).not.toHaveBeenCalled();
     expect(state.markProviderStarting).not.toHaveBeenCalled();
   });
 
@@ -301,6 +329,7 @@ describe('TaskDispatcher Interface', () => {
 
     await expect(
       dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         signal: controller.signal,
       }),
@@ -336,7 +365,11 @@ describe('TaskDispatcher Interface', () => {
     );
 
     await expect(
-      dispatcher.dispatch('task-1', { fullAccessGrant: null, timeoutMs: 1 }),
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+        timeoutMs: 1,
+      }),
     ).resolves.toMatchObject({
       kind: 'indeterminate',
       reason: 'Task dispatch timed out',
@@ -382,7 +415,11 @@ describe('TaskDispatcher Interface', () => {
     );
 
     await expect(
-      dispatcher.dispatch('task-1', { fullAccessGrant: null, timeoutMs: 1 }),
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+        timeoutMs: 1,
+      }),
     ).resolves.toMatchObject({
       kind: 'indeterminate',
       reason: 'Task dispatch timed out',
@@ -434,6 +471,7 @@ describe('TaskDispatcher Interface', () => {
       telemetry,
     );
     const dispatch = dispatcher.dispatch('task-1', {
+      ownerUserId: 'test-owner',
       fullAccessGrant: null,
       signal: controller.signal,
     });
@@ -472,7 +510,10 @@ describe('TaskDispatcher Interface', () => {
     );
 
     await expect(
-      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+      }),
     ).resolves.toEqual({
       kind: 'indeterminate',
       reason: 'release failed',
@@ -502,7 +543,10 @@ describe('TaskDispatcher Interface', () => {
     );
 
     await expect(
-      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+      }),
     ).resolves.toMatchObject({
       kind: 'contended',
       reason: 'Task is claimed by another actor: held',
@@ -533,7 +577,10 @@ describe('TaskDispatcher Interface', () => {
     const dispatcher = createTaskDispatcher(state, claims, remote, telemetry);
 
     await expect(
-      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+      }),
     ).resolves.toMatchObject({
       kind: 'failed',
       reason: 'workspace/taskSlug failed',
@@ -545,7 +592,10 @@ describe('TaskDispatcher Interface', () => {
       outcome: 'started' as const,
     });
     await expect(
-      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+      }),
     ).resolves.toMatchObject({
       kind: 'dispatched',
     });
@@ -586,7 +636,10 @@ describe('TaskDispatcher Interface', () => {
         telemetry,
       );
       await expect(
-        dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+        dispatcher.dispatch('task-1', {
+          ownerUserId: 'test-owner',
+          fullAccessGrant: null,
+        }),
       ).resolves.toMatchObject({
         kind: 'indeterminate',
       });
@@ -620,7 +673,10 @@ describe('TaskDispatcher Interface', () => {
       },
     );
     await expect(
-      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+      }),
     ).resolves.toMatchObject({
       kind: 'dispatched',
     });
@@ -651,6 +707,7 @@ describe('TaskDispatcher Interface', () => {
     const atFullAccess = { modelOptions: { approvalMode: 'never' } };
     await expect(
       dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         runtimeConfig: atFullAccess,
       }),
@@ -665,6 +722,7 @@ describe('TaskDispatcher Interface', () => {
     // #2569: an ACP agent's own full-access mode is the same request.
     await expect(
       dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         runtimeConfig: { modelOptions: { mode: 'bypassPermissions' } },
       }),
@@ -674,6 +732,7 @@ describe('TaskDispatcher Interface', () => {
     // A look-alike is not a grant: only this module's own class passes.
     await expect(
       dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
         fullAccessGrant: { nominal: true } as never,
         runtimeConfig: atFullAccess,
       }),
@@ -683,12 +742,14 @@ describe('TaskDispatcher Interface', () => {
     // A stricter posture needs no grant; full access with one proceeds.
     await expect(
       dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         runtimeConfig: { modelOptions: { approvalMode: 'ask' } },
       }),
     ).resolves.toMatchObject({ kind: 'dispatched' });
     await expect(
       dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
         fullAccessGrant: fullAccessGrantForTesting(),
         runtimeConfig: atFullAccess,
       }),

@@ -3,6 +3,7 @@ import { setClientOriginResolver } from '@kontourai/station-sdk/client-origin';
 import React, { lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { buildInfo } from './build-info';
+import { BrandingThemeBridge } from './components/BrandingThemeBridge';
 import { LazyBoundary } from './components/LazyBoundary';
 import { SkeletonBlock } from './components/state';
 import { installPluginSharedRuntime } from './core/pluginSharedRuntime';
@@ -36,7 +37,6 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query';
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
-import { LocalUiSessionGate } from './components/LocalUiSessionGate';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
@@ -58,6 +58,11 @@ import { EXTENSIONS_UNAVAILABLE_LABEL } from './core/pluginRegistryCopy';
 import { LocaleProvider, resolveDevelopmentLocale } from './i18n/LocaleContext';
 import { applyAccentColor } from './lib/accent-contrast';
 import {
+  applyBrandingTheme,
+  BRANDING_THEME_STORAGE_KEY,
+  resolveCachedBrandingTheme,
+} from './lib/branding-theme';
+import {
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
@@ -66,6 +71,7 @@ import {
   PlatformBootstrap,
   usePlatformProfile,
 } from './platform/PlatformProfileContext';
+import { PlatformSessionGate } from './platform/PlatformSessionGate';
 import './providers/context/index';
 
 // Connection onboarding is mounted after the provider shell has booted. Keep
@@ -150,15 +156,6 @@ function ClientOriginProfileBridge() {
   return null;
 }
 
-function PlatformSessionGate({ children }: { children: React.ReactNode }) {
-  const profile = usePlatformProfile();
-  return profile.isTauri ? (
-    children
-  ) : (
-    <LocalUiSessionGate apiBase={localUiApiBase}>{children}</LocalUiSessionGate>
-  );
-}
-
 // #481 client authority — the NONPERSISTED bootstrap client. It carries
 // exactly one query family: the credential-bound authority observation
 // (`AuthorityQueryProvider` below). Protected data lives one layer down, in
@@ -219,6 +216,15 @@ const _bootAccent = resolveBootAccentColor(
 );
 // Accent and its contrast partner are applied together — see accent-contrast.ts.
 if (_bootAccent) applyAccentColor(document.documentElement, _bootAccent);
+// The branding provider's white-label theme, from the last validated copy so it
+// does not flash the default until `/api/branding` answers; BrandingThemeBridge
+// then applies the server's current answer. Applied after `data-theme` is set,
+// because the overrides are per mode. See lib/branding-theme.ts.
+const _bootBrandingTheme = resolveCachedBrandingTheme(
+  localStorage.getItem(BRANDING_THEME_STORAGE_KEY),
+);
+if (_bootBrandingTheme)
+  applyBrandingTheme(document.documentElement, _bootBrandingTheme);
 
 function renderApp(): void {
   ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -247,7 +253,7 @@ function renderApp(): void {
         <PlatformBootstrap>
           <ClientOriginProfileBridge />
           <ApiBaseProvider>
-            <PlatformSessionGate>
+            <PlatformSessionGate apiBase={localUiApiBase}>
               <QueryClientProvider client={bootstrapQueryClient}>
                 {/* COMPOSITION BOUNDARY (hosted connect-modal regression):
                   navigation, toasts, and the connection recovery shell are
@@ -302,6 +308,7 @@ function renderApp(): void {
                                             }
                                           >
                                             <RegionModelProvider>
+                                              <BrandingThemeBridge />
                                               <App />
                                             </RegionModelProvider>
                                             <NotificationContainer />

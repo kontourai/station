@@ -16,6 +16,10 @@ import {
   REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
+import {
+  FAST_CHECKS_PLAN_BUDGET_MS,
+  FAST_CHECKS_SHARD_COUNT,
+} from '../lib/fast-checks-shards.mjs';
 import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
 import {
   failureDigest,
@@ -42,6 +46,22 @@ const root = resolve(import.meta.dirname, '../..');
 
 function workflow(name: string) {
   return readFileSync(resolve(root, '.github/workflows', name), 'utf8');
+}
+
+/**
+ * #2709: the job that used to be `fast-checks` is `fast-checks-statics`; the
+ * `fast-checks` id is the required aggregator that follows it. Refuses a
+ * missing or reordered job rather than slicing to an empty string, which
+ * would let every negative assertion on the result pass vacuously.
+ */
+function staticsJobText(ci: string) {
+  const start = ci.indexOf('\n  fast-checks-statics:\n');
+  const end = ci.indexOf('\n  fast-checks:\n');
+  if (start < 0 || end <= start)
+    throw new Error(
+      'ci.yml must declare fast-checks-statics before fast-checks',
+    );
+  return ci.slice(start + 1, end + 1);
 }
 
 /**
@@ -688,7 +708,7 @@ describe('CI verification workflow contracts', () => {
   // while nightly kept shipping and neither lane's state implied anything about
   // the other's. Read the pins from the gate; do not restate them here either.
   it('pins one Android NDK and build-tools revision across every lane', () => {
-    const seen = readWorkflowDocuments().flatMap(({ file }) => {
+    const seen = readWorkflowDocuments().flatMap(({ file, document }) => {
       const source = readFileSync(file, 'utf8');
       return [
         ...[...source.matchAll(/ndk[;/]([0-9][0-9.]*)/g)].map((m) => ({
@@ -701,10 +721,31 @@ describe('CI verification workflow contracts', () => {
           kind: 'build-tools',
           value: m[1],
         })),
+        // Workflows name the revision once, as a job-level
+        // ANDROID_BUILD_TOOLS_VERSION, and install
+        // `build-tools;${ANDROID_BUILD_TOOLS_VERSION}`. Read the env value from
+        // the parsed YAML so its quoting style cannot hide it from the pin.
+        ...Object.values(
+          (
+            document as {
+              jobs?: Record<string, { env?: Record<string, unknown> }>;
+            }
+          )?.jobs ?? {},
+        )
+          .map((job) => job?.env?.ANDROID_BUILD_TOOLS_VERSION)
+          .filter((value) => value !== undefined)
+          .map((value) => ({
+            file,
+            kind: 'build-tools',
+            value: String(value),
+          })),
       ];
     });
     // Guards the guard: a typo in the patterns above would make this vacuous.
     expect(seen.filter((e) => e.kind === 'ndk').length).toBeGreaterThan(0);
+    expect(seen.filter((e) => e.kind === 'build-tools').length).toBeGreaterThan(
+      0,
+    );
 
     const expected = {
       ndk: ANDROID_NDK_VERSION,
@@ -714,6 +755,58 @@ describe('CI verification workflow contracts', () => {
       seen
         .filter((entry) => entry.value !== expected[entry.kind])
         .map((entry) => `${entry.file}: ${entry.kind} ${entry.value}`),
+    ).toEqual([]);
+  });
+
+  // The pin above compares only the values it finds, so a lane that stops
+  // installing the NDK, or stops naming its build-tools revision, would pass on
+  // the other lanes' matches and build with whatever the runner preinstalled.
+  // Every job that runs sdkmanager must install both, pinned, itself.
+  it('installs the pinned NDK and build-tools in every Android lane', () => {
+    const lanes = readWorkflowDocuments().flatMap(({ file, document }) =>
+      Object.entries(
+        (
+          document as {
+            jobs?: Record<
+              string,
+              { env?: Record<string, unknown>; steps?: { run?: unknown }[] }
+            >;
+          }
+        )?.jobs ?? {},
+      ).flatMap(([jobName, job]) => {
+        const installs = (job?.steps ?? [])
+          .map((step) => (typeof step?.run === 'string' ? step.run : ''))
+          .filter((run) => /\bsdkmanager\b/.test(run));
+        if (installs.length === 0) return [];
+        const install = installs.join('\n');
+        const buildTools = job?.env?.ANDROID_BUILD_TOOLS_VERSION;
+        return [
+          {
+            lane: `${file}#${jobName}`,
+            ndk: /"ndk;([0-9][0-9.]*)"/.exec(install)?.[1] ?? null,
+            buildTools:
+              install.includes(
+                '"build-tools;${ANDROID_BUILD_TOOLS_VERSION}"',
+              ) && buildTools !== undefined
+                ? String(buildTools)
+                : (/"build-tools;([0-9][0-9.]*)"/.exec(install)?.[1] ?? null),
+          },
+        ];
+      }),
+    );
+    // The three lanes that ship or verify Android; a lane dropping out of this
+    // set (renamed job, sdkmanager moved elsewhere) must be a visible change.
+    expect(lanes.map(({ lane }) => lane.split('#')[0]).sort()).toEqual([
+      '.github/workflows/build-android.yml',
+      '.github/workflows/nightly-native-stage.yml',
+      '.github/workflows/release.yml',
+    ]);
+    expect(
+      lanes.filter(
+        (lane) =>
+          lane.ndk !== ANDROID_NDK_VERSION ||
+          lane.buildTools !== ANDROID_BUILD_TOOLS_VERSION,
+      ),
     ).toEqual([]);
   });
 
@@ -1451,10 +1544,48 @@ describe('CI verification workflow contracts', () => {
     const smokeJobs = Object.entries(jobs)
       .filter(([, job]) => JSON.stringify(job).includes('test:e2e:pr-smoke'))
       .map(([id]) => id);
-    expect(smokeJobs).toEqual(['fast-checks']);
+    // #2709: fast-checks-statics runs it, and the required fast-checks
+    // aggregator needs that job's success.
+    expect(smokeJobs).toEqual(['fast-checks-statics']);
+    expect(
+      String((jobs['fast-checks-statics'] as { if?: string }).if),
+    ).toContain("github.event_name == 'workflow_dispatch'");
     expect(String((jobs['fast-checks'] as { if?: string }).if)).toContain(
       "github.event_name == 'workflow_dispatch'",
     );
+    expect((jobs['fast-checks'] as { needs?: string[] }).needs).toContain(
+      'fast-checks-statics',
+    );
+  });
+
+  it('bounds the PR browser smoke and uploads its diagnostics even when it fails', () => {
+    type Step = {
+      name?: string;
+      run?: string;
+      if?: string;
+      'timeout-minutes'?: unknown;
+      with?: { path?: string };
+    };
+    const steps = (
+      load(workflow('ci.yml')) as {
+        jobs: Record<string, { steps: Step[] }>;
+      }
+    ).jobs['fast-checks-statics'].steps;
+    const smoke = steps.findIndex(
+      (step) => step.run === 'npm run test:e2e:pr-smoke',
+    );
+    expect(smoke).toBeGreaterThanOrEqual(0);
+    expect(steps[smoke]['timeout-minutes']).toBe(10);
+    // The upload must follow the smoke and run on its failure, or a red smoke
+    // leaves no Playwright report or traces to diagnose.
+    const upload = steps.findIndex(
+      (step) => step.name === 'Upload bounded fast-feedback diagnostics',
+    );
+    expect(upload).toBeGreaterThan(smoke);
+    expect(steps[upload].if).toBe('always()');
+    const paths = String(steps[upload].with?.path).split('\n');
+    expect(paths).toContain('playwright-report/');
+    expect(paths).toContain('test-results/');
   });
 
   it('reports the UI bundle delta in its own non-blocking, PR-only job (#1703)', () => {
@@ -1525,8 +1656,11 @@ describe('CI verification workflow contracts', () => {
         .filter(([, job]) => (job.steps ?? []).some(runsCiFast))
         .map(([jobId, job]) => ({ id: `${file}#${jobId}`, job })),
     );
+    // fast-checks-plan runs the whole lane only on the transitional legacy
+    // path (#2709), and its fence covers that too.
     expect(callers.map(({ id }) => id).sort()).toEqual([
-      '.github/workflows/ci.yml#fast-checks',
+      '.github/workflows/ci.yml#fast-checks-plan',
+      '.github/workflows/ci.yml#fast-checks-statics',
       '.github/workflows/ci.yml#fork-smoke',
     ]);
     const unboundedAllowanceMs = 3 * 60_000;
@@ -1547,12 +1681,295 @@ describe('CI verification workflow contracts', () => {
     }
   });
 
+  it('shards the affected selection behind the required fast-checks aggregator (#2709)', () => {
+    type Step = {
+      name?: string;
+      run?: string;
+      uses?: string;
+      if?: string;
+      env?: Record<string, string>;
+      with?: Record<string, unknown>;
+      'timeout-minutes'?: number;
+    };
+    type Job = {
+      name?: string;
+      needs?: string | string[];
+      if?: string;
+      'timeout-minutes'?: number;
+      strategy?: { 'fail-fast'?: boolean; matrix?: { shard?: unknown } };
+      steps?: Step[];
+    };
+    const jobs = (load(workflow('ci.yml')) as { jobs: Record<string, Job> })
+      .jobs;
+    // The required status check is the job's display name. The aggregator
+    // keeps the bare id with no `name:`, so its check is exactly
+    // `fast-checks`, and no other job may report under that name.
+    expect(jobs['fast-checks'].name).toBeUndefined();
+    for (const [id, job] of Object.entries(jobs))
+      if (id !== 'fast-checks')
+        expect(job.name ?? id, id).not.toBe('fast-checks');
+    expect(jobs['fast-checks'].needs).toEqual([
+      'classify',
+      'fast-checks-plan',
+      'fast-checks-shard',
+      'fast-checks-statics',
+    ]);
+    // TRANSITIONAL legacy path (#2709): detection comes before any candidate
+    // command, exposes its answer as the job output the shards and the
+    // aggregator read, and gates the legacy lane against the plan steps.
+    const plan = jobs['fast-checks-plan'] as Job & {
+      outputs?: Record<string, string>;
+    };
+    const planSteps = (plan.steps ?? []) as Array<Step & { id?: string }>;
+    const detect = planSteps.findIndex((step) => step.id === 'mode');
+    expect(detect).toBeGreaterThan(-1);
+    expect(detect).toBeLessThan(
+      planSteps.findIndex((step) => step.run === 'npm run dependencies:ci'),
+    );
+    expect(plan.outputs).toEqual({
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      legacy: '${{ steps.mode.outputs.legacy }}',
+    });
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    const legacyIf = "${{ steps.mode.outputs.legacy == 'true' }}";
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    const plannedIf = "${{ steps.mode.outputs.legacy == 'false' }}";
+    for (const name of [
+      'Install pinned actionlint',
+      'Install Chromium for changed-set touch-target checks',
+      'Run legacy unsharded ci:fast',
+    ])
+      expect(planSteps.find((step) => step.name === name)?.if, name).toBe(
+        legacyIf,
+      );
+    for (const name of [
+      'Plan the affected-test selection',
+      'Upload fast-checks plan',
+    ])
+      expect(planSteps.find((step) => step.name === name)?.if, name).toBe(
+        plannedIf,
+      );
+    expect(jobs['fast-checks-shard'].if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' }}",
+    );
+
+    // Downstream consumers still name the required check's id.
+    expect(jobs['full-regression'].needs).toEqual(['classify', 'fast-checks']);
+
+    const shard = jobs['fast-checks-shard'];
+    expect(shard.strategy?.['fail-fast']).toBe(false);
+    expect(shard.strategy?.matrix?.shard).toEqual(
+      Array.from({ length: FAST_CHECKS_SHARD_COUNT }, (_, index) => index + 1),
+    );
+    // Literal beside the derived value: a change to the constant must be a
+    // deliberate edit here too.
+    expect(FAST_CHECKS_SHARD_COUNT).toBe(4);
+    const shardSteps = shard.steps ?? [];
+    const shardRuns = shardSteps.flatMap((step) =>
+      typeof step.run === 'string' &&
+      /fast-checks-shard\.mjs|fast-checks:shard/.test(step.run)
+        ? [step.run]
+        : [],
+    );
+    expect(shardRuns).toHaveLength(2);
+    for (const run of shardRuns)
+      expect(run).toContain(`--shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}"`);
+
+    // Every shard stays inside the lane budget: the shard runner enforces
+    // CI_FAST_TIMEOUT_MS itself, so its step has no step timeout below it,
+    // and the job fence covers that budget, every bounded step and the
+    // unbounded setup allowance.
+    const run = shardSteps.find(
+      (step) => step.name === 'Run fast-checks shard',
+    );
+    expect(run?.['timeout-minutes']).toBeUndefined();
+    expect(run?.if).toBeUndefined();
+    const boundedMs = shardSteps.reduce(
+      (sum, step) => sum + (step['timeout-minutes'] ?? 0) * 60_000,
+      0,
+    );
+    expect((shard['timeout-minutes'] ?? 0) * 60_000).toBeGreaterThanOrEqual(
+      CI_FAST_TIMEOUT_MS + boundedMs + 3 * 60_000,
+    );
+
+    // The selection can include tests that exec zsh, which ubuntu-22.04
+    // lacks: the shard provisions it exactly as full-regression does, before
+    // the tests run.
+    const zshName =
+      'Provision and preflight zsh for process-heavy installer fixtures';
+    const fullRegressionZsh = (
+      load(workflow('full-regression.yml')) as {
+        jobs: Record<string, Job>;
+      }
+    ).jobs['full-regression'].steps?.find((step) => step.name === zshName);
+    expect(fullRegressionZsh?.run).toContain('apt-get install --yes zsh');
+    const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
+    expect(shardZshIndex).toBeGreaterThan(-1);
+    expect(shardSteps[shardZshIndex].run).toBe(fullRegressionZsh?.run);
+    expect(shardSteps[shardZshIndex]['timeout-minutes']).toBe(
+      fullRegressionZsh?.['timeout-minutes'],
+    );
+    expect(shardZshIndex).toBeLessThan(
+      shardSteps.findIndex((step) => step.name === 'Run fast-checks shard'),
+    );
+
+    // The plan is uploaded once and read, by exact name, by the shards and
+    // the aggregator; the receipts' upload name matches the aggregator's
+    // download pattern.
+    const uploads = (job: Job, name: string) =>
+      (job.steps ?? []).find((step) => step.name === name)?.with ?? {};
+    const planName = uploads(
+      jobs['fast-checks-plan'],
+      'Upload fast-checks plan',
+    ).name;
+    expect(planName).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'fast-checks-plan-${{ github.run_id }}',
+    );
+    for (const job of [shard, jobs['fast-checks']])
+      expect(uploads(job, 'Download fast-checks plan').name).toBe(planName);
+    expect(uploads(shard, 'Upload fast-checks shard receipt').name).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'fast-checks-receipt-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}',
+    );
+    expect(
+      uploads(jobs['fast-checks'], 'Download fast-checks shard receipts')
+        .pattern,
+    ).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'fast-checks-receipt-*-${{ github.run_id }}-*',
+    );
+  });
+
+  it('runs the shards and the plan in the environment the lane ran its tests in (#2709 review F1)', () => {
+    type Step = {
+      name?: string;
+      run?: string;
+      uses?: string;
+      env?: Record<string, string>;
+      with?: Record<string, unknown>;
+    };
+    type Job = { 'runs-on'?: unknown; steps?: Step[] };
+    const jobs = (load(workflow('ci.yml')) as { jobs: Record<string, Job> })
+      .jobs;
+    const statics = jobs['fast-checks-statics'].steps ?? [];
+    const laneIndex = statics.findIndex(
+      (step) => step.run === 'npm run ci:fast',
+    );
+    expect(laneIndex).toBeGreaterThan(-1);
+    const lane = statics[laneIndex];
+    const candidateCheckout = (steps: Step[]) => {
+      const checkouts = steps.filter((step) =>
+        step.uses?.startsWith('actions/checkout@'),
+      );
+      return checkouts[checkouts.length - 1]?.with ?? {};
+    };
+    // Tests that read git history (origin/main, the base) need the same clone.
+    const laneCheckout = candidateCheckout(statics);
+    expect(laneCheckout['fetch-depth']).toBe(0);
+    // Steps that shape the tests' environment before the lane: PATH, job env
+    // and the dependency install.
+    const shaping = statics
+      .slice(0, laneIndex)
+      .filter(
+        (step) =>
+          typeof step.run === 'string' &&
+          (/\$GITHUB_(PATH|ENV)\b/.test(step.run) ||
+            step.run === 'npm run dependencies:ci'),
+      )
+      .map((step) => step.run);
+    expect(shaping.length).toBeGreaterThanOrEqual(3);
+    // Action steps before the lane, compared with their inputs. Excluded, by
+    // name and with the reason: the base-policy checkout exists only for the
+    // pull-request title gate (fast-checks-statics owns that gate) and is
+    // overwritten by the candidate checkout before any test runs.
+    const REVIEWED_ACTION_EXCLUSIONS = new Map([
+      [
+        'Check out base policy for pull-request title gate',
+        'title gate only; the candidate checkout replaces it before the lane',
+      ],
+    ]);
+    const laneActions = statics
+      .slice(0, laneIndex)
+      .filter(
+        (step) => step.uses && !REVIEWED_ACTION_EXCLUSIONS.has(step.name ?? ''),
+      )
+      .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
+    // Checkout, pnpm and Node: a shrinking list would pass vacuously.
+    expect(laneActions).toHaveLength(3);
+    for (const name of REVIEWED_ACTION_EXCLUSIONS.keys())
+      expect(
+        statics.some((step) => step.name === name),
+        name,
+      ).toBe(true);
+
+    for (const [jobId, entryName] of [
+      ['fast-checks-shard', 'Run fast-checks shard'],
+      ['fast-checks-plan', 'Plan the affected-test selection'],
+    ] as const) {
+      const steps = jobs[jobId].steps ?? [];
+      expect(jobs[jobId]['runs-on'], jobId).toEqual(
+        jobs['fast-checks-statics']['runs-on'],
+      );
+      const checkout = candidateCheckout(steps);
+      for (const key of ['fetch-depth', 'repository', 'ref'])
+        expect(checkout[key], `${jobId} ${key}`).toEqual(laneCheckout[key]);
+      const entryIndex = steps.findIndex((step) => step.name === entryName);
+      const entry = steps[entryIndex];
+      // An npm-script entry, as `npm run ci:fast` was: npm_execpath and the
+      // npm lifecycle environment reach the tests.
+      expect(entry?.run, jobId).toMatch(/^npm run fast-checks:shard -- /);
+      // The lane step's env, minus the scope that only drops the selector.
+      const { STATION_CI_FAST_SCOPE: _scope, ...laneEnv } = lane.env ?? {};
+      expect(Object.keys(laneEnv).length).toBeGreaterThan(0);
+      for (const [key, value] of Object.entries(laneEnv))
+        expect(entry?.env?.[key], `${jobId} ${key}`).toBe(value);
+      if (jobId === 'fast-checks-shard') {
+        const before = steps.slice(0, entryIndex).map((step) => step.run);
+        for (const run of shaping) expect(before, jobId).toContain(run);
+      }
+      // Delta review: every action step that sets up the lane's tests
+      // (checkout, pnpm, Node, with its exact inputs) also precedes this
+      // entry, apart from the reviewed exclusions below.
+      const actionsBefore = steps
+        .slice(0, entryIndex)
+        .filter((step) => step.uses)
+        .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
+      for (const step of laneActions)
+        expect(actionsBefore, `${jobId} ${step}`).toContain(step);
+    }
+    // Job-level env reaches every step, tests included; the three jobs
+    // declare the same (today: none), so no job's tests see an extra input.
+    for (const jobId of ['fast-checks-shard', 'fast-checks-plan'])
+      expect(
+        (jobs[jobId] as { env?: unknown }).env,
+        `${jobId} job env`,
+      ).toEqual((jobs['fast-checks-statics'] as { env?: unknown }).env);
+    const pkg = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ) as { scripts: Record<string, string> };
+    expect(pkg.scripts['fast-checks:shard']).toBe(
+      'node scripts/fast-checks-shard.mjs',
+    );
+  });
+
+  it('pins the plan step fence to the budget discovery derives from (#2855)', () => {
+    type Step = { name?: string; 'timeout-minutes'?: number };
+    const jobs = (
+      load(workflow('ci.yml')) as { jobs: Record<string, { steps: Step[] }> }
+    ).jobs;
+    const step = jobs['fast-checks-plan'].steps.find(
+      (candidate) => candidate.name === 'Plan the affected-test selection',
+    );
+    expect((step?.['timeout-minutes'] ?? 0) * 60_000).toBe(
+      FAST_CHECKS_PLAN_BUDGET_MS,
+    );
+  });
+
   it('keeps fast feedback bounded and composes the full merge gate separately', () => {
     const ci = workflow('ci.yml');
-    const fastChecks = ci.slice(
-      ci.indexOf('  fast-checks:'),
-      ci.indexOf('  ui-bundle-delta:'),
-    );
+    const fastChecks = staticsJobText(ci);
     const fullRegression = ci.slice(
       ci.indexOf('  full-regression:'),
       ci.indexOf('  manual-completion-diagnostics:'),
@@ -1624,10 +2041,7 @@ describe('CI verification workflow contracts', () => {
     );
     expect(trigger).toContain('types: [opened, synchronize, reopened, edited]');
 
-    const fastChecks = ci.slice(
-      ci.indexOf('  fast-checks:'),
-      ci.indexOf('  ui-bundle-delta:'),
-    );
+    const fastChecks = staticsJobText(ci);
     const forkSmoke = ci.slice(
       ci.indexOf('  fork-smoke:'),
       ci.indexOf('  full-regression:'),
@@ -1738,10 +2152,7 @@ describe('CI verification workflow contracts', () => {
 
     const ci = workflow('ci.yml');
     const fullRegression = workflow('full-regression.yml');
-    const fastChecks = ci.slice(
-      ci.indexOf('  fast-checks:'),
-      ci.indexOf('  ui-bundle-delta:'),
-    );
+    const fastChecks = staticsJobText(ci);
     const extended = workflow('ci-extended.yml');
     const coverageShard = extended.slice(
       extended.indexOf('  coverage-shard:'),
@@ -1854,10 +2265,7 @@ describe('CI verification workflow contracts', () => {
 
   it('checks out enough history for exact candidate and completion identities', () => {
     const ci = workflow('ci.yml');
-    const fastChecks = ci.slice(
-      ci.indexOf('  fast-checks:'),
-      ci.indexOf('  ui-bundle-delta:'),
-    );
+    const fastChecks = staticsJobText(ci);
 
     expect(fastChecks).toContain('fetch-depth: 0');
     expect(fastChecks).toContain('STATION_CI_FAST_BASE');
@@ -1871,10 +2279,6 @@ describe('CI verification workflow contracts', () => {
 
   it('runs Android viewport coverage through the public isolated suite', () => {
     const android = workflow('android-test.yml');
-    const resolver = readFileSync(
-      resolve(root, 'scripts/resolve-android-build-run.mjs'),
-      'utf8',
-    );
 
     expect(
       android.match(
@@ -1885,13 +2289,6 @@ describe('CI verification workflow contracts', () => {
     expect(android).toContain('required: true');
     expect(android).toContain('Resolve exact build revision');
     expect(android).toContain('node scripts/resolve-android-build-run.mjs');
-    expect(resolver).toContain('.github/workflows/build-android.yml');
-    expect(resolver).toContain('fetchImpl = fetch');
-    expect(resolver).toContain("redirect: 'error'");
-    expect(resolver).not.toContain("from 'node:child_process'");
-    expect(resolver).not.toContain('spawnSync(');
-    expect(resolver).not.toContain('response.json()');
-    expect(resolver).not.toContain('response.text()');
     expect(android).toContain('persist-credentials: false');
     expect(android).not.toContain(
       'github.event.workflow_run.head_sha || github.sha',
@@ -2010,6 +2407,17 @@ describe('CI verification workflow contracts', () => {
       'unused',
       `head_sha=${run.head_sha}\nrun_id=123\nconclusion=success\n`,
     );
+  });
+
+  // The behaviour test above injects fetchImpl, so it cannot see a resolver
+  // that falls back to shelling out to gh. This structural pin is that guard.
+  it('never spawns a child process to resolve the build', () => {
+    const resolver = readFileSync(
+      resolve(root, 'scripts/resolve-android-build-run.mjs'),
+      'utf8',
+    );
+    expect(resolver).not.toContain("from 'node:child_process'");
+    expect(resolver).not.toContain('spawnSync(');
   });
 
   it('fails honestly when the authenticated run lookup returns an API error', async () => {
@@ -2599,10 +3007,6 @@ describe('every Tauri invocation is rooted at the app directory', () => {
 
 describe('iOS verification proves packaged runtime readiness', () => {
   const ios = workflow('build-ios.yml');
-  const classifier = readFileSync(
-    resolve(root, 'scripts/classify-ci-change.mjs'),
-    'utf8',
-  );
 
   it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
@@ -2618,9 +3022,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
       'pull_request_target',
       'workflow_dispatch',
     ]);
-    expect(classifier).toContain("'src-desktop/'");
-    expect(classifier).toContain("'src-ui/'");
-    expect(classifier).toContain("'packages/connect/'");
+    // Which paths are iOS-relevant is owned by classify-ci-change.test.ts.
     expect(ios).toContain(
       'if [ "$GITHUB_EVENT_NAME" != "pull_request_target" ] && [ "$GITHUB_EVENT_NAME" != "merge_group" ]',
     );

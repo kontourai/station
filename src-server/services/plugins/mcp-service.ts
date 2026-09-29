@@ -924,27 +924,6 @@ export class MCPService {
     return Array.from(catalog.values());
   }
 
-  async addToolToAgent(slug: string, toolId: string): Promise<string[]> {
-    const agent = await this.configLoader.loadAgent(slug);
-    const tools = agent.tools || { mcpServers: [], available: ['*'] };
-
-    if (!tools.mcpServers.some((e) => e === toolId)) {
-      tools.mcpServers.push(toolId);
-    }
-
-    await this.configLoader.updateAgent(slug, { tools });
-    return tools.mcpServers;
-  }
-
-  async removeToolFromAgent(slug: string, toolId: string): Promise<void> {
-    const agent = await this.configLoader.loadAgent(slug);
-    const tools = agent.tools || { mcpServers: [] };
-
-    tools.mcpServers = tools.mcpServers.filter((e) => e !== toolId);
-
-    await this.configLoader.updateAgent(slug, { tools });
-  }
-
   /**
    * Run an MCP Apps operation through Station's protocol-owning connection.
    * Agent-attached integrations reuse their live connection so tools and Apps
@@ -1215,13 +1194,6 @@ export class MCPService {
     toolId: string,
   ): MCPConnectionStatus | undefined {
     return this.mcpConnectionStatus.get(toolId);
-  }
-
-  getIntegrationMetadata(
-    _agentSlug: string,
-    toolId: string,
-  ): IntegrationMetadata | undefined {
-    return this.integrationMetadata.get(toolId);
   }
 
   private toToolInfo(tool: Tool<any> & { description?: string }): ToolInfo {

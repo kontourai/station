@@ -1,4 +1,12 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -608,11 +616,41 @@ describe('plugin CLI API authority', () => {
   });
 
   test('does not fall back to direct filesystem mutation when Station is down', async () => {
-    authenticatedFetch.mockRejectedValue(new TypeError('fetch failed'));
-    const { update } = await import('../commands/install.js');
-
-    await expect(update('demo', parsed)).rejects.toThrow(
-      'Plugin lifecycle commands require a running Station',
+    const home = join(TEST_TEMP_ROOT, 'station-down-home');
+    const pluginDir = join(home, 'plugins', 'demo');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      '{"name":"demo","version":"1"}',
     );
+    const snapshot = () =>
+      readdirSync(join(home, 'plugins'), { recursive: true })
+        .map(String)
+        .sort()
+        .map((entry) => {
+          const path = join(home, 'plugins', entry);
+          return statSync(path).isFile()
+            ? [entry, readFileSync(path, 'utf8')]
+            : [entry];
+        });
+    const before = snapshot();
+    vi.stubEnv('STATION_HOME', home);
+    vi.resetModules();
+    try {
+      // The plugins directory a direct-mutation fallback would write is the
+      // seeded one.
+      const { PLUGINS_DIR } = await import('../commands/helpers.js');
+      expect(PLUGINS_DIR).toBe(join(home, 'plugins'));
+      authenticatedFetch.mockRejectedValue(new TypeError('fetch failed'));
+      const { update } = await import('../commands/install.js');
+
+      await expect(update('demo', parsed)).rejects.toThrow(
+        'Plugin lifecycle commands require a running Station',
+      );
+      expect(snapshot()).toEqual(before);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 });

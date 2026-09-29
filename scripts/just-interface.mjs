@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 export const JUSTFILE = 'justfile';
@@ -179,7 +180,7 @@ export function generateContributorCommands({
   return { projection, recipes };
 }
 
-if (process.argv[1]?.endsWith('just-interface.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const { recipes } = generateContributorCommands({
       write: process.argv.includes('--write'),

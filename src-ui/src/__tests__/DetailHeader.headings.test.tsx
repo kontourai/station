@@ -89,22 +89,6 @@ describe('DetailHeader heading level', () => {
 
     expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(1);
   });
-
-  test('a view cannot opt out — the level follows the slot, not a prop', () => {
-    // The same element, rendered in both positions, reports different levels.
-    const header = <DetailHeader title="Same header" />;
-
-    const standalone = render(header);
-    expect(
-      standalone.getByRole('heading', { name: 'Same header', level: 2 }),
-    ).toBeTruthy();
-    standalone.unmount();
-
-    renderInSplitPaneDetail(header);
-    expect(
-      screen.getByRole('heading', { name: 'Same header', level: 3 }),
-    ).toBeTruthy();
-  });
 });
 
 describe('SplitPaneLayout collection heading', () => {

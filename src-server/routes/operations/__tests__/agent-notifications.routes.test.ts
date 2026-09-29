@@ -52,8 +52,8 @@ import {
   notifyUser,
 } from '../../../tools/station-control-notify-tools.js';
 import {
-  __resetStationControlStdioCallerCredentialForTests,
-  installStationControlStdioCallerCredential,
+  __resetStationControlStdioEntryForTests,
+  installStationControlStdioEntry,
   STATION_CONTROL_CALLER_TOKEN_HEADER,
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
   STATION_CONTROL_ORIGIN_HEADER,
@@ -209,7 +209,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   __resetStationControlMcpTokensForTests();
-  __resetStationControlStdioCallerCredentialForTests();
+  __resetStationControlStdioEntryForTests();
   await service.clearAll(() => true);
   pushSend.mockClear();
   gate = new AgentNotificationGate({
@@ -374,17 +374,23 @@ describe('notify_user reaches every engine delivery path', () => {
       name: 'notify_user',
       arguments: { title: 'After revoke' },
     });
+    // #2795: the tool-side guard's own code and sentence, as an MCP error.
+    expect(after.result.isError).toBe(true);
     expect(JSON.parse(after.result.content[0].text)).toEqual({
       status: 'caller-required',
+      code: 'station_control_caller_required',
+      error: expect.stringContaining('verified calling session'),
     });
     expect(await service.list()).toHaveLength(1);
     await instance.close();
   });
 
   test('a pooled stdio child (no per-session credential) gets caller-required and nothing is stored', async () => {
-    installStationControlStdioCallerCredential({});
+    installStationControlStdioEntry();
     expect(await notifyUser({ title: 'Anyone there?' })).toEqual({
       status: 'caller-required',
+      code: 'station_control_caller_required',
+      error: expect.stringContaining('verified calling session'),
     });
     expect(await service.list()).toEqual([]);
   });

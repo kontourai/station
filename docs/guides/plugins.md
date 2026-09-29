@@ -22,7 +22,7 @@ scaffold, from `packages/shared/src/plugin-scaffold.ts`):
 my-plugin/
 ├── plugin.json              # Agent Plugins 1.0 manifest (required)
 ├── package.json             # Node package
-├── build.ts                 # Calls buildPlugin() from @kontourai/station-shared
+├── build.ts                 # Calls @kontourai/station-shared/build
 ├── src/
 │   ├── index.tsx            # UI entry point — exports a `components` map
 │   └── pane.css             # Imported by index.tsx; bundled to dist/bundle.css
@@ -83,7 +83,7 @@ An Agent Plugins manifest refuses the legacy `layout` and `layouts` fields.
 ### Legacy root manifest
 
 Station still loads a manifest without `$schema`, with its fields at the root.
-All fields:
+Common fields:
 
 ```json
 {
@@ -161,20 +161,28 @@ All fields:
 
 #### Reserved plugin names
 
-`name` becomes both the install directory and the URL segment your server
-module answers, `/api/plugins/<name>/…`. Station mounts some of its own routes
+`name` is the logical installation identity and the URL segment your server
+module answers, `/api/plugins/<name>/…`. A legacy install normally uses it as
+the directory name; a managed portable install selects a retained materialization
+whose physical directory can differ. Installed names use the
+[Agent Plugins grammar](../reference/agent-plugins.md#identity): 1–64 lowercase
+ASCII letters, digits, hyphens, or periods, with alphanumeric endpoints and no
+`--` or `..`. Both manifest parsers also reject `constructor` and `prototype`.
+Station mounts some of its own routes
 at literal first segments on that same prefix, and those registrations win — so
 a plugin installed under one of those names would find Station's routes inside
 the namespace it believes it owns. Install refuses these names outright:
 
 ```
 check-updates   command-effects   fetch   home-role   host-approvals
-install         preview           reload   visibility
+install         preview           reload            validate    visibility
 ```
 
-The list is derived from Station's actual route registrations rather than kept
-by hand, so it can grow when Station adds a route. Only exact matches are
-reserved — `installer` and `home-role-viewer` are fine.
+The [reserved-identity list](../../src-server/services/plugins/reserved-plugin-identities.ts)
+is checked against actual route registrations by its tests, so it must change
+when Station adds a colliding route. Only exact matches are reserved —
+`installer` and `home-role-viewer` are fine. The event sentinel
+`workspace-home-role` is also unavailable as a plugin name.
 
 ### Provider Entry Fields
 
@@ -184,9 +192,29 @@ reserved — `installer` and `home-role-viewer` are fine.
 
 | Field | Description |
 |-------|-------------|
-| `type` | Provider type — built-in types: `auth`, `branding`, `userIdentity`, `userDirectory`, `agentRegistry`, `integrationRegistry`, `skillRegistry`, `pluginRegistry`, `settings`, `scheduler`, `notification`, `llm`, `embedding`, `vectorDb`, `layoutType`, `acpConnections`, `acpConnectionRegistry`, `promptRegistry`, `template`. Custom types also supported via the generic provider registry. |
+| `type` | Registry key for the provider's consumer contract; see the consumer boundaries below. Custom keys can be registered but require a consumer. |
 | `module` | Path to the JS module (relative to plugin root) |
 | `layout` | Optional — scope this provider to a specific layout slug |
+
+The [provider interfaces](../../src-server/providers/provider-interfaces.ts)
+define host contracts such as `auth`, `branding`, `userIdentity`, `userDirectory`,
+`agentRegistry`, `integrationRegistry`, `skillRegistry`, `pluginRegistry`,
+`settings`, `scheduler`, `notification`, `acpConnectionRegistry`, `workItem`,
+`pullRequest`, and `providerAdapter`. The `acpConnections` key is consumed by
+runtime connection discovery; consult its caller's shape before contributing it.
+The examples below cover selected contracts; registration alone does not make
+an arbitrary object usable by one of these callers.
+
+Generic registry metadata also names `llmProvider`, `embeddingProvider`, and
+`vectorDbProvider`, but registering those keys does not connect a plugin to
+Station's model or knowledge pipeline. Those consumers resolve configured
+capability connections through
+[`ProviderService`](../../src-server/services/connections/provider-service.ts)
+and [runtime provider resolution](../../src-server/runtime/plugins/runtime-provider-resolution.ts).
+`llm`, `embedding`, and `vectorDb` are not equivalent registration keys.
+`layoutType` also appears in generic registry metadata. This guide does not
+establish a consumer contract for it or for arbitrary `promptRegistry` or
+`template` registrations.
 
 ### Dependency Entry Fields
 
@@ -201,7 +229,14 @@ reserved — `installer` and `home-role-viewer` are fine.
 
 ### Settings
 
-Plugins can declare configurable settings that users edit in the Plugins UI. Values are persisted in `plugin-overrides.json` and passed to provider factory functions at load time.
+Plugins can declare configurable settings that users edit in the Plugins UI.
+Values are persisted as plaintext JSON in
+`<STATION_HOME>/config/plugin-overrides.json` and passed to provider factory
+functions at load time. `secret: true` masks the UI input and suppresses the
+value in settings GET responses and settings-change events; it does not encrypt
+the file or prevent the provider from reading the value. Agent Plugins
+`secretReferences` currently uses this same path; see the
+[secret boundary](../reference/agent-plugins.md#secret-boundary).
 
 ```json
 {
@@ -240,22 +275,32 @@ module.exports = (settings) => ({
 });
 ```
 
-Settings are reloaded when the user saves — providers are automatically re-instantiated with the new values.
+Saving establishes persistence, not provider activation. The
+[settings route](../../src-server/routes/plugins/plugin-config-routes.ts)
+saves and emits a settings-change event; the
+[SDK mutation](../../packages/sdk/src/query-domains/plugin-mutations.ts)
+invalidates the settings query. Neither reconstructs providers. The runtime's
+file watcher reconciles Agent and integration files, not this settings file.
+Factories receive the new values the next time the plugin provider loading
+path constructs them; a successful settings save alone is not evidence that a
+running provider has changed.
 
 ## Plugin registry
 
 The Registry page browses installable plugins from a JSON manifest.
 
-**Out of the box there is nothing to configure.** When `registryUrl` is unset,
+When `registryUrl` is unset,
 Station serves a bundled manifest at `examples/registry/default.json`, so a
-fresh install can browse and install working examples immediately. It lists the
-dependency-free starters, so installing one never needs the network:
+checkout or distribution carrying that catalog can browse its local examples
+without a separate registry account. These are templates, not preconfigured
+external services. Building a source plugin may still prepare npm dependencies
+and need registry access; a local catalog does not promise a network-free build.
 
 | Plugin | What it shows |
 |---|---|
 | `getting-started-starter` | Agents, chat dock control, navigation, toast feedback |
 | `coding-starter` | Two Workspace Panes with labelled code examples and an owner-qualified review action |
-| `knowledge-docs-starter` | Project knowledge ingestion and search |
+| `knowledge-docs-starter` | Static document/source UI and chat entry; no real intake or search |
 | `minimal-layout` | The smallest useful layout surface |
 | `demo-layout` | A tour of Station capabilities, no external services |
 | `smart-routing` | A provider plugin with no UI entrypoint |
@@ -278,11 +323,31 @@ rather than failing to start.
 
 Two constraints govern what can appear in a manifest, both enforced by tests:
 
-- **`name` must be a usable identifier.** Registry install validates it with
-  `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`, so a display string like `"My Plugin"` makes
-  install throw. Put the human label in `displayName`.
+- **Registry path validation is not manifest-name validation.** The registry's
+  path-segment check accepts `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`; installed manifest
+  names must also satisfy the stricter lowercase, length, and reserved-name
+  rules above. Put the human label in `displayName` (or the Agent Plugins
+  Station namespace's `title`).
 - **`build` is rejected.** `buildPlugin` refuses any manifest declaring a host
   shell build. Ship a prebuilt bundle or use a Station-supported entrypoint.
+
+Entry `source` values (plugins and `tools`) are confined by
+`JsonManifestRegistryProvider` in
+`src-server/providers/registries/json-manifest-registry.ts`:
+
+- **A local manifest's sources are plain directories inside the registry
+  root**, which is the parent of the manifest's directory. That is why the
+  bundled catalogs can name `../minimal-layout`. Relative and absolute paths
+  are both checked after following symlinks.
+- **Git sources must be remote URLs** (`https://`, `ssh://`, or
+  `git@host:path`). A local source whose path ends in `.git`, contains `#`, or
+  holds a `.git` entry (a working checkout) is refused, as is a `file:` URL.
+  Both `.git` checks cover every spelling a filesystem may read as `.git`
+  (case, trailing dots, `git~1`, and code points HFS+ ignores).
+- **A hosted manifest never names local paths.** A relative source resolves as
+  a URL on the manifest's host.
+
+A refused entry stays listed without a source, and installing it reports why.
 
 ### Install and use a bundled layout
 
@@ -349,6 +414,11 @@ Legacy layout plugins only. A plugin that declares `workspacePanes` has no
 ```
 
 Tab `component` values must match keys in the `components` export from your entry point.
+
+The legacy `type: "prompt"` action above is retained for review; its `data`
+string is not a runnable command-skill reference. Use the
+[workspace host action contract](#actions-that-belong-to-the-workspace-host) for executable
+plugin-authored prompts.
 
 Agent slugs in `availableAgents` use the format `<plugin-name>:<agent-slug>`.
 
@@ -445,17 +515,16 @@ tool metadata. Do not add a top-level `mcpApps` manifest field to a plugin; if a
 plugin depends on an MCP server or tool, keep using `tools.required` to express
 that installation requirement.
 
-Current MCP UI support is a guarded standalone layout target only. Station can
-resolve the MCP server/tool/UI-capability state and show clear invalid,
-missing-server, missing-tool, missing-resource, unsupported, and resolved
-states. Remote/resource URLs are treated as unsupported in this milestone; no
-iframe, postMessage bridge, resource proxy, or tool proxy is enabled. If an MCP
-layout declares `approvalPolicy`, Station displays it as a requested policy but
-does not enforce it until a bridge/tool proxy security model exists. This
-milestone also excludes chat tool-result rendering for MCP Apps and a
-`station mcp-ui` CLI harness. Telemetry covers server-side MCP UI ref
-resolution outcomes (`station.mcp_ui.resolve.total`); client-only render
-mount events are not captured in this milestone.
+Current MCP Apps support resolves the pinned integration/tool and declared
+`ui://` resource, loads bounded resource content, and uses a different-origin
+sandbox proxy for interactive rendering. The older embedded-result path is
+limited to read-only-pinned layouts. The host bridge and server apply different
+parts of `approvalPolicy`; a request-supplied policy is not independent proof
+of a person's approval. Resource policy is drawn from resource metadata, not
+tool-level policy. Secure-scheme filtering is not complete CSP source-expression
+validation or browser-egress assurance. See [MCP Apps in Station](../design/mcp-ui-host.md)
+for visibility, policy, transport custody and failure boundaries. A tool ref in
+this example illustrates syntax; that tool must actually advertise a UI resource.
 
 ## Entry Point (src/index.tsx)
 
@@ -495,12 +564,14 @@ export default Main;
   prefix the keys with the plugin name (`my-plugin-workspace`); two plugins
   exporting the same key would replace each other.
 - Components receive `LayoutComponentProps`: `{ layout, activeTab, onShowChat, onLaunchPrompt }`
-- Use any hook from `@kontourai/station-sdk`
+- In-process components use exported hooks from `@kontourai/station-sdk`;
+  isolated frames use the supported host-message contract rather than the
+  host's React context
 - `@tanstack/react-query` hooks share the host's QueryClient
 
 ## SDK Integration
 
-Import everything from `@kontourai/station-sdk`. Key hooks:
+Use the documented SDK root or owning subpath. Key root hooks:
 
 ### Agents & Chat
 
@@ -552,9 +623,11 @@ const { status, provider, user } = useAuth();
 // status: 'valid' | 'expiring' | 'expired' | 'missing' | 'not-configured'
 // user: { alias, name, email, ... }
 
-const { lookup } = useUserLookup();
-const profile = await lookup('jdoe');
+const { data: profile, loading, error } = useUserLookup('jdoe');
 ```
+
+Pass the alias to the [hook](../../packages/sdk/src/hooks/operations.ts); it
+starts the lookup and returns reactive state, not an imperative `lookup` method.
 
 ### Navigation
 
@@ -697,11 +770,14 @@ Call MCP tools directly from plugin UI using `callTool` from `@kontourai/station
 import { callTool } from '@kontourai/station-sdk';
 
 // callTool(agentSlug, toolName, args)
-const result = await callTool('my-plugin:assistant', 'search_files', { query: 'hello' });
-// result: { success: boolean, response: unknown, error?: string }
+const result = await callTool('assistant', 'search_files', { query: 'hello' });
+// The operation's response value; its shape depends on the tool.
 ```
 
 This calls `POST /agents/:slug/tools/:toolName` on the server (or dev server). The dev server proxies this to the connected MCP process.
+This imperative API requires the clean persisted Agent ID. Unlike
+`useSendToChat`, it does not accept a plugin-qualified reference. Failed
+operations throw; it does not return the outer `success`/`response` envelope.
 
 ### Server-Side Fetch Proxy
 
@@ -710,14 +786,18 @@ For external HTTP calls from plugin UI (requires `network.fetch` permission):
 ```tsx
 import { useServerFetch } from '@kontourai/station-sdk';
 
-const { fetch: serverFetch } = useServerFetch();
-const result = await serverFetch({
-  url: 'https://api.example.com/data',
+const serverFetch = useServerFetch();
+const result = await serverFetch('https://api.example.com/data', {
   method: 'GET',
   headers: { Authorization: 'Bearer ...' },
 });
-// result: { success, status, contentType, body }
+// result: { status: number, contentType: string, body: string }
+// A proxy response with success: false throws; handle errors at the call site.
 ```
+
+The [hook implementation](../../packages/sdk/src/hooks/operations.ts) returns
+the callable directly and strips the proxy's `success` field from a successful
+result.
 
 ### Layout Providers
 
@@ -763,7 +843,7 @@ module.exports = () => ({
 module.exports = () => ({
   async getAppName() { return 'My App'; },
   async getLogo() { return { src: '/logo.png', alt: 'My App' }; },
-  async getTheme() { return null; }, // or CSS custom property overrides
+  async getTheme() { return null; }, // or white-label overrides; see examples/custom-branding
   async getWelcomeMessage() { return 'Welcome to My App'; },
 });
 ```
@@ -772,7 +852,7 @@ module.exports = () => ({
 
 ```js
 module.exports = () => ({
-  async getCurrentUser() {
+  async getIdentity() {
     // Returns: { alias, name, title, email, profileUrl }
     return { alias: 'jdoe', name: 'Jane Doe' };
   },
@@ -783,9 +863,13 @@ module.exports = () => ({
 
 ```js
 module.exports = () => ({
-  async lookup(alias) {
-    // Returns: UserDetailVM or null
+  async lookupPerson(alias) {
+    // Returns: UserDetailVM
     return { alias, name: 'Jane Doe', email: `${alias}@example.com` };
+  },
+  async searchPeople(query) {
+    // Returns: UserDetailVM[]; an empty result is valid.
+    return [];
   },
 });
 ```
@@ -808,7 +892,21 @@ Alternatively, point `module` at a JSON file and the server auto-wraps it with `
 
 ### integrationRegistry
 
-Same interface as `agentRegistry` but for MCP integrations.
+Implements `listAvailable()`, `listInstalled()`, `install(id)`, and
+`uninstall(id)` as above, plus these required methods:
+
+| Method | Result |
+| --- | --- |
+| `getToolDef(id: string)` | `Promise<ToolDef \| null>` |
+| `sync()` | `Promise<void>` |
+
+`getToolDef` returns the integration definition or `null` when this provider
+does not own the ID. `sync` reconciles that provider's definitions. The
+[integration registry aggregator](../../src-server/providers/registries/integration-registry-provider.ts)
+calls both methods on its providers. `update(id)` and
+`installByCommand(command)` are optional. The
+[auth routes](../../src-server/routes/system/auth.ts) similarly call
+`getIdentity`, `lookupPerson`, and `searchPeople` with those exact names.
 
 ### settings
 
@@ -858,9 +956,29 @@ Grants are stored in `<STATION_HOME>/plugin-grants.json` and revoked on plugin r
 
 Trusted permissions are not granted from plugin-rendered UI. Station opens a
 short-lived, host-owned review page that lists the exact requested capabilities.
-Approving enables the plugin's trusted server behavior; denying leaves its server
-module unloaded. You can revisit an installed plugin from **Plugins**, select it,
-and choose **Review Permissions**.
+Approval records a durable grant against the reviewed code and then requests
+runtime reconciliation. The [host approval route](../../src-server/routes/plugins/plugin-host-approval-routes.ts)
+returns the reconciliation status, operation ID, generation, and any effects or
+failures; it can report `incomplete`, including when the runtime is unavailable.
+Recorded approval therefore does not establish that the server module or
+providers are active. Inspect the reconciliation result and current plugin
+status before treating trusted behavior as available. Denial does not grant the
+requested permissions. You can revisit an installed plugin from **Plugins**,
+select it, and choose **Review Permissions**.
+
+Recorded permissions and currently effective permissions can also differ after
+the code changes. The [grant derivation](../../src-server/services/plugins/plugin-permissions.ts)
+compares the installed bytes with the reviewed content digest. Changed or
+unreadable content sets `contentBinding: "changed"` and puts every recorded
+permission in `withheld`, including passive permissions; those grants no longer
+authorize the current code. The
+[Permissions panel](../../src-ui/src/views/plugin-management/PluginPermissionsSection.tsx)
+explains that state. A fresh approval or installation/update must bind the
+current readable bytes before permissions apply again; approving one permission
+does not restore all previously withheld permissions. When current content is
+readable, older grants without a recorded digest are explicitly `unverified`
+and retain their effect under the migration policy until a later approval or
+update binds them.
 
 ### Managing Grants via API
 
@@ -878,7 +996,9 @@ through the host approval UI so plugin code cannot silently elevate itself.
 
 ## Plugin Dependencies
 
-Plugins can declare dependencies on other plugins. The server resolves and installs them automatically.
+Plugins can declare dependencies on other plugins. The server resolves them
+recursively during the parent's reviewed installation; the declaration itself
+does not grant trusted permissions.
 
 ```json
 {
@@ -890,9 +1010,16 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
 ```
 
 - If `source` is provided and the dependency isn't installed, it's cloned and installed automatically
-- Relative dependency sources resolve from the declaring local plugin directory
-  but must remain inside its physical sibling package root; traversal and
-  symlinked ancestors are refused
+- Local dependency sources, relative or absolute, resolve from the declaring
+  local plugin directory and must stay inside its sibling package root (the
+  directory holding the declaring plugin, judged through its real path).
+  Traversal and symbolic links below that root are refused
+- A local dependency is copied as a plain directory, never cloned, and every
+  `.git` entry in it is left out, so a sibling that is its own git checkout
+  still works. A declared path ending in `.git` or containing `#` is refused:
+  name a git dependency by its remote URL (`https://…` or `git@host:path`)
+- A plugin fetched from a remote source may declare only remote dependency
+  sources, and so may each of its remote dependencies
 - If no `source`, the server tries the configured registry
 - Dependencies are resolved recursively (cycle detection included)
 - `station plugin preview <source>` shows dependency resolution status, exact content digest, and dependency-specific permissions before install
@@ -916,6 +1043,12 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
   offering approval; approving them does not expand the supported permission set.
   The Plugins and Registry install flows route each installed dependency through
   that existing host approval before claiming its providers are active.
+
+Physical cleanup depends on the installation format. The digest-bound legacy
+dependency path can remove owned trees under those conditions. Managed portable
+dependencies instead withdraw their selections while retaining code and data
+through the installation journal. Neither path gains deletion ownership over
+an independently installed dependency merely by referencing it.
 
 ## Installation Flow
 
@@ -945,18 +1078,34 @@ An install carries the approval a preview produced (station#4288). `POST
 is staged, so preview first — it is the only thing that reports the
 `contentDigest` the install has to name.
 
+Echo the preview's `grantRevision` for the parent and each dependency approval,
+as the [CLI installer](../../packages/cli/src/commands/install.ts) does. These
+are opaque revisions, not values the client invents: they bind the decision to
+the grant state that was reviewed. Changed grants or replacement installation
+generations can supersede a pending operation; preview again rather than
+reusing a stale decision.
+
+Install, recovery, update, and removal are person-only lifecycle operations.
+The [route guard](../../src-server/routes/plugins/plugin-person-approval.ts)
+refuses Station's internal agent-tool identity and delegated or unconfirmed
+device identities. Agent tools can propose an operation for a person to
+complete. This is an authenticated Station API boundary, not isolation from
+arbitrary code running as Station's operating-system user; that code can access
+the same local credentials and files.
+
 ```bash
 API_BASE="${STATION_API_BASE:-http://127.0.0.1:18141}"
 : "${STATION_API_CREDENTIAL:?set a paired Station bearer for direct API use}"
 
 # 1. Preview: stages a copy, reports what installing it would require, and
-#    throws the copy away. Writes nothing.
+#    throws the copy away. Does not publish an installation or grant.
 curl -X POST "$API_BASE/api/plugins/preview" \
   -H "Authorization: Bearer $STATION_API_CREDENTIAL" \
   -H 'Content-Type: application/json' \
   -d '{"source": "git@github.com:org/my-plugin.git"}'
 # → { "valid": true, "manifest": …, "dependencies": [...],
 #     "contentDigest": "sha256:…",
+#     "grantRevision": "<opaque parent revision>",
 #     "permissions": { "required": [...], "autoGranted": [...],
 #                      "pendingConsent": [{ "permission": …, "tier": … }] } }
 
@@ -969,11 +1118,13 @@ curl -X POST "$API_BASE/api/plugins/install" \
         "consent": {
           "permissions": ["navigation.dock", "network.fetch"],
           "contentDigest": "sha256:…",
+          "grantRevision": "<parent revision from preview>",
           "dependencies": ["shared-lib"],
           "dependencyApprovals": [{
             "id": "shared-lib",
             "permissions": ["providers.register"],
             "contentDigest": "sha256:…",
+            "grantRevision": "<dependency revision from preview>",
             "dependencies": []
           }]
         }
@@ -989,6 +1140,7 @@ curl -X POST "$API_BASE/api/plugins/install" \
         "consent": {
           "permissions": [],
           "contentDigest": "sha256:…",
+          "grantRevision": "<parent revision from preview>",
           "dependencies": []
         }
       }'
@@ -996,7 +1148,7 @@ curl -X POST "$API_BASE/api/plugins/install" \
 # List installed
 GET /api/plugins
 
-# Update (git pull + rebuild)
+# Update through the installed format's lifecycle transaction
 POST /api/plugins/:name/update
 
 # Remove
@@ -1006,55 +1158,103 @@ DELETE /api/plugins/:name
 GET /api/plugins/check-updates
 ```
 
+Update, update checks, git details, and the changelog read only the plugin
+directory's own repository (its `.git`). A plugin without one reports no git
+details and has no git update source, even when the Station home sits inside
+another git checkout.
+
+A local folder that an open install proposal names (one an agent asked for)
+is copied with every `.git` entry left out, at any depth, and a proposed local
+git repository is refused. The preview reports `gitMetadata: "excluded"` in
+that case, and the install's `consent` sends it back, so both stage the same
+bytes. Such a plugin has no git update source; reinstall it from its folder to
+update it. Station remembers that folder (in `plugin-source-staging.json` in
+the Station home), so every later preview and install of it leaves its git
+metadata out too, after the proposal is completed or dismissed and after an
+uninstall. To get git updates for it, install from the repository's remote
+URL instead. An install from your own path, which no proposal has named,
+keeps its `.git`.
+
 ### What Happens on Install
 
-1. Source is cloned (git) or copied (local path) to a temp directory
-2. `plugin.json` is validated
-3. Dependencies are resolved and installed recursively
-4. Plugin is moved to `<STATION_HOME>/plugins/<name>/`
-5. Agents are copied to `<STATION_HOME>/agents/<plugin>:<slug>/`
-6. Plugin layout source stays with the installed plugin and can be applied into project layouts
-7. Plugin is built (`buildPlugin()` / esbuild)
-8. Bundled tool configs are copied to `<STATION_HOME>/integrations/`
-9. Providers are loaded into the server
-10. Passive permissions are auto-granted; active/trusted permissions are returned as `pendingConsent`
+The [install transaction](../../src-server/services/plugins/plugin-install-transaction.ts)
+has separate portable and legacy publication paths:
 
-Install, update, reload, and removal publish one runtime configuration generation. Replacement removes agent directories no longer declared by the plugin, and update rejects a changed manifest name. Station waits for displaced provider adapters to stop before reporting activation complete; an accepted file mutation that still needs runtime reconciliation returns HTTP `202` with a `configurationActivation` receipt.
+1. Acquire source into a temporary staging directory and parse its manifest
+   format. Reject invalid identities before publication.
+2. Check consent against the staged content digest, declared permissions,
+   approved dependency graph, and captured grant revisions before changing
+   installed bytes, grants, or registry aliases. Staging itself is temporary
+   filesystem work, not installation. Required dependency decisions travel
+   through the same admission checks.
+3. Build the staged bytes and validate bundle containment. Under the publication
+   transaction, recheck authority and conflicts before selecting the result.
+4. For Agent Plugins, publish a retained materialization and installation
+   generation with an independently scoped data directory. Portable Skills
+   and `mcp.json` servers are read from that live package; MCP servers become
+   owner-qualified ToolDefs, not copied integration definitions. Validated
+   Station namespace contributions use their existing host owners.
+5. For legacy manifests, copy the built staged tree into
+   `<STATION_HOME>/plugins/<name>/`, synchronize declared Agent definitions,
+   retain declared layout sources, and import eligible bundled integration
+   definitions through the legacy path. These copies are not universal
+   portable-package behavior.
+6. Reconcile runtime contributions and current grants. Passive permissions can
+   be granted automatically; active permissions need the reviewed consent,
+   and trusted permissions still require the separate host approval. A pending
+   permission is not an activated capability.
 
-### Registry supply-chain policy tracer
+Publication is conditional on the captured grants and installation generation
+still being current. Install, update, reload, and removal coordinate runtime
+configuration activation; Station waits for displaced provider adapters to
+stop before reporting completion. An accepted mutation that still needs runtime
+reconciliation returns HTTP `202` with a `configurationActivation` receipt.
+Replacement removes owned Agent definitions no longer declared and refuses a
+changed manifest name.
 
-Station now has a server-side policy and record seam for registry package
-signatures, exact source/version/content pins, and byte-identical
-last-known-good snapshots. It is deliberately not active in the Registry UI or
-installer yet: no configured registry currently supplies a package claim, and
-Station has no configured trusted signing-key source or explicit pin-update
-action. Enforcing a required-signature policy without those trust anchors would
-make every current Registry item uninstallable while claiming stronger safety.
+A portable [update](../../src-server/routes/plugins/plugin-lifecycle-routes.ts)
+captures the expected installation identity, generation, artifact, materialization,
+and data scope, then stages its registry or Git source through the install
+transaction while preserving data. It is not an in-place `git pull`: a missing
+update source, changed authority, or a new consent requirement can refuse the
+operation. Preview and install the new source when a fresh decision is needed.
+The [installation lifecycle](../design/plugin-installation-lifecycle.md) owns
+retained recovery, reset, and reclamation details.
 
-The seam binds the canonical Agent Plugins 1.0.0 manifest schema target,
-`https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`, not legacy
-Station-only manifest contribution fields. That target identifies the published
-schema the registry claim says its root `plugin.json` uses; this tracer does not
-yet validate the manifest against that schema. Trust anchors
-come from local policy and never from the registry document being verified.
-The signature binds registry identity, registry source, package identity,
-version, source, and complete source-tree digest. A source/version change is
-refused under exact pinning unless a separately authorized pin update is
-present; an accepted provenance change explicitly requires the existing
-installer to invalidate/rebind grants before loading replacement code.
+### Applied registry trust policy
 
-`RegistryLastKnownGoodStore` writes no live plugin tree. It archives one prior
-tree under the Station home, verifies the copy's complete tree digest, and can
-produce a second verified staging tree. Runtime rollback must feed that staging
-tree back through `installPluginFromSource` so the existing content lock,
-agents, integrations, grants, providers, configuration generation, and rollback
-receipts remain the only installation transaction. Until that integration is
-landed, signed installation, explicit pin updates, and user-triggered rollback
-are **NOT_AVAILABLE**.
+The local installer verifies registry claims under the host's applied
+`registryTrust` policy. Configuration is a candidate until successful runtime
+initialization or a full rebuild publishes it. A configured profile selects an
+exact registry key and trusted public Ed25519 keys; neither a registry entry nor
+an install request supplies host trust anchors. The default bundled catalog
+has no automatic publisher trust badge.
+
+A profile requires a corresponding package claim even when its signature mode
+is `optional`. Preview exposes an opaque `registryTrustRevision`; install
+consent echoes that observation, including dependency decisions. Verification
+binds registry, source, package/version and source-tree digest. The manifest is
+validated separately, and the built artifact has its own digest. A signature
+does not establish harmless code, a sandbox or reproducible builds.
+
+Managed retained recovery uses its journal-bound artifact, current policy and
+fresh consent. It does not fetch the original source or registry. Changed
+claims, signing principals or policy epochs require reviewed continuity; there
+is no general pin-update/migration or user-facing code-rollback operation here.
+`RegistryLastKnownGoodStore` remains a separate archive utility, not the owner
+of managed recovery. See [Applied registry trust policy](../design/registry-trust-policy.md)
+and [installation lifecycle](../design/plugin-installation-lifecycle.md) for
+refusals, retention and the legacy path's limits.
 
 ## Build System
 
 Layout plugins (with `entrypoint`) are built automatically by the server using esbuild. No custom build script needed.
+
+The shared builder owns dependency preparation. A managed Station workspace
+must already have its dependencies prepared with `npm run dependencies:ci`.
+For a standalone plugin, `ensurePluginDeps` runs a bounded npm installation
+with lifecycle scripts disabled, so registry access may be required before
+bundling. A dependency timeout is a failed build attempt, not a ready plugin.
 
 ### package.json
 
@@ -1109,9 +1309,11 @@ ranges against the public npm registry, and package publishing runs that check
 before building or publishing. A local workspace version is never substituted
 unless that range already resolves for an external author on public npm.
 
-`@kontourai/station-sdk` and `@kontourai/station-shared` are peer dependencies —
-the Station host provides them at runtime, and `buildPlugin` externalizes them
-rather than bundling them.
+The scaffold declares SDK/shared peer dependencies. The browser SDK root and
+its admitted client/voice entries are host-provided externals. The Node
+`@kontourai/station-shared/build` entry is build-time tooling; shared runtime
+helpers are not a blanket host external. Check the builder's actual allowlist
+before importing another subpath into browser code.
 
 ### Shared Modules (Externals)
 
@@ -1121,6 +1323,7 @@ These are provided by the host at runtime via `window.__station_ai_shared` and m
 |--------|-------|
 | `react`, `react/jsx-runtime`, `react/jsx-dev-runtime` | React runtime |
 | `@kontourai/station-sdk` | All SDK hooks and utilities |
+| `@kontourai/station-sdk/client`, `@kontourai/station-sdk/voice` | Admitted React-free client and voice runtime entries |
 | `@kontourai/station-components` | Shared UI components |
 | `@tanstack/react-query` | Shares host's QueryClient |
 | `dompurify` | HTML sanitization — host-loaded on demand (see below) |
@@ -1148,12 +1351,12 @@ await window.__station_ai_shared_ready();
 const sdk = window.__station_ai_shared['@kontourai/station-sdk'];
 ```
 
-The SDK barrel moved because it was published with a namespace import, which
-materializes every export whether or not the host app uses it — pinning 43
-app-unreached SDK modules into the entry chunk. Deferring it took ~22.8KB gzip
-out of first paint.
+The earlier SDK-barrel change reported 43 app-unreached modules and about
+22.8 KB gzip removed from first paint. Those figures describe that historical
+measurement, not the current bundle size. The maintained contract is the lazy
+readiness boundary above.
 
-The centralized build handles externalization automatically. If you use a custom `build.mjs`, externalize these modules and add the runtime shim (see `packages/shared/src/index.ts` for `RUNTIME_SHIM` and `SHARED_EXTERNALS`).
+The centralized build handles externalization automatically. If you use a custom `build.mjs`, externalize these modules and add the runtime shim (see `packages/shared/src/build.ts` for `RUNTIME_SHIM` and `SHARED_EXTERNALS`).
 
 ### Output
 
@@ -1178,16 +1381,21 @@ station plugin create my-plugin --template=full
 cd my-plugin
 ```
 
-This creates the full plugin structure with a working entry point, layout
-config, and agent. `plugin create`/`build`/`dev`/`install` resolve paths against
+This creates the full plugin structure with a working entry point, namespaced
+Workspace Pane declarations, and an Agent. It does not generate `layout.json`.
+`plugin create`/`build`/`dev`/`install` resolve paths against
 the directory where you invoke `station`, so `my-plugin/` is scaffolded in —
 and the rest of this workflow operates on — your actual working directory.
 
 Available templates:
 
-- `full` — layout + agent + build config
-- `layout` — UI-focused starter
+- `full` — Workspace Panes + Agent + build config (CLI default)
+- `pane` — UI-focused Workspace Pane starter
 - `provider` — server-side starter with `serverModule` and provider examples
+
+The CLI also accepts `--template=layout` as an alias for `pane`. The shared
+scaffold builder and Project scaffold API default to `pane`; the CLI wrapper
+explicitly chooses `full` when no template is supplied.
 
 ### 2. Dev Server
 
@@ -1209,8 +1417,10 @@ The dev server:
   - `POST /agents/:slug/tools/:toolName` — call a tool
   - `POST /api/plugins/fetch` — server-side fetch proxy
 
-Dependencies declared in `plugin.json` are auto-installed from
-`<STATION_HOME>/plugins/` on dev server start.
+The dev server reads installed dependencies from `<STATION_HOME>/plugins/` and
+starts the existing install command for a missing dependency with a resolved
+source. That is an installation attempt, not proof that consent, activation or
+dependency readiness completed before the preview starts.
 
 Direct `--host` or non-loopback HTTP exposure is not supported. For remote development, run `station plugin dev 4300` on the development host, forward it with `ssh -N -L 4300:127.0.0.1:4300 user@dev-host`, and open `http://127.0.0.1:4300` locally. The privileged file, MCP, fetch, and reload routes enforce the same exact loopback browser boundary.
 
@@ -1223,7 +1433,7 @@ npm run build   # tsx build.ts        — dist/bundle.js, production, no sourcem
 npm run dev     # tsx build.ts --dev  — dist/bundle-dev.js, inline sourcemaps
 ```
 
-Both run `buildPlugin()` from `@kontourai/station-shared`. These are one-shot
+Both run `buildPlugin()` from `@kontourai/station-shared/build`. These are one-shot
 builds — they do not watch or serve; use `station plugin dev` above for the
 watching preview server.
 
@@ -1244,7 +1454,7 @@ Installs the given directory as a plugin into the running Station instance. Loca
 ```bash
 station plugin list             # list installed plugins
 station plugin info my-plugin   # show plugin details
-station plugin update my-plugin # git pull + rebuild
+station plugin update my-plugin # update through the installation lifecycle
 station plugin remove my-plugin # uninstall
 station plugin preview <source> # validate before installing
 station registry [url]          # browse or set registry URL
@@ -1264,6 +1474,10 @@ The module can export:
 - `operationalEvents.observe(input)` — handle one manifest-declared operational event with a stable idempotency key, attempt, host-selected projection, and abort signal
 
 Each request gets a correlation ID. Station exposes it to request hooks and returns it as the `x-station-correlation-id` response header. The `register()` context itself contains `pluginName`, `projectHomeDir`, `logger`, and config helpers.
+
+An incoming correlation header is reused when present. Station does not inject
+a newly generated ID into the plugin's request headers; use the lifecycle hook
+or response header for that host-generated value.
 
 ```js
 export const hooks = {
@@ -1364,7 +1578,10 @@ by plugin code.
 }
 ```
 
-Agent slugs are namespaced as `<plugin-name>:<agent-slug>` when installed.
+Installed Agent IDs remain clean and globally unique; the installer refuses an
+existing ID rather than adding a namespace prefix. Choose a unique ID if the
+scaffold's `assistant` is already owned. The `'<plugin>:<agent>'` form accepted
+by `useSendToChat` is an ownership-checked reference, not the stored Agent ID.
 
 ## Links
 
@@ -1388,7 +1605,12 @@ Plugins can inject external links into the host UI:
 | `label` | yes | Display text |
 | `href` | yes | URL (opens in new tab) |
 | `icon` | no | Icon image path |
-| `placement` | no | `"achievements"` (profile page) or omit for global |
+| `placement` | no | `"achievements"` is consumed by the profile page. Omission does not promise a global UI location. |
+
+The current host consumer is the
+[profile page](../../src-ui/src/pages/ProfilePage.tsx), which requests
+`getLinks('achievements')`. A declaration without placement can be stored in
+the registry, but no global host placement is established by that contract.
 
 ## Examples
 

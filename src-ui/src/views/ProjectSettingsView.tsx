@@ -33,7 +33,7 @@ import { useShowSurface } from '../contexts/useShowSurface';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
-import { errorText } from '../utils/errorText';
+import { userFacingErrorMessage } from '../utils/errorText';
 import { AccessSection } from './project-settings/AccessSection';
 import { AgentsSection } from './project-settings/AgentsSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
@@ -233,7 +233,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <div className="project-settings__body">
           <ErrorState
             title="Could not load project settings"
-            description={errorText(loadError)}
+            description={userFacingErrorMessage(loadError)}
             action={
               <button
                 type="button"
@@ -288,7 +288,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
       const savedProjectForm = buildProjectForm(saved);
       setSavedForm(savedProjectForm);
     } catch (saveFailure) {
-      setSaveError(errorText(saveFailure));
+      setSaveError(userFacingErrorMessage(saveFailure));
     }
   }
 
@@ -301,7 +301,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
       // (the model navigates to `/`) — not on whatever occupies `main` (#1523).
       showSurface('home');
     } catch (deleteFailure) {
-      setDeleteError(errorText(deleteFailure));
+      setDeleteError(userFacingErrorMessage(deleteFailure));
     }
   }
 

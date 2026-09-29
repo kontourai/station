@@ -6,18 +6,19 @@ published, first launch, connection setup, and routine lifecycle.
 
 ## Ways To Run Station Today
 
-Station is open source and under active development. No signed stable or beta
-release ring has been published yet, so the verified installer below cannot
-run yet. Choose one of these paths today:
+Station is open source and under active development. Check the
+[release list](https://github.com/kontourai/station/releases) for current
+artifacts. Desktop updater channel tags and npm packages are separate from
+the signed portable release rings used by the installer below.
 
 | Path | Platforms | Use it when |
 | --- | --- | --- |
 | Run from source | macOS, Linux | You want the current `main` branch and are comfortable with a Node.js checkout. Follow the [developer guide](https://github.com/kontourai/station/blob/main/docs/guides/development.md#local-runtime). |
-| Nightly desktop build | macOS (Apple silicon) | You want a native app for testing. Download the [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop). It installs alongside a stable Station and is not a stable release. |
+| Nightly desktop build | macOS (Apple silicon), Windows (x64) | You want a native app for testing. Choose a matching asset from the [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop) and check its version. Retained assets may be older builds. |
 
-Once a signed stable or beta ring is published, [Install Or Upgrade](#install-or-upgrade)
-below becomes the supported macOS and Linux path. The remaining sections
-describe that verified install and the first-run flow that every path shares.
+When a signed stable or beta portable ring is available,
+[Install Or Upgrade](#install-or-upgrade) is the macOS/Linux installer path.
+The remaining sections cover that install and the first-run UI.
 
 ## Before You Install
 
@@ -62,6 +63,13 @@ the **beta** channel. It uses a separate `~/.station/installs/beta` install root
 retired `STATION_CHANNEL=preview`; the installer refuses it. The exact channel
 identity, launcher, and port mapping are verified by the release installer.
 
+An operator can instead supply `STATION_INSTALL_PUBLIC_MANIFEST_URL` for a
+signed platform-v2 prebuilt archive. That macOS/Linux path uses bundled
+Node.js without building Station on the host; it may download a pinned Node.js
+to verify the first install. It requires a published manifest for the requested
+channel. See the [archive install guide](https://github.com/kontourai/station/blob/main/docs/guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
+for this separate path and its upgrade and service limits.
+
 ## Choose A Model Connection Or Engine
 
 Two kinds of connection can power an agent. A **Model connection** is a local
@@ -76,9 +84,17 @@ runs its own agent loop.
    External agent in the same confirmed action.
 3. Follow its setup action until it reports **Ready**.
 
+Read the accompanying evidence too. A saved connection or a live model catalog
+does not prove that a chat turn completed. An explicit one-turn smoke supplies
+that narrower proof and can incur provider charges; opening Connections or
+New Chat does not run it.
+
 For a credential-free first path, use a supported local model service and then
-return to Connections. Detection is read-only: Station does not create a
-connection or read credentials merely because it finds one. The
+return to Connections. Startup can register detected Claude Code, Codex, and
+Muse engines and their default Agents. An engine you explicitly removed is
+not automatically added again. Registration does not prove that the engine is
+signed in or ready. The discovery screen also offers other local suggestions
+that you can choose to configure. The
 [Connections guide](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
 lists current integrations and their exact setup steps.
 
@@ -94,12 +110,14 @@ Choose the simplest path for what you want to do:
 
 At the end of first-run setup, choose **Start your first chat**. Station saves
 any personalization answers you selected, then opens New Chat. Unanswered
-questions add no profile. A failed save keeps setup open so you can retry.
+questions add no profile. If saving those answers fails, setup stays open so
+you can retry. Closing setup or navigating back during that save cancels the
+next navigation; answers that already saved remain saved.
 
 New Chat lets you choose an Agent, Model, and workspace. It shows loading,
 connection errors, or setup actions when a choice is not ready. Opening it does
-not send a message. **Take the tour** is an optional alternative that saves the
-same selected answers before showing Station's key surfaces.
+not send a message. **Take the tour** and **Connect another device** are optional alternatives.
+Both save the same selected answers before opening their next step.
 
 ### Finish setup and return
 
@@ -117,19 +135,23 @@ flow. Connection changes you already saved remain saved.
 ### Reference project files and earlier conversations
 
 In a project chat, type `@` followed by part of a file or folder path, then
-choose a result. Station keeps a compact chip in the draft and sends the full
-project-relative selection to the Agent. Saved drafts retain the chip. If the
+choose a result. A message can contain up to 64 file or folder mentions.
+Station keeps a compact chip in the draft. When you send the message, it
+expands the selection to a quoted full path within the selected workspace. Saved drafts retain the chip. If the
 workspace changes, or you reconnect or re-pair with different access, Station
 refuses to send the stale reference until you remove it or return to its
 original scope.
 
 Use the conversation-reference button beside the composer actions to choose an
-earlier conversation. You can also drag a result from that picker into the
-composer. A message can contain at most eight conversation references. Station
+earlier conversation. The picker searches the 25 most recent conversations
+returned for your access and shows up to eight matches; it does not search
+older history. You can also drag a result into the composer. A message can
+contain at most eight conversation references. Station
 sends a link to the selected conversation; it never copies that conversation's
 transcript into the prompt. Titles are displayed as plain text, and the link is
-generated from Station's conversation identity. A reference is available only
-while the current signed-in access can still see its source metadata. If access
+generated from Station's conversation identity. The picker only offers source
+metadata allowed by the current access. At send time, Station checks the
+reference's captured Station and access scope. If that scope
 changes before send, Station refuses it instead of silently resolving it under
 the new account. Hosted/shared destinations do not offer conversation
 references until the server can prove that exposing the source title and link
@@ -137,52 +159,32 @@ to that destination is permitted.
 
 ## Start Your First Task
 
-When Home offers **Start your first task**, it appears only after the durable
-first-run decision is completed and Station has confirmed a real Project. The
-action opens that Project's ordinary Task form; it does not create a second
-onboarding task type. After creation, Station validates and correlates the
-exact existing Task and Project, then
-requests the ordinary Task dispatcher once. If the Agent is deferred or
-unavailable, Station creates no Task and shows the recoverable readiness reason;
-retrying reuses the same project-scoped launch identity. After a launch starts,
-a response loss or indeterminate dispatch is **NOT_VERIFIED** — Station never
-retries that effect automatically. Replaying the same identity returns the
-durable Task/outcome or an indeterminate fence instead of creating a second
-Task. The exact Task remains reopenable, and its Session, run, and receipt
-owners remain the source for progress rather than Task status. If correlation
-cannot be confirmed, the Task still opens with a retry link; retrying that link
-never creates another Task.
+1. Open a Project and create a Task for work you want to keep.
+2. Choose an Agent that is ready to run.
+3. Open the Task to follow its Sessions, files, artifacts, and evidence.
 
-1. Open a local project.
-2. Create a Task for durable work, or start a direct chat for an immediate
-   conversation.
-3. Choose the Station agent or External agent you want to use.
-4. Keep gate state, evidence, route-backs, and receipts with the work as it
-   progresses.
+After first-run setup, Home can offer **Start your first task** for a confirmed
+Project. It uses the ordinary Task form. If the Agent is unavailable, Station
+shows the setup reason without creating a Task. If a start has an uncertain
+outcome, inspect that Task rather than creating another to retry it.
 
-If the workspace is not ready, Station keeps the relevant Connections action
-visible. Run `station doctor` for a local diagnosis.
+Task status alone does not establish that work passed a gate. Read the run and
+review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
+how Station preserves the same work identity through retries and response loss.
 
 ## Continue an Attached Session
 
-Open the terminal Session in **Activity**, then choose **Continue in Station**.
-Claude and Codex create independent children, so the original terminal Session
-can keep running. Codex starts from the latest completed turn Station has
-observed; wait for a completed turn if the action is disabled. Station also
-shows a reason when the engine or source configuration is unavailable.
+Open an attached terminal Session in **Activity**, then choose **Continue in
+Station**. Claude and Codex create independent child Sessions; the original
+terminal Session can keep running. Codex continues from the latest completed
+turn Station has observed, so wait for one if the action is disabled.
 
-An attached terminal Session stays read only. The first eligible **Continue in
-Station** action launches the bounded `continue-session` Starter: Station
-validates the exact source Session, reuses the orchestration adoption ledger
-with one stable operation identity, and opens the exact Station-owned child
-returned by that owner. Retrying an uncertain response reuses that identity
-rather than forking another child. Once the one-time starter is bound, later
-continuations use the ordinary owner action and do not overwrite its
-correlation. The adoption command receipt is inspectable, but it proves only
-that continuation was admitted; useful-work completion remains `NOT_VERIFIED`
-until the Session's own evidence says otherwise.
-If Station cannot read the one-time correlation state, it starts no
-continuation; retry after that read recovers instead of guessing an owner path.
+An attached Session remains read only. Continuing opens a Station-owned child.
+If Station cannot confirm the result, use the offered retry for that same
+operation. Engine and configuration problems appear with their setup reason.
+A continuation receipt confirms admission, not completion of the work.
+
+See [continuation and recovery details](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#continue-an-attached-session).
 
 ## Arrange Work You Already Own
 
@@ -193,46 +195,27 @@ the meaning of linked-work states.
 
 ## Inspect Approval And Review Evidence
 
-After first run, Home also offers owner-backed inspection cards when Station
-can identify a real approval notification or independent-review receipt. The
-approval action opens that exact Notifications row without approving or
-denying it. The review action opens the exact Project and receipt tuple in
-that Project's Review layout at `/projects/<slug>/layouts/review?receipt=...`.
-Another Project's receipt with the same ID is never substituted. Older
-`/review-queue?receipt=...&project=...` links redirect there; the global
-`/review-queue` page itself was retired in favour of the per-Project layout,
-and a link that names no Project opens Notifications instead.
+Home can offer a real approval notification or independent-review receipt to
+inspect after first-run setup. The approval action opens that Notifications
+row; it does not approve or deny it. The review action opens the receipt in its
+Project's Review layout. Missing or unavailable records remain visible as such.
 
-These are one-time Starter correlations, not completion checkboxes. Response
-loss reuses a deterministic operation identity, reopening a bound card keeps
-the original target, and every later observation reads Approval Inbox or
-ReviewEvidence again. Missing, stale, unavailable, and `NOT_VERIFIED` owner
-states remain visible. A reviewed receipt is evidence input only and does not
-by itself satisfy a gate.
+Reading a receipt does not satisfy a gate. See
+[how the inspection keeps the exact target](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#inspect-approval-and-review-evidence).
 
 ## Run A Scheduled Readiness Check
 
-Home can create the canonical disabled `station-starter-check` job and run it
-once through the real Scheduler. The job stays disabled unless you explicitly
-enable its daily schedule. Station binds the exact Scheduler run before the
-Agent can be invoked, so a lost response or retry opens the same receipt and
-never starts another check. If Station restarts after binding but before the
-Agent begins, **Resume exact check** reuses the operation identity stored in
-that binding; it does not create a replacement run. Failed or indeterminate
-checks offer **Inspect receipt**, not automatic retry. A completed check proves
-execution only; read
-its findings and decide what to do rather than treating completion as a passed
-gate.
+Home can create **station-starter-check** and run it once. Its daily schedule
+stays disabled until you enable it. Open the receipt to read the findings;
+a completed run means the check ran, not that its findings passed a gate.
 
-For example, open a repository as a Project, create a Task named “Update the
-documentation,” and choose a ready External agent. That work's first execution
-is a Session. Reopen the Task later to see its files, evidence, and receipts
-together. For a one-off question that does not need that durable history, use a
-direct chat instead.
+After an interruption, **Resume exact check** continues the recorded check.
+Failed or uncertain runs offer **Inspect receipt**. They are not restarted
+automatically. See [Scheduler identity and recovery](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#run-a-scheduled-readiness-check).
 
 ## Update, Stop, Or Uninstall
 
-## Recovery boundaries
+### Recovery boundaries
 
 Use the recovery path that owns the thing you need to recover. The bundled
 client's `station triage` gathers bounded, read-only artifacts; it cannot run a

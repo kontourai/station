@@ -40,6 +40,35 @@ import { WORKSPACE_PANE_OPENED } from '../../workspace-panes/workspacePaneHostOp
 import { WorkspacePaneHostRuntime } from '../../workspace-panes/workspacePaneHostRuntime';
 
 const layoutQueryMock = vi.fn();
+
+/**
+ * The error the REAL layout fetcher (`getProjectLayout`, through
+ * `unwrapProjectResponse`) throws for a given answer — the query hook's
+ * `error`, built the way production builds it rather than by hand.
+ */
+async function realLayoutError(
+  status: number,
+  body: unknown,
+): Promise<unknown> {
+  const { getProjectLayout } = await vi.importActual<
+    typeof import('@kontourai/station-sdk/client')
+  >('@kontourai/station-sdk/client');
+  const previous = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    })) as typeof fetch;
+  try {
+    return await getProjectLayout(
+      'http://station.test',
+      'demo',
+      'review',
+    ).catch((caught: unknown) => caught);
+  } finally {
+    globalThis.fetch = previous;
+  }
+}
 const catalogMock = vi.fn();
 const navigationMock = vi.hoisted(() => ({ setLayout: vi.fn() }));
 const { hostMock, hostEffectMock, mobileMock } = vi.hoisted(() => ({
@@ -66,21 +95,20 @@ const pluginBoundaryMock = vi.hoisted(() => vi.fn());
  *  unplaced-Review case; hoisted because the SDK mock factory closes over it. */
 const placementCalls = vi.hoisted(() => [] as string[]);
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async () => ({
   FullScreenError: ({ description }: { description: string }) => (
     <div>{description}</div>
   ),
   LayoutHeader: () => null,
-  // Real shape, because `isLayoutRecordAbsent` discriminates on `instanceof`
-  // AND on `status`: a stub without a status would make every error read as a
-  // 404 and the unplaced-builtin fallback fire on a transport failure.
-  StationHttpError: class StationHttpError extends Error {
-    status: number;
-    constructor(status: number, message = 'http error') {
-      super(message);
-      this.status = status;
-    }
-  },
+  // The REAL class, because `isLayoutRecordAbsent` discriminates on
+  // `instanceof` AND on `status`, and the carve-out cases below build their
+  // error with the real layout fetcher (#2708 A-2): a stand-in class would
+  // make that error miss the `instanceof` and pass for the wrong reason.
+  StationHttpError: (
+    await vi.importActual<typeof import('@kontourai/station-sdk/client')>(
+      '@kontourai/station-sdk/client',
+    )
+  ).StationHttpError,
   telemetry: { track: telemetryTrackMock },
   // The two seams a "materialize the builtin" implementation would actually
   // reach for — `POST /:slug/layouts/apply` is only callable through these.
@@ -504,15 +532,18 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.queryByText('Review rendered for demo')).toBeNull();
   });
 
-  test('a 200 envelope saying the layout is missing counts as unplaced (#2065)', () => {
-    // NOT a StationHttpError: on a 200 carrying `{"success":false,...}`,
-    // `unwrapProjectResponse` throws a plain Error with the envelope message
-    // and no status. The substring tail is the only thing that classifies it,
-    // and it is a real path — so it gets a case rather than a footnote.
+  test('a 200 envelope saying the layout is missing counts as unplaced (#2065)', async () => {
+    // On a 200 carrying `{"success":false,...}`, the REAL layout fetcher
+    // throws a StationHttpError whose status is the observed 200 (#2708 A-2).
+    // A 2xx status says nothing about absence, so the message tail classifies
+    // it — the carve-out in `isLayoutRecordAbsent`.
     layoutQueryMock.mockReturnValue({
       data: undefined,
       isLoading: false,
-      error: new Error('Layout not found'),
+      error: await realLayoutError(200, {
+        success: false,
+        error: 'Layout not found',
+      }),
     });
 
     render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />);
@@ -520,14 +551,17 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.getByText('Review rendered for demo')).toBeTruthy();
   });
 
-  test('a missing PROJECT is not a Project with an unplaced Review (#2065)', () => {
+  test('a missing PROJECT is not a Project with an unplaced Review (#2065)', async () => {
     // `projectReadFailure` answers 404 for both resources and names which one
     // in the envelope. A link into a deleted or renamed Project must say so,
     // not render an empty Review workbench for a Project that is not there.
     layoutQueryMock.mockReturnValue({
       data: undefined,
       isLoading: false,
-      error: new StationHttpError(404, 'Project not found'),
+      error: await realLayoutError(404, {
+        success: false,
+        error: 'Project not found',
+      }),
     });
 
     render(<ProjectLayoutRenderer projectSlug="gone" layoutSlug="review" />);
@@ -536,15 +570,18 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.queryByText('Review rendered for gone')).toBeNull();
   });
 
-  test('a 200 envelope saying the PROJECT is missing is not unplaced (#2065)', () => {
-    // The fourth corner: the other two cases cover a status-carrying missing
-    // Project and a status-less missing Layout. This is the one the predicate
-    // reads entirely off the message, with no status to fall back on, so it is
-    // where a wording change would land first.
+  test('a 200 envelope saying the PROJECT is missing is not unplaced (#2065)', async () => {
+    // The fourth corner: the other two cases cover a failure-status missing
+    // Project and a 2xx missing Layout. This is the one the predicate reads
+    // entirely off the message, with no failure status to fall back on, so it
+    // is where a wording change would land first.
     layoutQueryMock.mockReturnValue({
       data: undefined,
       isLoading: false,
-      error: new Error('Project not found'),
+      error: await realLayoutError(200, {
+        success: false,
+        error: 'Project not found',
+      }),
     });
 
     render(<ProjectLayoutRenderer projectSlug="gone" layoutSlug="review" />);

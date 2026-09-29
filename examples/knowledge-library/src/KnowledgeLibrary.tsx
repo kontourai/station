@@ -10,15 +10,13 @@ import {
   useNavigation,
 } from '@kontourai/station-sdk';
 import type { KnowledgeGraph } from '@kontourai/station-sdk/client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isRelevantRoot, RootPicker } from './RootPicker';
 import { Empty, ErrorState, Skeleton } from './state';
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-
-export const rootIncarnationKey = knowledgeRootIncarnationKey;
 
 function KnowledgeWorkspace({
   root,
@@ -29,74 +27,106 @@ function KnowledgeWorkspace({
   graph: KnowledgeGraph;
   authorityKey: string;
 }) {
+  const workspace = useRef<HTMLDivElement>(null);
+  const focusDetail = () => {
+    requestAnimationFrame(() => {
+      const panel =
+        workspace.current?.querySelector<HTMLElement>('.kl-detail-panel');
+      if (!panel) return;
+      panel.tabIndex = -1;
+      panel.scrollTop = 0;
+      panel.focus();
+    });
+  };
+  const returnToRecords = () => {
+    const selected = workspace.current?.querySelector<HTMLElement>(
+      '.kl-node[aria-pressed="true"]',
+    );
+    selected?.focus();
+  };
   return (
-    <KnowledgeRecallBrowser
-      rootId={root.id}
-      authorityKey={authorityKey}
-      graph={graph}
-      className="kl-grid"
-      detailClassName="kl-panel"
-      useRecordQuery={useKnowledgeRecordQuery}
-      renderGraph={({ graph: renderedGraph, selectedId, onSelect }) => (
-        <section className="kl-panel" aria-labelledby="kl-graph-title">
-          <div className="kl-panel__header">
-            <div>
-              <p className="kl-eyebrow">Derived navigation</p>
-              <h2 id="kl-graph-title">Record graph</h2>
+    <div className="kl-workspace" ref={workspace}>
+      <KnowledgeRecallBrowser
+        rootId={root.id}
+        authorityKey={authorityKey}
+        graph={graph}
+        className="kl-grid"
+        detailClassName="kl-panel kl-detail-panel"
+        onSelect={focusDetail}
+        useRecordQuery={useKnowledgeRecordQuery}
+        renderRecordActions={() => (
+          <button
+            type="button"
+            className="kl-button kl-back-to-records"
+            onClick={returnToRecords}
+          >
+            Back to records
+          </button>
+        )}
+        renderGraph={({ graph: renderedGraph, selectedId, onSelect }) => (
+          <section
+            className="kl-panel kl-graph-panel"
+            aria-labelledby="kl-graph-title"
+          >
+            <div className="kl-panel__header">
+              <div>
+                <p className="kl-eyebrow">Derived navigation</p>
+                <h2 id="kl-graph-title">Record graph</h2>
+              </div>
+              <span>
+                {renderedGraph.nodes.length} records ·{' '}
+                {renderedGraph.edges.length} links
+              </span>
             </div>
-            <span>
-              {renderedGraph.nodes.length} records ·{' '}
-              {renderedGraph.edges.length} links
-            </span>
-          </div>
-          <KnowledgeGraphRecordList
-            graph={renderedGraph}
-            selectedId={selectedId}
-            onSelect={onSelect}
-            className="kl-node-list"
-            nodeClassName="kl-node"
-            selectedNodeClassName="kl-node--selected"
-            titleClassName="kl-node__title"
-            metaClassName="kl-node__meta"
-            testIdForNode={(recordId) => `kl-node-${recordId}`}
+            <KnowledgeGraphRecordList
+              graph={renderedGraph}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              className="kl-node-list"
+              nodeClassName="kl-node"
+              selectedNodeClassName="kl-node--selected"
+              titleClassName="kl-node__title"
+              metaClassName="kl-node__meta"
+              testIdForNode={(recordId) => `kl-node-${recordId}`}
+            />
+          </section>
+        )}
+        emptyDetail={
+          <Empty
+            variant="compact"
+            label="Select a record"
+            description="Choose a graph node to resolve its canonical detail and provenance."
           />
-        </section>
-      )}
-      emptyDetail={
-        <Empty
-          variant="compact"
-          label="Select a record"
-          description="Choose a graph node to resolve its canonical detail and provenance."
-        />
-      }
-      renderRecordLoading={() => <Skeleton variant="block" height="20rem" />}
-      renderRecordError={(error, retry) => (
-        <ErrorState
-          title="Could not load the canonical record"
-          description={errorText(error)}
-          action={
-            <button type="button" className="kl-button" onClick={retry}>
-              Try again
-            </button>
-          }
-        />
-      )}
-      renderRecordMissing={() => (
-        <ErrorState
-          title="Canonical record unavailable"
-          description="The graph still references this record, but the root adapter did not return it."
-        />
-      )}
-      testIds={{
-        recordDetail: 'kl-record-detail',
-        recordTitle: 'kl-record-title',
-        recordBody: 'kl-record-body',
-        recordFreshness: 'kl-record-freshness',
-        recordProvenance: 'kl-record-provenance',
-        recordLink: (recordId) => `kl-record-link-${recordId}`,
-        sourceLink: (recordId) => `kl-source-link-${recordId}`,
-      }}
-    />
+        }
+        renderRecordLoading={() => <Skeleton variant="block" height="20rem" />}
+        renderRecordError={(error, retry) => (
+          <ErrorState
+            title="Could not load the canonical record"
+            description={errorText(error)}
+            action={
+              <button type="button" className="kl-button" onClick={retry}>
+                Try again
+              </button>
+            }
+          />
+        )}
+        renderRecordMissing={() => (
+          <ErrorState
+            title="Canonical record unavailable"
+            description="The graph still references this record, but the root adapter did not return it."
+          />
+        )}
+        testIds={{
+          recordDetail: 'kl-record-detail',
+          recordTitle: 'kl-record-title',
+          recordBody: 'kl-record-body',
+          recordFreshness: 'kl-record-freshness',
+          recordProvenance: 'kl-record-provenance',
+          recordLink: (recordId) => `kl-record-link-${recordId}`,
+          sourceLink: (recordId) => `kl-source-link-${recordId}`,
+        }}
+      />
+    </div>
   );
 }
 

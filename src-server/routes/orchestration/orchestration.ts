@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   parseStationAnswerNarrativePublishInput,
@@ -66,10 +67,12 @@ import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
+import type { RequestDelegationResolver } from '../../runtime/agents/request-delegation.js';
 import {
   getTenantRequestContext,
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
+import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import {
@@ -142,9 +145,20 @@ import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
 import {
   fullAccessGrantForRequest,
+  fullAccessRefusalFor,
   refuseUngrantedFullAccess,
+  refuseUngrantedPick,
   requestedApprovalMode,
 } from './approval-authority.js';
+import {
+  foregroundDispatchTarget,
+  namesAnotherStation,
+  newSessionFacts,
+  refuseOutOfScopeDispatch,
+  refuseRemoteForStationControlCaller,
+  scopeDispatch,
+  withCanonicalCwd,
+} from './dispatch-scope.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -278,6 +292,18 @@ function errorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
   const code = (error as { code?: unknown }).code;
   return typeof code === 'string' ? code : undefined;
+}
+
+/** #2601: the typed refusals of `deps.resolveRequestDelegation`. */
+const DELEGATION_REFUSAL_CODES = new Set([
+  'delegation_depth_exceeded',
+  'delegation_lineage_unavailable',
+]);
+
+function delegationRefusal(c: Context, error: unknown): Response | undefined {
+  const code = errorCode(error);
+  if (!code || !DELEGATION_REFUSAL_CODES.has(code)) return undefined;
+  return c.json({ success: false, error: errorMessage(error), code }, 403);
 }
 
 function isForegroundIndeterminateShape(error: unknown): boolean {
@@ -467,10 +493,30 @@ function normalizeExecutionTarget(
 // the message-shaped fields) and the structural walker (every string field
 // of every exported schema here) in
 // __tests__/orchestration-chat-input-limits.test.ts.
+const agentDelegationContextSchema = z.object({
+  mode: z.literal('isolated-child'),
+  depth: z.number().int().min(1).max(64),
+  maxDepth: z.number().int().min(1).max(64),
+  parentAgentSlug: z.string().min(1).max(64),
+  parentConversationId: z.string().min(1).max(512).optional(),
+  rootAgentSlug: z.string().min(1).max(64),
+  rootConversationId: z.string().min(1).max(512).optional(),
+  allowedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
+  blockedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
+  denyApprovals: z.boolean().optional(),
+});
+
 export const delegateTaskSchema = z.object({
   prompt: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   target: executionTargetSchema,
   parentTaskId: z.string().min(1).max(512).optional(),
+  /**
+   * #2601: a CLAIM, like `/chat/delegated`'s. `deps.resolveRequestDelegation`
+   * derives the context from a verified caller, keeps it only when Station's
+   * own engine attested it, and passes a peer Station's forward through.
+   */
+  delegation: agentDelegationContextSchema.optional(),
+  delegationAttestation: z.string().min(1).max(128).optional(),
   /**
    * #485 receiver request-claim slice: CLOSED, OPT-IN correlation for
    * portable delegation creates. Opaque caller-minted token — never an
@@ -552,19 +598,6 @@ export const foregroundMessageObjectSchema = z.object({
   setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
 });
 
-const agentDelegationContextSchema = z.object({
-  mode: z.literal('isolated-child'),
-  depth: z.number().int().min(1).max(64),
-  maxDepth: z.number().int().min(1).max(64),
-  parentAgentSlug: z.string().min(1).max(64),
-  parentConversationId: z.string().min(1).max(512).optional(),
-  rootAgentSlug: z.string().min(1).max(64),
-  rootConversationId: z.string().min(1).max(512).optional(),
-  allowedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
-  blockedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
-  denyApprovals: z.boolean().optional(),
-});
-
 function requireMessageOrAttachment(
   value: {
     message: string;
@@ -631,7 +664,12 @@ const foregroundMessageSchema = foregroundMessageObjectSchema.superRefine(
   requireForegroundBody,
 );
 const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
-  .extend({ delegation: agentDelegationContextSchema })
+  .extend({
+    delegation: agentDelegationContextSchema,
+    // #2601: Station's own engine's attestation for `delegation`; verified,
+    // never trusted, by `deps.resolveRequestDelegation`.
+    delegationAttestation: z.string().min(1).max(128).optional(),
+  })
   .superRefine(requireForegroundBody);
 
 // Exported (archive#2831) for the structural derivation pin in
@@ -731,6 +769,8 @@ interface DelegateTaskRequest {
   prompt: string;
   target: ExecutionTarget;
   parentTaskId?: string;
+  /** #2601: `deps.resolveRequestDelegation`'s derivation, never body JSON. */
+  delegation?: AgentDelegationContext;
   userId: string;
   principal?: PrincipalRef;
   /**
@@ -930,10 +970,9 @@ type InterruptDelegatedTaskRequest = z.infer<
  * True when an ORCHESTRATION_EVENT payload should be forwarded to a `/events`
  * subscriber filtered by `threadId`. The eventBus emits `{ event }` where the
  * canonical runtime event carries `threadId`; an unset filter forwards all
- * sessions (the all-sessions stream the app already consumes). Exported for
- * unit coverage of the filter without standing up an SSE stream.
+ * sessions (the all-sessions stream the app already consumes).
  */
-export function orchestrationEventMatchesThread(
+function orchestrationEventMatchesThread(
   data: Record<string, unknown> | undefined,
   threadId: string | undefined,
 ): boolean {
@@ -947,9 +986,8 @@ export function orchestrationEventMatchesThread(
  * (archive#1092). Anything that isn't a plain non-negative integer —
  * missing, malformed, a foreign format from some other stream — is treated
  * as "no cursor" (fail-closed to the snapshot path) rather than thrown.
- * Exported for unit coverage without standing up an SSE stream.
  */
-export function parseResumeCursor(
+function parseResumeCursor(
   headerValue: string | null | undefined,
 ): number | undefined {
   if (!headerValue || !/^\d+$/.test(headerValue)) return undefined;
@@ -1253,6 +1291,13 @@ export function createOrchestrationRoutes(
     resolveAgentDispatchActor?: (
       request: Request,
     ) => AgentDispatchActor | undefined;
+    /**
+     * #2377 slice C2a: the server's records for what a station-control
+     * dispatch aims at, for the route-level scope rule
+     * (`refuseOutOfScopeDispatch`). Absent: every station-control caller's
+     * dispatch is refused.
+     */
+    stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     /**
      * #484 phase A: admits (or refuses) the explicit portable-execution
@@ -1302,6 +1347,12 @@ export function createOrchestrationRoutes(
     executeForegroundMessage?: (
       input: ForegroundMessageRequest,
     ) => Promise<unknown>;
+    /**
+     * #2601: the delegation context a dispatch stamps on the session it
+     * starts, derived from the verified caller (`request-delegation.ts`).
+     * Without it, no request's claimed context is stamped.
+     */
+    resolveRequestDelegation?: RequestDelegationResolver;
     /** Current-host only; resolves byte-free stage references immediately before dispatch. */
     hydrateStagedAttachments?: (
       owner: PrincipalRef,
@@ -1651,10 +1702,13 @@ export function createOrchestrationRoutes(
       );
     }
     try {
-      const body = getBody(c) as z.infer<
-        typeof foregroundMessageObjectSchema
-      > & {
+      const {
+        delegation: claimedDelegation,
+        delegationAttestation,
+        ...body
+      } = getBody(c) as z.infer<typeof foregroundMessageObjectSchema> & {
         delegation?: z.infer<typeof agentDelegationContextSchema>;
+        delegationAttestation?: string;
         automaticBackground?: true;
       };
       // #2436: full access needs the operator in person or a granted device,
@@ -1664,6 +1718,29 @@ export function createOrchestrationRoutes(
         requestedApprovalMode(body.target.model?.options),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const projectSlug =
+        body.target.workspace?.kind === 'project'
+          ? body.target.workspace.projectSlug
+          : undefined;
+      // #2377 slice C2a: a station-control caller stays in its scope. An
+      // input reply names its thread, a known conversation is a follow-up,
+      // anything else starts a session in the Project the body names.
+      const scoped = scopeDispatch(
+        c,
+        deps.stationControlDispatchScope,
+        (ownerId) =>
+          foregroundDispatchTarget(deps.stationControlDispatchScope, {
+            ownerId,
+            ...newSessionFacts(body.target, deps.projectDefaultEnvironment),
+            ...(body.conversationId
+              ? { conversationId: body.conversationId }
+              : {}),
+            ...(body.expectedInputRequest
+              ? { inputReplyThreadId: body.expectedInputRequest.threadId }
+              : {}),
+          }),
+      );
+      if ('refused' in scoped) return scoped.refused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
       if (body.expectedInputRequest) {
@@ -1710,13 +1787,19 @@ export function createOrchestrationRoutes(
       if (stagedAttachments?.length && !deps.hydrateStagedAttachments) {
         throw new Error('Attachment staging is unavailable for this Station.');
       }
-      const projectSlug =
-        body.target.workspace?.kind === 'project'
-          ? body.target.workspace.projectSlug
-          : undefined;
+      // #2601: the body's context is a claim; this is what gets stamped.
+      const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {
+        ...(claimedDelegation
+          ? { delegation: claimedDelegation as AgentDelegationContext }
+          : {}),
+        ...(delegationAttestation
+          ? { attestation: delegationAttestation }
+          : {}),
+      });
       let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
       const foregroundRequest = {
         ...body,
+        ...(delegation ? { delegation } : {}),
         ...(stagedAttachments?.length
           ? {
               resolveAttachments: (binding) =>
@@ -1733,7 +1816,7 @@ export function createOrchestrationRoutes(
             ? { attachments: body.attachments as ChatAttachmentInput[] }
             : {}),
         target: normalizeExecutionTarget(
-          body.target,
+          withCanonicalCwd(body.target, scoped.canonicalCwd),
           !body.target.environment && projectSlug
             ? deps.projectDefaultEnvironment?.(projectSlug)
             : undefined,
@@ -1790,6 +1873,9 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      const refused =
+        delegationRefusal(c, error) ?? fullAccessRefusalFor(c, error);
+      if (refused) return refused;
       if (error instanceof ForegroundMessageIndeterminateError) {
         return c.json(
           {
@@ -1916,6 +2002,8 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        const fullAccessRefused = fullAccessRefusalFor(c, error);
+        if (fullAccessRefused) return fullAccessRefused;
         if (error instanceof ForegroundMessageIndeterminateError) {
           return c.json(
             {
@@ -2070,6 +2158,17 @@ export function createOrchestrationRoutes(
           requestedApprovalMode(body.model?.options),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        // #2377 slice C2a: a follow-up stays in the caller's scope.
+        const scopeRefused = refuseOutOfScopeDispatch(
+          c,
+          deps.stationControlDispatchScope,
+          () => ({
+            kind: 'conversation',
+            conversationId: param(c, 'conversationId'),
+            remote: namesAnotherStation(body.environment),
+          }),
+        );
+        if (scopeRefused) return scopeRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
         const data = await deps.continueForegroundMessage({
@@ -2115,6 +2214,8 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        const fullAccessRefused = fullAccessRefusalFor(c, error);
+        if (fullAccessRefused) return fullAccessRefused;
         if (error instanceof ForegroundMessageIndeterminateError) {
           return c.json(
             {
@@ -2179,6 +2280,16 @@ export function createOrchestrationRoutes(
         ),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      // #2377 slice C2a: a new task starts in the Project the body names.
+      const scoped = scopeDispatch(
+        c,
+        deps.stationControlDispatchScope,
+        (ownerId) =>
+          ownerId
+            ? { kind: 'new', ownerId, ...newSessionFacts(body.target) }
+            : undefined,
+      );
+      if ('refused' in scoped) return scoped.refused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
       const clientOrigin = resolveClientOriginForRequest(c.req.raw);
@@ -2222,9 +2333,26 @@ export function createOrchestrationRoutes(
       const delegationAttemptCaller = body.attemptId
         ? deps.resolveInboundDelegationDevice?.(c)
         : undefined;
+      // #2601: the body's context is a claim; this is what gets stamped.
+      const {
+        delegation: claimedDelegation,
+        delegationAttestation,
+        ...request
+      } = body;
+      const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {
+        ...(claimedDelegation
+          ? { delegation: claimedDelegation as AgentDelegationContext }
+          : {}),
+        ...(delegationAttestation
+          ? { attestation: delegationAttestation }
+          : {}),
+      });
       const data = await deps.delegateTask({
-        ...body,
-        target: normalizeExecutionTarget(body.target),
+        ...request,
+        ...(delegation ? { delegation } : {}),
+        target: normalizeExecutionTarget(
+          withCanonicalCwd(body.target, scoped.canonicalCwd),
+        ),
         userId,
         principal,
         ownerAttribution,
@@ -2256,6 +2384,8 @@ export function createOrchestrationRoutes(
       });
       return c.json({ success: true, data });
     } catch (error) {
+      const refused = delegationRefusal(c, error);
+      if (refused) return refused;
       // #485: the receiver's typed duplicate outcomes — an explicit
       // pending/unknown or exists reference with the attempt id, NEVER a
       // manufactured completed handle and never a resend authorization.
@@ -2365,6 +2495,14 @@ export function createOrchestrationRoutes(
           503,
         );
       }
+      // #2377 slice C2b: a tool's discovery on a saved Environment arrives
+      // here; another Station needs a bound operator, decided before the
+      // route connects or forwards anything.
+      const remoteRefused = refuseRemoteForStationControlCaller(
+        c,
+        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
+      );
+      if (remoteRefused) return remoteRefused;
       try {
         const data = await deps.discoverDelegationOptions(getBody(c));
         return c.json({ success: true, data });
@@ -2391,6 +2529,12 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+    // #2377 slice C2b: as the single-task reads below.
+    const remoteRefused = refuseRemoteForStationControlCaller(
+      c,
+      parsed.data.environmentId !== undefined,
+    );
+    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.listDelegatedTasks({
         ...parsed.data,
@@ -2485,6 +2629,14 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+    // #2377 slice C2a (decision 3): another Station needs a bound
+    // operator; refused before the route resolves the Environment as
+    // Station's own server code.
+    const remoteRefused = refuseRemoteForStationControlCaller(
+      c,
+      parsed.data.environmentId !== undefined,
+    );
+    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.observeDelegatedTask({
         ...parsed.data,
@@ -2518,6 +2670,14 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+    // #2377 slice C2a (decision 3): another Station needs a bound
+    // operator; refused before the route resolves the Environment as
+    // Station's own server code.
+    const remoteRefused = refuseRemoteForStationControlCaller(
+      c,
+      parsed.data.environmentId !== undefined,
+    );
+    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.observeDelegatedTaskEvents({
         ...parsed.data,
@@ -2550,6 +2710,19 @@ export function createOrchestrationRoutes(
           ),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        // #2377 slice C2a: a follow-up to a task stays in the caller's scope.
+        const scopeRefused = refuseOutOfScopeDispatch(
+          c,
+          deps.stationControlDispatchScope,
+          () => ({
+            kind: 'task',
+            taskId: param(c, 'taskId'),
+            remote:
+              (getBody(c) as { environmentId?: unknown }).environmentId !==
+              undefined,
+          }),
+        );
+        if (scopeRefused) return scopeRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
         // #484 continuation: the trusted route-bound mint factory for a
@@ -2628,6 +2801,23 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        // #2377 slice C2a (decision 3): answering a worker's request needs a
+        // bound caller (the guard's table entry) whose owner holds the
+        // Project `approve` action (admin or owner) where the task runs; in
+        // the global space, the operator.
+        const scopeRefused = refuseOutOfScopeDispatch(
+          c,
+          deps.stationControlDispatchScope,
+          () => ({
+            kind: 'task',
+            taskId: param(c, 'taskId'),
+            remote:
+              (getBody(c) as { environmentId?: unknown }).environmentId !==
+              undefined,
+          }),
+          'approve',
+        );
+        if (scopeRefused) return scopeRefused;
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
           c,
@@ -2691,6 +2881,11 @@ export function createOrchestrationRoutes(
           503,
         );
       }
+      const remoteRefused = refuseRemoteForStationControlCaller(
+        c,
+        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
+      );
+      if (remoteRefused) return remoteRefused;
       try {
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
@@ -3854,8 +4049,15 @@ export function createOrchestrationRoutes(
     async (c) => {
       const command = getBody(c);
       // #2436: full access needs the operator in person or a granted device.
+      // #2377 slice C1: a Default that would run the engine at `never`
+      // unconfined needs the grant too.
       if (command.type === 'setApprovalMode') {
-        const refused = refuseUngrantedFullAccess(c, [command.approvalMode]);
+        const refused = await refuseUngrantedPick(c, command.approvalMode, () =>
+          orchestrationService.approvalPickReachesFullAccess({
+            threadId: command.threadId,
+            pick: command.approvalMode,
+          }),
+        );
         if (refused) return refused;
       }
       // Resolved once and reused for both the read authority below and the
@@ -4551,11 +4753,21 @@ export function createOrchestrationRoutes(
     if (deps.hostedTenantRegistry !== undefined) {
       return c.json({ error: 'unavailable' }, 404);
     }
-    const principals = presence.roster().map((entry) => ({
-      id: entry.principal.id,
-      kind: entry.principal.kind,
-      connections: entry.connections,
-    }));
+    // Only principals whose sessions this caller may read: a member of the
+    // personal conversation account sees the account's connections, and
+    // anyone else sees only their own. Connection presence is never
+    // disclosed beyond what the caller's session reads already reveal.
+    const readable = new Set(
+      orchestrationService.readableSessionOwnerIds(readAuthorityFor(c)),
+    );
+    const principals = presence
+      .roster()
+      .filter((entry) => readable.has(entry.principal.id))
+      .map((entry) => ({
+        id: entry.principal.id,
+        kind: entry.principal.kind,
+        connections: entry.connections,
+      }));
     return c.json({ principals, observedAt: Date.now() });
   });
 

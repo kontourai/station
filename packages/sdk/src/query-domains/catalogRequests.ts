@@ -104,15 +104,22 @@ export async function fetchKitLayout(
   );
 }
 
+/**
+ * The Integrations view's reads and writes. A refusal throws the SDK's
+ * `StationHttpError` (via `readEnvelopeOrThrow`, #2708) with the observed
+ * status, the envelope `code` and its validation `details`, so the view shows
+ * the server's reason instead of "Validation failed" or a schema key.
+ */
 export async function requestIntegration<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  return requestCatalog<T>(
-    `/integrations${path}`,
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/integrations${path}`,
     init,
-    'Integration request failed',
   );
+  return (await readEnvelopeOrThrow<T>(response)) as T;
 }
 
 export async function requestRegistryIntegrationAction({
@@ -209,4 +216,4 @@ export async function requestRegistryLayoutAction({
 }
 
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, readEnvelopeOrThrow } from '../client/http';

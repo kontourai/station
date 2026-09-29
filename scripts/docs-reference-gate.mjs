@@ -1,27 +1,16 @@
-/**
- * Docs reference gate — every repo path a live document names must exist.
- *
- * Docs drift silently: a file gets renamed and the guide that points at it
- * keeps looking authoritative. This pass found docs/guides/testing.md
- * documenting two test-utility modules that did not exist (with code samples
- * importing them), and docs/guides/agents.md prescribing a `scripts/test-layout.sh`
- * that had been deleted — while also contradicting the repo's own rule to drive
- * everything through `./station`.
- *
- * Scope is *live* documentation only. Dogfood reports, strategy records, plans
- * and delivery bundles describe the tree as it was at the time; they are
- * history, and rewriting them would be falsifying a record.
- */
+// Check source-path references in maintained guides and repository entry points.
+// Historical records keep their original evidence; presence never proves prose.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { posix } from 'node:path';
 import { TextDecoder } from 'node:util';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = process.cwd();
 
-/** Live docs. Everything else under docs/ is a historical record. */
 export const LIVE_DOC_DIRECTORIES = [
+  'docs/user',
   'docs/guides',
   'docs/reference',
   'docs/architecture',
@@ -29,6 +18,13 @@ export const LIVE_DOC_DIRECTORIES = [
   'docs/design',
   'docs/contexts',
   'docs/adr',
+];
+
+export const LIVE_DOC_PATTERNS = [
+  ':(glob)**/README.md',
+  ':(glob)**/AGENTS.md',
+  ':(glob)**/CLAUDE.md',
+  ':(glob).agents/skills/**/SKILL.md',
 ];
 
 export const LIVE_DOC_FILES = [
@@ -40,13 +36,14 @@ export const LIVE_DOC_FILES = [
   'CONTEXT.md',
   'CONTEXT-MAP.md',
   'SECURITY.md',
+  'CONTRIBUTING.md',
 ];
 
 export function describeLiveDocScope() {
   return (
     `${LIVE_DOC_DIRECTORIES.length} recursive tracked directory scope(s) ` +
     `(${LIVE_DOC_DIRECTORIES.join(', ')}); ${LIVE_DOC_FILES.length} named file scope(s) ` +
-    `(${LIVE_DOC_FILES.join(', ')})`
+    `(${LIVE_DOC_FILES.join(', ')}); all tracked READMEs, agent instructions, and repository skills`
   );
 }
 
@@ -232,6 +229,10 @@ export function findBrokenReferences(
 
 function scopeForLiveDoc(path) {
   if (LIVE_DOC_FILES.includes(path)) return 'named file';
+  if (['README.md', 'AGENTS.md', 'CLAUDE.md'].includes(posix.basename(path)))
+    return 'repository entry point';
+  if (path.startsWith('.agents/skills/') && path.endsWith('/SKILL.md'))
+    return 'repository skill';
   return LIVE_DOC_DIRECTORIES.find((directory) =>
     path.startsWith(`${directory}/`),
   );
@@ -331,8 +332,15 @@ export function liveDocs({
   try {
     output = runGit(
       'git',
-      ['ls-files', '-z', '--', ...LIVE_DOC_DIRECTORIES, ...LIVE_DOC_FILES],
-      { cwd: root, encoding: 'buffer' },
+      [
+        'ls-files',
+        '-z',
+        '--',
+        ...LIVE_DOC_DIRECTORIES,
+        ...LIVE_DOC_FILES,
+        ...LIVE_DOC_PATTERNS,
+      ],
+      { cwd: root, encoding: 'buffer', windowsHide: true },
     );
   } catch {
     throw new Error('Live-doc discovery could not enumerate tracked files.');
@@ -353,7 +361,7 @@ export function runDocsReferenceGate({
     return 1;
   }
   writeOutput(
-    `\nDocs reference gate (${files.length} live documents; scope: ${describeLiveDocScope()}; historical records are out of scope).`,
+    `\nDocs reference gate (${files.length} maintained documents and entry points; scope: ${describeLiveDocScope()}).`,
   );
 
   let broken;
@@ -393,6 +401,6 @@ export function runDocsReferenceGate({
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   process.exitCode = runDocsReferenceGate();
 }

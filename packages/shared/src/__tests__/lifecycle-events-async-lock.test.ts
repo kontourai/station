@@ -32,6 +32,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // An injected own-pid birth is memoized for the process; never leak it.
+  clearProcessBirthFingerprintCache();
+});
+
+afterEach(() => {
   while (roots.length > 0) {
     const root = roots.pop();
     if (root) rmSync(root, { force: true, recursive: true });
@@ -204,5 +209,98 @@ describe('process birth-fingerprint cache (#2646 probe cost)', () => {
       }),
     ).resolves.toBe('shared-birth');
     expect(execAsync).not.toHaveBeenCalled();
+  });
+
+  it('stamps a probe slower than the TTL with its finish time, not its start (#2675)', () => {
+    let now = 0;
+    // A cold Windows PowerShell start: the probe itself outlasts the TTL.
+    const exec = vi.fn(() => {
+      now += PROCESS_BIRTH_FINGERPRINT_CACHE_TTL_MS + 3_000;
+      return 'slow-birth\n';
+    });
+    const dependencies = { platform: 'darwin' as const, exec, now: () => now };
+    expect(lookupProcessBirthFingerprintCached(4247, dependencies)).toBe(
+      'slow-birth',
+    );
+    now += PROCESS_BIRTH_FINGERPRINT_CACHE_TTL_MS - 1;
+    expect(lookupProcessBirthFingerprintCached(4247, dependencies)).toBe(
+      'slow-birth',
+    );
+    expect(exec).toHaveBeenCalledTimes(1);
+  });
+
+  it("memoizes this process's own birth for its lifetime, past the TTL and through fresh (#2675)", async () => {
+    let now = 0;
+    const exec = vi.fn(() => 'own-birth\n');
+    const dependencies = { platform: 'darwin' as const, exec, now: () => now };
+    expect(lookupProcessBirthFingerprintCached(process.pid, dependencies)).toBe(
+      'own-birth',
+    );
+    now += PROCESS_BIRTH_FINGERPRINT_CACHE_TTL_MS * 100;
+    expect(
+      lookupProcessBirthFingerprintCached(process.pid, {
+        ...dependencies,
+        fresh: true,
+      }),
+    ).toBe('own-birth');
+    const execAsync = vi.fn(async () => 'never-used\n');
+    await expect(
+      lookupProcessBirthFingerprintCachedAsync(process.pid, {
+        platform: 'darwin',
+        exec: execAsync,
+        fresh: true,
+      }),
+    ).resolves.toBe('own-birth');
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(execAsync).not.toHaveBeenCalled();
+    // Other pids keep the TTL: memoization is for the immutable own birth only.
+    lookupProcessBirthFingerprintCached(4248, dependencies);
+    now += PROCESS_BIRTH_FINGERPRINT_CACHE_TTL_MS + 1;
+    lookupProcessBirthFingerprintCached(4248, dependencies);
+    expect(exec).toHaveBeenCalledTimes(3);
+    clearProcessBirthFingerprintCache();
+  });
+
+  it('never joins an in-flight async probe that has a different budget or shell (#2675)', async () => {
+    const calls: Array<{ file: string; timeout: unknown }> = [];
+    const exec = vi.fn(
+      async (
+        file: string,
+        _args: readonly string[],
+        options?: Record<string, unknown>,
+      ) => {
+        calls.push({ file, timeout: options?.timeout });
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+        return '2026-08-29T16:16:27.1234567Z\n';
+      },
+    );
+    const windows = {
+      platform: 'win32' as const,
+      env: { SystemRoot: 'C:\\Windows' },
+      // PowerShell 7 absent from its install path: the bare name below.
+      fileExists: () => false,
+      exec,
+    };
+    await Promise.all([
+      // A short arbitrary-pid probe is in flight...
+      lookupProcessBirthFingerprintCachedAsync(4249, windows),
+      // ...when a long-budget own-process-style lookup asks for the same pid.
+      lookupProcessBirthFingerprintCachedAsync(4249, {
+        ...windows,
+        timeoutMs: 10_000,
+      }),
+      lookupProcessBirthFingerprintCachedAsync(4249, {
+        ...windows,
+        timeoutMs: 20_000,
+        windowsShell: 'pwsh.exe',
+      }),
+      // Same budget and shell still coalesce.
+      lookupProcessBirthFingerprintCachedAsync(4249, {
+        ...windows,
+        timeoutMs: 10_000,
+      }),
+    ]);
+    expect(calls.map((call) => call.timeout)).toEqual([1_500, 10_000, 20_000]);
+    expect(calls[2]?.file).toBe('pwsh.exe');
   });
 });

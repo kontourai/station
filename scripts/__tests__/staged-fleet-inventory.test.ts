@@ -25,10 +25,11 @@ afterEach(() =>
     .forEach((root) => rmSync(root, { recursive: true, force: true })),
 );
 
-function fixture() {
+function fixture(extraArtifacts: string[] = []) {
   const assetsDir = mkdtempSync(join(tmpdir(), 'station-portable-stage-'));
   roots.push(assetsDir);
-  for (const name of plan.requiredArtifacts)
+  const artifacts = [...plan.requiredArtifacts, ...extraArtifacts];
+  for (const name of artifacts)
     writeFileSync(join(assetsDir, name), `${name}\n`);
   const input = {
     id: 'portable-server',
@@ -44,7 +45,7 @@ function fixture() {
     updateState: 'NOT_UPDATED',
     platformSigningState: 'UNSUPPORTED',
     updaterSigningState: 'UNSUPPORTED',
-    artifacts: plan.requiredArtifacts,
+    artifacts,
     checks: [
       {
         id: 'portable-manifest-and-checksum',
@@ -53,7 +54,7 @@ function fixture() {
       },
     ],
     sbom: { state: 'GENERATED', artifact: 'portable-sbom.cdx.json' },
-    attestation: { subjects: plan.requiredArtifacts },
+    attestation: { subjects: artifacts },
   };
   const receipt = createStageReceipt(input, { assetsDir });
   const verification = receipt.attestation.subjects.map(
@@ -146,15 +147,12 @@ describe('portable fixed staging inventory', () => {
   });
 
   test('rejects an extra receipt artifact and an unsafe symlink before admission', () => {
-    const { assetsDir, receipt } = fixture();
-    receipt.artifacts.push({
-      name: 'extra.bin',
-      sha256: 'b'.repeat(64),
-      size: 1,
-    });
+    // A self-consistent receipt (staged bytes, attested subjects, digest) whose
+    // only defect is an artifact the fixed plan does not name.
+    const { assetsDir, receipt } = fixture(['extra.bin']);
     expect(() =>
       admitFixedInventory(plan, receipt, { assetsDir, planDigest }),
-    ).toThrow(/artifact path|content digest|subjects|fixed plan/);
+    ).toThrow('receipt does not cover the fixed plan exactly');
     const second = fixture();
     rmSync(join(second.assetsDir, 'attestation-verify-0.json'));
     symlinkSync(

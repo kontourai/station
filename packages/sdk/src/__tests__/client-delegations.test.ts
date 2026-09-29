@@ -21,40 +21,6 @@ function jsonResponse(status: number, body: unknown): Response {
 describe('client/delegations fetchers (#977 Wave 2)', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  test('delegateTask posts to /delegations and unwraps the handle', async () => {
-    const handle = {
-      taskId: 'task:1',
-      sessionId: 'task:1',
-      status: 'dispatched',
-      environment: { id: 'current', name: 'This Station', kind: 'current' },
-      target: { kind: 'agent', id: 'station' },
-    };
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(jsonResponse(200, { success: true, data: handle }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    await expect(
-      delegateTask('http://station.test', {
-        prompt: 'Ship it',
-        target: {
-          environment: { kind: 'current' },
-          agent: agentId('station'),
-        },
-      }),
-    ).resolves.toMatchObject(handle);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'http://station.test/api/orchestration/delegations',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          prompt: 'Ship it',
-          target: { environment: { kind: 'current' }, agent: 'station' },
-        }),
-      }),
-    );
-  });
-
   test('projects poisoned caller handle identities out of the exact create body and preserves distinct server identities', async () => {
     const handle = {
       taskId: 'task:server',

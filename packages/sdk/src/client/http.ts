@@ -24,23 +24,25 @@ import {
   type ConnectionRetryClassification,
   isTerminalConnectionStatus,
 } from '@kontourai/station-contracts/http';
+import {
+  envelopeCode,
+  envelopeError,
+  envelopeSentence,
+  parseRetryAfterMs,
+  StationHttpError,
+} from './api-error-message';
 import { boundResponse } from './bounded-response.js';
 import { withClientOriginHeaders } from './client-origin.js';
+import {
+  rethrowDeadline,
+  SAFE_HTTP_METHODS,
+  StationRequestTimeoutError,
+  unlessDeadline,
+} from './request-deadline';
 
-/**
- * The HTTP methods that cannot change server state. Mirrors the runtime's own
- * `SAFE_HTTP_METHODS` (`src-server/runtime/bootstrap/runtime-http.ts`) — the
- * two are the same concept read from opposite ends of the same request, and
- * both mean "this method is not, by itself, a mutation".
- *
- * What it deliberately does NOT mean is "every other method IS a mutation".
- * Station uses POST for several genuine reads that need a request body
- * (`POST /api/knowledge/index/search`, `POST /api/connections/:id/test`,
- * `POST /api/runs/output`), and no property of the request distinguishes
- * those from a write. That distinction belongs to the operation, which
- * declares it with `ClientRequestOptions['readOnly']`.
- */
-const SAFE_HTTP_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+// Defined beside the envelope rule that builds it (#2708), so the rule and
+// the error need no import cycle; every existing `./http` import still works.
+export { StationHttpError };
 
 export interface ClientRequestOptions {
   headers?: Record<string, string>;
@@ -199,49 +201,6 @@ export function getClientRequestTimeout(): number | undefined {
   return clientRequestTimeoutMs;
 }
 
-/** A Station request that exceeded its deadline rather than failing outright. */
-export class StationRequestTimeoutError extends Error {
-  readonly url: string;
-  readonly timeoutMs: number;
-  /**
-   * The HTTP method the aborted request used, uppercased — an observed fact,
-   * `undefined` when the constructing call site did not supply one. It is
-   * deliberately not defaulted: this class is exported from the published SDK,
-   * so a default would stamp an external two-argument construction with a
-   * method nobody observed.
-   */
-  readonly method?: string;
-  /**
-   * Whether the aborted request could have changed server state. `true` makes
-   * the deadline miss *indeterminate* — the server may have applied the write
-   * after the client stopped waiting, so the outcome is unknown rather than
-   * failed. `false` means it genuinely failed and may be retried freely.
-   * `undefined` means nothing derived it (no method was supplied) and no
-   * caller may claim either.
-   *
-   * Derived here rather than by each reporter, from the two things that can
-   * answer the question: the method, and the operation's own `readOnly`
-   * declaration for the write-shaped methods Station uses for reads.
-   */
-  readonly mutation?: boolean;
-
-  constructor(
-    url: string,
-    timeoutMs: number,
-    request?: { method?: string; readOnly?: boolean },
-  ) {
-    super(`Request to ${url} timed out after ${timeoutMs}ms`);
-    this.name = 'StationRequestTimeoutError';
-    this.url = url;
-    this.timeoutMs = timeoutMs;
-    const method = request?.method?.toUpperCase();
-    if (method !== undefined) this.method = method;
-    if (request?.readOnly === true) this.mutation = false;
-    else if (method !== undefined)
-      this.mutation = !SAFE_HTTP_METHODS.has(method);
-  }
-}
-
 /**
  * Resolves the deadline for one call. Precedence: an explicit `timeoutMs`
  * wins; otherwise a caller-supplied `signal` means the caller owns cancellation
@@ -278,17 +237,71 @@ async function fetchWithDeadline(
   // derivation of what was actually sent, not a stand-in for an unknown.
   const method =
     init?.method ?? (input instanceof Request ? input.method : 'GET');
+  const timedOut = () =>
+    new StationRequestTimeoutError(url, timeoutMs, {
+      method,
+      ...(opts?.readOnly !== undefined ? { readOnly: opts.readOnly } : {}),
+    });
+  let response: Response;
   try {
-    return await request(input, { ...(init ?? {}), signal });
+    response = await request(input, { ...(init ?? {}), signal });
   } catch (error) {
-    if (deadline.aborted) {
-      throw new StationRequestTimeoutError(url, timeoutMs, {
-        method,
-        ...(opts?.readOnly !== undefined ? { readOnly: opts.readOnly } : {}),
-      });
-    }
+    if (deadline.aborted) throw timedOut();
     throw error;
   }
+  return deadlineBoundBody(response, deadline, timedOut);
+}
+
+const BODY_READERS = new Set<PropertyKey>([
+  'json',
+  'text',
+  'arrayBuffer',
+  'blob',
+  'formData',
+  'bytes',
+]);
+
+/**
+ * The deadline also governs the body readers (`json`, `text`, `arrayBuffer`,
+ * `blob`, `formData`, `bytes`; not `response.body` streams, which a caller
+ * reads itself): `fetch`'s signal aborts a body read still in progress when
+ * it fires. A body reader that fails that way raises the same
+ * `StationRequestTimeoutError` (with the same `mutation` fact) as a deadline
+ * missed before the headers, so a caller can tell "the server answered 200
+ * and then stalled" (a write may have been applied) from a malformed body.
+ * Any other body failure is rethrown unchanged.
+ *
+ * Only readers the runtime's `Response` actually has are wrapped (a runtime
+ * without `bytes` still reports it absent), and non-reader members are
+ * passed through as they are: methods are bound to the real response so its
+ * internal slots resolve, but `constructor` is not, so
+ * `response.constructor === Response` still holds.
+ */
+function deadlineBoundBody(
+  response: Response,
+  deadline: AbortSignal,
+  timedOut: () => StationRequestTimeoutError,
+): Response {
+  return new Proxy(response, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      if (BODY_READERS.has(property) && typeof value === 'function') {
+        const read = value as () => Promise<unknown>;
+        return async () => {
+          try {
+            return await read.call(target);
+          } catch (error) {
+            if (deadline.aborted) throw timedOut();
+            throw error;
+          }
+        };
+      }
+      if (property === 'clone' && typeof value === 'function')
+        return () => deadlineBoundBody(target.clone(), deadline, timedOut);
+      if (property === 'constructor') return value;
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  }) as Response;
 }
 
 export type ClientAuthenticatedRequestInit = RequestInit & {
@@ -394,44 +407,6 @@ export class StationReadOnlyError extends Error {
   }
 }
 
-/** A Station HTTP response failure whose status is safe for callers to branch on. */
-export class StationHttpError extends Error {
-  readonly status: number;
-
-  /**
-   * The response's `Retry-After` in milliseconds, when it sent one. Station's
-   * runtime sends it with every 429 (`runtime-http.ts`'s auth-failure
-   * limiter), which is the server stating exactly when a client may return —
-   * an instruction a reconnecting stream should follow rather than guess past.
-   */
-  readonly retryAfterMs?: number;
-
-  /**
-   * The envelope's machine `code`, when it sent one (`{success:false,
-   * error, code}`). Status says WHAT happened (404); the code says WHICH
-   * one (a verified not-prepared Project vs. a removed one) — branch on
-   * this, never on the message text. Absent on old servers, proxies and
-   * non-JSON bodies, which is itself the signal that nothing is verified.
-   */
-  readonly code?: string;
-
-  constructor(
-    status: number,
-    message?: string,
-    options?: { retryAfterMs?: number; code?: string },
-  ) {
-    super(message ?? `HTTP ${status}`);
-    this.name = 'StationHttpError';
-    this.status = status;
-    if (options?.retryAfterMs !== undefined) {
-      this.retryAfterMs = options.retryAfterMs;
-    }
-    if (options?.code !== undefined) {
-      this.code = options.code;
-    }
-  }
-}
-
 /**
  * An SSE attempt abandoned because its body delivered nothing for
  * `stallTimeoutMs` (station#2301). Classified transient: the stream reconnects
@@ -448,47 +423,26 @@ export class StationSseStallError extends Error {
 }
 
 /**
- * The one place that turns a Station response envelope into the sentence a
- * user reads (station#4-HOME-006).
- *
- * Station answers a failure in two shapes, and both are load-bearing: the
- * ordinary route envelope `{success:false, error:"…"}` (a string) and the
- * runtime's own auth refusal `{"error":{"code":"authentication_required"}}`
- * (an OBJECT, with no `success` key at all). A fetcher that assumes the
- * string shape renders `new Error(json.error).message` — literally
- * `[object Object]` — for the second, which is exactly what a user saw on
- * project create when a 401 was in flight.
- *
- * The precedence below is the audit's: an explicit string wins, then the
- * object's own `message`, then its `code`. `code` is a machine token
- * (`authentication_required`) rather than prose, and it is still shown rather
- * than swapped for a friendlier invention — it is what the server actually
- * computed. `fallback` is reached only when the body carried no reason at all.
+ * The sentence a user reads for a Station response envelope. A thin wrapper
+ * over `envelopeSentence` (`api-error-message.ts`), the shown form of the one
+ * rule every client shares (#2708): the server's validation reasons when
+ * there are any, else a string `error`, an object `error`'s `message` then
+ * `code`, the top-level `message`, and only then `fallback`. The object shape is the runtime's own auth refusal
+ * (`{"error":{"code":"authentication_required"}}`), which would otherwise
+ * render as `[object Object]` (station#4-HOME-006).
  */
 export function envelopeErrorMessage(body: unknown, fallback: string): string {
-  const error = (body as { error?: unknown } | null | undefined)?.error;
-  if (typeof error === 'string' && error.trim()) return error;
-  if (error && typeof error === 'object') {
-    const detail = error as { message?: unknown; code?: unknown };
-    if (typeof detail.message === 'string' && detail.message.trim()) {
-      return detail.message;
-    }
-    if (typeof detail.code === 'string' && detail.code.trim()) {
-      return detail.code;
-    }
-  }
-  return fallback;
+  return envelopeSentence(body, fallback);
 }
 
 /**
- * The envelope's machine `code` (`{success:false, error, code}`), or
- * `undefined` when the body carried none — an old server, a proxy HTML page,
- * or a non-JSON body. Only an explicit non-empty string counts: absence is
- * the unverified signal, never a default.
+ * The envelope's machine `code` — top-level, else the object `error`'s own —
+ * or `undefined` when the body carried none: an old server, a proxy HTML
+ * page, or a non-JSON body. Only an explicit non-empty string counts: absence
+ * is the unverified signal, never a default. Wraps `envelopeCode`.
  */
 export function envelopeErrorCode(body: unknown): string | undefined {
-  const code = (body as { code?: unknown } | null | undefined)?.code;
-  return typeof code === 'string' && code.trim() ? code : undefined;
+  return envelopeCode(body);
 }
 
 /**
@@ -499,29 +453,10 @@ export function envelopeErrorCode(body: unknown): string | undefined {
 export async function readJsonBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     return undefined;
   }
-}
-
-/**
- * Parses an HTTP `Retry-After` header. Only the delta-seconds form is honored:
- * the HTTP-date form depends on the client's clock agreeing with the server's,
- * and a skewed clock would produce a wait this code cannot bound. An
- * unparseable or negative value yields `undefined`, which leaves the caller on
- * its ordinary backoff.
- */
-function parseRetryAfterMs(header: string | null): number | undefined {
-  if (header === null) return undefined;
-  // Digits only, deliberately. `Number()` would accept far more than the
-  // delta-seconds grammar this claims to parse — `'0x10'` as 16 seconds,
-  // `'1e3'` as 1000, `' '` and `''` as 0 — turning a malformed header into a
-  // confident, wrong wait instead of falling through to the ordinary ladder.
-  const trimmed = header.trim();
-  if (!/^\d+$/.test(trimmed)) return undefined;
-  const seconds = Number(trimmed);
-  if (!Number.isFinite(seconds)) return undefined;
-  return seconds * 1000;
 }
 
 export type ClientCredentialResolver = () =>
@@ -1036,6 +971,17 @@ export interface JsonEnvelope<T> {
   message?: unknown;
 }
 
+/**
+ * One envelope VALUE as text: a string as-is, anything else serialized.
+ *
+ * @deprecated A third message rule, kept for its public signature (#2708). It
+ * reads one field and serializes an object (`{"code":"missing_server"}`),
+ * where the shared rule reads the whole body and names the object's
+ * `message` or `code`. For a failure envelope use `envelopeError` (the
+ * thrown `StationHttpError`) or `apiErrorMessage(body, fallback)`. Not
+ * rerouted in place: its one caller (`MCPToolUIFrame`) pins the serialized
+ * shape.
+ */
 export function envelopeFailureMessage(value: unknown): string | undefined {
   if (typeof value === 'string') return value || undefined;
   if (value === undefined || value === null) return undefined;
@@ -1889,34 +1835,36 @@ export function fetchSSE(
 
 /**
  * Parses a `{ success, data?, error?, message? }` envelope response and
- * either returns `data` or throws, mirroring the CLI's `requestJson`
- * error precedence (`error || message || 'Request failed with HTTP <status>'`)
- * — used by canonical fetchers whose only pre-#167 consumer already applied
- * this exact contract (e.g. via `packages/cli/src/commands/core-api.ts`'s
- * `requestJson`). Fetchers whose only pre-#167 consumer forwards the raw
- * envelope untouched (station-control's `api()` helper) do their own
- * lighter-weight parsing instead — see the docblock on each such fetcher.
+ * either returns `data` or throws. A non-2xx, or a 2xx whose body is not
+ * `success:true`, throws the `StationHttpError` from `envelopeError`
+ * (#2708): the observed status (a 2xx too), the shared message rule, the
+ * envelope's `code` and `details`, and `Retry-After`. A body that is not JSON
+ * keeps the status for a non-2xx; for a 2xx it is a protocol failure, not an
+ * envelope, and throws a plain `Error`.
+ *
+ * Fetchers whose only pre-#167 consumer forwards the raw envelope untouched
+ * (station-control's `api()` helper) do their own lighter-weight parsing
+ * instead — see the docblock on each such fetcher.
  */
 export async function readEnvelopeOrThrow<T>(
   response: Response,
 ): Promise<T | undefined> {
-  let payload: JsonEnvelope<T> | null = null;
+  const fallback = `Request failed with HTTP ${response.status}`;
+  let payload: unknown;
   try {
-    payload = (await response.json()) as JsonEnvelope<T>;
-  } catch {
-    if (!response.ok) {
-      throw new Error(`Request failed with HTTP ${response.status}`);
-    }
+    payload = await response.json();
+  } catch (error) {
+    rethrowDeadline(error);
+    if (!response.ok) throw envelopeError(response, undefined, fallback);
     throw new Error('Expected JSON response');
   }
 
-  if (!response.ok || !payload.success) {
-    throw new Error(
-      envelopeFailureMessage(payload.error) ??
-        envelopeFailureMessage(payload.message) ??
-        `Request failed with HTTP ${response.status}`,
-    );
+  const envelope = payload as JsonEnvelope<T> | null;
+  if (!response.ok || !envelope?.success) {
+    throw envelopeError(response, payload, fallback);
   }
 
-  return payload.data;
+  return envelope.data;
 }
+
+export { rethrowDeadline, StationRequestTimeoutError, unlessDeadline };

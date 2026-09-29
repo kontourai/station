@@ -3,21 +3,20 @@ import { useCallback, useState, useSyncExternalStore } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageRow } from '../../components/PageRow';
+import { MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE } from '../../platform/native/nativeRelayGrantRenewalSupervisor';
 import {
   nativeProfileRepository,
   usePlatformProfile,
 } from '../../platform/PlatformProfileContext';
-import {
-  RelayRouteProfileDialog,
-  RelayRouteTrustReadout,
-} from './RelayRouteProfileDialog';
+import { RelayRouteKeyApproval } from './RelayRouteKeyApproval';
+import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
 import './ComputersSection.css';
 
 const NO_RELAY_PROFILES: readonly StationProfile[] = [];
 const NO_SUBSCRIBE = () => () => {};
 
 export function RelayRouteProfiles() {
-  const { isTauri } = usePlatformProfile();
+  const { isTauri, isDesktop } = usePlatformProfile();
   const repository = isTauri ? nativeProfileRepository() : null;
   const subscribe = useCallback(
     (listener: () => void) =>
@@ -57,7 +56,21 @@ export function RelayRouteProfiles() {
       <p className="connections-computers__note">
         These routes are saved locally. They are not connected, signed in, or
         available for work until the broker transport is enabled.
+        {isDesktop && (
+          <>
+            {' '}
+            Existing approved routing grants renew while this desktop app is
+            awake; remove a saved route to stop maintaining it.
+          </>
+        )}
       </p>
+      {isDesktop && profiles.length > MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE && (
+        <p className="connections-computers__alert" role="alert">
+          Automatic grant renewal is paused for all saved routes because there
+          are more than {MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE}. Remove routes to
+          resume renewal.
+        </p>
+      )}
       {profiles.map((profile) => (
         <PageRow
           key={profile.name.toLowerCase()}
@@ -78,16 +91,13 @@ export function RelayRouteProfiles() {
             </Button>
           }
         >
-          <RelayRouteTrustReadout
+          <RelayRouteKeyApproval
+            key={`${profile.name}:${profile.updatedAt}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}
+            profileName={profile.name}
+            brokerOrigin={profile.relayRoute!.brokerOrigin}
             stationId={profile.relayRoute!.stationId}
             enrollmentId={profile.relayRoute!.enrollmentId}
           />
-          <span className="connections-computers__note">
-            Station identity and enrollment must match the independently
-            approved key stored on this device. Broker messages cannot replace
-            that key. This readout is advisory; a future connection attempt must
-            check the current trust record again.
-          </span>
           <button
             type="button"
             className="connections-computers__remove tap-target"

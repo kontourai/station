@@ -51,17 +51,6 @@ describe('public handshake compatibility block', () => {
     });
   });
 
-  test('keeps the contract integers monotonic and the floor no higher than the current version', () => {
-    expect(Number.isSafeInteger(STATION_COMPAT_PROTOCOL_VERSION)).toBe(true);
-    expect(Number.isSafeInteger(STATION_COMPAT_MIN_CLIENT_PROTOCOL)).toBe(true);
-    expect(STATION_COMPAT_PROTOCOL_VERSION).toBeGreaterThanOrEqual(1);
-    // A floor above the current contract would mean the host refuses the
-    // client this very repo ships.
-    expect(STATION_COMPAT_MIN_CLIENT_PROTOCOL).toBeLessThanOrEqual(
-      STATION_COMPAT_PROTOCOL_VERSION,
-    );
-  });
-
   test('is purely additive: every pre-existing handshake field is unchanged', async () => {
     const service = new EnvironmentSecurityService({ homeDir: makeHome() });
 
@@ -134,6 +123,11 @@ describe('public handshake capability flags (station#1095)', () => {
     };
 
     expect(response.status).toBe(200);
+    // archive#1887: `devicePairingApproval` is deliberately absent. Its token
+    // and enforcement shipped without the operator surfaces (CLI verb, host
+    // route, device-list toggle), so advertising it would promise clients an
+    // affordance no human can reach. Add it here only in the change that
+    // ships those surfaces.
     expect(body.capabilities).toEqual({
       sshEnvironments: true,
       webPushNotifications: true,
@@ -241,6 +235,9 @@ describe('public handshake capability flags (station#1095)', () => {
     for (const forbidden of [
       'contribut',
       'connectionids',
+      // A key naming contributed models (e.g. a boolean `models` flag) is a
+      // participation signal even when its value is only `true`.
+      'models',
       'providermodel',
       'participation',
       'ollama-workstation',

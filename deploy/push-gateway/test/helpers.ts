@@ -212,3 +212,22 @@ export function fakeLedger() {
         .all(environment, bundleId, channelId).length > 0,
   });
 }
+
+/** A regular APNs device token (not a Live Activity one): 32 bytes. */
+export const DEVICE_TOKEN = 'cd'.repeat(32);
+export const COLLAPSE_ID = 'c'.repeat(43);
+
+export function alertBody(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    bundleId: IOS_BUNDLE,
+    environment: 'sandbox',
+    deviceToken: DEVICE_TOKEN,
+    registrationId: REGISTRATION_ID,
+    kind: 'attention',
+    collapseId: COLLAPSE_ID,
+    sealed: SEALED,
+    ...overrides,
+  };
+}

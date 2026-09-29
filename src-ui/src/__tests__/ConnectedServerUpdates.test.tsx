@@ -194,6 +194,7 @@ function sidecarStatus(
 let identityBody: () => unknown;
 let identityMode: 'auto' | 'queue';
 let identityFailure: number | undefined;
+let probeIdentityBody: (() => unknown) | undefined;
 let identityCalls: Array<{ url: string; signal: AbortSignal | null }>;
 let transportCalls: string[];
 let identityQueue: Array<{
@@ -202,6 +203,14 @@ let identityQueue: Array<{
 }>;
 let rendererCalls: string[];
 let coreUpdateBody: () => unknown = () => ({ updateAvailable: false });
+/** A launcher-run archive's apply and progress routes (#2675 D3). */
+let applyBody: () => unknown = () => {
+  throw new Error('unexpected core-update POST');
+};
+let serviceProgressBody: () => unknown = () => {
+  throw new Error('unexpected service-update progress read');
+};
+let transportMethods: string[] = [];
 
 function identityResponseFor(over: Record<string, unknown> = {}) {
   return {
@@ -227,6 +236,7 @@ async function renderHarness({
   authorize = true,
   identity = DEFAULT_IDENTITY,
   identityFailure: failureStatus = undefined,
+  probeIdentity = undefined,
   queueIdentity = false,
   profileOverrides = {},
   coreUpdate = () => ({ updateAvailable: false }),
@@ -236,6 +246,12 @@ async function renderHarness({
   authorize?: boolean;
   identity?: () => unknown;
   identityFailure?: number;
+  /**
+   * Answers the health probe's liveness identity read separately, so a
+   * connection can reach `connected` while the correlation's own identity
+   * read fails or is incomplete.
+   */
+  probeIdentity?: () => unknown;
   queueIdentity?: boolean;
   profileOverrides?: Partial<typeof DESKTOP_PROFILE>;
   coreUpdate?: () => unknown;
@@ -243,6 +259,7 @@ async function renderHarness({
   identityBody = identity;
   identityMode = queueIdentity ? 'queue' : 'auto';
   identityFailure = failureStatus;
+  probeIdentityBody = probeIdentity;
   identityCalls = [];
   transportCalls = [];
   identityQueue = [];
@@ -324,6 +341,26 @@ async function waitIdentitySettled() {
   await waitFor(() => expect(context?.identitySettled).toBe(true));
 }
 
+/**
+ * Automatic source-check attempts, counted at the query rather than the
+ * transport: on a managed-loopback sidecar with no saved profile the request
+ * leaves through a native path this harness does not record, so an empty
+ * `transportCalls` there cannot tell a held check from a fired one.
+ */
+function coreUpdateAttempts(queryClient: QueryClient): number {
+  return queryClient
+    .getQueryCache()
+    .findAll({ queryKey: ['core-update-check'] })
+    .reduce(
+      (attempts, query) =>
+        attempts +
+        query.state.dataUpdateCount +
+        query.state.errorUpdateCount +
+        (query.state.fetchStatus === 'fetching' ? 1 : 0),
+      0,
+    );
+}
+
 /** Release queued identity responses one at a time until health connects. */
 async function drainProbeUntilConnected(body: () => unknown) {
   identityBody = body;
@@ -361,6 +398,16 @@ describe('ConnectedServerUpdates', () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         transportCalls.push(url);
+        transportMethods.push(`${init?.method ?? 'GET'} ${url}`);
+        if (url.includes('/api/system/core-update/service-update')) {
+          return Response.json(serviceProgressBody());
+        }
+        if (
+          url.includes('/api/system/core-update') &&
+          init?.method === 'POST'
+        ) {
+          return Response.json(applyBody(), { status: 202 });
+        }
         if (url.includes('/api/system/core-update')) {
           // The mounted CoreUpdateCheck's own source query; the fixture body
           // is writer-shaped per test.
@@ -375,6 +422,11 @@ describe('ConnectedServerUpdates', () => {
           init as { authorityGuard?: () => void } | undefined
         )?.authorityGuard;
         authorityGuard?.();
+        const livenessProbe = (init as { livenessProbe?: boolean } | undefined)
+          ?.livenessProbe;
+        if (livenessProbe && probeIdentityBody) {
+          return Response.json(probeIdentityBody());
+        }
         if (identityFailure !== undefined) {
           return new Response('identity unavailable', {
             status: identityFailure,
@@ -394,6 +446,146 @@ describe('ConnectedServerUpdates', () => {
     native.repository = null;
     native.bundledStatus = null;
     vi.unstubAllGlobals();
+    transportMethods = [];
+    applyBody = () => {
+      throw new Error('unexpected core-update POST');
+    };
+    serviceProgressBody = () => {
+      throw new Error('unexpected service-update progress read');
+    };
+  });
+
+  describe('a launcher-run release archive on a paired server (#2675 D3)', () => {
+    const REQUEST_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+    const REMOTE_IDENTITY = () =>
+      identityResponseFor({
+        instanceId: 'remote-instance',
+        bootId: 'remote-boot',
+        devicePresentation: { deviceClass: 'paired', hostName: 'Office host' },
+      });
+    /** The shape the server's archive route writes. */
+    const archiveServiceBody =
+      (over: Record<string, unknown> = {}) =>
+      () => ({
+        installKind: 'archive-service',
+        applyMethod: 'service-update',
+        channel: 'preview',
+        currentVersion: '0.8.0-preview.1',
+        latestVersion: '0.8.0-preview.2',
+        releaseCheck: 'verified',
+        updateAvailable: true,
+        serverIdentity: {
+          instanceId: 'remote-instance',
+          bootId: 'remote-boot',
+          sha: SHA,
+        },
+        provenanceIssue: null,
+        technicalDetail: null,
+        selfUpdateUnavailableReason: null,
+        selfUpdateUnavailableCode: null,
+        serviceUpdate: { state: 'idle' },
+        ...over,
+      });
+
+    async function renderArchive(coreUpdate: () => unknown) {
+      await renderHarness({
+        store: PAIRED_STORE,
+        profileOverrides: { supervisesBundledServer: false },
+        identity: REMOTE_IDENTITY,
+        coreUpdate,
+      });
+      await waitConnected();
+      await waitIdentitySettled();
+    }
+
+    it('applies through the service and follows the request to its rollback outcome', async () => {
+      await renderArchive(archiveServiceBody());
+      expect(
+        await screen.findByText(
+          'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText(/[Ss]ource update cannot/)).toBeNull();
+      // The server said it can update itself from here, and it has no
+      // source installation: neither connection-only line stands.
+      expect(screen.queryByText('Manage updates on that host.')).toBeNull();
+      expect(screen.queryByText('Source installation details')).toBeNull();
+      // Paired-server facts that stay true are kept.
+      expect(screen.getByText(/Server on station\.example\.test/)).toBeTruthy();
+
+      applyBody = () => ({
+        success: true,
+        serviceUpdate: { requestId: REQUEST_ID },
+        message: 'Update requested.',
+      });
+      serviceProgressBody = () => ({ state: 'staging', requestId: REQUEST_ID });
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Update server to 0.8.0-preview.2',
+        }),
+      );
+      expect(
+        await screen.findByText('Downloading and verifying the release…'),
+      ).toBeTruthy();
+      expect(
+        transportMethods.some(
+          (call) =>
+            call.startsWith('POST ') &&
+            call.endsWith('/api/system/core-update'),
+        ),
+      ).toBe(true);
+
+      serviceProgressBody = () => ({
+        state: 'rolled-back',
+        requestId: REQUEST_ID,
+        fromVersion: '0.8.0-preview.1',
+        targetVersion: '0.8.0-preview.2',
+        reason: 'candidate-exited:1',
+        finishedAt: '2026-09-27T12:10:00.000Z',
+      });
+      coreUpdateBody = archiveServiceBody({
+        serviceUpdate: serviceProgressBody(),
+      });
+      const rolledBack = await screen.findByText(
+        /The update to 0\.8\.0-preview\.2 was rolled back: the new version exited \(1\)\. The server runs 0\.8\.0-preview\.1/,
+        {},
+        { timeout: 5_000 },
+      );
+      expect(rolledBack.className).toContain('settings__update-msg--warning');
+      // The outcome re-checked the server rather than trusting the POST.
+      await waitFor(() =>
+        expect(
+          transportMethods.filter((call) =>
+            call.endsWith('/api/system/core-update'),
+          ).length,
+        ).toBeGreaterThanOrEqual(3),
+      );
+    });
+
+    it('an archive no launcher runs keeps "Manage updates on that host." and shows no source disclosure', async () => {
+      await renderArchive(
+        archiveServiceBody({
+          installKind: 'archive',
+          applyMethod: 'station-upgrade',
+          serviceUpdate: undefined,
+          selfUpdateUnavailableReason:
+            'this server is not run by the Station service\'s launcher, so it cannot update itself; update it on the host with "station upgrade"',
+        }),
+      );
+      expect(
+        await screen.findByText(
+          /Server update cannot be applied from here: this server is not run by/,
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: /Update server/ }),
+      ).toBeNull();
+      expect(screen.getByText('Manage updates on that host.')).toBeTruthy();
+      expect(screen.queryByText('Source installation details')).toBeNull();
+      expect(
+        screen.queryByText(/Source update cannot be applied here/),
+      ).toBeNull();
+    });
   });
 
   it('renders the built-in copy for an established embedded sidecar and never requests the source check', async () => {
@@ -489,6 +681,52 @@ describe('ConnectedServerUpdates', () => {
     );
   });
 
+  it('a status naming its install kind replaces the unresolved "method unknown" line (#2675 D3)', async () => {
+    await renderHarness({
+      store: PAIRED_STORE,
+      bundledStatus: null,
+      profileOverrides: { supervisesBundledServer: true },
+      identity: () =>
+        identityResponseFor({
+          instanceId: 'remote-instance',
+          bootId: 'remote-boot',
+        }),
+      coreUpdate: () => ({
+        installKind: 'archive-service',
+        applyMethod: 'service-update',
+        channel: 'preview',
+        currentVersion: '0.8.0-preview.1',
+        latestVersion: '0.8.0-preview.2',
+        releaseCheck: 'verified',
+        updateAvailable: true,
+        serverIdentity: {
+          instanceId: 'remote-instance',
+          bootId: 'remote-boot',
+          sha: SHA,
+        },
+        provenanceIssue: null,
+        technicalDetail: null,
+        selfUpdateUnavailableReason: null,
+        serviceUpdate: { state: 'idle' },
+      }),
+    });
+    await waitConnected();
+    await waitIdentitySettled();
+    expect(
+      await screen.findByText('Server update method unknown.'),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
+    expect(
+      await screen.findByText(
+        'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Server update method unknown.')).toBeNull();
+    expect(screen.queryByText('Source installation details')).toBeNull();
+  });
+
   it('resolves unresolved when the desktop supervises nothing though identity answers', async () => {
     await renderHarness({
       store: PAIRED_STORE,
@@ -570,7 +808,7 @@ describe('ConnectedServerUpdates', () => {
   });
 
   it('resolves unresolved and keeps the card silent about method when identity is incomplete', async () => {
-    await renderHarness({
+    const { queryClient } = await renderHarness({
       bundledStatus: sidecarStatus(),
       identity: () => ({ instanceId: 'desktop-sidecar-stable' }),
     });
@@ -582,13 +820,13 @@ describe('ConnectedServerUpdates', () => {
     expect(
       screen.queryByText('Built-in server — updated with this desktop app.'),
     ).toBeNull();
-    expect(
-      transportCalls.filter((url) => url.includes('/api/system/core-update')),
-    ).toHaveLength(0);
+    // Incomplete identity is not ready: wait out a late automatic check.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(coreUpdateAttempts(queryClient)).toBe(0);
   });
 
   it('keeps the source check off when the identity request fails for an established-shaped sidecar', async () => {
-    await renderHarness({
+    const { queryClient } = await renderHarness({
       bundledStatus: sidecarStatus(),
       identityFailure: 503,
     });
@@ -603,10 +841,46 @@ describe('ConnectedServerUpdates', () => {
     // An identity error is settled but not ready: the automatic source check
     // must stay off against a server the correlation could not name.
     await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(
-      transportCalls.filter((url) => url.includes('/api/system/core-update')),
-    ).toHaveLength(0);
+    expect(coreUpdateAttempts(queryClient)).toBe(0);
   });
+
+  it.each([
+    { name: 'fails', identityFailure: 503, identity: undefined },
+    {
+      name: 'is incomplete',
+      identityFailure: undefined,
+      identity: () => ({ instanceId: 'remote-instance' }),
+    },
+  ])(
+    'keeps the source check off for a resolved paired server when identity $name',
+    async ({ identityFailure: failure, identity }) => {
+      // A paired connection claims no native owner and has no pending native
+      // observation, so identity success is the only conjunct holding the
+      // automatic check here.
+      const { queryClient } = await renderHarness({
+        store: PAIRED_STORE,
+        profileOverrides: { supervisesBundledServer: false },
+        identityFailure: failure,
+        identity,
+        probeIdentity: () =>
+          identityResponseFor({
+            instanceId: 'remote-instance',
+            bootId: 'remote-boot',
+          }),
+      });
+      await waitConnected();
+      await waitIdentitySettled();
+      expect(context?.identityReady).toBe(false);
+      expect(context?.claimedOwnerUnresolved).toBe(false);
+      expect(context?.nativeObservationPending).toBe(false);
+      expect(context?.reachability).toBe('connected');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(coreUpdateAttempts(queryClient)).toBe(0);
+      expect(
+        transportCalls.filter((url) => url.includes('/api/system/core-update')),
+      ).toHaveLength(0);
+    },
+  );
 
   it('holds the source check until the native observation arrives, then renders the built-in copy', async () => {
     // Mount with a saved local owner already answering (identity settles)
@@ -760,12 +1034,13 @@ describe('ConnectedServerUpdates', () => {
     });
     await waitConnected();
     await waitIdentitySettled();
-    expect(
-      screen.queryByText('Built-in server — updated with this desktop app.'),
-    ).toBeNull();
+    // Settle on the presentation first so the absence is not read mid-probe.
     expect(
       await screen.findByText('Server on station.example.test:8444.'),
     ).toBeTruthy();
+    expect(
+      screen.queryByText('Built-in server — updated with this desktop app.'),
+    ).toBeNull();
   });
 
   it('never renders the built-in copy on a mobile shell', async () => {
@@ -789,12 +1064,13 @@ describe('ConnectedServerUpdates', () => {
     });
     await waitConnected();
     await waitIdentitySettled();
-    expect(
-      screen.queryByText('Built-in server — updated with this desktop app.'),
-    ).toBeNull();
+    // Settle on the presentation first so the absence is not read mid-probe.
     expect(
       await screen.findByText('Server on station.example.test:8444.'),
     ).toBeTruthy();
+    expect(
+      screen.queryByText('Built-in server — updated with this desktop app.'),
+    ).toBeNull();
   });
 
   it('isolates selection A→B→A: a late A response cannot label B nor repopulate any cache', async () => {

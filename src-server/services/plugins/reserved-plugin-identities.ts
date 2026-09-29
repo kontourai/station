@@ -29,8 +29,8 @@
  * the real route registrations in `src-server/routes/plugins/` and fails in
  * both directions:
  * a literal segment Station mounts and this list does not name, and a name
- * here that Station no longer mounts. That scan is why this list has ten
- * entries rather than the two an unaided reading would produce — and it is
+ * here that Station no longer mounts. That scan is why this list names every
+ * mounted segment rather than the two an unaided reading would produce — and it is
  * what caught `visibility`, which #2095 mounted and did not reserve.
  */
 export const STATION_RESERVED_PLUGIN_IDENTITIES = Object.freeze([

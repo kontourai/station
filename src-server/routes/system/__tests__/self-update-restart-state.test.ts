@@ -14,7 +14,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
-  classifyRestartRecordAtBoot,
   type RestartStateFileOperations,
   readSelfUpdateRestartRecord,
   restartStateFilePath,
@@ -335,73 +334,5 @@ describe('readSelfUpdateRestartRecord (fail-closed)', () => {
 
     expect(observed).toEqual(baseRecord);
     expect(readSelfUpdateRestartRecord(path)?.status).toBe('verified');
-  });
-});
-
-describe('classifyRestartRecordAtBoot (AC: read on boot, surface unresolved/failed)', () => {
-  const NOW = Date.parse('2026-08-02T03:30:00.000Z');
-
-  test('no record at all is not reported', () => {
-    expect(classifyRestartRecordAtBoot(null, NOW)).toEqual({ kind: 'none' });
-  });
-
-  test('a verified record is not reported as a problem', () => {
-    const record: SelfUpdateRestartRecord = {
-      ...baseRecord,
-      pid: 4242,
-      status: 'verified',
-      resolvedAt: '2026-08-02T03:29:00.000Z',
-    };
-    expect(classifyRestartRecordAtBoot(record, NOW)).toEqual({
-      kind: 'verified',
-      record,
-    });
-  });
-
-  test('a fresh pending record (< 90s old) is an ordinary in-flight restart, not a problem', () => {
-    const record: SelfUpdateRestartRecord = {
-      ...baseRecord,
-      status: 'pending',
-      startedAt: new Date(NOW - 10_000).toISOString(),
-    };
-    expect(classifyRestartRecordAtBoot(record, NOW)).toEqual({
-      kind: 'in-flight',
-      record,
-    });
-  });
-
-  test('a pending record older than the watchdog budget is surfaced as stale (AC: unresolved never silent)', () => {
-    const record: SelfUpdateRestartRecord = {
-      ...baseRecord,
-      status: 'pending',
-      startedAt: new Date(NOW - 5 * 60_000).toISOString(),
-    };
-    const finding = classifyRestartRecordAtBoot(record, NOW);
-    expect(finding.kind).toBe('stale-pending');
-    expect((finding as { ageMs: number }).ageMs).toBeGreaterThan(90_000);
-  });
-
-  test('a failed record is always surfaced regardless of age (AC: failed restart never silent)', () => {
-    const record: SelfUpdateRestartRecord = {
-      ...baseRecord,
-      pid: 4242,
-      status: 'failed',
-      resolvedAt: new Date(NOW - 1_000).toISOString(),
-      failureCode: 'health-unreachable',
-    };
-    expect(classifyRestartRecordAtBoot(record, NOW)).toEqual({
-      kind: 'failed',
-      record,
-    });
-  });
-
-  test('an unparseable startedAt is treated as infinitely stale rather than silently ok', () => {
-    const record: SelfUpdateRestartRecord = {
-      ...baseRecord,
-      status: 'pending',
-      startedAt: 'not-a-date',
-    };
-    const finding = classifyRestartRecordAtBoot(record, NOW);
-    expect(finding.kind).toBe('stale-pending');
   });
 });

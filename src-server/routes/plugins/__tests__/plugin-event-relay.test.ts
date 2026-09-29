@@ -9,16 +9,19 @@
  * these are the tests that were impossible before.
  */
 
-import { RESERVED_EVENT_SENTINEL_PLUGIN_NAMES } from '@kontourai/station-contracts/plugin-visibility';
+import { writeFileSync } from 'node:fs';
 import {
   humanPrincipal,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { PluginVisibilityService } from '../../../services/plugins/plugin-visibility-service.js';
 import {
   canRelayPluginIdentityEvent,
+  createPluginEventRelayGate,
   WORKSPACE_HOME_ROLE_EVENT_MARKER,
   WORKSPACE_HOME_ROLE_EVENT_NAME,
   workspaceHomeRoleEventFrame,
@@ -152,6 +155,11 @@ describe('the Home-role sentinel', () => {
     // queries after a Home revoke. The alternative — making it carry a plugin
     // name so the gate can evaluate it — would ADD plugin identity to a frame
     // that currently has none.
+    //
+    // `homeRoleFrame` is whatever `workspaceHomeRoleEventFrame()` builds, so
+    // the gate and the frame cannot drift apart without this going red. That
+    // the real emitters send that frame is asserted through the composed
+    // router in plugin-route-order.test.ts (`DELETE /home-role`).
     expect(
       relay({
         event: SERVER_EVENTS.PLUGINS_GRANTS_CHANGED,
@@ -218,12 +226,6 @@ describe('the Home-role sentinel', () => {
     ).toBe(false);
   });
 
-  test('the name is reserved, so no plugin can take it', () => {
-    expect(
-      RESERVED_EVENT_SENTINEL_PLUGIN_NAMES.has(WORKSPACE_HOME_ROLE_EVENT_NAME),
-    ).toBe(true);
-  });
-
   test('the exemption is the sentinel exactly, not a prefix or a lookalike', () => {
     // A plugin genuinely named something similar must not ride the exemption.
     for (const name of [
@@ -241,22 +243,6 @@ describe('the Home-role sentinel', () => {
         name,
       ).toBe(false);
     }
-  });
-
-  test('the frame the emitters actually build passes the gate', () => {
-    // Behavioural, not a text scan. The previous version grepped the emitter
-    // file for a constant name, which a reformat or a rename defeats while
-    // the frame silently stops being relayed. This asserts the coupling
-    // itself: whatever `workspaceHomeRoleEventFrame()` produces must be what
-    // the gate exempts, so the two cannot drift without a red test.
-    expect(
-      relay({
-        event: SERVER_EVENTS.PLUGINS_GRANTS_CHANGED,
-        data: workspaceHomeRoleEventFrame(),
-        principal: COLLABORATOR,
-        canSee: seeingNothing,
-      }),
-    ).toBe(true);
   });
 
   test('the marker must be an OWN property, not inherited', () => {
@@ -277,18 +263,46 @@ describe('the Home-role sentinel', () => {
   });
 });
 
-test('a read failure inside canSee denies rather than throwing', () => {
-  // The relay asks this per frame on a long-lived stream; an unreadable
-  // grant record must not take the stream down, and must not relay either.
+test('the predicate propagates a canSee failure to its caller', () => {
+  // The predicate itself is pure: the mounted gate below wraps `canSee` in
+  // its own try/catch precisely because THIS function does not swallow, so a
+  // defect here stays visible rather than becoming a silent global denial.
   const canSee = vi.fn(() => {
     throw new Error('record unreadable');
   });
   expect(() =>
     relay({ data: { name: 'notes' }, principal: COLLABORATOR, canSee }),
-  ).toThrow();
-  // The predicate itself is pure: the composition wraps `canSee` in its own
-  // try/catch (runtime-routes.ts) precisely because THIS function does not
-  // swallow, so a defect here stays visible rather than becoming a silent
-  // global denial.
+  ).toThrow('record unreadable');
   expect(canSee).toHaveBeenCalled();
+});
+
+describe('the gate the runtime mounts on the event stream', () => {
+  const makeTempDir = trackTempDirs();
+
+  test('an unreadable grant record denies the frame rather than throwing', async () => {
+    // The relay asks this per frame on a long-lived stream; an unreadable
+    // grant record must not take the stream down, and must not relay either.
+    const visibility = new PluginVisibilityService(
+      makeTempDir('station-plugin-relay-'),
+    );
+    await visibility.grant(COLLABORATOR.id, 'notes');
+    const logger = { debug: vi.fn() };
+    const gate = createPluginEventRelayGate<null>({
+      resolvePrincipal: () => COLLABORATOR,
+      canSee: (principal, name) => visibility.canSee(principal, name),
+      logger,
+    });
+    const frame = { name: 'notes' };
+
+    // The control: while the record reads, the granted frame is relayed, so
+    // the denial below is the read failure and not a gate that denies all.
+    expect(gate(SERVER_EVENTS.PLUGINS_INSTALLED, frame, null)).toBe(true);
+
+    writeFileSync(visibility.recordPath, '{"grants":');
+    expect(gate(SERVER_EVENTS.PLUGINS_INSTALLED, frame, null)).toBe(false);
+    expect(logger.debug).toHaveBeenCalledWith(
+      'Plugin event relay denied: the visibility record could not be read',
+      expect.objectContaining({ event: SERVER_EVENTS.PLUGINS_INSTALLED }),
+    );
+  });
 });

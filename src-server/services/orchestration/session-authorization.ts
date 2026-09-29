@@ -6,13 +6,11 @@ import {
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { sessionOwnerCacheOps } from '../../telemetry/metrics.js';
 import type { StationControlCallerPrincipalSource } from '../../tools/station-control-shared.js';
-import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
 import {
-  anyPersonalOrchestrationStreamPresenceSubject,
   type OrchestrationStreamPresenceSubject,
   orchestrationStreamPresenceSubjectForSession,
 } from './orchestration-stream-presence.js';
@@ -25,24 +23,10 @@ const SESSION_OWNER_CACHE_MAX_ENTRIES = 2_048;
 
 /**
  * Station #90 lane D (station #122): the principal an agent session acts for, read
- * from the server's own ownership record. `source` says how it was derived,
- * so a consumer can refuse a derivation it does not accept:
- *
- * - `session-owner` — the session's recorded `metadata.userId`, stamped
- *   server-side from the authenticated caller that started it.
- * - `legacy-personal-owner` — a pre-ownership row carrying this Station's
- *   former OS alias (#749); it maps to the local operator, the same mapping
- *   `canReadSessionForCommand` applies.
- * - `ownerless-single-operator` — a personal host in `single-user-compat`
- *   mode, where a session with no recorded owner is the local operator's
- *   (the only account such a host has). Hosted or `deny` hosts never
- *   produce it: an ownerless session there acts for no one.
- *
- * Only `session-owner` is eligible for elevation (a consumer granting a
- * Project role must require it; see `StationControlCallerPrincipal
- * .elevationEligible`). The two operator mappings name the operator by
- * inference, not from an authenticated start, and grant nothing beyond what
- * the session already had.
+ * from the server's own ownership record. Its only `source` is
+ * `session-owner`: the session's recorded `metadata.userId`, stamped
+ * server-side from the authenticated caller that started it. A session with
+ * no recorded owner acts for no one; nothing infers an owner for it.
  */
 export interface SessionActingPrincipal {
   readonly id: string;
@@ -58,20 +42,12 @@ interface SessionAuthorizationDeps {
   // Every dep is a raw option VALUE from OrchestrationServiceOptions —
   // this cluster calls no service method at all, which is what makes the
   // seam one-way. Pass the options raw (two different call forms exist for
-  // requireTenantExecutionContext; ownerlessSessionAccess is compared as
-  // its union, never normalized to a boolean).
+  // requireTenantExecutionContext).
   eventStore?: EventStore;
   requireTenantExecutionContext?: () => boolean;
   validateRecoveredTenantExecutionContext?: (
     context: TenantExecutionContext | undefined,
   ) => TenantExecutionContext | undefined;
-  ownerlessSessionAccess?: 'deny' | 'single-user-compat';
-  /**
-   * One Station-home migration bridge for records written before principal
-   * ownership existed. This is intentionally a single exact OS alias, not an
-   * alias set and not a general personal-mode fallback.
-   */
-  legacyPersonalOwner?: string;
   personalConversationAccess?: PersonalConversationAccess;
   sessionOwnerCacheMaxEntries?: number;
 }
@@ -168,15 +144,18 @@ export class SessionAuthorization {
     this.readGeneration = {};
   }
 
-  /** Fixed read-owner constraints use precisely the existing legacy bridge policy. */
+  /**
+   * The fixed owner set an owner-narrowed store read may match: the caller's
+   * own principal, plus every owner of the personal conversation account the
+   * caller belongs to (personal mode only). The same policy as
+   * {@link canReadSession}, expressed as owner ids.
+   */
   transcriptOwnerConstraint(
     authority: import('@kontourai/station-contracts/tenancy').SessionReadAuthority,
   ): {
     ownerUserId: string;
-    legacyOwnerUserId?: string;
     ownerUserIds?: readonly string[];
   } {
-    const legacy = this.deps.legacyPersonalOwner;
     const personalOwners =
       this.deps.requireTenantExecutionContext?.() !== true &&
       authority.mode === 'personal' &&
@@ -184,16 +163,8 @@ export class SessionAuthorization {
         ? this.deps.personalConversationAccess?.ownerIds(authority.userId)
         : undefined;
     return {
-      ...(personalOwners
-        ? { ownerUserIds: [...personalOwners, ...(legacy ? [legacy] : [])] }
-        : {}),
+      ...(personalOwners ? { ownerUserIds: [...personalOwners] } : {}),
       ownerUserId: authority.userId,
-      ...(this.deps.requireTenantExecutionContext?.() !== true &&
-      isSessionReadAuthority(authority) &&
-      legacy &&
-      this.canReadLegacyPersonalOwner(legacy, authority)
-        ? { legacyOwnerUserId: legacy }
-        : {}),
     };
   }
 
@@ -216,7 +187,7 @@ export class SessionAuthorization {
     sessionOwnerCacheOps.add(1, {
       outcome: cached === undefined ? 'miss' : 'hit',
     });
-    // A failure rejects, never becoming the policy's ownerless compatibility case.
+    // A failure rejects; it never reads as an ownerless (unreadable) session.
     const owner = cached ?? (await this.readOwnerAsync(threadId, signal));
     if (!current() || !sameGeneration()) return false;
     const allowed = this.canReadWithOwner(threadId, scope, () => owner);
@@ -284,14 +255,11 @@ export class SessionAuthorization {
       return ownerUserId;
     }
     // Deliberately NOT cached (archive#1120 safety requirement): an
-    // ownerless/unresolved result (unknown thread, or a read-only-attached
-    // session that never carries a `metadata.userId`) always falls through
-    // to a full store read on the next call. Caching a negative result
-    // here could let a thread that later legitimately resolves an owner
-    // stay stuck on a stale "no owner" answer — and for the
-    // `ownerlessSessionAccess: 'single-user-compat'` branch specifically,
-    // an authorization outcome must never be pinned by a cache the way a
-    // positive owner safely can be.
+    // ownerless/unresolved result (an unknown thread, or one whose
+    // ownership-shaped event has not been written yet) always falls through
+    // to a full store read on the next call. Caching a negative result here
+    // could let a thread that later legitimately resolves an owner stay
+    // stuck on a stale "no owner" answer, unreadable by its own owner.
     return undefined;
   }
 
@@ -303,28 +271,10 @@ export class SessionAuthorization {
     const attribution =
       this.deps.eventStore?.findSessionOwnerAttribution?.(threadId);
     if (!attribution || attribution.unattributedAgent) return undefined;
-    const hosted = this.deps.requireTenantExecutionContext?.() === true;
     const owner = attribution.ownerUserId;
-    if (owner !== undefined) {
-      if (
-        this.deps.legacyPersonalOwner !== undefined &&
-        owner === this.deps.legacyPersonalOwner
-      ) {
-        return hosted
-          ? undefined
-          : {
-              id: LOCAL_OPERATOR_PRINCIPAL_ID,
-              source: 'legacy-personal-owner',
-            };
-      }
-      return { id: owner, source: 'session-owner' };
-    }
-    if (hosted || this.deps.ownerlessSessionAccess !== 'single-user-compat')
-      return undefined;
-    return {
-      id: LOCAL_OPERATOR_PRINCIPAL_ID,
-      source: 'ownerless-single-operator',
-    };
+    return owner === undefined
+      ? undefined
+      : { id: owner, source: 'session-owner' };
   }
 
   /**
@@ -357,7 +307,10 @@ export class SessionAuthorization {
   }
 
   /**
-   * One policy for every session-derived read. In hosted mode both the
+   * One policy for every session-derived read. A session is readable only by
+   * its recorded principal owner, or (personal mode) by a member of that
+   * owner's personal conversation account. A session with no recorded owner
+   * is readable by no caller, in either mode. In hosted mode both the
    * request and persisted binding must be independently trustworthy: a
    * personal-mode authority, absent request binding, malformed/unknown
    * persisted binding, ownerless row, or exact-tenant mismatch is invisible.
@@ -406,67 +359,16 @@ export class SessionAuthorization {
     if (!authority) return false;
     const userId = authority.userId;
     const ownerUserId = readOwner();
-    if (ownerUserId === undefined) {
-      return this.deps.ownerlessSessionAccess === 'single-user-compat';
-    }
+    // Nobody owns it, so nobody reads it: an unknown or made-up id included.
+    if (ownerUserId === undefined) return false;
     // A personal Station's approved devices belong to one conversation
     // account. Device principals remain unchanged for action attribution.
     // Hosted authority returned above and never reaches this policy.
-    //
-    // Pre-principal rows owned by the released OS alias are the local
-    // operator's history, so the alias is judged as the operator here: any
-    // member of the personal conversation account reads them like the
-    // operator's other sessions (#2611). Members are the local operator
-    // principal itself, with or without a home-possession fact (so the
-    // operator credential presented from another machine reads them), and
-    // approved devices holding orchestration-read. The bridge below is for
-    // callers this policy does not admit, and is the whole rule only when no
-    // sharing policy is configured.
-    if (
-      this.deps.personalConversationAccess?.canRead(
-        userId,
-        ownerUserId === this.deps.legacyPersonalOwner
-          ? LOCAL_OPERATOR_PRINCIPAL_ID
-          : ownerUserId,
-      )
-    )
+    if (this.deps.personalConversationAccess?.canRead(userId, ownerUserId))
       return true;
-    // The released OS alias must never pass the ordinary equality path: any
-    // caller can guess a display alias. Outside personal sharing (above) it
-    // is readable only through the narrowly provenance-bound migration bridge
-    // below. All other principal owners retain exact-id equality.
-    if (ownerUserId === this.deps.legacyPersonalOwner) {
-      return this.canReadLegacyPersonalOwner(ownerUserId, authority);
-    }
+    // Every other owner is exact principal-id equality. An owner that names
+    // no principal (a display alias, say) is readable by no one.
     return userId === ownerUserId;
-  }
-
-  /**
-   * The released pre-principal rows contain the OS alias as owner. This bridge
-   * admits a request that has both the contract-defined local-operator
-   * identity and a home-possession fact. By itself it never admits paired
-   * devices, WhoIs identities, hosted callers, operator-secret callers without
-   * home possession, or an arbitrary same-name principal.
-   *
-   * It is not the only way to those rows: personal conversation sharing, which
-   * runs first in `canReadWithOwner`, judges the alias as the local operator,
-   * so every member of the operator's conversation account reads them too
-   * (#2611): the operator principal without home possession (e.g. the
-   * operator credential from another machine) and approved devices with
-   * orchestration-read. The production runtime always configures sharing;
-   * this bridge is the whole rule only where it is not configured.
-   */
-  private canReadLegacyPersonalOwner(
-    ownerUserId: string,
-    authority: import('@kontourai/station-contracts/tenancy').SessionReadAuthority,
-  ): boolean {
-    return (
-      authority.mode === 'personal' &&
-      authority.localHomePossession === true &&
-      authority.userId === LOCAL_OPERATOR_PRINCIPAL_ID &&
-      this.deps.legacyPersonalOwner !== undefined &&
-      ownerUserId === this.deps.legacyPersonalOwner
-    );
   }
 
   /** Validate the persisted binding with the runtime's trusted registry seam. */
@@ -528,22 +430,14 @@ export class SessionAuthorization {
       const ownerUserId = this.sessionOwnerUserId(threadId);
       return ownerUserId !== undefined && ownerUserId === userId;
     }
+    // Internal commands (no caller) keep their existing reach.
     if (userId === undefined) return true;
     const ownerUserId = this.sessionOwnerUserId(threadId);
-    if (ownerUserId === undefined) {
-      return this.deps.ownerlessSessionAccess === 'single-user-compat';
-    }
-    // Same sharing judgement as `canReadWithOwner`, alias read as the local
-    // operator (#2611). Unlike that path this one has no provenance bridge and
-    // accepts exact owner equality, including for the legacy alias.
+    if (ownerUserId === undefined) return false;
     return (
       ownerUserId === userId ||
-      this.deps.personalConversationAccess?.canRead(
-        userId,
-        ownerUserId === this.deps.legacyPersonalOwner
-          ? LOCAL_OPERATOR_PRINCIPAL_ID
-          : ownerUserId,
-      ) === true
+      this.deps.personalConversationAccess?.canRead(userId, ownerUserId) ===
+        true
     );
   }
 
@@ -551,19 +445,16 @@ export class SessionAuthorization {
    * Resolves the private identity that a completion notification may use to
    * check stream presence. Hosted sessions require both a resolved owner and
    * their registry-valid persisted tenant binding; an incomplete binding is
-   * never allowed to borrow another tenant's same-user presence. Personal
-   * ownerless sessions retain the historic any-connected-user fallback.
+   * never allowed to borrow another tenant's same-user presence. An ownerless
+   * session has no subject in either mode: nobody may read it, so there is
+   * nobody to notify about it.
    */
   resolveSessionPresenceSubject(
     threadId: string,
   ): OrchestrationStreamPresenceSubject | undefined {
     const ownerUserId = this.sessionOwnerUserId(threadId);
+    if (!ownerUserId) return undefined;
     const hosted = this.deps.requireTenantExecutionContext?.() === true;
-    if (!ownerUserId) {
-      return hosted
-        ? undefined
-        : anyPersonalOrchestrationStreamPresenceSubject();
-    }
     if (!hosted) {
       return orchestrationStreamPresenceSubjectForSession(ownerUserId);
     }

@@ -22,7 +22,6 @@ import {
   resolve,
   sep,
 } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import receiptSchema from '../schemas/verification-receipt.schema.json' with {
   type: 'json',
@@ -31,6 +30,11 @@ import {
   CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES,
   incompleteDiagnosticReasons,
 } from './lib/changed-verification-diagnostics.mjs';
+import {
+  FAST_CHECKS_PLAN_KIND,
+  FAST_CHECKS_SHARD_COUNT,
+} from './lib/fast-checks-shards.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -42,6 +46,7 @@ import {
   loadProductLawManifest,
   productLawDispositions,
 } from './lib/product-laws.mjs';
+import { refineSdkBarrelRelatedPaths } from './lib/sdk-barrel-selection.mjs';
 import {
   collectVerificationProvenance,
   writeReceiptSecurely,
@@ -52,6 +57,7 @@ import {
   createVerificationRequest,
 } from './lib/verification-receipt.mjs';
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
+import { prepareVerificationExecution } from './lib/verification-request-context.mjs';
 import { groupFiles, VITEST_CORPUS_GROUPS } from './run-vitest-corpus.mjs';
 import {
   buildTestImpactManifest,
@@ -60,7 +66,7 @@ import {
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
 } from './test-impact-manifest.mjs';
-import { resolveLane } from './verification-lanes.mjs';
+import { CI_FAST_TIMEOUT_MS, resolveLane } from './verification-lanes.mjs';
 import { partitionVitestResourceSubset } from './vitest-resource-manifest.mjs';
 import {
   assertWorkspacePackageProvenance,
@@ -74,7 +80,32 @@ const FAILURE_EXCERPT_LIMIT = CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES;
 const NARROW_DIFF_FIXTURE =
   'scripts/__tests__/fixtures/changed-verification/narrow-diff.json';
 const RELATED_DISCOVERY_LIMIT_BYTES = 1024 * 1024;
-const RELATED_DISCOVERY_TIMEOUT_MS = 60_000;
+/**
+ * #2855: related discovery is one fixed-cost Vitest graph build (27-38s on
+ * hosted runners whatever the diff; 48-66s on a dev host at load 47-93), so
+ * a constant below every enclosing budget failed closed on a busy host with
+ * no test run. The timeout is now derived from the caller's remaining budget:
+ * deadline - now - reserve.
+ *
+ * The floor is the old constant. A caller with no budget keeps exactly that;
+ * a caller whose remaining budget is below it is refused before discovery
+ * starts, since a timeout the budget cannot cover would only let the
+ * enclosing kill win with nothing written. The reserve is what the caller
+ * still needs after a discovery that
+ * used everything else: the child's settlement (grace then force, 5s each),
+ * provenance collection and the selection receipt or plan write -- so a slow
+ * discovery ends as this lane's own attributable infrastructure_error rather
+ * than being killed by the enclosing deadline with nothing written.
+ */
+export const RELATED_DISCOVERY_FLOOR_MS = 60_000;
+export const RELATED_DISCOVERY_RESERVE_MS = 30_000;
+/**
+ * No caller's budget exceeds the fifteen-minute ci:fast lane, so a derived or
+ * explicit timeout above it is a misconfiguration and is refused, not clamped.
+ */
+const RELATED_DISCOVERY_MAX_TIMEOUT_MS = CI_FAST_TIMEOUT_MS;
+/** Absolute epoch-ms deadline run-ci-fast hands its selector child. */
+export const CHANGED_DEADLINE_ENV = 'STATION_TEST_CHANGED_DEADLINE_AT';
 const RELATED_DISCOVERY_SETTLEMENT_MS = 5_000;
 const CHANGED_CHILD_OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
 const VITEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
@@ -123,11 +154,17 @@ export function parseRelatedTestDiscovery(result) {
   return parsed;
 }
 
+function withoutChangedDeadline(env) {
+  const { [CHANGED_DEADLINE_ENV]: _deadline, ...rest } = env;
+  return rest;
+}
+
 export async function runOwnedChangedCommand(
   command,
   args,
   {
     cwd,
+    env,
     execute = executeOwnedCommand,
     emitOutput = false,
     maxBytes = CHANGED_CHILD_OUTPUT_LIMIT_BYTES,
@@ -151,6 +188,10 @@ export async function runOwnedChangedCommand(
   try {
     execution = execute(command, args, spawn, processLabel, {
       cwd,
+      // A shard passes the request-bound environment (#2709); otherwise the
+      // child inherits this process's. Either way the selector's discovery
+      // deadline (#2855) is its own, and no child inherits it.
+      env: withoutChangedDeadline(env ?? process.env),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -260,35 +301,115 @@ export async function runOwnedChangedCommand(
   }
 }
 
+function assertDiscoveryTimeout(timeoutMs) {
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > RELATED_DISCOVERY_MAX_TIMEOUT_MS
+  )
+    throw new Error('Related Vitest discovery timeout is invalid');
+  return timeoutMs;
+}
+
+/**
+ * deadline - now - reserve, or the floor alone with no deadline. A budget
+ * below the floor is refused before discovery starts, naming what is left;
+ * a deadline that is not an integer, or that would allow more than the
+ * ci:fast lane itself, is refused rather than clamped.
+ */
+export function relatedDiscoveryTimeoutMs({ deadlineAt, now = Date.now } = {}) {
+  if (deadlineAt === undefined) return RELATED_DISCOVERY_FLOOR_MS;
+  if (!Number.isSafeInteger(deadlineAt))
+    throw new Error('Related Vitest discovery deadline is invalid');
+  const remaining = deadlineAt - now() - RELATED_DISCOVERY_RESERVE_MS;
+  if (remaining < RELATED_DISCOVERY_FLOOR_MS)
+    throw new Error(
+      `Related Vitest discovery refused: ${Math.max(0, remaining)}ms of its budget remain after the ${RELATED_DISCOVERY_RESERVE_MS}ms reserve, below the ${RELATED_DISCOVERY_FLOOR_MS}ms minimum`,
+    );
+  return assertDiscoveryTimeout(remaining);
+}
+
+/** The selector's deadline from its environment, strictly parsed. */
+export function changedDeadlineFromEnv(env = process.env) {
+  const value = env[CHANGED_DEADLINE_ENV];
+  if (value === undefined || value === '') return undefined;
+  if (!/^[1-9][0-9]{0,15}$/.test(value) || !Number.isSafeInteger(Number(value)))
+    throw new Error(
+      `${CHANGED_DEADLINE_ENV} must be an epoch-millisecond integer`,
+    );
+  return Number(value);
+}
+
+/**
+ * `base` enables SDK barrel-aware seeds (#2707): a changed SDK module is
+ * replaced by the files whose imports actually reach it, rather than by
+ * every importer of the SDK barrels that re-export it. Without a base the
+ * paths go to Vitest unchanged.
+ *
+ * @param {string} root
+ * @param {string[]} relatedPaths
+ * @param {object} [options]
+ * @param {string} [options.base] merge base the changed paths were diffed from
+ * @param {typeof refineSdkBarrelRelatedPaths} [options.refine]
+ * @param {(decision: any) => void} [options.reportRefinement]
+ * @param {(...args: any[]) => Promise<any>} [options.run]
+ * @param {AbortSignal} [options.signal]
+ * @param {number} [options.timeoutMs] an explicit timeout; overrides deadlineAt
+ * @param {number} [options.deadlineAt] the caller's budget end (epoch ms)
+ * @param {() => number} [options.now]
+ * @param {(timeoutMs: number) => void} [options.onTimeout] told the timeout the child runs under
+ */
 export async function discoverRelatedTestFiles(
   root,
   relatedPaths,
   {
+    base,
+    refine = refineSdkBarrelRelatedPaths,
+    reportRefinement = (decision) => {
+      process.stderr.write(
+        `[test:changed] SDK barrel selection: ${decision.path} ${
+          decision.disposition === 'refined'
+            ? `-> ${decision.seeds} import seed(s)`
+            : `kept whole (${decision.reason})`
+        }\n`,
+      );
+    },
     run = runOwnedChangedCommand,
     signal,
-    timeoutMs = RELATED_DISCOVERY_TIMEOUT_MS,
+    timeoutMs,
+    deadlineAt,
+    now = Date.now,
+    onTimeout = () => {},
   } = {},
 ) {
   if (!Array.isArray(relatedPaths) || relatedPaths.length === 0)
     throw new Error('Related Vitest discovery requires at least one path');
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000)
-    throw new Error('Related Vitest discovery timeout is invalid');
+  if (timeoutMs !== undefined) assertDiscoveryTimeout(timeoutMs);
   let result;
   try {
+    const refined = refine(root, relatedPaths, { base });
+    for (const decision of refined.decisions) reportRefinement(decision);
+    // Every refined path reached no file outside SDK source: nothing imports
+    // it, which is discovery's empty answer, not a failure.
+    if (refined.paths.length === 0) return [];
+    // Derived here, after refinement, so the child gets what is actually left.
+    const childTimeoutMs =
+      timeoutMs ?? relatedDiscoveryTimeoutMs({ deadlineAt, now });
+    onTimeout(childTimeoutMs);
     result = await run(
       process.execPath,
       [
         '--input-type=module',
         '--eval',
         RELATED_DISCOVERY_SOURCE,
-        ...relatedPaths.map((path) => resolve(root, path)),
+        ...refined.paths.map((path) => resolve(root, path)),
       ],
       {
         cwd: root,
         maxBytes: RELATED_DISCOVERY_LIMIT_BYTES,
         processLabel: 'Related Vitest discovery',
         signal,
-        timeoutMs,
+        timeoutMs: childTimeoutMs,
       },
     );
     return parseRelatedTestDiscovery(result);
@@ -410,6 +531,15 @@ export function selectChangedVerification(
   const tests = new Map();
   const lanes = new Map();
   const relatedPaths = new Set();
+  // Related paths some test-naming edge names by EXACT path — ordinary or
+  // supplemental: a spawned-script edge, a derived path-read pin (#1807), a
+  // generator-input edge. Each of those tests asserts about precisely this
+  // file, so an empty related discovery leaves it covered. A glob edge never
+  // owns a path: a blanket scan (the `src-ui/src/**` copy ratchet, the
+  // `packages/sdk/src/client/**` portability scan) says nothing about one
+  // file's behaviour, so it must not turn "no suite covers this file" into a
+  // completed green (#2176).
+  const ownedRelatedPaths = new Set();
   let escalated = false;
   const changed = new Set(paths);
   for (const path of paths) {
@@ -469,6 +599,11 @@ export function selectChangedVerification(
       for (const lane of edge.lanes ?? [])
         addReason(lanes, lane, `${edge.reason}: ${path}`);
     }
+    if (
+      relatedPaths.has(path) &&
+      edges.some((edge) => edge.pattern === path && edge.tests?.length)
+    )
+      ownedRelatedPaths.add(path);
   }
   if (!paths.length || (!tests.size && !lanes.size && !relatedPaths.size))
     addReason(lanes, 'test-full', 'empty executable selection escalated');
@@ -481,6 +616,7 @@ export function selectChangedVerification(
       .sort()
       .map((id) => ({ id, reasons: [...lanes.get(id)].sort() })),
     relatedPaths: [...relatedPaths].sort(),
+    ownedRelatedPaths: [...ownedRelatedPaths].sort(),
     escalated,
   };
 }
@@ -719,6 +855,15 @@ function parseVitestReport(contents, { root = process.cwd() } = {}) {
   return parsed;
 }
 
+/**
+ * @param {string} root
+ * @param {{ tests: Array<{ path: string }>; relatedPaths: string[] }} selection
+ * @param {{
+ *   discoverRelated?: (root: string, relatedPaths: string[]) => Promise<string[]>;
+ *   partition?: typeof partitionVitestResourceSubset;
+ *   vitestPath?: string;
+ * }} [options]
+ */
 export async function planChangedVitestExecutions(
   root,
   selection,
@@ -729,6 +874,27 @@ export async function planChangedVitestExecutions(
   } = {},
 ) {
   const vitest = vitestPath ?? resolve(root, 'node_modules/vitest/vitest.mjs');
+  const planned = await planChangedVitestGroups(root, selection, {
+    discoverRelated,
+    partition,
+  });
+  return planned
+    ? vitestExecutionsForGroups(planned.groups, { kind: planned.kind, vitest })
+    : [];
+}
+
+/**
+ * The selected suites, by resource group in canonical order (empty groups
+ * omitted), or null when related discovery matched nothing.
+ */
+export async function planChangedVitestGroups(
+  root,
+  selection,
+  {
+    discoverRelated = discoverRelatedTestFiles,
+    partition = partitionVitestResourceSubset,
+  } = {},
+) {
   const relatedTests = selection.relatedPaths.length
     ? await discoverRelated(root, selection.relatedPaths)
     : [];
@@ -743,7 +909,7 @@ export async function planChangedVitestExecutions(
   // throw is the fail-closed guard for a selection that was supposed to hold
   // files. Only a related-path selection can land here: an explicit test
   // target always contributes its own path.
-  if (candidates.length === 0 && selection.relatedPaths.length > 0) return [];
+  if (candidates.length === 0 && selection.relatedPaths.length > 0) return null;
   const selected = validateSelectedTestFiles(root, candidates);
   const groups = partition(selected, { root });
   const kind = selection.relatedPaths.length
@@ -751,8 +917,30 @@ export async function planChangedVitestExecutions(
       ? 'combined'
       : 'related'
     : 'explicit';
+  return {
+    kind,
+    groups: VITEST_CORPUS_GROUPS.flatMap((group) => {
+      const files = groupFiles(groups, group.name);
+      return files.length
+        ? [{ resourceGroup: group.name, files: [...files] }]
+        : [];
+    }),
+  };
+}
+
+/**
+ * One Vitest invocation per non-empty resource group, in canonical group
+ * order, each with that group's own worker bound. The unsharded plan and a
+ * fast-checks shard (#2709) both build their commands here, so a shard runs a
+ * file under exactly the resource profile the unsharded lane would.
+ */
+export function vitestExecutionsForGroups(groups, { kind, vitest }) {
+  const byName = new Map(groups.map((group) => [group.resourceGroup, group]));
+  for (const name of byName.keys())
+    if (!VITEST_CORPUS_GROUPS.some((group) => group.name === name))
+      throw new Error(`unknown Vitest resource group '${name}'`);
   return VITEST_CORPUS_GROUPS.flatMap((group) => {
-    const files = groupFiles(groups, group.name);
+    const files = byName.get(group.name)?.files ?? [];
     if (!files.length) return [];
     return [
       {
@@ -778,17 +966,32 @@ async function runVitest(
     beforeCleanup = () => {},
     discoverRelated,
     partition,
+    planned,
     readReport = readFileSync,
     vitestPath,
+    env,
   } = {},
 ) {
   let plannedExecutions;
+  // How many suites related discovery named, observed rather than inferred
+  // from the plan: explicit tests in the same plan must not hide an empty
+  // discovery (#2176).
+  let relatedDiscoveryCount;
+  const discover = discoverRelated ?? discoverRelatedTestFiles;
   try {
-    plannedExecutions = await planChangedVitestExecutions(root, selection, {
-      ...(discoverRelated ? { discoverRelated } : {}),
-      ...(partition ? { partition } : {}),
-      vitestPath,
-    });
+    // A fast-checks shard (#2709) arrives with its commands already planned
+    // from the shared plan artifact; discovery ran once, in the plan job.
+    plannedExecutions =
+      planned ??
+      (await planChangedVitestExecutions(root, selection, {
+        discoverRelated: async (discoveryRoot, relatedPaths) => {
+          const files = await discover(discoveryRoot, relatedPaths);
+          relatedDiscoveryCount = files.length;
+          return files;
+        },
+        ...(partition ? { partition } : {}),
+        vitestPath,
+      }));
   } catch (error) {
     return {
       executions: [],
@@ -837,6 +1040,7 @@ async function runVitest(
             emitOutput: true,
             processLabel: `Changed Vitest ${execution.resourceGroup}`,
             signal: selection.signal,
+            ...(env ? { env } : {}),
           },
         );
       } catch (error) {
@@ -891,6 +1095,7 @@ async function runVitest(
   return {
     executions,
     emptySelection: plannedExecutions.length === 0,
+    relatedDiscoveryEmpty: relatedDiscoveryCount === 0,
     ...(preparation ? { preparation } : {}),
   };
 }
@@ -1144,27 +1349,64 @@ export function renderChangedVerificationSummary(result) {
   ].join('\n');
 }
 
+/**
+ * #2887: a product-law path ADDS its law's evidence; it does not defer the
+ * diff. Laws used to be routed to a `ci-fast` lane, and any lane defers the
+ * whole affected selection, so a diff touching `queueDrain.ts` ran none of
+ * its ~600 related suites in fast-checks. But ci:fast already runs every
+ * law's observation and fault injection on every change: product-law-gate
+ * (inside the verification:policy:gate static, bounded by
+ * MAX_PRODUCT_LAW_RUNTIME_MS). So the law is named, its observation suites
+ * are selected beside the diff's own, and only genuinely unknown paths and
+ * escalations still defer.
+ */
+/**
+ * The suites that hold each named law's evidence: its behaviour observation
+ * and its fault injection. Only a `vitest-file` evidence with a test file can
+ * be selected; any other shape is refused naming the law and the kind (the
+ * product-law gate rejects such a manifest too), rather than surfacing later
+ * as an anonymous unsafe path.
+ */
+export function productLawEvidenceTests(manifest, productLaws) {
+  const selected = [];
+  for (const law of (manifest.laws ?? []).filter((entry) =>
+    productLaws.includes(entry.id),
+  ))
+    for (const [role, evidence] of [
+      ['observation', law.observation],
+      ['fault-injection', law.faultInjection],
+    ]) {
+      if (
+        evidence?.kind !== 'vitest-file' ||
+        typeof evidence.testFile !== 'string' ||
+        evidence.testFile.length === 0
+      )
+        throw new Error(
+          `product law ${law.id} has ${role} evidence of kind '${String(evidence?.kind)}' without a Vitest test file; only vitest-file evidence can be selected`,
+        );
+      selected.push({
+        path: evidence.testFile,
+        reason: `product law ${law.id}: its ${role} suite (product-law-gate also runs it in the ci:fast statics)`,
+      });
+    }
+  return selected;
+}
+
 function withProductLawDispositions(selection, root, changed) {
   const manifest = loadProductLawManifest({ rootDir: root });
   const productLaws = productLawDispositions(manifest, changed);
   if (productLaws.length === 0) return { selection, productLaws };
-  const laneReasons = new Map(
-    selection.lanes.map(({ id, reasons }) => [id, new Set(reasons)]),
+  const tests = new Map(
+    selection.tests.map(({ path, reasons }) => [path, new Set(reasons)]),
   );
-  laneReasons.set(
-    'ci-fast',
-    new Set([
-      ...(laneReasons.get('ci-fast') ?? []),
-      ...productLaws.map((id) => `product-law disposition: ${id}`),
-    ]),
-  );
+  for (const { path, reason } of productLawEvidenceTests(manifest, productLaws))
+    addReason(tests, path, reason);
   return {
     selection: {
       ...selection,
-      lanes: [...laneReasons.keys()]
+      tests: [...tests.keys()]
         .sort()
-        .map((id) => ({ id, reasons: [...laneReasons.get(id)].sort() })),
-      escalated: true,
+        .map((path) => ({ path, reasons: [...tests.get(path)].sort() })),
     },
     productLaws,
   };
@@ -1273,6 +1515,7 @@ export async function runRepresentativeNarrowDiffFixture({
     });
     return {
       fixture: targetPath,
+      paths: result.paths,
       elapsedMs: now() - startedAt,
       counts: result.receipt.counts,
       selection: result.selection,
@@ -1285,32 +1528,25 @@ export async function runRepresentativeNarrowDiffFixture({
   }
 }
 
-export async function runChangedVerification(
-  args,
+/**
+ * The selection half of the lane, before any child process: the diff, the
+ * manifest routing and its escalations, product-law routing, and the subset
+ * that is actually executed. Shared by the unsharded lane and the fast-checks
+ * plan (#2709), so both select exactly the same suites.
+ */
+export function prepareChangedSelection(
+  base,
   {
     root = process.cwd(),
-    run = runOwnedChangedCommand,
     changedPathsFn = changedPaths,
-    collectProvenance = collectVerificationProvenance,
-    writeReceipt = writeReceiptSecurely,
-    vitestPath,
-    discoverRelatedFiles,
-    resourcePartition = partitionVitestResourceSubset,
-    assertDependencyProvenance = assertWorkspacePackageProvenance,
     pathExists = existsSync,
-    signal,
   } = {},
 ) {
-  // Resolve dependency provenance before selecting or starting Vitest. A
-  // worktree may otherwise compile against a sibling checkout through a shared
-  // node_modules link and create a receipt for the wrong source tree.
-  assertDependencyProvenance({ cwd: root });
-  const { base, explain } = parseChangedArgs(args);
   const changed = changedPathsFn({ root, base });
   // The derived manifest adds the path-read pin edges (#1807): a test that
   // reads a source file's text has no import edge to it, so neither the graph
   // fallback nor `vitest related` would schedule it here.
-  let selection = escalateUnavailableExplicitTests(
+  const escalated = escalateUnavailableExplicitTests(
     escalateUnavailableRelatedPaths(
       selectChangedVerification(
         changed.paths,
@@ -1324,26 +1560,11 @@ export async function runChangedVerification(
     { root, pathExists },
   );
   const productLawRouting = withProductLawDispositions(
-    selection,
+    escalated,
     root,
     changed.paths,
   );
-  selection = productLawRouting.selection;
-  // Capture the request identity before any child process can modify outputs.
-  const before = collectProvenance({ cwd: root });
-  const request = createVerificationRequest('test-changed', before);
-  const result = {
-    diagnostic: true,
-    completion: false,
-    message:
-      'Diagnostic only: this result cannot replace or overwrite the canonical full-regression receipt.',
-    base,
-    ...changed,
-    productLaws: productLawRouting.productLaws,
-    selection,
-    nextCommands: nextCommands(selection),
-    executed: [],
-  };
+  const selection = productLawRouting.selection;
   // Broad import expansion remains deferred. Explicit, existing test targets
   // still provide bounded diagnostic failures; passing them cannot complete
   // the deferred obligations. Never truncate a selection into a green claim.
@@ -1360,6 +1581,83 @@ export async function runChangedVerification(
                 )
               : [],
         };
+  return { changed, selection, productLawRouting, executionSelection };
+}
+
+/**
+ * Related paths a plan left without any suite. An empty discovery escalates
+ * even when explicit tests keep the plan non-empty (#2176), except for a path
+ * an edge names exactly (`ownedRelatedPaths`).
+ */
+function uncoveredRelatedPaths(executionSelection, outcome) {
+  const owned = new Set(executionSelection.ownedRelatedPaths ?? []);
+  return outcome.emptySelection === true
+    ? executionSelection.relatedPaths
+    : outcome.relatedDiscoveryEmpty === true
+      ? executionSelection.relatedPaths.filter((path) => !owned.has(path))
+      : [];
+}
+
+/**
+ * One verdict rule for the unsharded lane and every fast-checks shard. An
+ * infrastructure or parser fault outranks a test failure, which outranks a
+ * deferral; an undeferred run that executed nothing is a parser error.
+ */
+export function changedVerificationStatus({ counts, executed, deferred }) {
+  const childFailed = executed.some(
+    (execution) => execution.exitCode !== 0 && !execution.infrastructureError,
+  );
+  if (counts.infrastructureErrors > 0) return 'infrastructure_error';
+  if (counts.parserErrors > 0 || (!deferred && counts.executed === 0))
+    return 'parser_error';
+  if (counts.failed > 0 || childFailed) return 'failed';
+  return deferred ? 'provisional' : 'completed';
+}
+
+export async function runChangedVerification(
+  args,
+  {
+    root = process.cwd(),
+    run = runOwnedChangedCommand,
+    changedPathsFn = changedPaths,
+    collectProvenance = collectVerificationProvenance,
+    writeReceipt = writeReceiptSecurely,
+    vitestPath,
+    discoverRelatedFiles,
+    resourcePartition = partitionVitestResourceSubset,
+    assertDependencyProvenance = assertWorkspacePackageProvenance,
+    pathExists = existsSync,
+    signal,
+    discoveryDeadlineAt,
+  } = {},
+) {
+  // Resolve dependency provenance before selecting or starting Vitest. A
+  // worktree may otherwise compile against a sibling checkout through a shared
+  // node_modules link and create a receipt for the wrong source tree.
+  assertDependencyProvenance({ cwd: root });
+  const { base, explain } = parseChangedArgs(args);
+  const prepared = prepareChangedSelection(base, {
+    root,
+    changedPathsFn,
+    pathExists,
+  });
+  const { changed, productLawRouting, executionSelection } = prepared;
+  let { selection } = prepared;
+  // Capture the request identity before any child process can modify outputs.
+  const before = collectProvenance({ cwd: root });
+  const request = createVerificationRequest('test-changed', before);
+  const result = {
+    diagnostic: true,
+    completion: false,
+    message:
+      'Diagnostic only: this result cannot replace or overwrite the canonical full-regression receipt.',
+    base,
+    ...changed,
+    productLaws: productLawRouting.productLaws,
+    selection,
+    nextCommands: nextCommands(selection),
+    executed: [],
+  };
   if (
     !explain &&
     (executionSelection.tests.length || executionSelection.relatedPaths.length)
@@ -1370,13 +1668,20 @@ export async function runChangedVerification(
       { ...executionSelection, signal },
       {
         vitestPath,
-        discoverRelated:
-          discoverRelatedFiles ??
-          ((discoveryRoot, relatedPaths) =>
-            discoverRelatedTestFiles(discoveryRoot, relatedPaths, {
-              run,
-              signal,
-            })),
+        // The merge base, not the ref: SDK barrel refinement compares
+        // purity and exported names against the tree this diff was taken
+        // from (#2707).
+        discoverRelated: (discoveryRoot, relatedPaths) =>
+          (
+            discoverRelatedFiles ??
+            ((rootPath, paths, options) =>
+              discoverRelatedTestFiles(rootPath, paths, {
+                ...options,
+                run,
+                signal,
+                deadlineAt: discoveryDeadlineAt,
+              }))
+          )(discoveryRoot, relatedPaths, { base: changed.mergeBase }),
         partition: resourcePartition,
         beforeCleanup(executions, preparation) {
           result.executed = executions;
@@ -1403,15 +1708,26 @@ export async function runChangedVerification(
     // Related discovery ran and named no suite. Record the fact durably in
     // the selection artifact so a reader sees a selection decision rather
     // than a silent zero-execution run.
-    if (vitestOutcome.emptySelection === true && !vitestOutcome.preparation) {
+    //
+    // #2176: an empty discovery escalates even when the plan still holds
+    // explicit tests. A test selected only through a glob edge (a copy
+    // ratchet over a whole tree) says nothing about the changed file, so
+    // letting it make the plan non-empty turned "no suite covers this file"
+    // into a completed green. Only a path an edge names exactly
+    // (`ownedRelatedPaths`) is covered without its graph.
+    //
+    // Granularity: discovery is ONE call over every related path, and it
+    // returns the union of suites, not a per-input answer. So this fires only
+    // when discovery returns nothing for the whole set; a diff where one path
+    // has importers and another has none is not detected. A per-path answer
+    // would cost one Vitest graph build per changed file.
+    const uncovered = uncoveredRelatedPaths(executionSelection, vitestOutcome);
+    if (uncovered.length > 0 && !vitestOutcome.preparation) {
       result.emptyRelatedSelection = {
-        relatedPaths: [...executionSelection.relatedPaths].sort(),
+        relatedPaths: [...uncovered].sort(),
         remedy: EMPTY_RELATED_SELECTION_REMEDY,
       };
-      selection = escalateEmptyRelatedSelection(
-        selection,
-        executionSelection.relatedPaths,
-      );
+      selection = escalateEmptyRelatedSelection(selection, uncovered);
     }
     selection = escalateEmptyReports(selection, result.executed);
     result.selection = selection;
@@ -1426,23 +1742,11 @@ export async function runChangedVerification(
   // `provisional` -- and run-ci-fast reads its exit 3 as a deferred selection
   // and carries on, so a data-only diff does not red fast-checks while its
   // receipt still names the obligation (#1757).
-  const deferred = explain || selection.lanes.length > 0;
-  const failed = counts.failed > 0;
-  const childFailed = result.executed.some(
-    (execution) => execution.exitCode !== 0 && !execution.infrastructureError,
-  );
-  const infrastructureError = counts.infrastructureErrors > 0;
-  const parserError =
-    counts.parserErrors > 0 || (!deferred && counts.executed === 0);
-  const status = infrastructureError
-    ? 'infrastructure_error'
-    : parserError
-      ? 'parser_error'
-      : failed || childFailed
-        ? 'failed'
-        : deferred
-          ? 'provisional'
-          : 'completed';
+  const status = changedVerificationStatus({
+    counts,
+    executed: result.executed,
+    deferred: explain || selection.lanes.length > 0,
+  });
   const receiptExitCode =
     status === 'provisional'
       ? null
@@ -1476,8 +1780,12 @@ export async function runChangedVerification(
       `invalid changed verification receipt: ${errors.join('; ')}`,
     );
   writeReceipt(artifact.path, contents, root);
-  if (result.executed.length === 0)
-    writeReceipt(diagnostics.artifact.path, diagnostics.contents, root);
+  // Always rewrite the diagnostic the receipt binds. The early write in
+  // `beforeCleanup` is only a breadcrumb for a run that dies before this
+  // point: an empty related discovery can still escalate the selection after
+  // Vitest returns, and a breadcrumb left in place would no longer match the
+  // digest bound below, so ci:fast would refuse the attachment.
+  writeReceipt(diagnostics.artifact.path, diagnostics.contents, root);
   writeReceipt(
     '.kontourai/test-impact/changed-verification.json',
     `${JSON.stringify(receipt, null, 2)}\n`,
@@ -1495,10 +1803,222 @@ export async function runChangedVerification(
           : 1,
   };
 }
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+/** The ci-fast lane's execution preparation, as its coordinator applies it. */
+function prepareCiFastExecution({ cwd, env }) {
+  return prepareVerificationExecution({
+    lane: resolveLane('ci-fast'),
+    cwd,
+    env,
+  });
+}
+
+/**
+ * #2709: the fast-checks plan. Selection, related discovery, resource
+ * partitioning and the empty-discovery escalation run exactly as the
+ * unsharded lane runs them, once, and stop before any test executes. A
+ * discovery or planning fault throws: no plan is written, and the required
+ * aggregator fails on the missing plan.
+ */
+/**
+ * @param {string} base
+ * @param {{
+ *   root?: string;
+ *   run?: typeof runOwnedChangedCommand;
+ *   changedPathsFn?: typeof changedPaths;
+ *   discoverRelatedFiles?: (root: string, relatedPaths: string[], options?: { base?: string; onTimeout?: (timeoutMs: number) => void }) => Promise<string[]>;
+ *   resourcePartition?: typeof partitionVitestResourceSubset;
+ *   assertDependencyProvenance?: (options: { cwd: string }) => unknown;
+ *   pathExists?: typeof existsSync;
+ *   signal?: AbortSignal;
+ *   discoveryDeadlineAt?: number;
+ *   headSha?: string;
+ *   shardCount?: number;
+ *   now?: () => number;
+ * }} [options]
+ */
+export async function planChangedVerificationShards(
+  base,
+  {
+    root = process.cwd(),
+    run = runOwnedChangedCommand,
+    changedPathsFn = changedPaths,
+    discoverRelatedFiles,
+    resourcePartition = partitionVitestResourceSubset,
+    assertDependencyProvenance = assertWorkspacePackageProvenance,
+    pathExists = existsSync,
+    signal,
+    discoveryDeadlineAt,
+    headSha = git(root, ['rev-parse', 'HEAD']).trim(),
+    shardCount = FAST_CHECKS_SHARD_COUNT,
+    now = Date.now,
+  } = {},
 ) {
+  assertDependencyProvenance({ cwd: root });
+  const prepared = prepareChangedSelection(base, {
+    root,
+    changedPathsFn,
+    pathExists,
+  });
+  const { changed, productLawRouting, executionSelection } = prepared;
+  let { selection } = prepared;
+  let groups = [];
+  let emptyRelatedSelection;
+  let relatedDiscovery;
+  if (
+    executionSelection.tests.length ||
+    executionSelection.relatedPaths.length
+  ) {
+    let relatedDiscoveryCount;
+    const discover =
+      discoverRelatedFiles ??
+      ((rootPath, paths, options) =>
+        discoverRelatedTestFiles(rootPath, paths, {
+          ...options,
+          run,
+          signal,
+          deadlineAt: discoveryDeadlineAt,
+        }));
+    const planned = await planChangedVitestGroups(root, executionSelection, {
+      discoverRelated: async (discoveryRoot, relatedPaths) => {
+        const startedAt = now();
+        let timeoutMilliseconds;
+        const files = await discover(discoveryRoot, relatedPaths, {
+          base: changed.mergeBase,
+          onTimeout: (value) => {
+            timeoutMilliseconds = value;
+          },
+        });
+        // #2803: discovery now runs on far more pull requests. Record its
+        // cost in every plan, so the hosted margin is measured per run rather
+        // than argued; #2855 derives the timeout from the budget, so record
+        // the timeout the child actually ran under (absent when no child
+        // started, e.g. refinement found nothing to discover).
+        relatedDiscovery = {
+          milliseconds: now() - startedAt,
+          ...(timeoutMilliseconds === undefined ? {} : { timeoutMilliseconds }),
+        };
+        relatedDiscoveryCount = files.length;
+        return files;
+      },
+      partition: resourcePartition,
+    });
+    groups = planned?.groups ?? [];
+    const uncovered = uncoveredRelatedPaths(executionSelection, {
+      emptySelection: groups.length === 0,
+      relatedDiscoveryEmpty: relatedDiscoveryCount === 0,
+    });
+    if (uncovered.length > 0) {
+      emptyRelatedSelection = {
+        relatedPaths: [...uncovered].sort(),
+        remedy: EMPTY_RELATED_SELECTION_REMEDY,
+      };
+      selection = escalateEmptyRelatedSelection(selection, uncovered);
+    }
+  }
+  return {
+    schemaVersion: 1,
+    kind: FAST_CHECKS_PLAN_KIND,
+    base,
+    mergeBase: changed.mergeBase,
+    headSha,
+    shardCount,
+    changedPathCount: changed.paths.length,
+    deferredLanes: selection.lanes,
+    escalated: selection.escalated,
+    productLaws: productLawRouting.productLaws,
+    ...(emptyRelatedSelection ? { emptyRelatedSelection } : {}),
+    ...(relatedDiscovery ? { relatedDiscovery } : {}),
+    groups,
+    fileCount: groups.reduce((total, group) => total + group.files.length, 0),
+  };
+}
+
+/**
+ * Runs one shard's slice of a validated plan through the same execution loop
+ * and verdict rule as the unsharded lane. The plan's deferral carries over:
+ * a deferred plan makes a passing shard `provisional`, as the selector's exit
+ * 3 does for ci:fast.
+ */
+/**
+ * @param {{ deferredLanes: unknown[] }} plan
+ * @param {{ groups: Array<{ resourceGroup: string; files: string[] }>; files: string[] }} slice
+ * @param {{
+ *   root?: string;
+ *   run?: (command: string, args: string[], options: any) => Promise<any>;
+ *   vitestPath?: string;
+ *   readReport?: typeof readFileSync;
+ *   signal?: AbortSignal;
+ *   assertDependencyProvenance?: (options: { cwd: string }) => unknown;
+ *   env?: Record<string, string | undefined>;
+ *   prepareExecution?: (options: { cwd: string; env: Record<string, string | undefined> }) => { env: Record<string, string | undefined> };
+ * }} [options]
+ */
+export async function runChangedVerificationShard(
+  plan,
+  slice,
+  {
+    root = process.cwd(),
+    run = runOwnedChangedCommand,
+    vitestPath,
+    readReport,
+    signal,
+    assertDependencyProvenance = assertWorkspacePackageProvenance,
+    env = process.env,
+    prepareExecution = prepareCiFastExecution,
+  } = {},
+) {
+  // The same preflight the unsharded lane runs before any Vitest child: a
+  // shared node_modules link must not run the tests of another tree.
+  assertDependencyProvenance({ cwd: root });
+  // Review F1/H1: `npm run ci:fast` runs its children under the verification
+  // coordinator, which checks the install against the lockfile and binds
+  // the request environment (STATION_VERIFICATION_HISTORY_REF = this head,
+  // not origin/main). A shard takes the same preparation, from the same
+  // function, so the tests it runs see what the lane's did.
+  const childEnv = prepareExecution({ cwd: root, env }).env;
+  const vitest = vitestPath ?? resolve(root, 'node_modules/vitest/vitest.mjs');
+  validateSelectedTestFiles(root, slice.files);
+  const planned = vitestExecutionsForGroups(slice.groups, {
+    kind: 'shard',
+    vitest,
+  });
+  const outcome = await runVitest(
+    root,
+    run,
+    { signal },
+    { planned, env: childEnv, ...(readReport ? { readReport } : {}) },
+  );
+  const counts = countsFor(outcome.executions, outcome.preparation);
+  const status = changedVerificationStatus({
+    counts,
+    executed: outcome.executions,
+    deferred:
+      plan.deferredLanes.length > 0 ||
+      outcome.executions.some((execution) => execution.empty),
+  });
+  return {
+    status,
+    counts,
+    ...(outcome.preparation
+      ? {
+          preparation: {
+            phase: outcome.preparation.phase,
+            error: outcome.preparation.error,
+          },
+        }
+      : {}),
+    executions: outcome.executions.map((execution) => ({
+      resourceGroup: execution.resourceGroup,
+      exitCode: execution.exitCode,
+      infrastructureError: execution.infrastructureError === true,
+      ...(execution.error ? { error: execution.error } : {}),
+      ...(execution.empty ? { empty: true } : {}),
+      ...(execution.failedTests ? { failedTests: execution.failedTests } : {}),
+    })),
+  };
+}
+
+if (invokedDirectly(import.meta.url)) {
   const controller = new AbortController();
   const unregister = ['SIGINT', 'SIGTERM'].map((name) =>
     registerProcessSignal(name, () => controller.abort(name)),
@@ -1508,7 +2028,11 @@ if (
     const result = await (args.length === 1 &&
     args[0] === '--representative-narrow-diff'
       ? runRepresentativeNarrowDiffFixture({ signal: controller.signal })
-      : runChangedVerification(args, { signal: controller.signal }));
+      : runChangedVerification(args, {
+          signal: controller.signal,
+          // #2855: run-ci-fast hands its selector the end of its allowance.
+          discoveryDeadlineAt: changedDeadlineFromEnv(),
+        }));
     console.log(renderChangedVerificationSummary(result));
     process.exitCode = result.exitCode;
   } catch (error) {

@@ -30,10 +30,6 @@ function context(
 describe('TailscaleServeIdentitySource', () => {
   const source = new TailscaleServeIdentitySource();
 
-  test('advertises the tailscale-serve provider', () => {
-    expect(source.provider).toBe('tailscale-serve');
-  });
-
   test('maps a verified ingress identity to a VerifiedIdentity (login -> subject)', () => {
     const identity = source.identify(
       context({

@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { loadavg as nodeLoadavg } from 'node:os';
 import { relative, sep } from 'node:path';
 import { Worker } from 'node:worker_threads';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   executeOwnedCommand,
   registerProcessSignal,
@@ -120,7 +121,7 @@ export function parseLoadReliabilityOptions(args) {
   return options;
 }
 
-export function buildLoadReliabilityPlan(options) {
+function buildLoadReliabilityPlan(options) {
   return {
     lane: 'load-reliability',
     mode: options.run ? 'run' : 'dry',
@@ -144,11 +145,7 @@ export function buildLoadReliabilityPlan(options) {
 }
 
 /** Production samples the host's real one-minute load average. */
-export function createDefaultLoadavg(os = { loadavg: nodeLoadavg }) {
-  return () => os.loadavg();
-}
-
-const defaultLoadavg = createDefaultLoadavg();
+const defaultLoadavg = () => nodeLoadavg();
 
 function loadValue(loadavg) {
   const value = loadavg()[0];
@@ -781,11 +778,7 @@ async function main() {
   process.exitCode = result.exitCode;
 }
 
-if (
-  process.argv[1] &&
-  new URL(import.meta.url).pathname ===
-    new URL(`file://${process.argv[1]}`).pathname
-) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(`[load-reliability] ${error.message}\n`);
     process.exitCode = 1;

@@ -36,9 +36,6 @@ import {
   normalizeAttachedStationHtml,
   peerActorIdentity,
   productionBuildReceipt,
-  RECONNECT_EDITOR_READY_TIMEOUT_MS,
-  RECONNECT_POOL_BATCH_SIZE,
-  REFERENCE_CONTROL_SOCKET_RESPONSE_TIMEOUT_MS,
   referenceAuthContext,
 } from '../interactive-workspace-playwright-adapter.mjs';
 import {
@@ -62,6 +59,7 @@ type WorkflowStep = {
   name?: string;
   uses?: string;
   with?: Record<string, unknown>;
+  env?: Record<string, unknown>;
 };
 
 type WorkflowJob = {
@@ -365,10 +363,6 @@ describe('interactive workspace performance contract', () => {
       closedLiveCommandDiagnostic(new Error('private-token')),
     ).toBeUndefined();
   });
-  it('serializes reconnect setup while retaining a bounded Windows editor readiness wait', () => {
-    expect(RECONNECT_POOL_BATCH_SIZE).toBe(1);
-    expect(RECONNECT_EDITOR_READY_TIMEOUT_MS).toBe(60_000);
-  });
   it('fences live-command responses against racing heartbeats', () => {
     const request = (body: string) => ({ postData: () => body });
     expect(
@@ -634,12 +628,19 @@ describe('interactive workspace performance contract', () => {
     }
   });
 
-  it('keeps the extended control response budget bounded to the reference socket', () => {
-    expect(REFERENCE_CONTROL_SOCKET_RESPONSE_TIMEOUT_MS).toBe(30 * 60 * 1000);
-  });
-
-  it('keeps reference artifacts fresh through the bounded 55-minute lane only', () => {
-    expect(config.referenceEnvironment.maxArtifactAgeMs).toBe(60 * 60 * 1000);
+  it('accepts evidence up to one hour old and refuses it just past that', () => {
+    const run = executeInteractiveWorkspaceBenchmark(config, {
+      mode: 'smoke',
+    });
+    const reasonsAt = (ageMs: number) =>
+      evaluateInteractiveWorkspacePerformance(config, run, {
+        mode: 'smoke',
+        now: () => new Date(Date.parse(run.generatedAt) + ageMs),
+        expectedRevision: run.provenance.metadata.revision,
+      }).reasonCodes;
+    const hour = 60 * 60 * 1000;
+    expect(reasonsAt(hour - 1_000)).not.toContain('STALE_OR_INVALID_TIMESTAMP');
+    expect(reasonsAt(hour + 1_000)).toContain('STALE_OR_INVALID_TIMESTAMP');
   });
 
   it('rejects malformed action attestations from a purported real adapter', () => {
@@ -2003,47 +2004,42 @@ describe('interactive workspace performance contract', () => {
     );
     expect(chromiumInstall).toContain("PLAYWRIGHT_BROWSERS_PATH: '0'");
     expect(chromiumInstall).toContain('run: npx playwright install chromium');
-    const oneHourJob = workflow.slice(
-      workflow.indexOf('  one-hour-collaboration-reference:'),
-    );
-    expect(oneHourJob).toContain(
-      'name: One-hour collaboration growth reference',
-    );
-    expect(oneHourJob).toContain('timeout-minutes: 125');
-    expect(oneHourJob).toContain('needs: reference-performance');
     // Both one-hour lanes depend on the contract job and carry no status
     // function, so GitHub's implicit success() keeps them off a red
     // contract (#1331); the pull-request exclusion stays at the head.
-    expect(oneHourJob).toContain("if: github.event_name != 'pull_request'");
-    // Job-level condition only: steps below legitimately use `if: always()`.
-    expect(oneHourJob).not.toContain('\n    if: always()');
-    expect(oneHourJob).toContain("STATION_PERFORMANCE_ONE_HOUR_REFERENCE: '1'");
-    expect(oneHourJob).toContain(
-      'STATION_PERFORMANCE_E2E_FIXTURES: long-session-bounded-growth',
-    );
-    expect(oneHourJob).toContain('owner-lifetime-seconds: "7800"');
-    const workBoardHourJob = workflow.slice(
-      workflow.indexOf('  one-hour-work-board-reference:'),
-    );
-    expect(workBoardHourJob).toContain(
-      'name: One-hour Work Board growth reference',
-    );
-    expect(workBoardHourJob).toContain('timeout-minutes: 125');
-    expect(workBoardHourJob).toContain('needs: reference-performance');
-    expect(workBoardHourJob).toContain(
-      "if: github.event_name != 'pull_request'",
-    );
-    expect(workBoardHourJob).not.toContain('\n    if: always()');
-    expect(workBoardHourJob).toContain(
-      'STATION_PERFORMANCE_E2E_FIXTURES: work-board-one-hour-v1',
-    );
-    const bridgeSpec = readFileSync(
-      'tests/interactive-workspace-performance-bridge.spec.ts',
-      'utf8',
-    );
-    expect(bridgeSpec).toContain('installTelemetryDialogDismissal');
-    expect(bridgeSpec).toContain('page.addLocatorHandler');
-    expect(bridgeSpec).toContain('removeTelemetryDialogHandler');
+    const oneHourJobs = [
+      [
+        'one-hour-collaboration-reference',
+        'One-hour collaboration growth reference',
+        {
+          STATION_PERFORMANCE_ONE_HOUR_REFERENCE: '1',
+          STATION_PERFORMANCE_E2E_FIXTURES: 'long-session-bounded-growth',
+        },
+      ],
+      [
+        'one-hour-work-board-reference',
+        'One-hour Work Board growth reference',
+        { STATION_PERFORMANCE_E2E_FIXTURES: 'work-board-one-hour-v1' },
+      ],
+    ] as const;
+    for (const [jobId, name, env] of oneHourJobs) {
+      const job = jobs?.[jobId] as WorkflowJob & {
+        name?: string;
+        needs?: unknown;
+        if?: string;
+        'timeout-minutes'?: unknown;
+      };
+      expect(job, jobId).toMatchObject({
+        name,
+        needs: 'reference-performance',
+        if: "github.event_name != 'pull_request'",
+        'timeout-minutes': 125,
+      });
+      const observe = job.steps?.find(
+        (step) => step.env?.STATION_PERFORMANCE_E2E_FIXTURES !== undefined,
+      );
+      expect(observe?.env, jobId).toMatchObject(env);
+    }
     expect(workflow).not.toContain('STATION_PERFORMANCE_UI_URL:');
   });
 });

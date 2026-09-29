@@ -14,8 +14,8 @@ let controller: AgentActivityController | null = null;
 
 /**
  * The app's one agent-activity controller, or `null` when this host does not
- * report `remote-push` as enabled (web, desktop, iOS, or an Android build with
- * no push configuration). Kept out of the entry chunk: callers import this
+ * report `remote-push` as enabled (web, desktop, an Android build with no
+ * push configuration, or an iOS build without the Live Activity half). Kept out of the entry chunk: callers import this
  * module lazily.
  */
 export async function agentActivityController(): Promise<AgentActivityController | null> {

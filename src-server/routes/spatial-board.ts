@@ -224,7 +224,8 @@ export function createSpatialBoardRoutes(
       c,
       await respond(async () => {
         const board = await store.read();
-        return resolver.resolve(board);
+        // Owners read as this request's principal (sessions, runs).
+        return resolver.resolve(board, c.req.raw);
       }),
     ),
   );

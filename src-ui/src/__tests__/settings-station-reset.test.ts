@@ -132,13 +132,14 @@ describe('buildStationResetPlan', () => {
     // across six sections. That it is ALSO the order the page renders these
     // rows in is a separate claim, checked against the DOM in
     // `settings-catalog-completeness.test.tsx` — it is not something this
-    // file can see. The SET is asserted below and is unchanged across the
-    // whole slice; that is the property a reset depends on.
+    // file can see. The ordered literal fixes the SET too, and the set is
+    // what a reset depends on.
     expect([...RESETTABLE_STATION_SETTING_KEYS]).toEqual([
       // Station host
       'terminalShell',
       'mcpUiHost',
       'surfaceTrustFromVeritasEvidence',
+      'mobileDeviceHubUrl',
       // Sources
       'registryUrl',
       'disableDefaultSkillRegistries',
@@ -157,29 +158,6 @@ describe('buildStationResetPlan', () => {
       // Chat
       'defaultChatFontSize',
     ]);
-    // The SET is what a reset actually clears, and #2182 must not have
-    // changed it. Sixteen keys before the split across six sections,
-    // sixteen after; only the order follows the page.
-    expect([...RESETTABLE_STATION_SETTING_KEYS].sort()).toEqual(
-      [
-        'approvalGuardian',
-        'defaultApprovalMode',
-        'defaultChatFontSize',
-        'defaultMaxOutputTokens',
-        'defaultMaxTurns',
-        'defaultWorkspaceIsolation',
-        'disableDefaultSkillRegistries',
-        'distributionProfile',
-        'mcpUiHost',
-        'region',
-        'registryUrl',
-        'surfaceTrustFromVeritasEvidence',
-        'systemPrompt',
-        'templateVariables',
-        'terminalShell',
-        'workspaceCheckpoints',
-      ].sort(),
-    );
   });
 });
 

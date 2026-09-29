@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import { execGit } from '../../utils/git-exec.js';
+import { ownGitRepositoryArgs } from '../../utils/own-git-repository.js';
 import { readPluginManifestFileSync } from './plugin-manifest-loader.js';
 
 export interface PluginUpdateRecord {
@@ -70,12 +71,13 @@ export async function checkPluginUpdates(options: {
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const dir = join(pluginsDir, entry.name);
-      const gitDir = join(dir, '.git');
       const manifestPath = join(dir, 'plugin.json');
-      if (!existsSync(gitDir) || !existsSync(manifestPath)) continue;
+      // Only the plugin's own repository: never one enclosing `dir`.
+      const own = ownGitRepositoryArgs(dir);
+      if (!own || !existsSync(manifestPath)) continue;
 
       try {
-        await execGit(['fetch', '--quiet'], {
+        await execGit([...own, 'fetch', '--quiet'], {
           cwd: dir,
           timeout: 10000,
           // An installed plugin's directory is Station-owned, and its origin
@@ -84,7 +86,7 @@ export async function checkPluginUpdates(options: {
           hardening: { allowFileProtocol: true },
         });
         const { stdout: behind } = await execGit(
-          ['rev-list', '--count', 'HEAD..@{u}'],
+          [...own, 'rev-list', '--count', 'HEAD..@{u}'],
           { cwd: dir, encoding: 'utf-8' },
         );
         if (parseInt(behind.trim(), 10) > 0) {

@@ -1,9 +1,15 @@
 import { createSocket, type Socket } from 'node:dgram';
 import { once } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { browserFinalizeAndActivateFreshRelayEnrollment } from '../lib/browser-application-account.mjs';
 import { startPionFixture } from '../lib/browser-transport-pion.js';
 import {
@@ -17,12 +23,67 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
-it('resolves the fresh relay continuation client from the application-session SDK surface', () => {
-  const implementation =
-    browserFinalizeAndActivateFreshRelayEnrollment.toString();
-  expect(implementation).toContain('window.stationApplicationChannel');
-  expect(implementation).toContain('new sessionApi.ApplicationSessionClient');
-  expect(implementation).not.toContain('new api.ApplicationSessionClient');
+it('resolves the fresh relay continuation client from the application-session SDK surface', async () => {
+  const delivery = {
+    state: 'delivered',
+    enrollmentId: 'enrollment-1',
+    bundle: {
+      stationId: 'station-1',
+      deviceId: 'device-1',
+      continuation: { deviceId: 'device-1', clientOrigin: 'https://app.test' },
+    },
+  };
+  const state = {
+    key: { privateKey: 'key' },
+    challenge: { enrollmentId: 'enrollment-1' },
+    apiBase: 'https://relay.test',
+    stationId: 'station-1',
+    clientOrigin: 'https://app.test',
+    requestHeaderEvidence: [] as string[][],
+    transport: async () => ({ status: 200, json: async () => delivery }),
+  };
+  const constructed: unknown[][] = [];
+  const stopAfterConstruction = new Error('stop after construction');
+  vi.stubGlobal('window', {
+    stationFreshRelayEnrollment: state,
+    // The relay-enrollment surface must not be where the continuation client
+    // comes from; constructing it here fails the test for that reason.
+    stationRelayEnrollment: {
+      RELAY_ENROLLMENT_CLIENT_PATHS: { finalize: '/finalize' },
+      createRelayEnrollmentFinalizeProof: async () => 'proof',
+      ApplicationSessionClient: class {
+        constructor() {
+          throw new Error('continuation client built from the relay surface');
+        }
+      },
+    },
+    stationApplicationChannel: {
+      ApplicationSessionClient: class {
+        constructor(...args: unknown[]) {
+          constructed.push(args);
+        }
+        headers() {
+          throw stopAfterConstruction;
+        }
+      },
+    },
+  });
+  try {
+    await expect(browserFinalizeAndActivateFreshRelayEnrollment()).rejects.toBe(
+      stopAfterConstruction,
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+  expect(constructed).toEqual([
+    [
+      'https://relay.test',
+      'station-1',
+      'https://app.test',
+      { requireCredential: true, timeoutMs: 15000 },
+      state.key,
+    ],
+  ]);
 });
 function temporaryRoot() {
   const root = mkdtempSync(join(tmpdir(), 'station-browser-fixture-test-'));
@@ -115,6 +176,29 @@ it('refuses an unsupported relay transport before spawning a child', async () =>
     startLabRelay(49152, temporaryRoot(), 'forward', 'unknown'),
   ).rejects.toThrow('Unsupported lab relay transport');
 });
+
+it.each(['tcp', 'udp'])(
+  'enforces an explicitly bounded %s recorder lifetime',
+  async (transport) => {
+    const root = temporaryRoot();
+    await expect(
+      startLabRelay(49152, root, 'forward', transport, { lifetimeMs: 600_001 }),
+    ).rejects.toThrow('Invalid lab relay lifetime');
+    const relay = await startLabRelay(49152, root, 'forward', transport, {
+      lifetimeMs: 1_000,
+    });
+    await expect
+      .poll(() => existsSync(join(root, 'failed.json')), { timeout: 5_000 })
+      .toBe(true);
+    expect(JSON.parse(readFileSync(join(root, 'failed.json'), 'utf8'))).toEqual(
+      { reason: 'lifetime_exceeded' },
+    );
+    await expect(relay.close()).rejects.toThrow(
+      'Relay failed its bounded lifecycle/capture contract',
+    );
+  },
+  10_000,
+);
 
 it('refuses a missing Pion binary and an exited child before reporting a ready peer', async () => {
   const root = temporaryRoot();

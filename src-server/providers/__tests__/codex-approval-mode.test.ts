@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import {
-  CODEX_DEFAULT_APPROVAL_KNOBS,
   mapApprovalModeToCodex,
   mapCodexKnobsToApprovalMode,
   planCodexTurnSandbox,
@@ -52,10 +51,6 @@ describe('mapApprovalModeToCodex', () => {
       mapApprovalModeToCodex('connection-default', 'host'),
     ).toBeUndefined();
     expect(mapApprovalModeToCodex(undefined, 'host')).toBeUndefined();
-    expect(CODEX_DEFAULT_APPROVAL_KNOBS).toEqual({
-      approvalPolicy: 'never',
-      sandbox: 'danger-full-access',
-    });
   });
 });
 

@@ -1,7 +1,7 @@
 # Interactive workspace performance contract
 
-`scripts/interactive-workspace-performance.mjs` is Station's single
-performance-contract Module. Its synthetic adapter is smoke-only and executes
+[`scripts/interactive-workspace-performance.mjs`](../../scripts/interactive-workspace-performance.mjs)
+owns the performance contract and report. Its synthetic adapter is smoke-only and executes
 every named workload in a temporary isolated root. Reference mode invokes the
 distinct `station-playwright-production-v1` adapter, which validates an
 attached production bundle then calls a versioned product-owned in-page bridge.
@@ -56,6 +56,13 @@ unavailable or ambiguous owner outcomes.
 | Work Board, 200 pins | warm restore <=1 s; cold restore <=2 s | grouped resolution plus keyboard/pointer move/resize p95 <=16 ms and max task <=50 ms |
 | Work Board, one hour | interaction p95 <=16 ms and max task <=50 ms | zero growth in board DOM nodes, listeners, pending interaction bookkeeping, and query/cache entries |
 
+The names `interactionTaskMs`, `warmEditableMs` and `coldEditableMs` refer to
+the exact mark intervals in the fixture JSON. For example, local interaction
+time includes input through diff-render commit, and file-open time includes
+scroll and diff rendering. These elapsed intervals are separate from the
+foreground journal's observed browser Long Tasks; neither is a census of every
+task or allocation in the application.
+
 The reference environment identifies a dedicated Windows workstation
 host, production build mode, warm/cold rules, and exactly 100 measured samples
 after five warm-up samples. Each timing exposes nearest-rank `p50Ms`,
@@ -85,7 +92,8 @@ The reference UI build alone sets
 `VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE=1`; ordinary production builds
 tree-shake the installer. `STATION_PERFORMANCE_UI_URL` must name an
 authenticated real Task workspace and include
-`station-performance-reference=interactive-workspace-v3`. Both gates are
+`station-performance-reference=interactive-workspace-v3`. A Work Board-only
+run may instead name its authenticated Project Pane route. Both gates are
 required before the versioned global is installed. The target URL must contain
 no userinfo, fragment credential, or extra query data. The adapter also requires
 exactly one runner-owned auth source: a canonical bounded Playwright
@@ -115,12 +123,12 @@ snapshot/delta is applied directly to the mounted Task editor and normalized
 into the authoritative document query in the same ingress turn; a gap,
 duplicate, or malformed envelope still forces the no-cache document read.
 
-The reference workflow now provisions its own temporary Station home, exact
-checkout build, six dedicated Project/Task documents, an owner browser, and a
-separately paired peer browser. Every implemented fixture receives a fresh
-authenticated browser context and its own Task/surface; the adapter closes that
-context before proceeding, so a terminal stream or backlog in one fixture
-cannot contaminate the next. The collaboration fixture drives shipped
+The [reference browser fixture](../../tests/interactive-workspace-performance-bridge.spec.ts)
+provisions a temporary Station home, Project, Task and browser state separately
+for each selected fixture, using the checkout's production build. Collaboration
+and reconnect fixtures also receive separately paired peer credentials. The
+provisioning browser closes before measurement, and the adapter closes each
+fixture's authenticated contexts before proceeding. The collaboration fixture drives shipped
 leave/join/announce and cursor controls from the peer while the owner records
 server-identity-bound participant and cursor layout commits.
 
@@ -152,9 +160,10 @@ while a second Task receives operation 10,001 and proves the distinct `gap`
 then snapshot-render branch. No raw path, operation payload, or content enters
 the bridge receipts.
 
-The ordinary reference job remains intentionally shorter than one hour and
-therefore reports one-hour fixtures as `NOT_VERIFIED`. The dispatched Windows
-lanes perform five warmups and 100 real samples across an unscaled hour.
+The ordinary reference job does not execute the one-hour acceptance fixtures
+and reports them as `NOT_VERIFIED`; its receipt cannot satisfy them. The separate dispatched Windows lanes depend on
+that job succeeding and perform five warmups and 100 real samples across an
+unscaled hour.
 `work-board-one-hour-v1` captures start/end board DOM nodes, mounted interaction
 handler surfaces, pending interaction bookkeeping, and board query/cache entries.
 A deterministic fake clock is allowed only in bookkeeping unit tests, never this
@@ -200,8 +209,18 @@ implication. The Work Board browser/reference test is an acceptance resource;
 the bridge registration unit test and PR smoke are scoped static/diagnostic
 evidence only.
 
-The PR smoke is wired into the existing fast-checks job. The reference
+The PR smoke is wired into the existing fast-checks-statics job. The reference
 workflow remains separate and reports `NOT_VERIFIED` rather than treating
 arbitrary CI hardware as reference evidence. It runs on `workflow_dispatch`
-only: its weekly schedule produced no green run in 12 attempts through
-2026-09-21, so the cron was removed until a dispatched run passes.
+only. The workflow records why the old weekly schedule was removed: no green
+run in 12 attempts through 2026-09-21. That dated history is not a current run
+receipt; this document does not assert a later reference pass.
+
+The [adapter](../../scripts/interactive-workspace-playwright-adapter.mjs),
+[raw-mark validator](../../scripts/lib/interactive-workspace-production-bridge.mjs)
+and [fixture JSON](../../scripts/fixtures/interactive-workspace/performance-contract.json)
+define the boundary between observed work and reported metrics.
+[Checker tests](../../scripts/__tests__/interactive-workspace-performance.test.ts)
+and [adapter tests](../../scripts/__tests__/interactive-workspace-playwright-adapter.test.ts)
+exercise malformed evidence and controlled budget failures. Only an executed
+reference run establishes the physical timing and long-session budgets.

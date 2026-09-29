@@ -42,6 +42,36 @@ describe('assessment update cache notification', () => {
     ).toBeUndefined();
   });
 
+  test('tombstones the Task Basis family in the receiving scope only', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const task = ['task-basis', 'task-a', scopeA.apiBase, scopeA.authorityKey];
+    const otherTask = [
+      'task-basis',
+      'task-a',
+      scopeB.apiBase,
+      scopeB.authorityKey,
+    ];
+    const sameBaseOtherAuthority = [
+      'task-basis',
+      'task-a',
+      scopeA.apiBase,
+      scopeB.authorityKey,
+    ];
+    client.setQueryData(task, { state: 'old' });
+    client.setQueryData(otherTask, { state: 'other' });
+    client.setQueryData(sameBaseOtherAuthority, { state: 'other' });
+
+    expect(refreshAnswerAssessmentQueries(client, update, scopeA)).toBe(true);
+
+    expect(client.getQueryData(task)).toBeNull();
+    expect(client.getQueryData(otherTask)).toEqual({ state: 'other' });
+    expect(client.getQueryData(sameBaseOtherAuthority)).toEqual({
+      state: 'other',
+    });
+  });
+
   test('withholds an active observer during a deferred refetch and never touches co-resident authority', async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },

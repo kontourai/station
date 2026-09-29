@@ -45,6 +45,47 @@ describe('TranscriptVirtualizer (station#1238)', () => {
     ).toBeTruthy();
   });
 
+  test('re-requests the tail when content grows without adding rows', async () => {
+    scrollToIndex.mockClear();
+    const scrollElement = createRef<HTMLDivElement>();
+    const rows = Array.from({ length: 100 }, (_, index) => ({
+      id: `message-${index}`,
+      kind: 'message:user',
+    }));
+    const view = render(
+      <div ref={scrollElement}>
+        <TranscriptVirtualizer
+          rows={rows}
+          scrollElement={scrollElement}
+          renderRow={(row) => <article>{row.id}</article>}
+          followTail
+          followTick="10:1"
+        />
+      </div>,
+    );
+
+    await waitFor(() => {
+      expect(scrollToIndex).toHaveBeenCalledWith(99, { align: 'end' });
+    });
+    scrollToIndex.mockClear();
+    // A projected live turn streams into its tail row: same row count, new
+    // growth signal — the follow must re-fire, not wait for another row.
+    view.rerender(
+      <div ref={scrollElement}>
+        <TranscriptVirtualizer
+          rows={rows}
+          scrollElement={scrollElement}
+          renderRow={(row) => <article>{row.id}</article>}
+          followTail
+          followTick="20:1"
+        />
+      </div>,
+    );
+    await waitFor(() => {
+      expect(scrollToIndex).toHaveBeenCalledWith(99, { align: 'end' });
+    });
+  });
+
   test('reveals a routed row through the virtualizer index API', async () => {
     const scrollElement = createRef<HTMLDivElement>();
     const rows = Array.from({ length: 100 }, (_, index) => ({

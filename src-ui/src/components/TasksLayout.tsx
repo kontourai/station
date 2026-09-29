@@ -16,13 +16,13 @@ export function TasksLayout({
   const { data: project } = useScopedProjectQuery(projectSlug);
 
   return (
-    <main className="tasks-layout" aria-label="Tasks">
+    <section className="tasks-layout" aria-label="Tasks">
       <ProjectTasksSection
         slug={projectSlug}
         projectId={project?.id}
         projectWorkingDirectory={project?.workingDirectory}
         agents={project?.agents}
       />
-    </main>
+    </section>
   );
 }

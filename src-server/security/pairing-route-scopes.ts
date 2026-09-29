@@ -2157,19 +2157,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/attachment-staging/:stageId',
     },
     // archive#4075 stage 3 slice 2: the session-agnostic presence roster.
-    // It DOES disclose which principal ids currently hold an open
-    // `/events` stream (bounded, no session/thread enumeration) — but the
-    // family's own `/events` stream, already at this same read tier, is
-    // strictly MORE disclosing to the identical caller: personal-mode
-    // session reads are `ownerlessSessionAccess: 'single-user-compat'`
-    // (`SessionAuthorization.canReadSession`), so any orchestration:read
-    // credential already sees full session/turn content for effectively
-    // every session on this Station. A roster of who is currently
-    // connected is a strict subset of what that same credential already
-    // reads, so this takes the family default rather than a raised tier.
+    // It discloses which principal ids currently hold an open `/events`
+    // stream (bounded, no session/thread enumeration), and the route lists
+    // only principals whose sessions the caller may already read (its own
+    // id, plus its personal conversation account's owners). This family's
+    // `/events` stream, at the same read tier, already streams those
+    // principals' sessions in full to the same caller, so who among them is
+    // connected is strictly less than what the credential reads: the family
+    // default tier is enough. (This no longer rests on ownerless sessions
+    // being readable by every personal caller; none is readable at all.)
     { method: 'GET', path: '/api/orchestration/presence/summary' },
-    // Station #90 lane D: the verified-caller projection for station-control
-    // stdio children. Internal-only at the route: every non-internal
+    // Station #90 lane D: the verified-caller projection, which stdio
+    // children once read (no production client now). Internal-only at the route: every non-internal
     // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },
@@ -3075,6 +3074,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/boot' },
     { method: 'GET', path: '/api/system/core-update' },
     { method: 'GET', path: '/api/system/core-update/restart-status' },
+    // A read of this install's own service-update progress, from its runtime
+    // files: no other Station's or Environment's data, nothing written. The
+    // /api/system read tier, like the restart-status leaf above.
+    { method: 'GET', path: '/api/system/core-update/service-update' },
     { method: 'POST', path: '/api/system/core-update' },
     { method: 'GET', path: '/api/system/discover' },
     { method: 'GET', path: '/api/system/identity' },
@@ -3223,6 +3226,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/notifications' },
     { method: 'DELETE', path: '/notifications/:id' },
     { method: 'POST', path: '/notifications/:id/action/:actionId' },
+    // #2587: records the caller's own read marker on a notification it can
+    // already read; the surface id is derived from the credential.
+    { method: 'POST', path: '/notifications/:id/read' },
     { method: 'POST', path: '/notifications/:id/snooze' },
     { method: 'DELETE', path: '/notifications/activity' },
     { method: 'GET', path: '/notifications/providers' },

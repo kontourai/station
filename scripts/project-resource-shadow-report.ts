@@ -33,6 +33,7 @@ import {
   type ShadowRecordEntry,
   SLICE_3C_POPULATIONS,
 } from '../src-server/services/projects/project-resource-shadow-record.js';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 interface Options {
   homeDir: string;
@@ -277,8 +278,9 @@ export function buildReport(
     record,
     (entry) => entry.outcome === SHADOW_TRIPWIRE_OUTCOME,
   );
+  const nonDivergent: readonly string[] = NON_DIVERGENT_RECORD_OUTCOMES;
   const divergences = record.entries.filter(
-    (entry) => !NON_DIVERGENT_RECORD_OUTCOMES.includes(entry.outcome),
+    (entry) => !nonDivergent.includes(entry.outcome),
   );
   const killSwitchCount = matchCount(
     record,
@@ -568,6 +570,6 @@ export function main(argv: readonly string[]): number {
   return options.gate && !report.gatePass ? 1 : 0;
 }
 
-if (process.argv[1]?.endsWith('project-resource-shadow-report.ts')) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(main(process.argv.slice(2)));
 }

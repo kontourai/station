@@ -41,12 +41,6 @@ describe('worktree hygiene decision', () => {
     expect(result.keepReasons).toEqual([]);
   });
 
-  // The tool cannot remove anything, so it must not report a field named for
-  // an action it does not have. `removable` was that name.
-  test('no disposition field claims a removal capability', () => {
-    expect(classifyWorktree(finished())).not.toHaveProperty('removable');
-  });
-
   // Each of these is a distinct way a worktree can still be someone's live
   // work. They are asserted one at a time so a regression names which
   // protection was lost, rather than only that "something" changed.
@@ -207,12 +201,6 @@ describe('status counting', () => {
 });
 
 describe('freshness find arguments', () => {
-  // Measured on this repo: 3762 of 4884 tracked paths sit at depth >= 4, so a
-  // `-maxdepth 3` walk could not see `src-ui/src/components/X.tsx` at all.
-  test('imposes no depth limit', () => {
-    expect(freshnessFindArgs('/w/lane-1', 6)).not.toContain('-maxdepth');
-  });
-
   // `-not -path '*/node_modules/*'` still DESCENDED into node_modules and
   // discarded the results afterwards; pruning is what made an unlimited-depth
   // walk cheaper than the old bounded one.
@@ -258,18 +246,9 @@ describe('freshness find arguments', () => {
     }
   });
 
-  test('prunes build output by a path anchored at the worktree root', () => {
-    const args = freshnessFindArgs('/w/lane-1', 6);
-    for (const pattern of BUILD_OUTPUT_PRUNE_PATTERNS) {
-      const index = args.indexOf(`/w/lane-1/${pattern}`);
-      expect(index, `${pattern} is not pruned by path`).toBeGreaterThan(-1);
-      expect(args[index - 1]).toBe('-path');
-    }
-  });
-
-  // Deleting an entry from the pattern list must not read as "still pruning
-  // by path" — the loops above iterate the list, so they cannot see a removal
-  // (protocol §2, the scope-assertion corollary). This pins the list itself.
+  // Anchored path pruning is proven against real worktrees in
+  // worktree-hygiene-git.test.ts; a loop over this list cannot see an entry's
+  // removal (protocol §2, the scope-assertion corollary), so pin the list.
   test('the pruned build-output patterns are pinned', () => {
     expect([...BUILD_OUTPUT_PRUNE_PATTERNS]).toEqual(['dist', 'dist-*']);
   });

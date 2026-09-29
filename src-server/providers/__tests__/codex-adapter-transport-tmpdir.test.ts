@@ -28,6 +28,7 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
     rmSync(home, { recursive: true, force: true });
     vi.doUnmock('node:child_process');
     vi.doUnmock('../auth/cli-auth.js');
+    vi.unstubAllEnvs();
     vi.resetModules();
   });
 
@@ -42,6 +43,7 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
     vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
     vi.doMock('../auth/cli-auth.js', () => ({
       findCliBinary: () => '/usr/local/bin/codex',
+      resolveAugmentedPathSync: () => '/usr/bin:/bin',
     }));
 
     const { createCodexProcess } = await import(
@@ -70,6 +72,7 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
     vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
     vi.doMock('../auth/cli-auth.js', () => ({
       findCliBinary: () => '/usr/local/bin/codex',
+      resolveAugmentedPathSync: () => '/usr/bin:/bin',
     }));
 
     const { createCodexProcess } = await import(
@@ -86,5 +89,38 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
     expect(options.env.TMPDIR).toBe(join(home, 'tmp', 'engine-spawn'));
     // Routing keys ride through untouched.
     expect(options.env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:8318');
+  });
+
+  test('the spawned env is a scrubbed process.env copy on the augmented PATH, with per-connection overrides winning', async () => {
+    vi.stubEnv('STATION_INTERNAL_API_TOKEN', 'boot-internal-secret');
+    vi.stubEnv('STATION_TEST_AMBIENT', 'inherited');
+    const spawnMock = vi.fn(
+      (
+        _binary: string,
+        _args: string[],
+        _options: { env: NodeJS.ProcessEnv },
+      ) => new EventEmitter(),
+    );
+    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+    vi.doMock('../auth/cli-auth.js', () => ({
+      findCliBinary: () => '/usr/local/bin/codex',
+      resolveAugmentedPathSync: () => '/augmented/by-test:/usr/bin',
+    }));
+
+    const { createCodexProcess } = await import(
+      '../adapters/codex-adapter-transport.js'
+    );
+
+    createCodexProcess();
+    createCodexProcess(undefined, { PATH: '/connection/bin' });
+
+    const [inherited, overridden] = spawnMock.mock.calls.map(
+      ([, , options]) => options.env,
+    );
+    expect(inherited).not.toBe(process.env);
+    expect(inherited).not.toHaveProperty('STATION_INTERNAL_API_TOKEN');
+    expect(inherited.STATION_TEST_AMBIENT).toBe('inherited');
+    expect(inherited.PATH).toBe('/augmented/by-test:/usr/bin');
+    expect(overridden.PATH).toBe('/connection/bin');
   });
 });

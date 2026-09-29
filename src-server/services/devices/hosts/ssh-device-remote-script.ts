@@ -1,10 +1,9 @@
 /**
  * The program Station runs on an SSH device host (#1973, D11).
  *
- * Adapted from t3code's `apps/server/src/device/sshDeviceScript.ts` (MIT,
- * © 2026 T3 Tools Inc.): one Node program, sent over the ssh session's
- * stdin, that probes the host, installs the hub, or runs it. Station
- * differs where the device toolchain lane already does:
+ * One Node program, sent over the ssh session's stdin, that probes the host,
+ * installs the hub, or runs it. It follows the local device toolchain's
+ * rules:
  *
  * - The hub is not `npm install`ed on the host. Station installs it LOCALLY
  *   through the pinned lockfile + integrity path (`device-toolchain.ts`,

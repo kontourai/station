@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -55,7 +56,7 @@ afterEach(() => {
 });
 
 describe('shared saved Station store', () => {
-  test('is secret-free, versioned, and writes atomically', () => {
+  test('is secret-free and versioned', () => {
     upsertProfile({
       name: 'kontour',
       endpoint: 'http://127.0.0.1:3141',
@@ -80,6 +81,41 @@ describe('shared saved Station store', () => {
       ],
     });
     expect(readFileSync(profilesPath(), 'utf8')).not.toContain('credential');
+  });
+
+  test('writes atomically: a failed rename keeps the prior bytes and leaves no temp file', async () => {
+    upsertProfile({ name: 'kontour', endpoint: 'http://127.0.0.1:3141' });
+    const prior = readFileSync(profilesPath(), 'utf8');
+    vi.resetModules();
+    vi.doMock('node:fs', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs')>();
+      return {
+        ...actual,
+        renameSync: (from: string, to: string) => {
+          if (to === profilesPath())
+            throw new Error('simulated rename failure');
+          actual.renameSync(from, to);
+        },
+      };
+    });
+    try {
+      const fresh = await import('../commands/profile-store.js');
+      expect(() =>
+        fresh.upsertProfile({
+          name: 'other',
+          endpoint: 'http://127.0.0.1:4141',
+        }),
+      ).toThrow('simulated rename failure');
+    } finally {
+      vi.doUnmock('node:fs');
+      vi.resetModules();
+    }
+    expect(readFileSync(profilesPath(), 'utf8')).toBe(prior);
+    expect(
+      readdirSync(dirname(profilesPath())).filter((name) =>
+        name.endsWith('.tmp'),
+      ),
+    ).toEqual([]);
   });
 
   test('does not select a default unless setup or use explicitly asks', () => {
@@ -122,6 +158,32 @@ describe('shared saved Station store', () => {
       upsertProfile({
         name: 'beta-local',
         endpoint: 'http://127.0.0.1:28141',
+      }),
+    ).toThrow(/missing from an initialized or in-progress shared root/);
+  });
+
+  test('admits a first saved Station beside installs and archive lifecycle state only', () => {
+    // #2675: a prebuilt archive's first start records its instance under
+    // <root>/state/<channel>/instances before anything is saved.
+    mkdirSync(join(home, 'installs', 'stable'), { recursive: true });
+    mkdirSync(join(home, 'state', 'stable', 'instances'), { recursive: true });
+    upsertProfile({
+      name: 'stable-local',
+      endpoint: 'http://127.0.0.1:18141',
+      makeDefault: true,
+    });
+    expect(readProfileStore().profiles.map((profile) => profile.name)).toEqual([
+      'stable-local',
+    ]);
+  });
+
+  test('refuses a first saved Station beside a prior channel runtime', () => {
+    mkdirSync(join(home, 'state', 'stable', 'instances'), { recursive: true });
+    mkdirSync(join(home, 'instances', 'stable'), { recursive: true });
+    expect(() =>
+      upsertProfile({
+        name: 'stable-local',
+        endpoint: 'http://127.0.0.1:18141',
       }),
     ).toThrow(/missing from an initialized or in-progress shared root/);
   });

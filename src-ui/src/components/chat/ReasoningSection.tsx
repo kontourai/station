@@ -127,21 +127,15 @@ export function ReasoningSection({
     wordCount === 1 ? 'word' : 'words'
   }`;
 
+  // Reasoning is activity, not answer: it renders as one more quiet line in
+  // the reading column, at the same weight as a collapsed tool-call batch,
+  // rather than as a bordered card competing with the answer text.
   return (
-    <div
-      className="reasoning-section"
-      style={{
-        margin: '0.5rem 0',
-        background: 'var(--color-bg-secondary)',
-        border: '1px solid var(--color-border)',
-        borderRadius: '4px',
-        fontSize: `${fontSize}px`,
-      }}
-    >
+    <div className="reasoning-section" style={{ fontSize: `${fontSize}px` }}>
       <button
         type="button"
         id={summaryId}
-        className="turn-provenance__summary"
+        className="reasoning-section__summary"
         aria-expanded={isOpen}
         aria-controls={detailsId}
         onClick={() => {
@@ -150,8 +144,8 @@ export function ReasoningSection({
           setIntent(isOpen ? 'user-closed' : 'user-open');
         }}
       >
-        <span>{summary}</span>
-        <span className="turn-provenance__chevron" aria-hidden="true">
+        <span className="reasoning-section__label">{summary}</span>
+        <span className="reasoning-section__chevron" aria-hidden="true">
           {isOpen ? '⌄' : '›'}
         </span>
       </button>
@@ -159,15 +153,7 @@ export function ReasoningSection({
         <section
           id={detailsId}
           aria-labelledby={summaryId}
-          style={{
-            padding: '0.5rem',
-            borderTop: '1px solid var(--color-border)',
-            color: 'var(--text-secondary)',
-            fontSize: '0.85em',
-            fontStyle: 'italic',
-            lineHeight: '1.5',
-            whiteSpace: 'pre-wrap',
-          }}
+          className="reasoning-section__body"
         >
           {content}
         </section>

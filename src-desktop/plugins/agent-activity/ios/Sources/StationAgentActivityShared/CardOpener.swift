@@ -17,20 +17,30 @@ public enum CardOpener {
   static let nonceBytes = 12
   static let tagBytes = 16
 
-  public static func associatedData(registrationId: String) -> Data {
-    Data("station-agent-activity:v1:\(registrationId)".utf8)
+  /// The associated-data domains (`NATIVE_PUSH_SEALED_AAD_PREFIX` and
+  /// `NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX` in
+  /// packages/contracts/src/native-push.ts). The same payload key seals both,
+  /// so the domain is what keeps a card from opening as an alert and the
+  /// reverse.
+  public static let cardDomain = "station-agent-activity:v1:"
+  public static let alertDomain = "station-alert:v1:"
+
+  public static func associatedData(registrationId: String, domain: String = cardDomain) -> Data {
+    Data("\(domain)\(registrationId)".utf8)
   }
 
   /// The plaintext card, or nil for anything that does not authenticate or
   /// is not a flat JSON object of strings.
-  public static func open(payloadKey: String, registrationId: String, sealed: String) -> [String: String]? {
+  public static func open(
+    payloadKey: String, registrationId: String, sealed: String, domain: String = cardDomain
+  ) -> [String: String]? {
     guard let key = Base64URL.decode(payloadKey), key.count == 32,
       let bytes = Base64URL.decode(sealed), bytes.count > nonceBytes + tagBytes,
       let box = try? AES.GCM.SealedBox(combined: bytes),
       let plaintext = try? AES.GCM.open(
         box,
         using: SymmetricKey(data: key),
-        authenticating: associatedData(registrationId: registrationId))
+        authenticating: associatedData(registrationId: registrationId, domain: domain))
     else { return nil }
     guard let object = try? JSONSerialization.jsonObject(with: plaintext),
       let fields = object as? [String: Any]

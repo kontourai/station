@@ -1,17 +1,22 @@
 /**
- * Agent activity on this phone: registering the Android app with the active
- * Station so it pushes Live Update cards (docs/design/notification-delivery.md,
- * "Station contract").
+ * Agent activity on this phone: registering the Android or iOS app with the
+ * active Station so it pushes Live Update cards (Android) or Live Activities
+ * (iOS) (docs/design/notification-delivery.md, "Station contract" and "iOS:
+ * Live Activities over broadcast channels").
  *
  * The flow is plugin identity → Station registration → plugin configuration,
  * and every step's input is the previous step's output, never a guess:
  *
- * - enable: `status` (package name) → `push_token` → `registerNativePush` →
- *   `configure` with exactly what the Station returned.
+ * - enable: `status` (package name or bundle id) → `push_token` (FCM token,
+ *   or the ActivityKit push-to-start token and its APNs environment) →
+ *   `registerNativePush` → `configure` with exactly what the Station
+ *   returned (on iOS the plugin keeps it in the keychain group it shares
+ *   with the widget extension).
  * - disable: `unregisterNativePush` → `clear` of that one registration.
- * - refresh (app start, return to foreground): FCM rotates tokens while the
- *   app is closed and the plugin has no `onNewToken` hook, so a stored
- *   registration re-registers when the token changed or the last
+ * - refresh (app start, return to foreground): tokens rotate while the app
+ *   is closed (FCM with no `onNewToken` hook; push-to-start tokens are only
+ *   read when the app asks), so a stored registration re-registers when the
+ *   token (or, on iOS, its APNs environment) changed or the last
  *   registration is more than a day old. Nothing is registered that the
  *   person has not turned on.
  *
@@ -22,12 +27,15 @@
 import {
   isNativePushSessionReference,
   NATIVE_PUSH_ANDROID_PACKAGES,
+  NATIVE_PUSH_IOS_BUNDLES,
   type NativePushAndroidPackage,
+  type NativePushIosBundle,
   type NativePushRegistrationRequest,
   type NativePushRegistrationResponse,
 } from '@kontourai/station-contracts/native-push';
 import type {
-  NativeAgentActivityStatus,
+  NativeAgentActivityPhoneStatus,
+  NativeApnsEnvironment,
   NativeCommandResult,
   NativePlatformAdapter,
 } from './types';
@@ -35,16 +43,61 @@ import type {
 export const AGENT_ACTIVITY_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY = 'station-agent-activity-registrations-v1';
 
-export interface AgentActivityRegistrationRecord {
+interface AgentActivityRegistrationFields {
   registrationId: string;
   stationId: string;
   stationKey: string;
   /** The push token the Station last accepted for this registration. */
   token: string;
-  packageName: NativePushAndroidPackage;
   /** Epoch ms of the last successful registration with the Station. */
   registeredAt: number;
 }
+
+/** An Android registration; records from before iOS support carry no `platform`. */
+export interface AgentActivityAndroidRegistrationRecord
+  extends AgentActivityRegistrationFields {
+  platform?: undefined;
+  packageName: NativePushAndroidPackage;
+}
+
+export interface AgentActivityIosRegistrationRecord
+  extends AgentActivityRegistrationFields {
+  platform: 'ios';
+  /**
+   * The bundle id registered. Not narrowed to NATIVE_PUSH_IOS_BUNDLES: a
+   * record whose bundle the gateway no longer lists stays readable so it can
+   * still be turned off; only registering it again is refused.
+   */
+  packageName: string;
+  /** The APNs environment the Station last accepted `token` for. */
+  apnsEnvironment: NativeApnsEnvironment;
+}
+
+export type AgentActivityRegistrationRecord =
+  | AgentActivityAndroidRegistrationRecord
+  | AgentActivityIosRegistrationRecord;
+
+/**
+ * What the phone registers as, from the plugin's own answers. The Station
+ * request is built from this and a token in one place,
+ * {@link registrationRequest}.
+ */
+type AgentActivityIdentity =
+  | { platform: 'android'; packageName: NativePushAndroidPackage }
+  | {
+      platform: 'ios';
+      packageName: NativePushIosBundle;
+      apnsEnvironment: NativeApnsEnvironment;
+    };
+
+/** A stored record's identity, before it is checked for registering again. */
+type AgentActivityStoredIdentity =
+  | { platform: 'android'; packageName: NativePushAndroidPackage }
+  | {
+      platform: 'ios';
+      packageName: string;
+      apnsEnvironment: NativeApnsEnvironment;
+    };
 
 export interface AgentActivityRegistrationStore {
   get(environmentId: string): AgentActivityRegistrationRecord | null;
@@ -84,14 +137,19 @@ export type AgentActivityEnableOutcome =
   | { status: 'enabled'; record: AgentActivityRegistrationRecord }
   /** This build carries no push configuration; nothing was registered. */
   | { status: 'unconfigured' }
+  /** This OS is below the feature floor (iOS 18); nothing was registered. */
+  | { status: 'unsupported' }
   /** The OS will not show Station's notifications; nothing was registered. */
-  | { status: 'notifications-disabled' };
+  | { status: 'notifications-disabled' }
+  /** iOS: the person turned Live Activities off for Station; nothing was registered. */
+  | { status: 'live-activities-disabled' };
 
 export type AgentActivityRefreshOutcome =
   | 'off'
   | 'current'
   | 'refreshed'
-  | 'unconfigured';
+  | 'unconfigured'
+  | 'unsupported';
 
 /** A step failed; `message` is safe to show. */
 class AgentActivityError extends Error {
@@ -120,17 +178,13 @@ function unwrap<T>(result: NativeCommandResult<T>): T {
 const PAYLOAD_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 /**
- * The Station's per-registration payload key. The contract type does not
- * carry it yet (it lands with the publisher's end-to-end encryption), so read
- * it defensively and refuse to turn anything on without it: a phone
- * configured without the key could not read its cards. The value never
+ * The Station's per-registration payload key, checked again here (a Station
+ * that answers without a usable one must not turn anything on: a phone
+ * configured without the key could not read its cards). The value never
  * appears in an error.
- *
- * TODO: read `response.payloadKey` directly once
- * `NativePushRegistrationResponse` and `registerNativePush` carry it.
  */
 function payloadKeyOf(response: NativePushRegistrationResponse): string {
-  const value = (response as { payloadKey?: unknown }).payloadKey;
+  const value: unknown = response.payloadKey;
   if (typeof value !== 'string' || !PAYLOAD_KEY_PATTERN.test(value)) {
     throw new AgentActivityError(
       'The Station did not return a usable encryption key for this phone. Update the Station, then try again.',
@@ -139,10 +193,11 @@ function payloadKeyOf(response: NativePushRegistrationResponse): string {
   return value;
 }
 
-function deliverablePackage(packageName: string): NativePushAndroidPackage {
-  const match = NATIVE_PUSH_ANDROID_PACKAGES.find(
-    (candidate) => candidate === packageName,
-  );
+function deliverable<T extends string>(
+  allowed: readonly T[],
+  packageName: string,
+): T {
+  const match = allowed.find((candidate) => candidate === packageName);
   if (!match) {
     throw new AgentActivityError(
       `This app (${packageName}) is not one the push gateway delivers to.`,
@@ -151,9 +206,70 @@ function deliverablePackage(packageName: string): NativePushAndroidPackage {
   return match;
 }
 
+/**
+ * The one place a registration request is built. A future iOS field (the
+ * #2589 alert token) is one more property on the `ios` branch, read from
+ * the same `push_token` answer as the token.
+ */
+function registrationRequest(
+  identity: AgentActivityIdentity,
+  token: string,
+): NativePushRegistrationRequest {
+  return identity.platform === 'ios'
+    ? {
+        token,
+        packageName: identity.packageName,
+        platform: 'ios',
+        apnsEnvironment: identity.apnsEnvironment,
+      }
+    : { token, packageName: identity.packageName, platform: 'android' };
+}
+
+/**
+ * A record from exactly the known fields, in the order an Android record has
+ * always been stored in; an iOS record adds its platform and environment.
+ */
+function recordFor(
+  identity: AgentActivityStoredIdentity,
+  fields: AgentActivityRegistrationFields,
+): AgentActivityRegistrationRecord {
+  const { registrationId, stationId, stationKey, token, registeredAt } = fields;
+  if (identity.platform !== 'ios')
+    return {
+      registrationId,
+      stationId,
+      stationKey,
+      token,
+      packageName: identity.packageName,
+      registeredAt,
+    };
+  return {
+    registrationId,
+    stationId,
+    stationKey,
+    token,
+    packageName: identity.packageName,
+    registeredAt,
+    platform: 'ios',
+    apnsEnvironment: identity.apnsEnvironment,
+  };
+}
+
+/** An iOS token is only registrable with the APNs environment it belongs to. */
+function tokenApnsEnvironment(token: {
+  apnsEnvironment?: NativeApnsEnvironment;
+}): NativeApnsEnvironment {
+  if (!token.apnsEnvironment) {
+    throw new AgentActivityError(
+      'This phone did not say which APNs environment its push token belongs to.',
+    );
+  }
+  return token.apnsEnvironment;
+}
+
 export interface AgentActivityController {
   registration(environmentId: string): AgentActivityRegistrationRecord | null;
-  status(): Promise<NativeAgentActivityStatus>;
+  status(): Promise<NativeAgentActivityPhoneStatus>;
   enable(target: AgentActivityTarget): Promise<AgentActivityEnableOutcome>;
   disable(target: AgentActivityTarget): Promise<void>;
   refresh(target: AgentActivityTarget): Promise<AgentActivityRefreshOutcome>;
@@ -176,11 +292,11 @@ export function createAgentActivityController(
   async function registerAndConfigure(
     target: AgentActivityTarget,
     token: string,
-    packageName: NativePushAndroidPackage,
+    identity: AgentActivityIdentity,
     previous: AgentActivityRegistrationRecord | null,
   ): Promise<AgentActivityRegistrationRecord> {
     const response = await deps.register(
-      { token, packageName, platform: 'android' },
+      registrationRequest(identity, token),
       target.apiBase,
     );
     let payloadKey: string;
@@ -207,14 +323,13 @@ export function createAgentActivityController(
       if (!previous) await deps.unregister(target.apiBase).catch(() => {});
       throw error;
     }
-    const record: AgentActivityRegistrationRecord = {
+    const record = recordFor(identity, {
       registrationId: response.registrationId,
       stationId: response.stationId,
       stationKey: response.stationKey,
       token,
-      packageName,
       registeredAt: deps.now(),
-    };
+    });
     deps.store.set(target.environmentId, record);
     // The Station keeps registrationId across token rotation; a new one means
     // it lost the old registration (the device was unpaired and paired
@@ -238,20 +353,48 @@ export function createAgentActivityController(
       serialize(async () => {
         let status = unwrap(await deps.adapter.agentActivityStatus());
         if (!status.pushConfigured) return { status: 'unconfigured' };
+        if (status.platform === 'ios') {
+          // A Live Activity needs no notification permission; the person's
+          // switch for it is the Live Activities one.
+          if (!status.liveActivitiesSupported) return { status: 'unsupported' };
+          if (!status.liveActivitiesEnabled) {
+            return { status: 'live-activities-disabled' };
+          }
+          const packageName = deliverable(
+            NATIVE_PUSH_IOS_BUNDLES,
+            status.packageName,
+          );
+          const token = unwrap(await deps.adapter.agentActivityPushToken());
+          if (token.state !== 'available') return { status: token.state };
+          const record = await registerAndConfigure(
+            target,
+            token.token,
+            {
+              platform: 'ios',
+              packageName,
+              apnsEnvironment: tokenApnsEnvironment(token),
+            },
+            deps.store.get(target.environmentId),
+          );
+          return { status: 'enabled', record };
+        }
         if (!status.notificationsEnabled) {
           await deps.requestNotificationPermission();
           status = unwrap(await deps.adapter.agentActivityStatus());
-          if (!status.notificationsEnabled) {
+          if (status.platform === 'ios' || !status.notificationsEnabled) {
             return { status: 'notifications-disabled' };
           }
         }
-        const packageName = deliverablePackage(status.packageName);
+        const packageName = deliverable(
+          NATIVE_PUSH_ANDROID_PACKAGES,
+          status.packageName,
+        );
         const token = unwrap(await deps.adapter.agentActivityPushToken());
-        if (token.state === 'unconfigured') return { status: 'unconfigured' };
+        if (token.state !== 'available') return { status: token.state };
         const record = await registerAndConfigure(
           target,
           token.token,
-          packageName,
+          { platform: 'android', packageName },
           deps.store.get(target.environmentId),
         );
         return { status: 'enabled', record };
@@ -286,16 +429,29 @@ export function createAgentActivityController(
         const record = deps.store.get(target.environmentId);
         if (!record) return 'off';
         const token = unwrap(await deps.adapter.agentActivityPushToken());
-        if (token.state === 'unconfigured') return 'unconfigured';
+        if (token.state !== 'available') return token.state;
+        const identity: AgentActivityIdentity =
+          record.platform === 'ios'
+            ? {
+                platform: 'ios',
+                // Refused, not dropped: the record stays so disable can
+                // still withdraw it from the Station and the phone.
+                packageName: deliverable(
+                  NATIVE_PUSH_IOS_BUNDLES,
+                  record.packageName,
+                ),
+                apnsEnvironment: tokenApnsEnvironment(token),
+              }
+            : { platform: 'android', packageName: record.packageName };
         const fresh =
           deps.now() - record.registeredAt < AGENT_ACTIVITY_REFRESH_AFTER_MS;
-        if (token.token === record.token && fresh) return 'current';
-        await registerAndConfigure(
-          target,
-          token.token,
-          record.packageName,
-          record,
-        );
+        const unchanged =
+          token.token === record.token &&
+          (record.platform !== 'ios' ||
+            (identity.platform === 'ios' &&
+              identity.apnsEnvironment === record.apnsEnvironment));
+        if (unchanged && fresh) return 'current';
+        await registerAndConfigure(target, token.token, identity, record);
         return 'refreshed';
       }),
   };
@@ -304,16 +460,29 @@ export function createAgentActivityController(
 function isRecord(value: unknown): value is AgentActivityRegistrationRecord {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.registrationId !== 'string' ||
+    typeof candidate.stationId !== 'string' ||
+    typeof candidate.stationKey !== 'string' ||
+    typeof candidate.token !== 'string' ||
+    typeof candidate.packageName !== 'string' ||
+    typeof candidate.registeredAt !== 'number'
+  )
+    return false;
+  // An iOS bundle is not checked against NATIVE_PUSH_IOS_BUNDLES here:
+  // dropping a record the gateway no longer delivers to would orphan its
+  // Station registration and keychain item. Refresh refuses to re-register it.
+  if (candidate.platform === 'ios')
+    return (
+      candidate.packageName.length > 0 &&
+      (candidate.apnsEnvironment === 'production' ||
+        candidate.apnsEnvironment === 'sandbox')
+    );
   return (
-    typeof candidate.registrationId === 'string' &&
-    typeof candidate.stationId === 'string' &&
-    typeof candidate.stationKey === 'string' &&
-    typeof candidate.token === 'string' &&
-    typeof candidate.packageName === 'string' &&
+    candidate.platform === undefined &&
     (NATIVE_PUSH_ANDROID_PACKAGES as readonly string[]).includes(
       candidate.packageName,
-    ) &&
-    typeof candidate.registeredAt === 'number'
+    )
   );
 }
 
@@ -341,14 +510,16 @@ export function localAgentActivityRegistrationStore(
           // version (an old payloadKey) is dropped on the next write.
           .map(([id, record]) => [
             id,
-            {
-              registrationId: record.registrationId,
-              stationId: record.stationId,
-              stationKey: record.stationKey,
-              token: record.token,
-              packageName: record.packageName,
-              registeredAt: record.registeredAt,
-            },
+            recordFor(
+              record.platform === 'ios'
+                ? {
+                    platform: 'ios',
+                    packageName: record.packageName,
+                    apnsEnvironment: record.apnsEnvironment,
+                  }
+                : { platform: 'android', packageName: record.packageName },
+              record,
+            ),
           ]),
       );
     } catch {

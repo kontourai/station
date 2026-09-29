@@ -154,7 +154,6 @@ describe('server-ordered approval posture (#2436)', () => {
       loadAgentExecutionConfig: async (slug) =>
         agentDefaults[slug] ? { approvalMode: agentDefaults[slug] } : undefined,
       logger: { debug: vi.fn(), warn: vi.fn() },
-      ownerlessSessionAccess: 'single-user-compat',
     });
   }
 

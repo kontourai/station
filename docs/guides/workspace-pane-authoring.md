@@ -88,6 +88,12 @@ declared projection and exact contribution snapshot; it never mounts plugin
 code, an iframe, or a tool bridge. It is selected only when its contribution
 matches the placed occurrence exactly.
 
+The current [standard-data view](../../src-ui/src/workspace-panes/WorkspacePaneStandardDataView.tsx)
+displays the projection label and descriptor metadata as read-only information.
+It does not fetch `schemaRef` or resolve business rows from the projection name.
+The conformance command exercises data parsing and renderer selection; it does
+not mount a plugin or prove MCP resource execution, approval or sandbox behavior.
+
 ## Place the occurrence
 
 Use opaque `instanceId` and `stateKey` values. Bind the exact contribution

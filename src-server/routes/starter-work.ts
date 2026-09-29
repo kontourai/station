@@ -1,5 +1,7 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
+import { resolveClientOriginForRequest } from '../security/runtime-request-security.js';
+import type { SessionOwnerStamp } from '../services/orchestration/session-owner-attribution.js';
 import {
   StarterRegistry,
   StarterWorkPrerequisiteError,
@@ -169,7 +171,17 @@ const starterWorkRouteError = (error: unknown): StarterWorkRouteError => {
   };
 };
 
-export function createStarterWorkRoutes(registry: StarterRegistry) {
+export function createStarterWorkRoutes(
+  registry: StarterRegistry,
+  options: {
+    /**
+     * Who a launched or adopted session belongs to and whether it acts for
+     * them (`sessionOwnerStampFor`); a request whose principal cannot be
+     * resolved throws here and never launches.
+     */
+    ownerForRequest: (c: Context) => SessionOwnerStamp;
+  },
+) {
   const app = new Hono();
   app.get('/', async (c) =>
     c.json({ success: true, data: await registry.list() }),
@@ -251,9 +263,16 @@ export function createStarterWorkRoutes(registry: StarterRegistry) {
               // #2493: continuing an attached session adopts it; the child
               // is `host` only for a request that may grant full access.
               fullAccessGrantForRequest(c),
+              options.ownerForRequest(c),
+              resolveClientOriginForRequest(c.req.raw),
             )
           : starterId === 'start-task'
-            ? await registry.launchStartTask(body, fullAccessGrantForRequest(c))
+            ? await registry.launchStartTask(
+                body,
+                fullAccessGrantForRequest(c),
+                options.ownerForRequest(c),
+                resolveClientOriginForRequest(c.req.raw),
+              )
             : starterId === 'run-scheduled-check'
               ? await registry.launchScheduledCheck(body)
               : await registry.launchInspection(body);

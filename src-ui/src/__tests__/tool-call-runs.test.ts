@@ -22,6 +22,7 @@ describe('isToolCallPart', () => {
 
   test('rejects non-tool parts and empty input', () => {
     expect(isToolCallPart({ type: 'text' })).toBe(false);
+    expect(isToolCallPart({ type: 'reasoning' })).toBe(false);
     expect(isToolCallPart(undefined)).toBe(false);
     expect(isToolCallPart(null)).toBe(false);
     expect(isToolCallPart({} as any)).toBe(false);
@@ -64,6 +65,26 @@ describe('splitToolCallRuns', () => {
       'content-part',
       'tool-call-run',
     ]);
+  });
+
+  test('passes non-tool parts through unchanged, preserving order and index', () => {
+    const parts = [
+      { type: 'text', content: 'intro' } as ToolCallLike,
+      toolCall({ toolCallId: 'a' }),
+      { type: 'reasoning', content: 'thinking' } as ToolCallLike,
+    ];
+    const blocks = splitToolCallRuns(parts);
+    expect(blocks[0]).toEqual({
+      type: 'content-part',
+      index: 0,
+      part: parts[0],
+    });
+    expect(blocks[1].type).toBe('tool-call-run');
+    expect(blocks[2]).toEqual({
+      type: 'content-part',
+      index: 2,
+      part: parts[2],
+    });
   });
 
   test('falls back to a position-based key when the first call has no id', () => {

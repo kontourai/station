@@ -11,7 +11,6 @@ import {
   type DeviceHubAccessConnection,
   type DeviceHubConnectResult,
   type DeviceHubEndpoint,
-  explicitDeviceHubEndpoint,
   parseMobileDeviceHubOrigin,
 } from '../devices/device-hub-endpoint.js';
 
@@ -23,7 +22,7 @@ const MAX_DEVICES = 256;
 const IOS_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const ANDROID_ID = /^[a-zA-Z0-9_.-]{1,256}$/;
 const MAX_ACTION_RESPONSE_BYTES = 64 * 1024;
-/** A cold simulator/emulator boot can take minutes (t3code allows three). */
+/** A cold simulator/emulator boot can take minutes; allow three. */
 const BOOT_TIMEOUT_MS = 180_000;
 const SHUTDOWN_TIMEOUT_MS = 60_000;
 
@@ -217,9 +216,8 @@ function parseHubActionResult(value: unknown): HubActionResult {
  * Inventory and capture read; `boot`, `attachStream` and `shutdown` are the
  * ONLY mutations, each a fixed hub route with a typed body built here from a
  * validated target (#1970) — never a caller-supplied path, and never the
- * hub's shell-exec routes. Where the hub is comes from a
- * `DeviceHubEndpoint` (explicit configuration today, a supervised hub
- * tomorrow); a bare `endpoint` string is the explicit case.
+ * hub's shell-exec routes. `DeviceHubEndpoint` supplies a configured local,
+ * consented managed, or admitted SSH connection.
  */
 export class LocalMobileDeviceHost {
   /** The device host this serves (`local`, or an SSH device host, #1973). */
@@ -233,25 +231,15 @@ export class LocalMobileDeviceHost {
    */
   readonly #active = { inventory: 0, screenshot: 0 };
 
-  constructor(
-    options: {
-      endpoint?: string;
-      /** Takes precedence over `endpoint`. */
-      hub?: DeviceHubEndpoint;
-      fetch?: typeof fetch;
-      /** Testable total request/body deadline; production uses 12 seconds. */
-      timeoutMs?: number;
-      /** Defaults to `local`. */
-      hostId?: string;
-    } = {},
-  ) {
+  constructor(options: {
+    hub: DeviceHubEndpoint;
+    /** Testable total request/body deadline; production uses 12 seconds. */
+    timeoutMs?: number;
+    /** Defaults to `local`. */
+    hostId?: string;
+  }) {
     this.hostId = options.hostId ?? 'local';
-    this.#hub =
-      options.hub ??
-      explicitDeviceHubEndpoint(
-        options.endpoint,
-        options.fetch ? { fetch: options.fetch } : {},
-      );
+    this.#hub = options.hub;
     this.#timeoutMs = options.timeoutMs ?? 12_000;
   }
 

@@ -254,6 +254,13 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'host-runtime',
     configKeys: ['surfaceTrustFromVeritasEvidence'],
   },
+  {
+    id: 'device-helper-url',
+    title: 'Device helper URL',
+    section: 'host-runtime',
+    keywords: ['device helper simulator emulator mobile capture'],
+    configKeys: ['mobileDeviceHubUrl'],
+  },
   // ── Sources (#2182) ─────────────────────────────────────────────────────
   // Where this Station gets agents, skills, plugins and layouts from. All
   // three were previously scattered through one undifferentiated card, so
@@ -835,20 +842,6 @@ export function matchingSettingsRows(
       .toLowerCase()
       .includes(needle);
   });
-}
-
-export function visibleCatalogIds(options: {
-  isMobile: boolean;
-  isDesktop: boolean;
-  /** Absent reads as "not the operator" — the fail-closed direction (#2067). */
-  isOperator?: boolean;
-}) {
-  return SETTINGS_CATALOG.filter((entry) => {
-    if (entry.conditional === 'mobile') return options.isMobile;
-    if (entry.conditional === 'desktop') return options.isDesktop;
-    if (entry.conditional === 'operator') return options.isOperator === true;
-    return true;
-  }).map((entry) => entry.id);
 }
 
 /**

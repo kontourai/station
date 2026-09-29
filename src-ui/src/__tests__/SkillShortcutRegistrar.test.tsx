@@ -93,12 +93,22 @@ describe('SkillShortcutRegistrar', () => {
     );
   });
 
-  test('round-trips its binding through device settings', () => {
+  // The registrar registers an unbound base; the chord the user stored for the
+  // skill is applied by the provider's override, keyed by the skill's slug.
+  test('registers the chord stored for the skill in device settings', () => {
     deviceSettingsStore.set('skillShortcuts', {
       'first-book': { key: 'p', modifiers: ['cmd'] },
     });
-    expect(deviceSettingsStore.get('skillShortcuts')).toEqual({
-      'first-book': { key: 'p', modifiers: ['cmd'] },
+    mocks.skills = [
+      { name: 'first-book', command: { enabled: true, global: true } },
+    ];
+    render(<Harness hasContext onRun={vi.fn()} />);
+    expect(registered).toHaveLength(1);
+    expect(registered[0]).toMatchObject({
+      id: 'skill.first-book.run',
+      key: 'p',
+      modifiers: ['cmd'],
+      disabled: false,
     });
   });
 });

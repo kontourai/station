@@ -1,5 +1,16 @@
 # Shell ownership scopes and Boards
 
+> **Reading status: accepted design with staged implementation history.** The
+> “no project-less view” problem, first-batch shipping status, and references to
+> unmerged Board slices describe the recorded stages below. Current personal
+> Boards have an authenticated [layout route](../../src-server/routes/me/personal-layouts.ts),
+> [service](../../src-server/services/layouts/personal-layout-service.ts), and
+> [view](../../src-ui/src/views/PersonalBoardView.tsx); the
+> [sidebar](../../src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx)
+> consumes that surface. This does not establish every proposed shared-Board,
+> promotion, Review-placement, presence, or plugin-visibility behavior. Use the
+> [pane authoring guide](../guides/workspace-pane-authoring.md) for the current pane contract.
+
 Status: **accepted direction, shipping in slices** (owner decisions
 2026-09-13, recorded from a design session). This record owns the reasoning
 for the next shape of the left panel and for the ownership model that makes
@@ -165,7 +176,9 @@ count scoped to that project.
 
 Independent-review receipts and the "run independent review" action move
 into the project's Coding layout, next to the Git range they judge. Diff
-comments resolve inside the diff.
+comments resolve inside the diff. (As built, the Coding inspector tab was
+never mounted and has been removed; the project's Review layout is the live
+surface for receipts, receipt detail, and the run action.)
 
 The Review page's role as the host for sibling Kontour products is preserved
 by making **Review a layout kind** backed by the Survey review workbench

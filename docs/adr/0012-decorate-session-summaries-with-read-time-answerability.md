@@ -1,5 +1,15 @@
 # Decorate session summaries with read-time answerability, not a persisted observation event
 
+**Reading status (2026-09-26 source review):** Accepted read-time projection
+decision. The investigation counts, branch results, and line-number references
+below describe their named historical revisions; they are not a current
+consumer inventory or proof that every residual slice landed. The current
+[answerability owner](../../src-server/services/orchestration/open-requests.ts)
+and [wire contract](../../packages/contracts/src/orchestration.ts) retain the
+process-local observation and required decoration. This classification does
+not requalify every notification, CLI, or UI consumer. An observed answerability
+value remains separate from fresh dispatch authorization.
+
 ## Context
 
 station#1284 shipped a boot-time reconciliation pass that wrote a synthetic

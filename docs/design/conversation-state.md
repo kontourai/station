@@ -1,5 +1,17 @@
 # Design: conversation state — channel-home logs, signed proposals, per-noun consistency
 
+> **Reading status: draft design with a historical source survey and later amendments.**
+> Section 2's “current state” and absence claims—including signing, membership,
+> and collaboration—and the scheduling statements describe their recorded
+> baseline. Do not use them as today's feature or security inventory.
+> Current access guidance is in [deployment authentication](../guides/deployment-authentication.md).
+> Related current owners include the [channel contracts](../../packages/contracts/src/channel-log.ts),
+> [Project/Task room runtime](../../src-server/services/orchestration/project-task-room-runtime.ts),
+> and [Session authorization](../../src-server/services/orchestration/session-authorization.ts).
+> Those owners do not by themselves establish completion of this proposal's
+> signing, replication, witness, or hosted-tier design. The original decisions,
+> open questions, evidence limits, and corrections remain below.
+
 > Status: **draft for owner review (2026-08-01); tracking issue
 > [#1484](https://github.com/kontourai/station/issues/1484).** The complete
 > brief is the 2026-08-01 comment thread on
@@ -188,6 +200,10 @@ is where it stops.
   `canReadSession` is `ownerUserId === userId`, with ownerless rows readable
   only under the compatibility mode
   (`src-server/services/orchestration/orchestration-service.ts:1655-1661`).
+  *(Since superseded: the compatibility mode is removed, a personal Station's
+  paired devices share one conversation account, and an ownerless session is
+  readable by no caller — see `SessionAuthorization.canReadSession` in
+  `src-server/services/orchestration/session-authorization.ts`.)*
 
 **Design consequence: "add membership to the existing store" is not a
 refactor.** There is no member noun to extend. Everything in §3 that is not the

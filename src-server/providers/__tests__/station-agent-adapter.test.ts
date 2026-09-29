@@ -638,21 +638,6 @@ describe('StationAgentAdapter', () => {
     });
   });
 
-  test('declares image-input so the orchestration capability gate accepts image attachments', () => {
-    // archive#1885: the defect was that the gate refused what the UI offered.
-    // Pinning the declaration guards against a regression that reintroduces
-    // the disagreement (capability declared ⟺ affordance offered/accepted).
-    const adapter = new StationAgentAdapter({
-      apiBase: 'http://127.0.0.1:3141',
-      hasAgent: () => true,
-      ...approvalDeps(),
-    });
-    expect(adapter.metadata.capabilities).toContain('image-input');
-    // file-input is deliberately NOT declared — see the adapter's capability
-    // comment and the orchestration-level file-refusal test.
-    expect(adapter.metadata.capabilities).not.toContain('file-input');
-  });
-
   test('forwards image attachments to /chat as multipart file parts in the relay body (station#1885 silent-drop guard)', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -725,6 +710,37 @@ describe('StationAgentAdapter', () => {
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.input).toBe('plain text turn');
+  });
+
+  test('names its orchestration thread to /chat as a direct internal caller (#2589)', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        sseResponse([{ type: 'finish', finishReason: 'stop' }, '[DONE]']),
+      );
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://127.0.0.1:3141',
+      hasAgent: () => true,
+      ...approvalDeps(),
+      fetch: fetchMock,
+    });
+    await adapter.startSession({
+      threadId: 'relay-thread',
+      provider: 'station-agent',
+      metadata: { agentId: 'reviewer' },
+    });
+    await adapter.sendTurn({ threadId: 'relay-thread', input: 'hi' });
+
+    // chat.ts trusts the thread only with the local caller marker and only
+    // when it is the request's own conversation.
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      'x-station-orchestration-thread': 'relay-thread',
+      'x-station-proxy-caller': 'local',
+    });
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).options
+        .conversationId,
+    ).toBe('relay-thread');
   });
 
   test('relays only its server-owned tenant execution context as the internal tenant header', async () => {
@@ -1848,6 +1864,8 @@ describe('StationAgentAdapter', () => {
         method: 'request.resolved',
         requestId: 'approval-1',
         status: 'approved',
+        // #2880: Station's own engine consumed the decision in-process.
+        acknowledgement: 'in-process',
       },
     ]);
 
@@ -2009,89 +2027,117 @@ describe('StationAgentAdapter', () => {
   // archive#1071: /api/agents/:slug/chat rejections carry a specific, actionable
   // reason in their JSON error body (e.g. which config to fix); swallowing it
   // leaves the user with only a generic string.
-  test('threads the /chat rejection reason into the thrown error and the runtime.error event (#1071)', async () => {
-    const reason =
-      'Multiple enabled LLM provider connections require an explicit default.';
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ error: reason }), { status: 409 }),
-      );
-    const adapter = new StationAgentAdapter({
-      apiBase: 'http://127.0.0.1:3141',
-      hasAgent: (agentId) => agentId === 'reviewer',
-      ...approvalDeps(),
-      fetch: fetchMock,
-      now: () => new Date('2026-07-19T00:00:00.000Z'),
-    });
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  const chatRejectionReason =
+    'Multiple enabled LLM provider connections require an explicit default.';
 
-    await adapter.startSession({
-      threadId: 'task-rejected',
-      provider: 'station-agent',
-      metadata: { agentId: 'reviewer', userId: 'user-1' },
-    });
-    const thrown: unknown = await adapter
-      .sendTurn({
+  test.each([
+    [
+      'a bare error body',
+      () =>
+        new Response(JSON.stringify({ error: chatRejectionReason }), {
+          status: 409,
+        }),
+    ],
+    [
+      'the route envelope with a JSON content type',
+      () =>
+        new Response(
+          JSON.stringify({ success: false, error: chatRejectionReason }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } },
+        ),
+    ],
+  ])(
+    'threads the /chat rejection reason from %s into the thrown error and the runtime.error event (archive#1071)',
+    async (_shape, response) => {
+      const reason = chatRejectionReason;
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response());
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:3141',
+        hasAgent: (agentId) => agentId === 'reviewer',
+        ...approvalDeps(),
+        fetch: fetchMock,
+        now: () => new Date('2026-07-19T00:00:00.000Z'),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+      await adapter.startSession({
         threadId: 'task-rejected',
-        input: 'Review this change',
-      })
-      .then(() => null)
-      .catch((error: unknown) => error);
-    // Exact equality, not toThrow's substring match — a doubled or suffixed
-    // message must fail here (review LOW).
-    expect((thrown as Error).message).toBe(
-      `Station agent did not accept the task turn: ${reason}`,
-    );
+        provider: 'station-agent',
+        metadata: { agentId: 'reviewer', userId: 'user-1' },
+      });
+      const thrown: unknown = await adapter
+        .sendTurn({
+          threadId: 'task-rejected',
+          input: 'Review this change',
+        })
+        .then(() => null)
+        .catch((error: unknown) => error);
+      // Exact equality, not toThrow's substring match — a doubled or suffixed
+      // message must fail here.
+      expect((thrown as Error).message).toBe(
+        `Station agent did not accept the task turn: ${reason}`,
+      );
 
-    const events = await nextEvents(iterator, 6);
-    const runtimeErrors = events.filter(
-      (event) => event.method === 'runtime.error',
-    );
-    expect(runtimeErrors).toHaveLength(1);
-    expect(runtimeErrors[0]).toMatchObject({
-      method: 'runtime.error',
-      code: 'station_agent_turn_unavailable',
-      message: `Station agent did not accept the task turn: ${reason}`,
-    });
-  });
+      const events = await nextEvents(iterator, 6);
+      const runtimeErrors = events.filter(
+        (event) => event.method === 'runtime.error',
+      );
+      expect(runtimeErrors).toHaveLength(1);
+      expect(runtimeErrors[0]).toMatchObject({
+        method: 'runtime.error',
+        code: 'station_agent_turn_unavailable',
+        message: `Station agent did not accept the task turn: ${reason}`,
+      });
+    },
+  );
 
-  test('falls back to the generic rejection message when /chat returns no usable reason (#1071)', async () => {
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(new Response('Bad Gateway', { status: 502 }));
-    const adapter = new StationAgentAdapter({
-      apiBase: 'http://127.0.0.1:3141',
-      hasAgent: (agentId) => agentId === 'reviewer',
-      ...approvalDeps(),
-      fetch: fetchMock,
-      now: () => new Date('2026-07-19T00:00:00.000Z'),
-    });
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  test.each([
+    ['a 502 text body', () => new Response('Bad Gateway', { status: 502 })],
+    [
+      'a 500 plain-text body',
+      () =>
+        new Response('not json', {
+          status: 500,
+          headers: { 'Content-Type': 'text/plain' },
+        }),
+    ],
+  ])(
+    'falls back to the generic rejection message when /chat returns %s (archive#1071)',
+    async (_shape, response) => {
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response());
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:3141',
+        hasAgent: (agentId) => agentId === 'reviewer',
+        ...approvalDeps(),
+        fetch: fetchMock,
+        now: () => new Date('2026-07-19T00:00:00.000Z'),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
-    await adapter.startSession({
-      threadId: 'task-rejected-opaque',
-      provider: 'station-agent',
-      metadata: { agentId: 'reviewer', userId: 'user-1' },
-    });
-    await expect(
-      adapter.sendTurn({
+      await adapter.startSession({
         threadId: 'task-rejected-opaque',
-        input: 'Review this change',
-      }),
-    ).rejects.toThrow(/^Station agent did not accept the task turn$/);
+        provider: 'station-agent',
+        metadata: { agentId: 'reviewer', userId: 'user-1' },
+      });
+      await expect(
+        adapter.sendTurn({
+          threadId: 'task-rejected-opaque',
+          input: 'Review this change',
+        }),
+      ).rejects.toThrow(/^Station agent did not accept the task turn$/);
 
-    const events = await nextEvents(iterator, 6);
-    const runtimeErrors = events.filter(
-      (event) => event.method === 'runtime.error',
-    );
-    expect(runtimeErrors).toHaveLength(1);
-    expect(runtimeErrors[0]).toMatchObject({
-      method: 'runtime.error',
-      code: 'station_agent_turn_unavailable',
-      message: 'Station agent did not accept the task turn',
-    });
-  });
+      const events = await nextEvents(iterator, 6);
+      const runtimeErrors = events.filter(
+        (event) => event.method === 'runtime.error',
+      );
+      expect(runtimeErrors).toHaveLength(1);
+      expect(runtimeErrors[0]).toMatchObject({
+        method: 'runtime.error',
+        code: 'station_agent_turn_unavailable',
+        message: 'Station agent did not accept the task turn',
+      });
+    },
+  );
 
   // archive#1885 review HIGH: the mutation-budget middleware's 413 body is an
   // OBJECT (`{ error: { code: 'request_too_large', limit_bytes } }`), not a
@@ -2392,82 +2438,6 @@ describe('StationAgentAdapter', () => {
       'session.configured',
       'session.state-changed',
     ]);
-  });
-
-  // archive#1071: the /chat route's own reason (a specific, actionable 409
-  // body) used to be discarded in favor of a generic message. Both the
-  // thrown error (surfaced to HTTP callers of /api/orchestration/commands)
-  // and the published runtime.error event (surfaced to the UI/CLI) must
-  // carry the route's real reason.
-  test("surfaces the /chat route's own reason instead of a generic message (#1071)", async () => {
-    const reason = "Agent 'x' is not currently launchable.";
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ success: false, error: reason }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
-    const adapter = new StationAgentAdapter({
-      apiBase: 'http://127.0.0.1:3141',
-      hasAgent: () => true,
-      ...approvalDeps(),
-      fetch: fetchMock,
-      now: () => new Date('2026-07-19T00:00:00.000Z'),
-    });
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
-    await adapter.startSession({
-      threadId: 'task-not-launchable',
-      provider: 'station-agent',
-      metadata: { agentId: 'reviewer' },
-    });
-
-    await expect(
-      adapter.sendTurn({
-        threadId: 'task-not-launchable',
-        input: 'Review this change',
-      }),
-    ).rejects.toThrow(reason);
-
-    const events = await nextEvents(iterator, 5);
-    const failure = events.find((event) => event.method === 'runtime.error');
-    expect(failure).toBeDefined();
-    expect((failure as { message?: string }).message).toContain(reason);
-  });
-
-  test('falls back to the generic message when the /chat route body is unusable (#1071)', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response('not json', {
-        status: 500,
-        headers: { 'Content-Type': 'text/plain' },
-      }),
-    );
-    const adapter = new StationAgentAdapter({
-      apiBase: 'http://127.0.0.1:3141',
-      hasAgent: () => true,
-      ...approvalDeps(),
-      fetch: fetchMock,
-      now: () => new Date('2026-07-19T00:00:00.000Z'),
-    });
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
-    await adapter.startSession({
-      threadId: 'task-unusable-body',
-      provider: 'station-agent',
-      metadata: { agentId: 'reviewer' },
-    });
-
-    await expect(
-      adapter.sendTurn({
-        threadId: 'task-unusable-body',
-        input: 'Review this change',
-      }),
-    ).rejects.toThrow('Station agent did not accept the task turn');
-
-    const events = await nextEvents(iterator, 5);
-    const failure = events.find((event) => event.method === 'runtime.error');
-    expect(failure).toBeDefined();
-    expect((failure as { message?: string }).message).toBe(
-      'Station agent did not accept the task turn',
-    );
   });
 
   // archive#1207 review round 1, HIGH 2 — the actual production trigger

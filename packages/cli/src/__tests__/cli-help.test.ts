@@ -56,10 +56,6 @@ async function loadCli() {
     createPlugin: vi.fn(),
     init: vi.fn(),
   }));
-  vi.doMock('../commands/install-registry.js', () => ({
-    recordRegistryInstall: vi.fn(),
-    resolveRegistryPluginSource: vi.fn(),
-  }));
   vi.doMock('../commands/install.js', () => ({
     info: vi.fn(),
     install: vi.fn(),
@@ -111,15 +107,10 @@ describe('--version', () => {
     },
   );
 
-  test('labels a source checkout as development without reading a backend manifest', async () => {
+  test('labels a source checkout as development, with provenance on its own lines, without reading a backend manifest', async () => {
     const { versionText } = await import('../commands/version.js');
 
     expect(versionText()).toContain('development source checkout');
-  });
-
-  test('reports source development provenance on a second line', async () => {
-    const { versionText } = await import('../commands/version.js');
-
     expect(versionText()).toContain('immutable build timestamp unavailable');
     expect(versionText().trim().split('\n')).toHaveLength(3);
   });
@@ -178,13 +169,25 @@ describe('lifecycle runtime defaults', () => {
     expect(commandHelpText('dev')).not.toContain('~/.station-dev');
     expect(fresh).toContain('selected channel default home');
   });
+
+  test('names the channel server port, not 3141, as the last-resort target', () => {
+    expect(commandHelpText('agents')).toContain(
+      'the active local Station, then http://127.0.0.1:18141.',
+    );
+    expect(usageText()).toContain(
+      'the active local Station, http://127.0.0.1:18141.',
+    );
+    for (const text of [commandHelpText('agents'), usageText()])
+      expect(text).not.toContain('127.0.0.1:3141');
+  });
 });
 
 describe('tasks help inventory', () => {
   test('keeps the complete protected-reference command surface exact', () => {
-    expect(commandHelpText('tasks')).toContain(
-      'List, get, create, attach exact answers, inputs, or tool results, support them, and keep immutable task outputs',
-    );
+    const summary =
+      'List, get, create, attach exact answers, inputs, or tool results, support them, and keep immutable task outputs';
+    expect(usageText()).toContain(`station tasks <action>       ${summary}`);
+    expect(commandHelpText('tasks')).toContain(`station tasks — ${summary}`);
     expect(actionsFor('tasks')).toEqual([
       'list',
       'get',
@@ -216,6 +219,7 @@ describe('tasks help inventory', () => {
       'station tasks show-inputs <taskId> [--json]',
       'station tasks attach-result <taskId> --session=<sessionId> --event=<eventId>',
       'station tasks show-results <taskId> [--json]',
+      'station tasks basis <taskId> [--answer-reference=<referenceId>] [--format summary|json]',
       'station tasks show-support <taskId>',
       'station tasks list-support-bundles <taskId> --reference=<referenceId>',
       'station tasks list-support-claims <taskId> --reference=<referenceId> --bundle=<bundleId>',
@@ -264,16 +268,6 @@ describe('per-command help', () => {
     await runCli(['help', 'knowledge']);
 
     expect(printed()).toContain('station knowledge —');
-  });
-
-  test('names the valid actions it will accept', async () => {
-    const { runCli, printed } = await loadCli();
-
-    await runCli(['connections', '--help']);
-
-    for (const action of actionsFor('connections') ?? []) {
-      expect(printed()).toContain(action);
-    }
   });
 
   test('documents the manual-first credential recovery workflow', () => {

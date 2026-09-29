@@ -6,6 +6,18 @@ implemented; current behaviour is owned by [the CLI reference](../reference/cli.
 is retained only as historical rationale and must not be used as release or
 publication evidence.
 
+The counts, package sizes, private-repository assumptions, npm installation
+steps, and open questions below describe the original proposal. Current
+[package metadata](../../packages/cli/package.json),
+[bundle configuration](../../packages/cli/esbuild.config.mjs), and
+[portable installer](../../install.sh) have changed since those measurements.
+The CLI now declares a native keyring dependency as well as its optional
+esbuild peer. Source-release installs use the managed dependency runner;
+platform-v2 public manifests install prebuilt archives without a host build,
+using the archive's bundled Node.js. Installer-owned archives support
+`station upgrade` through their recorded installer and manifest URL. Read the
+[CLI reference](../reference/cli.md) for supported commands and prerequisites.
+
 ## The premise was wrong
 
 The working assumption behind marking `packages/cli` `private: true` was that
@@ -170,9 +182,11 @@ Three things that look like wins and are not, all measured rather than assumed:
 `scripts/package-portable-release.sh` + `install.sh` already produce a
 distributable Station: a `.git`-less source checkout plus `npm ci`, installed
 under `$STATION_ROOT/installs/<channel>/releases/<checksum>` (default
-`~/.station/installs/<channel>/releases/<checksum>`). It preserves every
+`~/.station/installs/<channel>/releases/<checksum>`; a prebuilt per-platform
+archive installs under `.../versions/<version>` instead, see
+[Release channel ports](../guides/release-channel-ports.md#prebuilt-archives-and-source-releases)). It preserves every
 checkout-required verb *by construction*, and it is how `station upgrade` works
-for non-git installs (`commands/lifecycle.ts:2690`).
+for non-git installs (`upgrade()` in `commands/lifecycle.ts`).
 
 These are complementary, not competing, and the doc states the split explicitly:
 

@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import {
   APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_PROOF_HEADER,
 } from '@kontourai/station-contracts/application-session';
 import {
@@ -39,6 +41,16 @@ export function deploymentAccountPrincipal(
   return humanPrincipal('deployment', boundedSubject, displayName);
 }
 
+/**
+ * Whether a principal id is one {@link deploymentAccountPrincipal} mints: the
+ * `deployment` provider no other ingress produces. Such a principal's own
+ * requests are admitted to Projects by membership, so work acting for it
+ * (#2377 slice B: a station-control tool call) must be too.
+ */
+export function isDeploymentAccountPrincipalId(principalId: string): boolean {
+  return principalId.startsWith('human:deployment:');
+}
+
 export type ResolvedDeploymentAuthentication =
   | Exclude<DeploymentAuthenticationResult, { kind: 'authenticated' }>
   | {
@@ -50,6 +62,9 @@ export type ResolvedDeploymentAuthentication =
 
 export interface ApplicationSessionResolver {
   authenticate(request: Request): Promise<ResolvedDeploymentAuthentication>;
+  authenticateNative?(
+    request: Request,
+  ): Promise<ResolvedDeploymentAuthentication>;
   transferRequest(source: Request, replacement: Request): void;
   revoke(request: Request): Promise<void>;
 }
@@ -86,8 +101,20 @@ export class DeploymentAuthenticationService {
 
   private hasContinuation(request: Request): boolean {
     return (
+      this.hasBrowserContinuation(request) ||
+      this.hasNativeContinuation(request)
+    );
+  }
+  private hasBrowserContinuation(request: Request): boolean {
+    return (
       request.headers.has(APPLICATION_SESSION_HEADER) ||
       request.headers.has(APPLICATION_SESSION_PROOF_HEADER)
+    );
+  }
+  private hasNativeContinuation(request: Request): boolean {
+    return (
+      request.headers.has(APPLICATION_SESSION_NATIVE_HEADER) ||
+      request.headers.has(APPLICATION_SESSION_NATIVE_PROOF_HEADER)
     );
   }
   installContinuationResolver(resolver: ApplicationSessionResolver): void {
@@ -373,6 +400,11 @@ export class DeploymentAuthenticationService {
         { error: { code: 'authentication_unavailable' } },
         { status: 503 },
       );
+    if (this.hasNativeContinuation(request))
+      return Response.json(
+        { error: { code: 'authentication_operation_unsupported' } },
+        { status: 404, headers: { 'Cache-Control': 'no-store' } },
+      );
     if (
       !this.description.endpoints.some(
         (endpoint) =>
@@ -448,10 +480,19 @@ export class DeploymentAuthenticationService {
     if (this.closing) return { kind: 'unavailable' };
     this.started = true;
     let result: ResolvedDeploymentAuthentication;
-    if (this.hasContinuation(request)) {
-      result = this.continuation
-        ? await this.continuation.authenticate(request)
-        : { kind: 'invalid', reason: 'invalid-credential' };
+    const nativeContinuation = this.hasNativeContinuation(request);
+    const browserContinuation = this.hasBrowserContinuation(request);
+    if (nativeContinuation || browserContinuation) {
+      result =
+        nativeContinuation && browserContinuation
+          ? { kind: 'invalid', reason: 'conflicting-identity' }
+          : nativeContinuation
+            ? this.continuation?.authenticateNative
+              ? await this.continuation.authenticateNative(request)
+              : { kind: 'invalid', reason: 'invalid-credential' }
+            : this.continuation
+              ? await this.continuation.authenticate(request)
+              : { kind: 'invalid', reason: 'invalid-credential' };
       if (this.presentedCookies(request).length) {
         const cookie = await this.resolve(request);
         if (cookie.kind !== 'authenticated') result = cookie;

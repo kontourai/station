@@ -1,19 +1,26 @@
 # Design: Connections onboarding & capability passthrough
 
+> **Reading status: current onboarding direction with dated engine-delivery audits.**
+> [Provider catalog](../../src-ui/src/views/provider-settings/providerCatalog.tsx),
+> [app-home profiles](../../src-server/providers/app-home/app-home-profiles.ts),
+> and [credential-profile registry](../../src-server/providers/app-home/credential-profile-registry.ts)
+> own the named setup mechanisms. Historical CLI probes and security-review
+> dispositions below are not fresh qualifications of installed providers,
+> imported credentials, or every filesystem race. Use the
+> [Connections guide](../guides/connections.md) for the current user journey.
+
 > Status: **direction recorded; onboarding slices shipping**. This doc captures the owner-set
 > direction (2026-07-25/26 working sessions) for how the Connections surface onboards users,
 > which connection types may be auto-surfaced by detection, how provider add-flows get their
 > shapes, and the capability-passthrough path (MCP tools, skills) for External agents. It is the
 > contract for follow-up slices; revise it — not just the code — when direction changes.
 >
-> The Connections overview now uses one user-facing category: **Providers**. It combines
-> model services, agent apps, and detected local choices into one exact-ID catalog without
-> exposing those implementation kinds. Each row has one of seven readiness labels and at
-> most one next action. The guided setup slice is also shipped: Add Provider starts with a
-> recognizable brand, then follows Choose → Connect → Ready; common fields stay visible while
-> raw types, capabilities, commands, and provider-specific controls stay under Advanced.
-> Existing setup URLs remain compatible. Everything else here is target state unless marked
-> shipped.
+> The current Connections rail has **Models, Engines, Tools, Knowledge and Computers**,
+> owned by `connection-sections.ts`. `/connections` resolves to the first section needing
+> attention, or Models. The earlier unified Providers overview and its delivery tables
+> below are historical interface direction. Model setup uses the Models detail pane;
+> engine setup has its own Add engine flow. Legacy URLs redirect to the corresponding
+> section. Provider presets and explicit configuration remain shared design rules.
 
 ## 1. The detection principle: observe infrastructure, never read secrets
 
@@ -49,12 +56,16 @@ Station-managed additions stack per-session through three channels (wire > app-h
 workspace overlay). This section records the per-engine audit that fed that contract and
 the shipped slices.
 
-**Per-CLI config-surface audit** (verified-in-code unless marked to-probe or to-wire):
+**Recorded per-CLI config-surface audit** (the original wave's observations).
+Current spawn code additionally layers Station's augmented process environment and
+connection environment. The ACP process also supplies an explicit augmented child
+environment; the old “no env key” row is not the current spawn contract. External SDK
+and CLI behavior below retains the probe's original version scope.
 
 | Engine | Spawn path today | Env at spawn | Config-home override | Station read paths of that config |
 |---|---|---|---|---|
 | Claude Code | SDK `query()` in `claude-adapter.ts` (`startTrackedSession` → `buildOptions`) — **verified-in-code** | Inherited full server env until this wave; now optionally layered with the app-home profile — **verified-in-code**. SDK contract: `Options.env` REPLACES the subprocess environment entirely (never merges with `process.env`) | `CLAUDE_CONFIG_DIR` (plain env var; default `~/.claude`) — **verified-in-code** | `claude-auth.ts` (injectable `env` param); `claude-transcript-session-source.ts`; in-process SDK helpers `listSessions`/`forkSession`/`deleteSession` resolve the config root from the *server's* `process.env` and have no per-call config-dir override — **verified-in-code** |
-| Codex | `spawnCodexProcess()` in `codex-adapter-transport.ts` (via `codexSpawnEnv()`, `CodexAdapter.startReservedSession` → `resolveAppHomeEnv`) — **verified-in-code** | Full inherit by default; layered with the app-home profile (`{ CODEX_HOME: dir }`) when the `codex` connection's `config.useAppHome` is `true` — **verified-in-code** (#896 wave 2). Model discovery (`listModelCatalog`) deliberately keeps the byte-identical global env — the profile is scoped to the session's own process only | `CODEX_HOME` (plain env var; default `~/.codex`) — **verified-in-code**, now wired end-to-end (spawn seam, import allowlist, auth detection) | `filesystem-skill-registry.ts`'s `defaultSkillRoots()` now also lists both engines' app-home profile `skills/` dirs (`<STATION_HOME>/app-homes/{codex,claude}/skills`), alongside the pre-existing `~/.codex/skills`/`~/.claude/.agents/skills` — **verified-in-code** (#896 wave 2, closing §1.1's previously-named gap) |
+| Codex | `spawnCodexProcess()` in `codex-adapter-transport.ts` (via `CodexAdapter.startReservedSession` → `resolveAppHomeEnv`) — **verified-in-code** | Full inherit by default; layered with the app-home profile (`{ CODEX_HOME: dir }`) when the `codex` connection's `config.useAppHome` is `true` — **verified-in-code** (#896 wave 2). Model discovery (`listModelCatalog`) deliberately keeps the byte-identical global env — the profile is scoped to the session's own process only | `CODEX_HOME` (plain env var; default `~/.codex`) — **verified-in-code**, now wired end-to-end (spawn seam, import allowlist, auth detection) | `filesystem-skill-registry.ts`'s `defaultSkillRoots()` now also lists both engines' app-home profile `skills/` dirs (`<STATION_HOME>/app-homes/{codex,claude}/skills`), alongside the pre-existing `~/.codex/skills`/`~/.claude/.agents/skills` — **verified-in-code** (#896 wave 2, closing §1.1's previously-named gap) |
 | opencode / ACP CLIs | `ACPProcess.start()` in `acp-process.ts` — `spawn(bin, args, {stdio, cwd, windowsHide, detached})`, no `env` key ⇒ full inherit — **verified-in-code** | Full inherit — **verified-in-code** | XDG (`XDG_CONFIG_HOME`/`XDG_DATA_HOME`) + `OPENCODE_CONFIG` — **to-probe**: spawn the CLI with overridden `XDG_CONFIG_HOME`/`XDG_DATA_HOME` in a temp home and observe where config/auth are actually read/written; Windows XDG honoring is unknown and also **to-probe** | none |
 
 **The profile-dir contract:** `<STATION_HOME>/app-homes/<engineId>/`, keyed by the stable
@@ -65,18 +76,20 @@ never at startup (`ensureAppHomeProfile`, `src-server/providers/app-home/app-hom
 are wired to a live spawn path (#896 wave 2 wires Codex, mirroring wave 1's Claude wiring):
 `ClaudeAdapterOptions.getAppHomeEnv`, threaded through `startSession` → `buildOptions`, and
 `CodexAdapterOptions.getAppHomeEnv`, threaded through `startReservedSession` →
-`processFactory` (`codexSpawnEnv`) — each applied only when that connection's
+`processFactory` (`spawnCodexProcess`) — each applied only when that connection's
 `config.useAppHome` is `true` — absent/false is the default, same "never silent" hygiene
 rule as `provideSkills`. Both adapters report `appHome: 'profile'|'global'` on
 `session.configured` and record the `station.providers.app_home_sessions` counter
-(attrs: `provider`, `applied`). A lookup failure (or an absent `getAppHomeEnv`) degrades to
+(attrs: `provider`, `applied`). A legacy base-profile lookup failure (or an absent `getAppHomeEnv`) degrades to
 `undefined` — global config — on both adapters, never blocking session start. Adoption
 (continuing a discovered Claude transcript) deliberately never applies the profile env — the
 server-process SDK helpers it calls (`forkSession`/`listSessions`/`deleteSession`) are bound
 to the server's own global config root with no per-call override, so running the forked
-child under a different config home would orphan it there. Codex has no analogous
-transcript-adoption path this wave, so no codex equivalent of this caveat exists — see the
-toggle-boundary resume caveat below for codex's own analogous cross-config-home hazard.
+child under a different config home would orphan it there. Codex had no analogous
+transcript-adoption path in that original wave. Current Codex adoption and resumes
+carrying source affinity resolve the recorded source home and refuse an unavailable
+home; that `CODEX_HOME` overrides profile and connection settings. The legacy
+toggle-boundary caveat below applies to cursors without that affinity.
 
 **Import-from-global rules (claude):** an explicit, dedicated user action —
 `POST /api/connections/agent/claude/app-home/import` — never automatic, never
@@ -91,11 +104,14 @@ authenticate there; the status endpoint and UI surface this rather than presenti
 "failed" state. Always refused, never on any allowlist: `projects/`, `todos/`,
 `statsig/`, `shell-snapshots/`, anything not listed above, any symlink anywhere in a
 copied tree (refuse, never follow — same posture as the skills-materialization module
-below), and any file over 5&nbsp;MB. Re-import is a snapshot overwrite of the profile's
+below), and a file whose opened descriptor reports more than 5 MiB before reading.
+The read does not impose a second streaming or post-read byte limit, so concurrent
+growth after that size observation is outside the bound. Re-import is a snapshot overwrite of the profile's
 prior imported copy at each name, never a merge (Station owns the profile dir). The
-import module (`importClaudeGlobalSnapshot`) never writes outside the resolved profile
-dir and never writes to the global source dir — both checked, not just documented, before
-any write.
+import module (`importClaudeGlobalSnapshot`) checks that the resolved profile lies
+strictly inside the app-homes root and directs writes there. It reads the separate
+global source. These path checks do not make directory traversal atomic; the
+ancestor-swap limits below remain part of this contract.
 
 **Import-from-global rules (codex, #896 wave 2):** `POST
 /api/connections/agent/codex/app-home/import`, the same explicit-action contract as
@@ -185,7 +201,7 @@ own Station-owned config. No background job, watcher, or timer exists or is plan
 is the deliberate non-machinery direction under this repo's over-engineering guardrails; GC
 is always a human's explicit action.
 
-**Toggle-boundary resume caveat (codex, #896 wave 2):** a codex `resumeCursor`
+**Toggle-boundary resume caveat (codex, #896 wave 2, cursors without source affinity):** a codex `resumeCursor`
 (`{ codexThreadId }`) recorded while `useAppHome` was on lives under that profile's
 `CODEX_HOME`; recorded while off, it lives under the global `~/.codex`. Toggling `useAppHome`
 between a session's start and a later `thread/resume` attempt points the resume at the WRONG
@@ -202,7 +218,7 @@ Credential profiles extend the app-home boundary without turning it into a secon
 credential vault. The persisted connection record carries only an opaque profile `ref`,
 an optional **management-only** label, explicit group/enrollment metadata, default-off
 automatic policy, and the current non-secret application projection. Credential material
-stays exclusively in the selected Station-managed profile home; it is never copied into
+stays in the selected engine credential owner rather than the recovery registry; it is never copied into
 the connection registry, response, CLI output, receipt, log, or metric. A ref is not an
 account selector or an account identity.
 
@@ -235,7 +251,8 @@ directory or an absolute path. Applying a profile is a separate confirmed action
 confirmation names one potentially billable provider verification turn. Station stages
 the candidate while leaving the active ref unchanged; it commits only after that
 provider-backed adoption succeeds. Failure, cancellation, conflict, or a stale terminal
-event rolls the matching attempt back and preserves/reports the prior active state. A
+event requests rollback of the matching attempt and reports its outcome. The durable
+uncertainty cases below can require reconciliation rather than a confirmed restore. A
 pending candidate is visible as pending, an adopted candidate is success, and
 `rolled_back`/`failed` are failure states that must never be rendered as successful
 adoption. Active or pending/enrolled refs cannot be deleted.
@@ -255,10 +272,13 @@ apply to logs and recovery receipts. Profile refs and management-only labels app
 on explicit profile-management UI/API/CLI surfaces; those surfaces still exclude
 profile-home paths, account identity, credential material, and raw runtime data.
 
-**Accepted gaps.** This is recovery from an observed failure, not proactive quota polling:
-the #620 proactive quota-snapshot work remains separate. The implementation is stacked on
-the Happier-continuity parent (#1247), so it cannot land independently before that parent;
-the stack relationship is a delivery constraint, not an application fallback.
+**Current recovery boundary.** This is recovery from an observed failure, not proactive
+quota polling. The durable SQLite application ledger and `CredentialRecoveryModule`
+own exact-attempt settlement; connection-file pending fields are legacy input. A failed
+rollback can remain `compensation-required`, and an uncertain commit remains unresolved
+until the same intent is reconciled. A request failure does not prove the prior provider
+process or credential binding was restored. The original #1247 stack relationship is
+history, not a current prerequisite or application fallback.
 
 **Accepted gaps (disclosed, not defects — security review rounds 2-4, orchestrator-accepted):**
 
@@ -360,8 +380,8 @@ type with prefilled config.
 
 ### 3.1 Bedrock is the sanctioned special case
 
-Bedrock today is region-only over the default AWS credential chain. Target add flow offers
-three auth modes, all inside the §1 principle:
+The implemented Bedrock provider accepts three explicit auth modes, all inside
+the §1 principle:
 
 1. **Default credential chain** — today's behavior; zero input.
 2. **Named profile** — dropdown prefilled from profile *names* parsed out of
@@ -370,7 +390,13 @@ three auth modes, all inside the §1 principle:
 
 Mode 2 is per-environment by nature (see §2) and that is fine.
 
-## 4. Hub hierarchy: simple questions, one provider concept
+## 4. Recorded unified-hub direction
+
+The following unified Providers/Developer services layout describes the earlier delivery
+slice. The current five-section rail and resolver are described at the top of this
+document and in the [Connections guide](../guides/connections.md). Its readiness and
+explicit-Add principles remain useful; the category labels and single-dialog claim below
+must not be used as current navigation instructions.
 
 The Connections hub answers four plain questions: **which computers can I use**,
 **what powers chats and agents**, **which developer services can work use**, and
@@ -509,8 +535,11 @@ prefers — not only a competing runtime. The mechanisms:
   `src-server/providers/adapters/acp-mcp-passthrough.ts` (`resolveAcpPassthroughMcpServers`,
   called from `acp-adapter.ts`'s `newSession` path with the connection's opted-in,
   resolved tool servers — see the security/id-safety notes in that module's header).
-  Claude Code's SDK accepts per-session MCP config; Codex supports `mcp_servers`
-  config — same contract, separate slices, not yet wired.
+  Authored ACP servers are now supplied on both `session/new` and `session/load`.
+  The built-in `station-control` has a separate HTTP header-token path, admitted only
+  after the adapter observes live HTTP MCP capability; it forwards no configured env.
+  Claude/Codex delivery follows the current engine capability matrix and adapters,
+  rather than this original spike's “not yet wired” observation.
 - **Skills materialization — SHIPPED (2026-07-26, security-redesigned same
   week after review):** Station skills are standard `SKILL.md` directories — the cross-CLI
   format Claude Code consumes natively. Passthrough = materialize the connection's opted-in
@@ -536,11 +565,12 @@ prefers — not only a competing runtime. The mechanisms:
     for the whole call; every manifest-derived path is resolved by walking component-by-component
     from that anchor, refusing (not following) a symlink anywhere in the chain — including one
     nested inside a skill's own subtree.
-  - **TOCTOU-safe delete.** A file is opened once; its content and identity (`dev`/`ino`) are
+  - **Identity-checked delete.** A file is opened once; its content and identity (`dev`/`ino`) are
     read from that same descriptor, and only unlinked after a final fresh `lstat` on the path
-    confirms the identical, non-symlink identity — a swap between verification and deletion is
-    refused, not raced.
-  - **Atomic claim, atomic write, tracked-only pruning.** A skill directory is claimed with a
+    confirms the identical, non-symlink identity. A mismatch retains the file. The final
+    check, descriptor close and path-based unlink are separate operations: this narrows
+    the race but does not exclude a hostile concurrent swap after the final check.
+  - **Exclusive claims and writes, tracked-only pruning.** A skill directory is claimed with a
     non-recursive exclusive `mkdir` (a lost race is never cleaned up by the loser); every file
     is written with the equivalent of `O_EXCL`; source entries are re-`lstat`ed at copy time
     (never trusted from a cached directory listing) and a symlink anywhere aborts that skill's
@@ -577,8 +607,8 @@ prefers — not only a competing runtime. The mechanisms:
   connection default for that capability; see agent-engine-unification.md §6.2 for the resolution
   contract and `src-server/services/orchestration/session-agent-resolution.ts` for the
   implementation.
-- **Secret boundary (shipped with MCP passthrough):** a tool server whose `ToolDef` declares any
-  `env` entries is never passed through, full stop — `session/new`'s `mcpServers` payload is
+- **Secret boundary (authored MCP passthrough):** a tool server whose `ToolDef` declares any
+  `env` entries or `secretEnvRefs` is excluded — `session/new`'s `mcpServers` payload is
   visible to the external agent app driving the session, not confined to the spawned MCP
   process, so an env-bearing tool server (API tokens, etc.) would leak across that trust
   boundary. Excluded entirely (not redacted key-by-key) and surfaced as a disabled, reasoned
@@ -590,7 +620,7 @@ prefers — not only a competing runtime. The mechanisms:
 What stays native-only: Station sitting inside the loop — per-tool permissioning, policy
 gates, live receipts (partially reachable for Claude Code via hooks; out of scope here).
 
-## 6. Slice map
+## 6. Historical slice map
 
 | Slice | Status |
 | --- | --- |
@@ -606,14 +636,15 @@ gates, live receipts (partially reachable for Claude Code via hooks; out of scop
 | MCP passthrough productization (explicit per-connection opt-in `provideToolServers`, stdio-only, ACP session/new) | Shipped (2026-07-26, nonce-proven live tool execution via opencode + `filesystem_read_text_file`) |
 | Skills materialization for External agents (claude, `provideSkills`) | Shipped (2026-07-26) |
 | #896 wave 1: config-surface audit doc, global-config refusal guard (receipt-only), claude app-home profile + per-session env layering, explicit import-from-global | Shipped |
-| #896 wave 2: Codex `CODEX_HOME` wiring, opencode/ACP XDG overrides, refused-materialization auto-fallback into app-home | Target |
+| #896 wave 2: Codex `CODEX_HOME` wiring, import/auth/registry and bounded profile GC | Implemented; see §1.1 |
+| opencode/ACP XDG overrides and refused-materialization auto-fallback into app-home | Deferred; see §1.1 |
 | First-run gate: durable `AppConfig.firstRun`, Home dialog + re-offer card, shared dialog/Button/Checkbox (§4.1) | Shipped (UX audit RT-02, SHELL-12) |
 | Azure OpenAI / Vertex shapes | Target, unprioritized |
 
 ### Later program boundaries
 
-The unified Providers overview, guided setup, and chat model picker have
-shipped. The following program work remains intentionally separate:
+The following table records the original program split. It is not live issue status
+or a claim that the unified Providers overview remains the current interface:
 
 | Work | Owner |
 | --- | --- |

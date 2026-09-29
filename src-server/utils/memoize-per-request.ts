@@ -1,9 +1,10 @@
 /**
  * Per-request memoization for principal/authority resolution: resolve once
- * per `Request`, cache on the request object's identity. Moved verbatim from
- * `runtime-routes.ts` so the canonical principal owner
- * (`runtime/bootstrap/orchestration-request-principal.ts`) can live outside
- * the routes module without a cycle; re-exported there for existing imports.
+ * per `Request`, cache on the request object's identity. A fresh `Request` per
+ * incoming HTTP call means this never caches across requests; it only dedupes
+ * repeated calls within one. A THROWN resolution is never cached, so a later
+ * call re-runs the resolver and fails closed again rather than remembering a
+ * stale refusal.
  */
 export function memoizePerRequest<
   TContext extends { req: { raw: Request } },

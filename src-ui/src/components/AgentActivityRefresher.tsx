@@ -6,9 +6,10 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
 
 /**
  * Keeps this phone's agent-activity registration with the active Station
- * current. FCM rotates push tokens while the app is closed and the Android
- * plugin has no `onNewToken` hook, so the app checks on start and whenever it
- * returns to the foreground. The controller does nothing for a Station the
+ * current. Push tokens rotate while the app is closed (FCM, with no
+ * `onNewToken` hook in the Android plugin; the iOS push-to-start token, which
+ * the plugin reads only when asked), so the app checks on start and whenever
+ * it returns to the foreground. The controller does nothing for a Station the
  * person has not turned agent activity on for.
  */
 export function AgentActivityRefresher() {
@@ -17,7 +18,7 @@ export function AgentActivityRefresher() {
   const environmentId = activeConnection?.environmentId ?? null;
 
   useEffect(() => {
-    if (target !== 'android' || !environmentId) return;
+    if ((target !== 'android' && target !== 'ios') || !environmentId) return;
     let disposed = false;
     const refresh = () => {
       void import('../platform/native/agentActivityRuntime')

@@ -11,6 +11,7 @@ import type {
   LiveSurfaceVideoMode,
 } from '@kontourai/station-contracts/live-surface';
 import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-device';
+import { jpegSize } from '../live-surface/jpeg-size.js';
 import type {
   LiveSurfaceDispatchContext,
   LiveSurfaceHeldInput,
@@ -19,7 +20,6 @@ import type {
 import {
   annexBHasIdr,
   annexBNalTypes,
-  jpegSize,
   MjpegMultipartParser,
   multipartBoundary,
   parseSemuPacket,
@@ -97,7 +97,7 @@ import type {
  * Agent control is NOT wired yet: no agent tool claims a device surface,
  * and the surface authorizer admits only a request-bearing human caller, so
  * an agent path fails closed today. When it lands it goes through the same
- * lease (human input preempts; no bypass, unlike t3code's agent-device).
+ * lease (human input preempts; an agent never bypasses it).
  *
  * Every hub call goes through the allowlisted connection
  * (`DeviceHubAccessConnection`): `request` for the MJPEG stream and the
@@ -461,8 +461,8 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
 
   /**
    * serve-sim's helper accepts input and pushes its screen config only once
-   * screen capture runs; touching the MJPEG endpoint starts it (t3code's
-   * `primeIosHelper`). One bounded request, aborted after its first bytes.
+   * screen capture runs; touching the MJPEG endpoint starts it. One bounded
+   * request, aborted after its first bytes.
    */
   private async primeIosHelper(
     connection: DeviceHubAccessConnection,

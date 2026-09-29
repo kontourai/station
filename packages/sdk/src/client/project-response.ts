@@ -1,9 +1,5 @@
-import {
-  envelopeErrorCode,
-  envelopeErrorMessage,
-  readJsonBody,
-  StationHttpError,
-} from './http';
+import { envelopeError } from './api-error-message';
+import { readJsonBody } from './http';
 
 export interface ProjectEnvelope<T> {
   success: boolean;
@@ -20,11 +16,12 @@ export interface ProjectEnvelope<T> {
  * like — including the runtime's auth refusal, which carries no `success` key
  * and whose `error` is an object, and including a body that is not JSON at
  * all. Only then does an `ok` response with `success:false` count as a
- * route-level refusal. The message itself comes from `envelopeErrorMessage`,
- * the one derivation shared with every other client fetcher, so no caller
- * renders `[object Object]` again.
+ * route-level refusal. Both throw the envelope helper's `StationHttpError`
+ * (#2708): the observed status, `code`, `details` and a message that names
+ * each field of a validation refusal (`Validation failed: name Required`).
+ * An unreadable 2xx stays a plain `Error`: there is no failure status.
  *
- * A non-2xx throws `StationHttpError`, so a consumer can branch on the STATUS
+ * A failure throws `StationHttpError`, so a consumer can branch on the STATUS
  * (`LayoutView`'s 404 not-found state, `RouteViewBoundary`'s authority
  * classification) instead of sniffing the message text for 'not found'. The
  * envelope's machine `code` rides along on the error for the cases where one
@@ -39,24 +36,18 @@ export async function unwrapProjectResponse<T = any>(
     | ProjectEnvelope<T>
     | undefined;
   if (!response.ok) {
-    const error = new StationHttpError(
-      response.status,
-      envelopeErrorMessage(
-        result,
-        defaultError ?? `Request failed with HTTP ${response.status}`,
-      ),
-      { code: envelopeErrorCode(result) },
+    throw envelopeError(
+      response,
+      result,
+      defaultError ?? `Request failed with HTTP ${response.status}`,
     );
-    // A refusal's stable code (e.g. #2412 `working-directory-not-granted`),
-    // so a caller branches on it rather than on the status or the words.
-    if (typeof result?.code === 'string')
-      Object.assign(error, { code: result.code });
-    throw error;
   }
-  if (!result?.success) {
-    throw new Error(
-      envelopeErrorMessage(result, defaultError ?? 'Request failed'),
-    );
+  // An unreadable 2xx is a protocol failure, with no failure status to carry.
+  if (result === undefined) throw new Error(defaultError ?? 'Request failed');
+  if (!result.success) {
+    // #2708 A-2: a 2xx `success:false` is a refusal too, and keeps its
+    // observed status (200), `code` and `details` — as every other client.
+    throw envelopeError(response, result, defaultError ?? 'Request failed');
   }
   return result.data as T;
 }

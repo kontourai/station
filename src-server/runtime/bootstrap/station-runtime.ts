@@ -14,6 +14,7 @@ import {
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import {
   closePluginActivationSession,
@@ -32,6 +33,7 @@ import {
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { orchestrationUsageRefFor } from './orchestration-usage-ref.js';
 import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 /**
  * VoltAgent runtime integration for Station
@@ -85,7 +87,7 @@ import {
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
-import { ensureConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
+import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
@@ -120,8 +122,10 @@ import {
   connectionSpawnEnv,
 } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
+import { readVerifiedNativePionApplicationRequest } from '../../services/connections/native-v2-pion-application-adapter.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import {
+  readVerifiedNativeVirtualApplicationRequest,
   type VirtualApplication,
   VirtualApplicationIngress,
 } from '../../services/connections/virtual-application.js';
@@ -168,6 +172,7 @@ import {
   terminalWorktreeStateForExit,
   WorktreeProvisioningService,
 } from '../../services/projects/worktree-provisioning-service.js';
+import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
   FileSecretBindingAdministration,
@@ -374,6 +379,7 @@ interface AgentConfigurationGeneration {
 }
 
 import { getCachedUser } from '../../routes/system/auth.js';
+import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { BrowserService } from '../../services/browser/browser-service.js';
 import type { DeviceSessionService } from '../../services/devices/device-session-service.js';
 import type { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
@@ -1315,6 +1321,18 @@ export class StationRuntime {
           projectHomeDir,
         });
       this.unattendedGrantStore = new UnattendedGrantStore(projectHomeDir);
+      // #2377 slice C2b: a bound Discord conversation on a saved Environment
+      // forwards through the remote seam, as the routes do. Built once, here;
+      // the SSH service is assigned later in startup, so it is read at call
+      // time rather than captured now.
+      const remoteStations = createRemoteStationForwarder({
+        ssh: {
+          list: () => this.sshEnvironmentService.list(),
+          connect: (id) => this.sshEnvironmentService.connect(id),
+        },
+        peers: new PeerCredentialStore(projectHomeDir),
+        warn: (message) => this.logger.warn(message),
+      });
       this.discordGatewayService = new DiscordGatewayService({
         homeDir: projectHomeDir,
         logger: this.logger,
@@ -1326,9 +1344,15 @@ export class StationRuntime {
           if (!this.orchestrationService) {
             throw new Error('Station orchestration is unavailable');
           }
-          return continueExecutionTargetMessage(
-            input,
-            this.orchestrationService,
+          // #2377: a Discord message is a person's turn Station drives
+          // itself; its loopback calls run as server code.
+          const orchestrationService = this.orchestrationService;
+          return runAsStationServer(() =>
+            continueExecutionTargetMessage(
+              input,
+              orchestrationService,
+              remoteStations,
+            ),
           );
         },
         readTranscript: ({ sessionId, turnId }) =>
@@ -3280,6 +3304,7 @@ export class StationRuntime {
       ? new VirtualApplicationIngress(
           this.virtualApplicationConfiguration.origin,
           readVerifiedPionApplicationRequest,
+          readVerifiedNativePionApplicationRequest,
         )
       : undefined;
     this.virtualApplication = virtualApplication;
@@ -3400,6 +3425,7 @@ export class StationRuntime {
               aliasId,
             ),
         },
+        readVerifiedNativeVirtualApplicationRequest,
       );
     }
     if (!this.relayEnrollment) {
@@ -3481,25 +3507,10 @@ export class StationRuntime {
               credentialRecoveryRuntimeConnectionId,
             ),
           usageAggregator: this.usageAggregator,
-          // archive#3245: lifetime analytics reads the orchestration
-          // substrate through the SAME `readSessionUsage` fold the stats
-          // route uses. Resolved per rescan off `this.orchestrationService`,
-          // which a reload replaces underneath a reused aggregator. The
-          // aggregate scope is the deliberate one: `stats.json` is a
-          // home-global lifetime store with no per-user partition, and
-          // `listSessionUsage` refuses the read outright in hosted mode,
-          // where "home-global" would mean "across tenants".
-          orchestrationUsageRef: {
-            get: () =>
-              this.orchestrationService
-                ? {
-                    listSessionUsage: () =>
-                      this.orchestrationService.listSessionUsage(
-                        INTERNAL_SESSION_READ_SCOPE,
-                      ),
-                  }
-                : undefined,
-          },
+          // archive#3245 / #2568: see `orchestrationUsageRefFor`.
+          orchestrationUsageRef: orchestrationUsageRefFor(
+            () => this.orchestrationService,
+          ),
           monitoringEmitter: this.monitoringEmitter,
           activeAgents: this.activeAgents,
           agentMetadataMap: this.agentMetadataMap,
@@ -3620,16 +3631,15 @@ export class StationRuntime {
             // (module doc's onCoreConfigReady/onRouteServicesReady ordering
             // note; `this.appConfig` is set synchronously by
             // `onCoreConfigReady` above, which always runs first).
-            await ensureConversationKnowledgeRoot({
+            // Sessions are read as the request's principal, never a fixed
+            // reader: see `registerRuntimeConversationKnowledgeRoot`.
+            await registerRuntimeConversationKnowledgeRoot({
               provider: this.knowledgeStoreProvider,
               persistence: this.storageAdapter,
-              sessionReader: {
-                listSessionReadModel: (authority) =>
-                  this.orchestrationService.listSessionReadModel(authority),
-                sessionQueries: this.orchestrationService.sessionQueries,
-              },
+              sessions: this.orchestrationService,
               fileStores: this.memoryAdapters,
-              getUserId: () => getCachedUser().alias,
+              // Legacy file-memory conversations are keyed by the OS alias.
+              fileMemoryUserId: () => getCachedUser().alias,
               projectHomeDir: this.configLoader.getProjectHomeDir(),
               knowledgeStoresEnabled: this.appConfig?.knowledgeStores,
             });
@@ -3866,6 +3876,7 @@ export class StationRuntime {
           provider: 'task-dispatch',
           sourceSurface: 'e2e-task-room-control',
           fullAccessGrant: null,
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
         });
         if (dispatched.kind !== 'dispatched')
           throw new Error(`Task dispatch was ${dispatched.kind}`);

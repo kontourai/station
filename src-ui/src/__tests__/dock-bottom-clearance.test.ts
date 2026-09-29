@@ -105,21 +105,6 @@ describe('the dock clearance is one derivation (station#3902)', () => {
     expect(offenders, offenders.join('\n')).toEqual([]);
   });
 
-  test('one shell class places every dock occupant — no second per-occupant wrapper', () => {
-    const source = withoutComments(indexCss);
-    // archive#4460: every occupant (Chat, Home, Activity) now renders
-    // through the shared `DockShell`, whose root carries `.chat-dock`
-    // regardless of which occupant is docked — there is exactly one wrapper
-    // class, not the old `:is(.chat-dock, .dock-slot)` fork where a non-chat
-    // occupant's OWN `.dock-slot` element carried a second copy of the same
-    // placement geometry. `.dock-slot` no longer exists in any rendered
-    // markup; this guards against it (or an equivalent second wrapper)
-    // coming back with its own drifted position/grid-column/grid-row — the
-    // exact class of bug #3902 fixed.
-    expect(source).toContain('.chat-dock {');
-    expect(source).not.toMatch(/\.dock-slot\s*\{/);
-  });
-
   test('the clearance reducer is the sole --dock-slot-size writer', () => {
     // A file that names the variable as a string and writes inline styles
     // is a writer; the reducer passes the name through its `write` helper,

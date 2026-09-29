@@ -667,7 +667,6 @@ const feedbackAnalysis = readRequiredSource(
   '../src-server/services/feedback/feedback-analysis.ts',
 );
 for (const requiredHelper of [
-  'export function extractJson',
   'export async function runMiniFeedbackAnalysis',
   'export async function runFullFeedbackAnalysis',
 ]) {
@@ -2019,8 +2018,6 @@ const runtimeStartup = readRequiredSource(
 );
 for (const requiredHelper of [
   'export function getActiveRuntimeProjectSlug',
-  'export function shouldRegisterRuntimeDefaultSkillRegistry',
-  'export function initializeRuntimeUsageAggregator',
   'export async function seedRuntimeDefaultProviderConnection',
   'export async function prepareRuntimeStartup',
   "pluginOverrides['aws-internal']?.settings?.disableDefaultSkillRegistries",
@@ -3376,7 +3373,6 @@ for (const requiredHelper of [
   'export const DEFAULT_SYSTEM_PROMPT',
   'export async function loadAppConfigFile',
   'export async function saveAppConfigFile',
-  'export async function updateAppConfigFile',
   'function assertSafeAppConfig',
 ]) {
   if (!domainConfigLoaderApp.includes(requiredHelper)) {
@@ -7047,11 +7043,6 @@ for (const requiredHelper of [
   'export async function api',
   'export function resolveControlApiBase',
   'export function jsonToolResult',
-  'export function buildAnalyticsUsagePath',
-  'export function buildChatRequest',
-  'export function createConversationId',
-  'export function buildSentMessageResult',
-  'export async function dispatchAgentMessage',
   'export async function navigateTo',
 ]) {
   if (!stationControlShared.includes(requiredHelper)) {

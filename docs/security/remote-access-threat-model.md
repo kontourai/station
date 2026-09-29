@@ -10,8 +10,8 @@ trusted proxies are outside this boundary. An explicitly configured,
 loopback-only Tailscale Serve identity adapter is inside the boundary only as
 pairing-request provenance. Host-confirmed, one-time pairing is
 inside the boundary. Persistent, revocable same-origin browser sessions are the
-mobile continuity baseline; broader reconnect work remains tracked in
-[#303](https://github.com/kontourai/station/issues/303).
+mobile continuity baseline; the earlier reconnect work is recorded in
+[archive#303](https://github.com/kontourai/station-archive/issues/303).
 
 ## Trust boundary
 
@@ -70,16 +70,39 @@ malformed identity never produce verified provenance.
 | `POST /.well-known/station/v1/pairing/request` and `/pairing/exchange` | Public, bounded | Public, bounded | Public, bounded |
 | `GET /api/system/liveness` | Public | Public | Public |
 | CORS `OPTIONS` | Allowed only with an allowed Origin | Same | Same |
-| Every other HTTP route, including `/api/**`, `/agents/**`, `/acp/**`, `/events/**`, root chat/invoke/stream routes, mutations, and unknown future routes | `401` unless it presents a device session, bearer, or exact direct-internal attestation | `401` | Allowed |
-| HTTP request with a credential-like query parameter | `401` | `401` | `401` |
+| `GET`/`POST /api/account-auth/**` | Public at the Device gate; account router enforces its own endpoint, account, Origin, body-size, and attempt checks, and refuses unknown operations | Same; account authentication does not grant Device or Project authority | Same |
+| Other explicitly declared authentication contracts: local-secret/bootstrap, relay enrollment, answer sharing, station-control MCP, inbound webhook, and attachment stage upload | Each exact route enforces its own capability; loopback alone does not satisfy it | Same owner-specific checks | An ordinary Device credential does not replace that capability |
+| HTTP routes classified as pairing-scoped, including ordinary `/api/**`, `/agents/**`, `/acp/**`, `/events/**` and chat/invoke/stream routes | `401` unless it presents a device session, bearer, or exact direct-internal attestation | `401` | Subject to current scope and resource authorization |
+| Unknown HTTP routes without a capability-table entry | `403 insufficient_scope` | Same | Same |
+| Pairing-authenticated HTTP request with a credential-like query parameter | `401` | `401` | `401` |
 | HTTP request from a disallowed Origin | `403` | `403` | `403` |
 | Repeated authentication failures | Subject to bounded limiting | `429` with `Retry-After` | A valid credential clears the peer's failure window |
 | Terminal or voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
 | Other terminal or voice WebSocket paths | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
 
+The account-authentication exception is specified in the
+[deployment authentication guide](../guides/deployment-authentication.md).
+With authentication unconfigured, that router reports unavailable (`501`),
+not a Device-gate authentication failure. This matrix does not extend the
+LAN/private-tailnet qualification above to a production OIDC deployment.
+
+The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
+owns the method/path-specific exceptions; a public classification at the Device
+gate does not waive the endpoint's own checks. The station-control HTTP/SSE
+endpoint has a separately minted, scoped MCP query token. That exception does
+not permit an operator or Device credential in a URL. Inbound webhooks verify
+their named HMAC token, timestamp and nonce; an attachment stage grant authorizes
+only its exact short-lived upload.
+
+The terminal and voice listeners still accept their direct-loopback business
+path without the remote first-frame credential check. Browser-shaped upgrades
+must present an allowed Station Origin, while non-browser local clients have
+no Origin requirement. This retained local path is distinct from protected HTTP
+authorization and is not a paired-Device scope boundary.
+
 The public handshake is deliberately minimal and contains no credential,
 hostname, username, home directory, workspace, endpoint, process identity, or
-build details. Its schema is:
+commit or executable identity. Its schema is:
 
 ```json
 {
@@ -146,10 +169,11 @@ strict loopback names and addresses.
 ## Mutation budget (archive#514)
 
 The runtime security middleware applies a shared body-size ceiling and a
-per-principal mutation-rate budget to every authenticated mutation
+per-principal mutation-rate budget to pairing-authenticated mutations
 (`POST`/`PUT`/`PATCH`/`DELETE`) before route-specific parsing or persistence
-work. This is the shared layer #496's route-local Task field limits sit behind
-as defence in depth; each product route no longer invents its own limit.
+work. This is the shared layer archive#496's route-local Task field limits sit behind
+as defence in depth. Explicit account, webhook, MCP-token and stage-grant
+contracts retain their own admission and body/rate limits.
 
 **Body-size.** `Content-Length` is checked first; an oversized request is
 rejected `413` before any body read. A lying or absent `Content-Length` is
@@ -187,21 +211,28 @@ orchestration sends, streaming invokes) get their own, more generous rate
 bucket so active chat does not collide with — and is not throttled by — the
 standard mutation budget. SSE read surfaces (`GET /events`,
 `GET /api/orchestration/events`, `GET /monitoring/events`,
-`GET /scheduler/events`) are GETs and are therefore unbudgeted; they are
-enumerated explicitly in `DOCUMENTED_SSE_READ_SURFACES` (documentary, not a
-gate — the classifier never consults it; GETs are unbudgeted as non-mutations)
-so the surface stays a reviewed decision, not an implicit escape.
+`GET /scheduler/events`) are GETs and are therefore unbudgeted as
+non-mutations. No path is exempted, so a mutating verb on the same path is
+still budgeted.
 
 **Defaults** (configurable via `RuntimeHttpSecurityOptions`):
 
 | Option | Default | Notes |
 |---|---|---|
 | `maxMutationBodyBytes` | 1 MiB (1 048 576) | Standard mutation body ceiling |
-| `maxStreamingBodyBytes` | 2 MiB (2 097 152) | Streaming mutation body ceiling |
+| `maxStreamingBodyBytes` | 22 MiB (23 068 672) | `CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES`; encoded chat attachment command envelope |
 | `maxMutationsPerWindow` | 300 | Standard mutations per principal per window |
 | `maxStreamingPerWindow` | 60 | Streaming mutations per principal per window |
 | `mutationWindowMs` | 60 000 | Rate-budget window (shared) |
 | `maxBudgetPrincipals` | 1 024 | LRU bound on tracked principal keys |
+
+The streaming ceiling comes from the
+[attachment contract](../../packages/contracts/src/chat-attachment.ts), not an
+independent limit. It accommodates base64-expanded attachment data URLs and
+command metadata across the attachment allowance. The
+[security middleware](../../src-server/security/runtime-request-security.ts)
+still counts actual body bytes and rejects oversized bodies; the larger
+envelope is not an unlimited attachment or streaming exemption.
 
 **Public routes** (`/.well-known/station/v1/**`, `GET /api/system/liveness`)
 carry no authenticated principal and are never budgeted — they are
@@ -222,8 +253,9 @@ space-delimited scope string drawn from a fixed vocabulary. The starter set
 was four scopes: `orchestration:read`, `orchestration:operate`,
 `terminal:operate`, and `access:manage` (pairing/device management — creating
 offers, confirming or denying requests, revoking devices). Station#1398 slice
-2 added a fifth, `inference:invoke` (fleet inference — see below). This is
-deliberately small — not a general permission system — and has no relation to
+2 added `inference:invoke` (fleet inference — see below). Later operator-only
+promotions include `access:approve`, `coding:exec`, and `approval:full-access`;
+they do not expand the default grant. This vocabulary has no relation to
 DPoP proof-of-possession, an OAuth server, or relay scopes, all of which are
 out of scope.
 
@@ -253,28 +285,61 @@ every token.
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read
 orchestration:operate terminal:operate`), the default *radio selection* in
-that UI. Neither preset grants `access:manage`: a paired device, however
-broadly scoped, can never manage other devices or pairing offers itself —
-only the operator credential can. The chosen scope is shown before the grant
-is created and again on the resulting offer.
+that UI. Neither preset grants pairing management. Ordinary paired credentials
+are refused on the pairing family even if they carry inherited `access:manage`.
+There are explicit exceptions in
+[`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts):
+a Device separately promoted with `access:approve` may list, confirm, and deny
+pending requests, but cannot create offers, enumerate Devices, or revoke them.
+A credential minted by proving local Station-home possession has a separate
+pairing-family exception, still subject to the current route scope. The chosen
+scope is shown before the grant is created and again on the resulting offer.
 
 Two other paths do not go through the preset selector at all, and both
-default to full access rather than Standard:
+default to the historical four-token grant rather than Standard:
 
 - The server-side fallback when a caller creates a pairing offer without an
-  explicit `scope` is full access (all four scopes), not Standard —
+  explicit `scope` is the four-token default, not Standard or all current scopes —
   `DevicePairingService#createOffer`'s default. The pairing UI always sends
   an explicit scope, so this fallback is reached only by a caller bypassing
   the UI (or a pre-#1098 integration) and exists to keep that path
   functioning rather than silently narrowing it.
 - The same-origin "Request access" continuity flow (the short-lived access
   request a browser makes directly from the Station origin, described below)
-  always requests full access and has no UI path to ask for less: it exists
+  requests the four-token default and has no UI path to ask for less: it exists
   for the operator's own already-authenticated browser to persist a session,
   not for pairing a new, potentially less-trusted device. The operator still
   sees the true requested scope and approves or denies the named request on
   the host before any credential is issued, exactly as with any other
   pairing request.
+
+Beyond the presets, the operator adds elevated scopes to an already-paired
+device, never at pairing: in the desktop app (**Paired devices** → the device
+→ **Change access**) or on the Station host with `station environment access
+scope <device> --add|--remove|--set <scope>` (#1796). Both use
+`POST /api/pairing/devices/:id/scope`, which only the operator credential
+reaches; the CLI verbs additionally refuse any non-loopback target before
+reading a credential, so a paired remote CLI cannot run them, and there is no
+remote operator authentication. `access:manage` is not grantable this way.
+Each change is sent with the scope it replaces (`expectedScope`) and a
+concurrent change returns 409 `scope_changed` instead of being overwritten;
+the change drops the device's live terminal and voice leases. One such scope,
+`approval:full-access`, is the only way a device may choose approval mode
+`never`. Its refusal (403 `approval-full-access-not-granted`) names the
+device, the refusing Station and the operator's grant command, derived from
+the request's verified credential; it discloses no credential and grants
+nothing. Removing the scope, or revoking the device, refuses the device's
+next full-access request and resets the full access it had already granted:
+each conversation it put at full access gets a new Ask decision attributed to
+the operator. Attribution is exact, from the server-derived actor on the
+decision or beside the start's `host` stamp. The sessions its grant unconfined
+run confined again, because the stamp is checked against the grant at every
+turn start and respawn. A running turn finishes; the next one is confined and
+asks. The exception is a running engine with no decision standing: it keeps
+its start posture until it restarts, and it is listed. Full access from the
+operator, another device, or an Agent or Station default on someone else's
+session is listed and left alone. So are live sessions started before
+grantors were recorded (at most 50, with the total).
 
 Enforcement is a single route -> required-scope table
 (`src-server/security/pairing-route-scopes.ts`) consulted by one piece of
@@ -282,16 +347,22 @@ middleware, never scattered per-handler checks. Every authenticated HTTP route
 family and both the terminal and voice WebSocket upgrade paths are listed;
 GET/HEAD routes require `orchestration:read`, mutating methods require
 `orchestration:operate`, the terminal WebSocket requires `terminal:operate`,
-the voice WebSocket requires `orchestration:operate`, and every
-`/api/pairing/**` route requires `access:manage` regardless of method. A
+and the voice WebSocket requires `orchestration:operate`. Pairing-family routes
+have additional credential-kind and explicit approval-leaf rules described
+above; a generic operate grant cannot reach them. A
 route the table does not recognize fails closed — denied, with a loud server
 log — rather than defaulting to allowed; a test enumerates the live route
 surface against the table so a new authenticated route shipped without a
 scope entry is caught before merge. A read-only credential can therefore read
-and stream state but is denied every mutation and the terminal route with
-`403 insufficient_scope`. The Station operator bootstrap credential predates
-scoping and is treated as carrying every scope — it is not itself a pairing
-grant.
+and stream permitted HTTP state but receives `403 insufficient_scope` for
+pairing-scoped mutations. The remote terminal first-frame check refuses it
+because it lacks `terminal:operate`; the retained direct-loopback WebSocket
+path in the matrix is a separate exception. Although the Station operator bootstrap credential
+is not itself a pairing grant,
+[`resolveGrantedScope`](../../src-server/services/ssh/environment-security-service.ts)
+reports `DEFAULT_GRANT_PAIRING_SCOPE` for it: the frozen four tokens, excluding
+`inference:invoke` and later promotions. Operator-specific route authority is a
+separate check, not a claim that this credential carries every scope.
 
 ### Coding routes: command execution and client paths (#2412)
 
@@ -311,8 +382,13 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   stored on the device's record in the pairing registry, like every other
   promoted token. The operator in person never needs it: the operator
   credential, and credentials minted by proving possession of this Station's
-  home (the desktop app's local grant, the host browser's bootstrap, Station's
-  own internal token). A refused request is `403` with code
+  home (the desktop app's local grant or the host browser's bootstrap), provided
+  the request is not acting for an Agent. The
+  [coding authority check](../../src-server/security/coding-authority.ts)
+  rejects internal-token and Agent-originated requests before testing operator
+  or promoted-device authority, including an internal request with no origin
+  marker. The internal token is not operator-in-person coding authority.
+  A refused request is `403` with code
   `coding-exec-not-granted` and a sentence naming where the operator turns it
   on; it is refused before the body is read, and nothing runs.
 - **Every route that takes a client path is confined to a Project.** The
@@ -341,6 +417,12 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   and nothing is saved; an update that sends the folder the Project already
   has is not a change, and every other Project edit keeps its operate tier.
 
+The same owner also gates elevation to the `never` approval posture through
+`mayGrantFullAccess`: an Agent cannot grant full access to itself or another
+session. A non-Agent operator-in-person request or an explicitly promoted
+`approval:full-access` Device is required. This does not remove an Agent's
+separately admitted engine shell or make same-OS-user execution isolated.
+
 What this does not close, stated so nobody assumes it does:
 
 - `terminal:operate` (in the `standard` preset) already opens an interactive
@@ -353,21 +435,25 @@ What this does not close, stated so nobody assumes it does:
   follows; that device could already reach anywhere through `/exec`.
 - Changes to a device's scope are recorded only as the device record's
   current scope; there is no separate history of who granted or revoked what.
+  The grantor recorded beside a session's `host` start stamp and the Ask
+  decisions a full-access revocation records are per-conversation
+  attribution, not a scope-change log.
 
 ### Cross-station reads
 
 An SSH environment's local tunnel (`GET /api/environments/ssh/sessions`,
 station#1097) lets this Station's server process read another, remote
 Station's orchestration session summaries — titles, project slugs, assigned
-agents, and models — for the Home work list's remote-session cards. That
-read is not itself authenticated against the remote station: the tunnel
-arrives at the remote as a loopback connection, which the remote station
-already treats as implicitly trusted (see "Trust boundary" above), so this
-Station's server can read it with no credential exchange at all. The remote
-station never separately consented to expose those summaries to whichever
-device is currently paired with *this* Station.
+agents, and models — for the Home work list's remote-session cards. The tunnel
+only transports bytes. The
+[remote session reader](../../src-server/services/ssh/remote-session-reader.ts)
+resolves the environment's enrolled outbound peer bearer and sends it to the
+remote Station. The [runtime route wiring](../../src-server/runtime/routes/runtime-routes.ts)
+supplies the peer credential store. A missing credential or remote authentication
+rejection is reported as `authenticationRequired`; loopback arrival does not
+bypass the remote Station's authentication.
 
-Consequently, disclosing that read to a caller of this Station is gated at
+Separately, disclosing that read to a caller of this Station is gated at
 `orchestration:operate` here — deliberately stricter than the
 `orchestration:read` the rest of the `/api/environments/ssh` family uses for
 this Station's own SSH profile/connection metadata, which carries no other
@@ -488,15 +574,19 @@ current user and port 22. Left unconstrained, `create` + `connect` together
 are an SSRF-shaped primitive — an outbound TCP/SSH connection attempt to any
 host reachable from the Station machine, requested purely by a string.
 
-That string is reachable from more than a human filling in the Connections
-hub's setup form. `create_ssh_environment` is an ordinary station-control
-tool: any agent turn holding `orchestration:operate` can call it, and not
-every dispatch path routes through a human-in-the-loop approval — voice,
-scheduled jobs, and the default temp agent run with no confirmation hooks
-wired, and the platform-mutation gate is inert for workspaces that never
-opted into `.flow-agents` governance. So the practical trigger bar for this
-surface is prompt injection reaching a mutating-tool-executing context, not
-"a human deliberately typed a hostname."
+The Station-control create and connect tools require the centrally verified
+`OPERATOR_MUTATION` policy: a bound caller acting for the operator. The
+[policy table](../../src-server/tools/station-control-policy.ts) is enforced
+by the [authority guard](../../src-server/security/station-control-authority-guard.ts)
+mounted before the [runtime routes](../../src-server/runtime/routes/runtime-routes.ts).
+Possessing `orchestration:operate` alone does not admit an Agent to these
+operations; caller assurance and recorded principal ownership matter.
+
+This still permits an admitted operator-bound Agent context to invoke the
+tools without a separate person-only confirmation for each call. Prompt
+injection reaching that context remains a threat, and an admitted connection
+uses the operator's ambient SSH identity. The central guard neither replaces
+host-key verification nor isolates arbitrary code running as the same OS user.
 
 **The control is the host key, not the config stanza.** Station never writes
 host trust. EVERY process Station starts that can open a session pins the
@@ -583,12 +673,13 @@ registration followed by server CONNECT specifically; the desktop launcher is
 a separate entry point, pinned above, that profile registration does not
 mediate at all. Registration itself is no longer gated: an
 `orchestration:operate` credential can store a profile naming any
-format-valid host. What it cannot do is reach that host — `connect` fails
-closed on an unconfirmed key. The remaining reachable effect of a hostile
-registration is a profile row in the Computers list and, for a host whose
-key the operator *has* already confirmed, a connection attempt to a machine
-they already trust from this one. Probe-driven outbound attempts are bounded
-separately by the admission control described below.
+format-valid host. `connect` cannot establish an authenticated SSH session when
+the host key is unconfirmed. The handshake can still contact that host before
+refusing its key; host-key verification is not an outbound network allowlist.
+A hostile registration can add a profile row and, for an already trusted host,
+attempt an authenticated connection using the operator's SSH identity.
+Probe-driven outbound attempts are bounded separately by the admission control
+described below.
 
 ### SSH probe admission control (sol review, D5 finding 4)
 
@@ -634,6 +725,17 @@ real Windows host backs the `taskkill` behaviour itself.
 
 ### Historical pairing approval finding (pre-station#2051, station#1490)
 
+**Historical evidence, before archive#2051.** The investigation and intermediate
+mitigation below describe the former unauthenticated loopback compatibility
+floor. They retain its rationale, observed probes, and residual network-namespace
+risks; they are not current setup instructions or claims about today's pairing
+authority. The phrases about an unenrolled approval panel, remaining floor
+exposure, and missing desktop wiring belong to that checkpoint. Current
+protected routes require authentication as described under
+[Trust boundary](#trust-boundary), and current promoted-device/local-home
+exceptions are described under [Scope model](#scope-model). The same-OS-user
+and credential-disclosure limits remain accepted boundaries.
+
 Pairing **approval** is the one step that converts a position into authority
 that outlives it. Every other step is either public by design (the joiner's own
 request and exchange) or reversible by the operator; a confirmed request is
@@ -654,9 +756,8 @@ read straight out of its response, then the public pairing-request route.
 cannot approve itself" property `DevicePairingPanel` states in its own copy was
 *entirely* the HTTP boundary, which the floor bypasses.
 
-**What now holds.** Runtime authentication rejects bare loopback and SSH
-requests before they reach pairing-host routes. `DevicePairingService
-.confirmRequest` still takes a required `PairingApproval` as defense in depth
+**Intermediate mitigation at that checkpoint.** `DevicePairingService
+.confirmRequest` took a required `PairingApproval` as defense in depth
 for exact Station-internal callers. The predicate is `isDefinitelyOffBox`
 (`src-server/security/off-box-peer.ts`), stated positively: it refuses
 loopback, link-local, the unspecified address, **every address this host
@@ -694,14 +795,14 @@ internal token from a loopback direct peer over a payload the proxy minted
 after stripping every client-supplied `tailscale-*` header, so it is no more
 forgeable from the floor than the attested address is.
 
-**What this closes.** The whole self-dial class, which the first version of
+**Reported closure at that checkpoint.** The whole self-dial class, which the first version of
 this fix only disclosed. Re-probed after: the four-request access-request chain
 403s at approval and 409s at exchange; so does the offer/pairing-request
 recombination; and so does a request dialled at this host's own LAN address,
 with or without the UI proxy in front of it. No SSH is required to attempt any
 of them, and none now converts.
 
-**What this costs the operator.** Nothing in the journey the floor exists for:
+**Operator cost assessed at that checkpoint.** Nothing in the journey the floor existed for:
 a phone, tablet, or second laptop reaching this Station over the LAN
 contributes its own source address, and one arriving over Tailscale Serve
 carries a verified identity instead, so the operator still approves either from
@@ -720,7 +821,7 @@ E2E (`tests/device-pairing-mobile.spec.ts`) is exactly that shape and now
 presents the operator credential from its host context, which is what a human
 at that machine would do.
 
-**What remains open.** "Not this network stack" is weaker than "another
+**Residuals recorded for that mitigation.** "Not this network stack" is weaker than "another
 machine", and the difference is the residue, stated without softening:
 
 - A **container, VM, or other network namespace on this same box**. Its source
@@ -759,25 +860,25 @@ machine", and the difference is the residue, stated without softening:
   Scrubbing the token from PTY/engine env closes the cheaper path that used
   to turn `printenv` into an ephemeral `home-possession` principal.
 
-The sound closure is unchanged and unaffected by any of this: require a
+The proposed full closure at that checkpoint was to require a
 presented credential on `POST /api/pairing/requests/:id/confirm` (and `POST
 /api/pairing/offers`) via `PAIRING_CREDENTIAL_REQUIRED_PREFIXES`. It was
-assessed and deliberately not taken, because this family has no enrolment
-escape hatch — `EnvironmentSecurityService.authorizeCredential` refuses every
-paired-device credential on `/api/pairing/**`, so only the operator's bootstrap
-credential passes. Be precise about who pays: a **browser-only first run**
+assessed and not taken at that point, when this family had no enrolment
+escape hatch: `EnvironmentSecurityService.authorizeCredential` then refused
+paired-device credentials on `/api/pairing/**`, leaving the operator's bootstrap
+credential. The assessed cost was that a **browser-only first run**
 loses its Approve button until the operator runs the CLI once. The desktop
 shell need not — it supervises the server, resolves `STATION_HOME`, already
 reads credential files, and runs as the operator, so it *could* present the
-same credential the CLI does. Note the tense: no such wiring exists today
+same credential the CLI does. At that checkpoint, no such wiring existed
 (`HostDevicePairingPanel` is mounted from `ConnectionManagerModalContent`, and
 nothing reads a credential from `STATION_HOME`), so this is a feasibility claim
-about unbuilt capability and the cost analysis rests on it being built. That trade is an owner call, recorded in
+about then-unbuilt capability and the cost analysis rested on it being built. That trade was recorded in
 `src-server/security/pairing-route-scopes.ts` beside the list, and station#1490
 carries a third option (a first-run enrolment token printed to the terminal
 that started Station) that would remove the browser cost entirely.
 
-**Detection, while a class stays open.** `station.device_pairing.requests`
+**Detection recorded for the old floor.** `station.device_pairing.requests`
 carries `approver` alongside `source`/`outcome`, and an approval granted to a
 caller that presented no credential emits `station.pairing.approved` at warn
 volume, and a refusal emits `station.pairing.refused` under its own name so
@@ -786,8 +887,8 @@ identity. That is the only signal distinguishing an ordinary first-run approval
 from the residue being exercised, which is why it is covered by tests rather
 than left to inspection.
 
-**The rest of the family, assessed with it.** These remain reachable on the
-floor, each because it is the operator's own panel doing its job before any
+**The rest of the family, assessed then.** These were reachable on the
+old floor, each because it was the operator's own panel doing its job before any
 device is paired:
 
 - `POST /api/pairing/offers` — creates the pairing code the panel renders.
@@ -812,7 +913,7 @@ CLI, API, native, and cross-origin HTTP and fetch-based SSE use
 device credential only as a host-only, persistent `HttpOnly` `SameSite=Strict`
 cookie. JavaScript cannot read that cookie. Cookie-authenticated mutations also
 require an exact allowed browser `Origin`; originless mutations fail closed.
-Credentials in URLs, query parameters, logs, screenshots, WebSocket negotiated
+Operator and Device credentials in URLs, query parameters, logs, screenshots, WebSocket negotiated
 subprotocols, or public handshake responses are forbidden.
 
 Remote terminal and voice WebSockets send this as the first application frame:
@@ -857,9 +958,11 @@ expiry—never a bearer credential. Manual entry uses the same flow with a
 host before exchange. An authenticated host may instead deny it; denial is
 final for that offer and returns only a fixed error code to the requester. An
 issued device credential can use ordinary HTTP, SSE, and WebSocket surfaces up
-to whatever scope its grant carries (see "Scope model" above) — under every
-preset it cannot create or confirm pairing offers, enumerate devices, or
-revoke another device, since none of those grant `access:manage`. Per-device
+to whatever scope its grant carries (see "Scope model" above). Ordinary
+presets do not admit pairing management. An explicit `access:approve` promotion
+opens only pending-request list/confirm/deny, while local-home minted credentials
+have their separate route-scoped exception. Neither exception follows merely
+from carrying inherited `access:manage`. Per-device
 revocation is checked on every new authorization without rotating other
 credentials.
 
@@ -873,17 +976,24 @@ normal browser onboarding.
 ## Attached terminal transcripts
 
 An externally created terminal transcript is untrusted local input, not an
-authority grant. Discovery is confined to the configured Claude projects root;
+authority grant. The runtime registers both the
+[Claude transcript source](../../src-server/providers/sessions/claude-transcript-session-source.ts)
+and [Codex rollout source](../../src-server/providers/sessions/codex-rollout-session-source.ts).
+Discovery is confined to each source's configured roots;
 it accepts regular non-symlink JSONL files only, applies byte/line/event bounds,
 and keeps source paths, raw transcript content, and external identifiers out of
 telemetry and public errors. Unknown or incomplete records are ignored or
 deferred rather than interpreted as commands.
 
-Attached sessions are read-only at the orchestration service boundary. Every
-command and lifecycle mutation is rejected with the fixed public error before
-adapter lookup, so hiding UI controls is defense in depth rather than the
-security boundary. The read model retains the last imported transcript after a
-source disappears but does not infer external-process liveness from that fact.
+The original attached session is read-only at the
+[orchestration service boundary](../../src-server/services/orchestration/orchestration-service.ts).
+Commands that would control it are rejected before adapter lookup, so hiding
+UI controls is defense in depth. `adoptSession` is the deliberate exception:
+it [authorizes the source and creates an adopted child](../../src-server/services/orchestration/attached-session-adoption.ts)
+under the adopting caller's authority and execution policy. Adoption does not
+make the source transcript or its external process controllable. The read model
+retains the last imported transcript after a source disappears but does not
+infer external-process liveness from that fact.
 
 ## Failure handling and audit data
 

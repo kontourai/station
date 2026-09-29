@@ -7,6 +7,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { BACKLOG_POLICY } from './backlog-priority-policy.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const OWNER = '@briananderson1222';
 /** Labels only maintainers may apply after they classify the report. */
@@ -607,4 +608,4 @@ function main() {
   console.log('Public contribution surfaces are structurally valid.');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (invokedDirectly(import.meta.url)) main();

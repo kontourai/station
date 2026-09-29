@@ -18,7 +18,8 @@ listener before that job reaches its own resource lease.
 
 ## Label contract
 
-On the Windows runner host, configure two independent Linux runner listeners:
+The proposed partition, if Linux fast feedback returns to that physical host,
+uses two independent Linux listeners:
 
 | Listener purpose | Required custom labels | Must not carry |
 | --- | --- | --- |
@@ -29,7 +30,9 @@ Both listeners retain GitHub's default `self-hosted`, `Linux`, and `X64`
 labels. Keep the existing native Windows listener and its `kontour-windows` /
 `native` routing unchanged.
 
-Station no longer routes Linux CI to these listeners. Remaining native Windows
+Ordinary Linux CI is hosted. Container smoke remains an exception: its
+[workflow](../../.github/workflows/container-smoke.yml) requests the heavy
+Linux/docker/Playwright fleet labels. Remaining native Windows
 jobs request the hardware labels (`kontour-windows`, `native`) and still
 take a physical-host lease. If a Linux job is reintroduced on this host, route
 only `ci.yml`'s `fast-checks` to `fast-feedback` and every other leased Linux
@@ -38,6 +41,9 @@ job to `heavy-host`. The lease is still required: the two listeners may run a
 the host's 10-unit budget.
 
 ## Safe rollout
+
+This is an operator rollout plan, not a record that listeners were reconfigured
+or tested. Inspect current runner inventory before any change.
 
 1. Drain or disable the affected Linux listeners before changing their labels;
    do not relabel a listener while it runs a job.

@@ -1,18 +1,3 @@
-/**
- * Custom branding provider example
- *
- * This shows how a plugin can override the default Station branding.
- * The server loads this module and calls each method to build the
- * branding response served at GET /api/branding.
- *
- * To install:
- *   cp -r examples/custom-branding .station/plugins/custom-branding
- *
- * To revert to defaults, disable the branding provider in the UI
- * (Plugins → custom-branding → Providers → branding toggle)
- * or remove the plugin.
- */
-
 module.exports = () => ({
   async getAppName() {
     return 'Project Station';
@@ -23,8 +8,29 @@ module.exports = () => ({
   },
 
   async getTheme() {
-    // Return CSS custom property overrides, or null to keep defaults
-    return null;
+    // White-label overrides, per mode. Station applies only the brand-slot
+    // properties below, only as #rgb/#rrggbb colours, and only when the
+    // whole theme passes its contrast checks against each mode's page and
+    // panel. If anything is rejected, nothing is applied and the reasons are
+    // logged in the browser console. Return null to keep the defaults. A
+    // flat { '--k-brand': '#…' } object is also accepted and is expanded
+    // into both modes before checking. See README.md.
+    return {
+      dark: {
+        '--k-brand': '#60a5fa',
+        '--k-brand-contrast': '#06080b',
+        '--k-action': '#60a5fa',
+        '--k-action-contrast': '#06080b',
+        '--k-focus': '#93c5fd',
+      },
+      light: {
+        '--k-brand': '#1d4ed8',
+        '--k-brand-contrast': '#ffffff',
+        '--k-action': '#1d4ed8',
+        '--k-action-contrast': '#ffffff',
+        '--k-focus': '#1d4ed8',
+      },
+    };
   },
 
   async getWelcomeMessage() {

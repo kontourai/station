@@ -1,20 +1,30 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as setNodeTimeout } from 'node:timers';
-import { updateOwnedInstance } from '@kontourai/station-shared/instance-registry';
-import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
 import { createDesktopCompanion } from './desktop-companion.js';
 import {
   type CollectedChildStatus,
   type CollectedInstanceStatus,
+  checkSourceBuildStamp,
   collectInstanceStatus,
+  describeSourceBuildStampProblem,
   findListeningPidsForPorts,
   isBuildStale,
   resolveBuildPaths,
+  sourceBuildStampNeedsRebuild,
   start,
   stop,
 } from './lifecycle.js';
 import type { ServiceLifecycleArgs } from './service.js';
+import { SERVICE_SHUTDOWN_DEADLINE_MS } from './service-command.js';
+import {
+  processServiceLauncherLink,
+  type ServiceLauncherLink,
+} from './service-launcher-link.js';
+import {
+  handOffServiceLivenessToLauncher,
+  publishServiceLivenessRecord,
+} from './service-liveness.js';
 
 export interface SupervisorDependencies {
   desktopCompanion?: { check: () => void };
@@ -35,6 +45,16 @@ export interface SupervisorDependencies {
    * ownership-checked updater.
    */
   publishServiceLiveness?: (live: boolean) => void;
+  /**
+   * Re-points this supervisor's liveness entry at the fixed launcher when an
+   * update takes over the service (#2675 D, correction 8). Test seam.
+   */
+  handOffServiceLiveness?: (launcherPid: number) => void;
+  /**
+   * The fixed launcher's channel (#2675 D). Undefined: this process's own,
+   * when a launcher started it; null: none. Test seam.
+   */
+  launcherLink?: ServiceLauncherLink | null;
   processIsAlive?: (pid: number) => boolean;
   onSignal?: (signal: 'SIGINT' | 'SIGTERM', listener: () => void) => void;
   // NodeJS.Timeout rather than ReturnType<typeof setTimeout>: this module is
@@ -48,7 +68,6 @@ export interface SupervisorDependencies {
 }
 
 const CHECK_INTERVAL_MS = 5_000;
-const SHUTDOWN_DEADLINE_MS = 60_000;
 
 /**
  * Steady-state identity probes answer in single-digit milliseconds on an idle
@@ -153,77 +172,39 @@ export async function superviseService(
   const collect = dependencies.collect ?? collectInstanceStatus;
   const needsBuildForInstance =
     dependencies.needsBuildForInstance ??
-    ((name: string) => isBuildStale(resolveBuildPaths(name)));
-  const exit = dependencies.exit ?? ((code) => process.exit(code));
-  const publishServiceLiveness =
-    dependencies.publishServiceLiveness ??
-    ((live: boolean) => {
-      // ONE-OWNER SIGNAL (station#3064). Desktop refuses to spawn its own
-      // sidecar onto a home a live service owns — `decide_home_ownership`
-      // selects on a service-typed entry with a LIVE pid. Nothing ever wrote
-      // one: `service install` records policy without liveness (correctly —
-      // it is not the running process), and this supervisor's inner start()
-      // is refused by the CLI producer's protected-type guard. So the branch
-      // was unreachable and Desktop spawned a second server onto a
-      // service-owned home, which is the multi-writer condition #2904 exists
-      // to prevent.
-      //
-      // The supervisor is the right publisher: it is the process launchd or
-      // systemd keeps alive, and it outlives the server children it
-      // restarts, so the record does not flap. An UPDATE, never a claim: the
-      // entry's `env.ALLOWED_ORIGINS` is durable origin-policy authority
-      // (#1983) and must survive every liveness write. Own-type only, so a
-      // bare `service run` with no install does not mint an entry the
-      // installer owns (disclosed limit: such a run stays invisible
-      // home-wide).
-      try {
-        // Probe OUTSIDE the mutation lock: the lookup spawns `ps` (or
-        // powershell on Windows) with a 1.5s timeout, and holding the
-        // home-wide lock across that stalls every other writer, including
-        // the Desktop sidecar claim. Every sibling producer resolves its
-        // fingerprint before taking the lock.
-        const birth = live
-          ? (lookupProcessBirthFingerprint(process.pid) ?? undefined)
-          : undefined;
-        updateOwnedInstance(
-          instanceName,
-          { home: lifecycle.baseDir, ownTypes: ['service'] },
-          (existing) => {
-            if (!live) {
-              // IDENTITY-GUARDED RETRACT. A retiring generation must never
-              // clear a NEWER supervisor's record: reinstall-over-a-live-
-              // service is a path this change deliberately unblocks, so A's
-              // exit can overlap B's boot. Clearing B's pid would tell
-              // Desktop that no service owns the home while B is serving it,
-              // and Desktop would spawn a second writer — the exact
-              // condition this signal exists to prevent. It does not
-              // self-heal: B publishes once, at readiness.
-              if (existing.pid !== process.pid) return null;
-              return {
-                ...existing,
-                status: 'stopped',
-                pid: undefined,
-                birth: undefined,
-              };
-            }
-            return {
-              ...existing,
-              port: lifecycle.serverPort,
-              uiPort: lifecycle.uiPort,
-              status: 'running',
-              pid: process.pid,
-              birth,
-            };
-          },
-        );
-      } catch (error) {
-        // Best-effort, exactly like the CLI producer: a registry that cannot
-        // be written must never take down a supervised unit.
+    ((name: string) => {
+      if (isBuildStale(resolveBuildPaths(name))) return true;
+      // station#2689: a bundle whose build stamp is missing or names another
+      // sha boots into "managed boot identity mismatch" on every restart, the
+      // same KeepAlive loop as a stale bundle, so it is rebuilt the same way.
+      const stamp = checkSourceBuildStamp(name);
+      if (sourceBuildStampNeedsRebuild(stamp)) return true;
+      // Missing, but HEAD is unreadable: buildApplication stamps from that
+      // same HEAD, so a rebuild would run for minutes and then throw — on
+      // every KeepAlive restart. Say so once per boot and start as-is; the
+      // boot then fails fast on its identity check, naming the sha.
+      const problem = describeSourceBuildStampProblem(stamp);
+      if (problem) {
         console.error(
-          `Station service could not record its liveness in the home registry: ${(error as Error).message}`,
+          `Station service ${name}: not rebuilding — ${problem}. Make git able to read HEAD for this checkout, then run \`station build${name === 'default' ? '' : ` --instance=${name}`}\`.`,
         );
       }
+      return false;
     });
+  const exit = dependencies.exit ?? ((code) => process.exit(code));
+  const livenessTarget = {
+    instanceName,
+    home: lifecycle.baseDir,
+    serverPort: lifecycle.serverPort,
+    uiPort: lifecycle.uiPort,
+  };
+  const publishServiceLiveness =
+    dependencies.publishServiceLiveness ??
+    ((live: boolean) => publishServiceLivenessRecord(livenessTarget, live));
+  const handOffServiceLiveness =
+    dependencies.handOffServiceLiveness ??
+    ((launcherPid: number) =>
+      handOffServiceLivenessToLauncher(livenessTarget, launcherPid));
   const processIsAlive = dependencies.processIsAlive ?? defaultProcessIsAlive;
   const now = dependencies.now ?? Date.now;
   const listListeningPids =
@@ -273,10 +254,10 @@ export async function superviseService(
     if (timer) clearTimeout(timer);
     const forceExitTimer = setTimer(() => {
       console.error(
-        `Station service shutdown exceeded ${SHUTDOWN_DEADLINE_MS / 1000}s; forcing exit`,
+        `Station service shutdown exceeded ${SERVICE_SHUTDOWN_DEADLINE_MS / 1000}s; forcing exit`,
       );
       exit(1);
-    }, SHUTDOWN_DEADLINE_MS);
+    }, SERVICE_SHUTDOWN_DEADLINE_MS);
     // Timers from the production seam are NodeJS.Timeouts; deterministic test
     // seams may return a number, which intentionally has no unref method.
     if (
@@ -292,7 +273,7 @@ export async function superviseService(
       // signal cannot strand children in the publication window.
       await startPromise?.catch(() => undefined);
       try {
-        await stopInstance({ instanceName });
+        await stopInstance({ instanceName, stateHome: lifecycle.baseDir });
       } catch (error) {
         console.error('Station service cleanup failed:', error);
       }
@@ -310,6 +291,14 @@ export async function superviseService(
 
   onSignal('SIGINT', () => void shutdown(0));
   onSignal('SIGTERM', () => void shutdown(0));
+  // A supervisor whose launcher is gone stops its Station: the launcher's
+  // replacement starts from service-state.json, never beside it.
+  const launcherLink =
+    dependencies.launcherLink !== undefined
+      ? dependencies.launcherLink
+      : processServiceLauncherLink(handOffServiceLiveness, () => {
+          void shutdown(0);
+        });
 
   try {
     // station#1869: a supervised service (launchd/systemd KeepAlive) cannot
@@ -369,6 +358,8 @@ export async function superviseService(
 
   const expected = await collect(instanceName, {
     probeTimeoutMs: STEADY_PROBE_TIMEOUT_MS,
+    // A prebuilt archive keeps the record in this home's root (#2675).
+    projectHome: lifecycle.baseDir,
   });
   if (!expected.found || !expected.bootId || !expected.sha) {
     console.error('Station service did not publish a managed instance record');
@@ -379,6 +370,8 @@ export async function superviseService(
   // Only now: readiness is proven, mirroring #1983's rule that durable
   // records follow the fallible operation rather than precede it.
   publishServiceLiveness(true);
+  // A trial reports prepared only now, with its identity proven.
+  launcherLink?.onReady();
 
   /**
    * Decide, per child, whether a failed identity probe is evidence of death
@@ -496,6 +489,8 @@ export async function superviseService(
       );
       const confirmation = await collect(instanceName, {
         probeTimeoutMs: CONFIRMATION_PROBE_TIMEOUT_MS,
+        // A prebuilt archive keeps the record in this home's root (#2675).
+        projectHome: lifecycle.baseDir,
       });
       if (confirmation.found && confirmation[name].probe === 'ok') {
         // station#1846: a single long-budget recovery proves a working child
@@ -567,6 +562,8 @@ export async function superviseService(
     if (shuttingDown) return;
     const current = await collect(instanceName, {
       probeTimeoutMs: STEADY_PROBE_TIMEOUT_MS,
+      // A prebuilt archive keeps the record in this home's root (#2675).
+      projectHome: lifecycle.baseDir,
     });
     if (shuttingDown) return;
     if (!current.found || !sameBoot(current, expected)) {
@@ -584,6 +581,7 @@ export async function superviseService(
       await evaluateChildHealth(name, current[name]);
     }
     if (!shuttingDown) desktopCompanion.check();
+    if (!shuttingDown) launcherLink?.tick();
     if (shuttingDown) return;
     timer = setTimer(() => {
       void check().catch((error) => {

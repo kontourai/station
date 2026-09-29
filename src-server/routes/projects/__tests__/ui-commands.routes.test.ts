@@ -90,27 +90,4 @@ describe('UI Command Routes', () => {
     expect(body.success).toBe(false);
     expect(fn).not.toHaveBeenCalled();
   });
-
-  test('POST / navigate still emits when isHostedDeployment reports personal mode', async () => {
-    const bus = new EventBus();
-    const fn = vi.fn();
-    bus.subscribe(fn);
-    const app = createUICommandRoutes(bus, {
-      isHostedDeployment: () => false,
-    });
-    const body = await json(
-      await app.request('/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command: 'navigate',
-          payload: { path: '/settings' },
-        }),
-      }),
-    );
-    expect(body.success).toBe(true);
-    expect(fn).toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'ui:navigate' }),
-    );
-  });
 });

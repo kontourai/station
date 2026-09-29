@@ -2,6 +2,7 @@ import {
   cpSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -12,6 +13,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   computePluginContentDigest,
+  copyPluginTree,
   findPluginContentLockCycleError,
   forgetPluginContentDigest,
   PLUGIN_TREE_COPY,
@@ -574,8 +576,7 @@ describe('recognising a refused content lock after it has been rewrapped', () =>
 
   test('the operator message names every plugin in the cycle', () => {
     const message = pluginContentLockCycleMessage(cycle);
-    expect(message).toContain('app');
-    expect(message).toContain('shared-lib');
+    expect(message).toContain('app and shared-lib');
     expect(message).toContain('refused');
   });
 
@@ -668,5 +669,36 @@ describe('recognising a refused content lock after it has been rewrapped', () =>
     const looping = new Error('loop');
     (looping as { cause?: unknown }).cause = looping;
     expect(findPluginContentLockCycleError(looping)).toBeNull();
+  });
+});
+
+describe('copyPluginTree excludeGitMetadata', () => {
+  test('drops entries HFS+ or git would read as .git, keeping look-alikes', async () => {
+    const root = makePluginsDir();
+    const source = join(root, 'source');
+    // Distinct names on APFS/ext4, so this exercises the filter itself.
+    const hidden = ['.g\u200cit', '.git\u200d', '\ufeff.git', '.GIT'];
+    mkdirSync(join(source, 'vendor'), { recursive: true });
+    writeFileSync(join(source, 'plugin.json'), '{}');
+    for (const name of hidden) {
+      mkdirSync(join(source, name));
+      writeFileSync(join(source, name, 'HEAD'), 'ref: x\n');
+      mkdirSync(join(source, 'vendor', name));
+    }
+    mkdirSync(join(source, '.github'));
+    writeFileSync(join(source, '.gitignore'), 'node_modules\n');
+
+    // Control: an unfiltered copy keeps every one of them.
+    const plain = join(root, 'plain');
+    await copyPluginTree(source, plain);
+    const created = readdirSync(plain);
+    expect(hidden.every((name) => created.includes(name))).toBe(true);
+
+    const filtered = join(root, 'filtered');
+    await copyPluginTree(source, filtered, { excludeGitMetadata: true });
+    expect(readdirSync(filtered).sort()).toEqual(
+      ['.github', '.gitignore', 'plugin.json', 'vendor'].sort(),
+    );
+    expect(readdirSync(join(filtered, 'vendor'))).toEqual([]);
   });
 });

@@ -64,6 +64,10 @@ export interface McpUiCallDeps {
   /**
    * Attach an approved MCP-UI tool call's result as Flow evidence when the
    * call's session is bound to a run. Best-effort: never blocks the result.
+   * The composition must read the session (and so attach evidence) only as
+   * the calling request's principal, since the thread id comes from the
+   * caller, and must skip the attach rather than fail when that principal
+   * cannot be resolved.
    */
   attachMcpUiEvidence?: (input: {
     threadId: string;

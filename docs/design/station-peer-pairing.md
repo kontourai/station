@@ -1,5 +1,13 @@
 # Design: Station-to-Station peer pairing (spike, station#1123)
 
+> **Reading status: historical peer-pairing decision and supersession log.**
+> The old no-credential SSH and loopback assumptions below are not current
+> instructions. [Peer credentials](../../src-server/services/peers/peer-credential-store.ts),
+> [delegation](../../src-server/tools/station-control-delegation.ts), and
+> [pairing scope contracts](../../packages/contracts/src/environment-security.ts)
+> own the implemented paths. The mutual-exchange sketches do not prove a
+> completed two-way UI ceremony or remote-host journey.
+
 > Status: **spike deliverable — decision doc, no implementation**. Answers the
 > three decision points from the owner's reframing comment on #1123
 > (2026-07-28). Refs #1123, #1134, #1133, #1128, #1119, #1116, #1114/#1098,
@@ -381,6 +389,31 @@ store.
   outside this document's evidence.
 
 ## 11. Resolved decisions (2026-08-29)
+
+- **#2377 slice C2b — cross-Station forwarding is server-side (2026-09-27).**
+  A station-control tool no longer resolves, connects to, or holds a bearer
+  for another Station. It sends the saved Environment to this Station's own
+  dispatch route, which applies the caller's scope and then reaches the other
+  Station through `RemoteStationForwarder`
+  (`src-server/services/remote-stations/remote-station-forwarder.ts`), the one
+  seam delegation dispatch uses, built only by runtime composition. The seam
+  keeps the SSH-then-peer order (`connectSshTarget`/`resolveTarget` below now
+  name its `resolve`), attaches the outbound bearer in-process, and bounds
+  every dispatch request to the other Station, SDK reads included
+  (`STATION_REMOTE_REQUEST_TIMEOUT_MS`, default 30 s, validated when the
+  runtime starts). A peer that is slow to send its headers, or sends them and
+  then stalls its body, is reported by the route as this Station's timeout.
+  For a write (a message, a response, an interrupt), the report says the
+  change may still have been applied. Whether a target is this Station or
+  another one is decided by the forwarder-minted target's kind, never by its
+  address. Another
+  Station's refusal reaches the caller as this Station's fixed copy and the
+  HTTP status, never its own words or code. Other server-side peer clients
+  (session analytics, remote message search, home-authority room binding,
+  the fleet probe) still read the peer store in-process for their own calls;
+  they are not routed through this seam. `GET /api/environments/peers/:id/credential`, the
+  internal-token leaf that returned the raw bearer to the tool process, is
+  deleted; no HTTP route returns an outbound peer bearer to any caller.
 
 - **#790 — paired peers are first-class delegation targets in the UI.** A peer
   provisioned in the outbound `PeerCredentialStore` (`station environment peers

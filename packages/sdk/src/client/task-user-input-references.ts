@@ -3,7 +3,9 @@ import type {
   TaskUserInputReferenceInput,
   TaskUserInputReferenceProjection,
 } from '@kontourai/station-contracts';
+import { envelopeError, type StationHttpError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 type Envelope<T> = { success: boolean; data?: T };
 
@@ -14,10 +16,33 @@ type Envelope<T> = { success: boolean; data?: T };
  * through an error payload.
  */
 export class TaskUserInputReferenceRequestError extends Error {
-  constructor(readonly status: number) {
+  readonly status: number;
+  /**
+   * The refusal's machine `code` and `Retry-After`, when Station answered
+   * (#2708). The message stays generic on purpose: nothing the route sent
+   * about protected content crosses this seam.
+   */
+  readonly code?: string;
+  readonly retryAfterMs?: number;
+
+  /** `0` when no response was observed; else the envelope helper's error. */
+  constructor(answer: number | StationHttpError) {
     super('User input reference unavailable');
     this.name = 'TaskUserInputReferenceRequestError';
+    this.status = typeof answer === 'number' ? answer : answer.status;
+    if (typeof answer !== 'number') {
+      if (answer.code !== undefined) this.code = answer.code;
+      if (answer.retryAfterMs !== undefined)
+        this.retryAfterMs = answer.retryAfterMs;
+    }
   }
+}
+
+/** The observed answer, withholding everything the route said but its code. */
+function answered(response: Response, body?: unknown): StationHttpError {
+  return envelopeError(response, body, 'User input reference unavailable', {
+    message: 'User input reference unavailable',
+  });
 }
 
 export type {
@@ -29,11 +54,12 @@ async function unwrap<T>(response: Response): Promise<T> {
   let body: Envelope<T> | undefined;
   try {
     body = (await response.json()) as Envelope<T>;
-  } catch {
-    throw new TaskUserInputReferenceRequestError(response.status);
+  } catch (error) {
+    rethrowDeadline(error);
+    throw new TaskUserInputReferenceRequestError(answered(response));
   }
   if (!response.ok || !body.success || body.data === undefined)
-    throw new TaskUserInputReferenceRequestError(response.status);
+    throw new TaskUserInputReferenceRequestError(answered(response, body));
   return body.data;
 }
 

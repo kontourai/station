@@ -4,6 +4,7 @@ import {
   SKILL_COMMAND_NAME_RULE,
   skillCommandNameError,
 } from '@kontourai/station-contracts/skill-command';
+import { redactDeep } from '@kontourai/station-shared/redaction';
 import { describe, expect, test } from 'vitest';
 import { localSkillUpdateSchema } from '../../../routes/schemas/schema-definitions/content.js';
 import { refuseInvalidSkillCommand } from '../skill-command-validation.js';
@@ -64,12 +65,25 @@ describe('the command-word rule is one sentence', () => {
     expect(skillCommandNameError('')).toBe(SKILL_COMMAND_NAME_REQUIRED);
   });
 
-  // The rule travels over HTTP through the server's deep redaction, which
-  // rewrites anything shaped like a filesystem path.
-  test('the rule survives being said out loud', () => {
-    expect(SKILL_COMMAND_NAME_RULE).not.toMatch(/"\/"/);
-    expect(SKILL_COMMAND_NAME_RULE).toContain(
-      'lowercase letters, digits and dashes',
-    );
+  // A refusal carried through `redactDeep` (route-error `details`, recorded
+  // tool results) has anything shaped like a filesystem path rewritten, so a
+  // rule that quoted the slash itself would arrive as `[REDACTED_PATH]`.
+  test('the rule survives the server redaction', () => {
+    const refusals = {
+      guard: refuseInvalidSkillCommand(
+        'ship-it',
+        { enabled: true, name: UNTYPABLE },
+        [],
+      )?.error,
+      schema: schemaRefusal(UNTYPABLE),
+      diagnostic: resolveSkillCommands([
+        { name: 'ship-it', command: { enabled: true, name: UNTYPABLE } },
+      ] as never).get('ship-it')?.commandDiagnostic,
+    };
+    for (const refusal of Object.values(refusals)) {
+      expect(refusal).toContain(SKILL_COMMAND_NAME_RULE);
+    }
+
+    expect(redactDeep(refusals)).toEqual(refusals);
   });
 });

@@ -6,29 +6,53 @@ import {
   type SessionInventoryScope,
   type SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
+import { envelopeError, type StationHttpError } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export class SessionInventoryRequestError extends Error {
-  constructor(readonly status: number) {
+  readonly status: number;
+  /**
+   * The refusal's machine `code` and `Retry-After`, when Station answered
+   * (#2708). The message stays generic on purpose: nothing the route sent
+   * about protected content crosses this seam.
+   */
+  readonly code?: string;
+  readonly retryAfterMs?: number;
+
+  /** `0` when no response was observed; else the envelope helper's error. */
+  constructor(answer: number | StationHttpError) {
     super('Session inventory unavailable');
+    this.status = typeof answer === 'number' ? answer : answer.status;
+    if (typeof answer !== 'number') {
+      if (answer.code !== undefined) this.code = answer.code;
+      if (answer.retryAfterMs !== undefined)
+        this.retryAfterMs = answer.retryAfterMs;
+    }
   }
+}
+
+/** The observed answer, withholding everything the route said but its code. */
+function answered(response: Response, body?: unknown): StationHttpError {
+  return envelopeError(response, body, 'Session inventory unavailable', {
+    message: 'Session inventory unavailable',
+  });
 }
 
 async function unwrap<T>(
   response: Response,
   parse: (value: unknown) => T | null,
 ): Promise<T> {
+  let body: { success?: unknown; data?: unknown } | undefined;
   try {
-    const body = (await response.json()) as {
-      success?: unknown;
-      data?: unknown;
-    };
+    body = (await response.json()) as { success?: unknown; data?: unknown };
     const parsed = body.success === true ? parse(body.data) : null;
     if (response.ok && parsed) return parsed;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     /* normalize below */
   }
-  throw new SessionInventoryRequestError(response.status);
+  throw new SessionInventoryRequestError(answered(response, body));
 }
 function scopeQuery(scope: SessionInventoryScope): string {
   if (scope.kind === 'kept-in-task') return '';

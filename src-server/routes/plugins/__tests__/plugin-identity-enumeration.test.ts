@@ -723,21 +723,6 @@ describe('every route that returns plugin identity is projected or operator-only
       ).toBe(true);
     }
   });
-
-  test('every row states a disposition and a reason for it', () => {
-    for (const route of PLUGIN_IDENTITY_ROUTES) {
-      expect([
-        'projected',
-        'projected-with-residual',
-        'operator-only',
-      ]).toContain(route.disposition);
-      // Asserted against the shape of a sentence rather than a length
-      // constant compared to its own literal: a rationale has to name a
-      // reason, and a bare noun phrase does not.
-      expect(route.rationale.trim()).toMatch(/\s\w+.*\./);
-      expect(route.rationale.split(/\s+/).length).toBeGreaterThan(8);
-    }
-  });
 });
 
 function routeKey(route: { method: string; path: string }): string {

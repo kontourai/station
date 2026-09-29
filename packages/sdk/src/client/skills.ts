@@ -12,13 +12,42 @@
  * section and the audit's §3 Stop-short risks).
  */
 
-import { apiErrorMessage } from './api-error-message';
+import type {
+  SkillCommand,
+  SkillVariable,
+} from '@kontourai/station-contracts/catalog';
+import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 export interface SkillsEnvelope<T> {
   success: boolean;
   data?: T;
   error?: string;
   message?: string;
+}
+
+/**
+ * The parsed envelope. A failure whose body is not JSON (a proxy's HTML 502)
+ * still throws the envelope helper's `StationHttpError` with the status it
+ * arrived under (#2708); an unreadable 2xx is a protocol failure and rethrows
+ * the parse error, as it always did.
+ */
+async function readSkillsEnvelope<T>(
+  response: Response,
+): Promise<SkillsEnvelope<T>> {
+  try {
+    return (await response.json()) as SkillsEnvelope<T>;
+  } catch (error) {
+    rethrowDeadline(error);
+    if (!response.ok) {
+      throw envelopeError(
+        response,
+        undefined,
+        `Request failed with HTTP ${response.status}`,
+      );
+    }
+    throw error;
+  }
 }
 
 /**
@@ -33,10 +62,12 @@ export async function fetchInstalledSkills(
   opts?: ClientRequestOptions,
 ): Promise<unknown> {
   const response = await getJson(`${apiBase}/api/skills`, opts);
-  const result = (await response.json()) as SkillsEnvelope<unknown>;
+  const result = await readSkillsEnvelope<unknown>(response);
   if (!result.success) {
-    throw new Error(
-      apiErrorMessage(result, `Request failed with HTTP ${response.status}`),
+    throw envelopeError(
+      response,
+      result,
+      `Request failed with HTTP ${response.status}`,
     );
   }
   return result.data;
@@ -51,9 +82,13 @@ export async function fetchSystemSkills(
   opts?: ClientRequestOptions,
 ): Promise<any[]> {
   const response = await getJson(`${apiBase}/api/system/skills`, opts);
-  const result = (await response.json()) as SkillsEnvelope<any[]>;
+  const result = await readSkillsEnvelope<any[]>(response);
   if (!result.success) {
-    throw new Error(result.error);
+    throw envelopeError(
+      response,
+      result,
+      `Request failed with HTTP ${response.status}`,
+    );
   }
   return result.data ?? [];
 }
@@ -68,9 +103,13 @@ export async function fetchRegistrySkills(
   opts?: ClientRequestOptions,
 ): Promise<any[]> {
   const response = await getJson(`${apiBase}/api/registry/skills`, opts);
-  const result = (await response.json()) as SkillsEnvelope<any[]>;
+  const result = await readSkillsEnvelope<any[]>(response);
   if (!result.success) {
-    throw new Error(result.error);
+    throw envelopeError(
+      response,
+      result,
+      `Request failed with HTTP ${response.status}`,
+    );
   }
   return result.data ?? [];
 }
@@ -92,9 +131,9 @@ export async function installRegistrySkill(
     opts,
     { id },
   );
-  const result = (await response.json()) as SkillsEnvelope<unknown>;
+  const result = await readSkillsEnvelope<unknown>(response);
   if (!result.success) {
-    throw new Error(result.message || 'Install failed');
+    throw envelopeError(response, result, 'Install failed');
   }
   return result;
 }
@@ -149,11 +188,71 @@ export async function fetchSkillDetail(
     `${apiBase}${skillPath(nameOrLegacyId)}`,
     opts,
   );
-  const result = (await response.json()) as SkillsEnvelope<any>;
+  const result = await readSkillsEnvelope<any>(response);
   if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to load skill'));
+    throw envelopeError(response, result, 'Failed to load skill');
   }
   return result.data;
+}
+
+/** The fields a local skill is written with (`localSkillSchema`). */
+export interface LocalSkillInput {
+  name: string;
+  body: string;
+  description?: string;
+  category?: string;
+  tags?: string[];
+  agent?: string;
+  global?: boolean;
+  command?: SkillCommand;
+  variables?: SkillVariable[];
+}
+
+/** A partial rewrite of a local skill (`localSkillUpdateSchema`). */
+export type LocalSkillUpdate = Partial<Omit<LocalSkillInput, 'name'>>;
+
+/**
+ * `POST /api/skills/local` — write a new local skill. Returns the whole
+ * envelope, as `useCreateLocalSkillMutation` always has. A refusal throws the
+ * envelope helper's `StationHttpError` (#2708), so the editor can show the
+ * server's validation reason from its `details`.
+ */
+export async function createLocalSkill(
+  apiBase: string,
+  input: LocalSkillInput,
+  opts?: ClientRequestOptions,
+): Promise<SkillsEnvelope<unknown>> {
+  const response = await mutateJson(
+    `${apiBase}/api/skills/local`,
+    'POST',
+    opts,
+    input,
+  );
+  const result = await readSkillsEnvelope<unknown>(response);
+  if (!result.success) {
+    throw envelopeError(response, result, 'Create failed');
+  }
+  return result;
+}
+
+/** `PUT /api/skills/:name` — rewrite a local skill; the envelope, as above. */
+export async function updateLocalSkill(
+  apiBase: string,
+  name: string,
+  updates: LocalSkillUpdate,
+  opts?: ClientRequestOptions,
+): Promise<SkillsEnvelope<unknown>> {
+  const response = await mutateJson(
+    `${apiBase}${skillPath(name)}`,
+    'PUT',
+    opts,
+    updates,
+  );
+  const result = await readSkillsEnvelope<unknown>(response);
+  if (!result.success) {
+    throw envelopeError(response, result, 'Update failed');
+  }
+  return result;
 }
 
 function skillPath(nameOrLegacyId: string, action?: 'run' | 'outcome'): string {
@@ -172,10 +271,12 @@ export async function trackSkillRun(
     'POST',
     opts,
   );
-  const result = (await response.json()) as SkillsEnvelope<SkillUsageResult>;
+  const result = await readSkillsEnvelope<SkillUsageResult>(response);
   if (!result.success || !result.data) {
-    throw new Error(
-      apiErrorMessage(result, `Request failed with HTTP ${response.status}`),
+    throw envelopeError(
+      response,
+      result,
+      `Request failed with HTTP ${response.status}`,
     );
   }
   return result.data;
@@ -194,10 +295,12 @@ export async function recordSkillOutcome(
     opts,
     { outcome },
   );
-  const result = (await response.json()) as SkillsEnvelope<SkillUsageResult>;
+  const result = await readSkillsEnvelope<SkillUsageResult>(response);
   if (!result.success || !result.data) {
-    throw new Error(
-      apiErrorMessage(result, `Request failed with HTTP ${response.status}`),
+    throw envelopeError(
+      response,
+      result,
+      `Request failed with HTTP ${response.status}`,
     );
   }
   return result.data;
@@ -219,10 +322,12 @@ export async function importSkills(
     opts,
     { files },
   );
-  const result = (await response.json()) as SkillsEnvelope<SkillImportResult>;
+  const result = await readSkillsEnvelope<SkillImportResult>(response);
   if (!result.success || !result.data) {
-    throw new Error(
-      apiErrorMessage(result, `Request failed with HTTP ${response.status}`),
+    throw envelopeError(
+      response,
+      result,
+      `Request failed with HTTP ${response.status}`,
     );
   }
   return result.data;

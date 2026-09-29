@@ -26,6 +26,7 @@ import {
   type BrowserAgentAuthority,
 } from '../browser-agent-authority.js';
 import { BrowserAutomation } from '../browser-automation.js';
+import { createLocalBrowserHostResolver } from '../browser-host.js';
 import { BrowserLiveSurfaces } from '../browser-live-surfaces.js';
 import { loadLocatorEngineInstallExpression } from '../browser-locator-engine.js';
 import { BrowserProjectSettingsStore } from '../browser-project-settings.js';
@@ -114,16 +115,18 @@ describe('browser tools against a real installed Chromium', () => {
     });
     sessions = new BrowserSessionRegistry({
       stationHome: home,
-      createHost: () =>
-        new ChromiumServerHost({
-          executablePath: chromium,
-          egressPolicy: {
-            listeners: () => listeners,
-            interfaceAddresses: localInterfaceAddresses,
-            reach: { kind: 'operator' },
-          },
-          launchTimeoutMs: 120_000,
-        }),
+      hostResolver: createLocalBrowserHostResolver(
+        () =>
+          new ChromiumServerHost({
+            executablePath: chromium,
+            egressPolicy: {
+              listeners: () => listeners,
+              interfaceAddresses: localInterfaceAddresses,
+              reach: { kind: 'operator' },
+            },
+            launchTimeoutMs: 120_000,
+          }),
+      ),
     });
     surfaces = new LiveSurfaceRegistry({ dispatchTimeoutMs: 10_000 });
     binder = new BrowserLiveSurfaces({

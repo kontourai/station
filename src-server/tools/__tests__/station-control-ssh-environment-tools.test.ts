@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { asStationControlCaller } from '../../__test-utils__/station-control-caller-fixture.js';
 import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environments.js';
 import type { OpenSshEnvironmentAdapter } from '../../services/ssh/openssh-environment-adapter.js';
 import {
@@ -60,7 +61,8 @@ async function registerTools(): Promise<Record<string, ToolHandler>> {
   for (const [name, tool] of Object.entries(registry)) {
     handlers[name] = tool.handler;
   }
-  return handlers;
+  // #2377 slice A: characterization runs as a bound operator caller.
+  return asStationControlCaller(handlers);
 }
 
 function toolBody(result: ToolResult): any {
@@ -204,6 +206,15 @@ describe('station-control SSH environment management tools', () => {
     expect(connected.data.profile.remoteHome).toBe(WORKER.remoteHome);
     expect(createTunnel).toHaveBeenCalledTimes(1);
 
+    // Callers poll get_ssh_environment for live state, so it must report the
+    // connection too, not only the connect response.
+    const polled = toolBody(await tools.get_ssh_environment({ id }));
+    expect(polled.success).toBe(true);
+    expect(polled.data.state.phase).toBe('connected');
+    expect(polled.data.profile.verifiedProjectPath).toBe(
+      WORKER.remoteProjectPath,
+    );
+
     const disconnected = toolBody(
       await tools.disconnect_ssh_environment({ id }),
     );
@@ -325,6 +336,25 @@ describe('station-control SSH environment management tools', () => {
     // connect rather than starting a second tunnel.
     await tools.connect_ssh_environment({ id });
     expect(createTunnel).toHaveBeenCalledTimes(1);
+  });
+
+  test('connect_ssh_environment forwards a failed connect envelope with polling false instead of polling', async () => {
+    const createTunnel = vi.fn();
+    const service = serviceWithAdapter(createTunnel);
+    await service.initialize();
+    const app = createSshEnvironmentRoutes(service);
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(bridgeFetch(app));
+    const tools = await registerTools();
+
+    const result = toolBody(
+      await tools.connect_ssh_environment({ id: 'missing' }),
+    );
+    expect(result).toEqual({
+      success: false,
+      error: 'SSH environment not found',
+      polling: false,
+    });
+    expect(createTunnel).not.toHaveBeenCalled();
   });
 
   test('create_ssh_environment surfaces the shared route validation failure for a flag-like hostAlias without reaching the service', async () => {

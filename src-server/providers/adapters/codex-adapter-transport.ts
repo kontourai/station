@@ -1,10 +1,13 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { createInterface } from 'node:readline';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ApprovalStatus,
+  CanonicalRuntimeEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
-import { findCliBinary } from '../auth/cli-auth.js';
+import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
   routeCodexChildNotification,
@@ -24,20 +27,31 @@ import {
   settleUnresolvedCodexToolCalls,
 } from './codex-adapter-notifications.js';
 import {
+  type AwaitingApprovalAcknowledgement,
   type CodexProcessLike,
   type CodexSessionRecord,
+  type JsonRpcId,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
+import {
+  CODEX_APPROVAL_ACK_WINDOW_MS,
+  CODEX_APPROVAL_ACKNOWLEDGEMENT,
+  CODEX_DECISION_REPLY_REFUSED_CODE,
+  CODEX_DECISION_UNACKNOWLEDGED_CODE,
+  jsonRpcIdKey,
+  readJsonRpcId,
+  refuseCodexApprovalReply,
+} from './codex-approval-delivery.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 
 type JsonRpcRequest = {
-  id?: string | number;
+  id?: JsonRpcId;
   method: string;
   params?: unknown;
 };
 
 type JsonRpcResponse = {
-  id: string | number;
+  id: JsonRpcId;
   result?: unknown;
   error?: {
     code?: number;
@@ -198,6 +212,7 @@ export class CodexAdapterTransport {
       if (limit.observedBytes <= limit.maxBytes) return;
       limit.exceeded = true;
       record.stopped = true;
+      this.settleAcknowledgementWatches(record);
       this.rejectPendingRpcRequests(
         record,
         () =>
@@ -230,6 +245,7 @@ export class CodexAdapterTransport {
       // so a synchronous `exit` from kill() (as the test doubles emit)
       // doesn't produce a duplicate session.exited.
       if (record.stopped) return;
+      this.settleAcknowledgementWatches(record);
       const nowIso = this.now().toISOString();
       const interruptedTurnId = this.rejectPendingRpcRequests(
         record,
@@ -256,6 +272,7 @@ export class CodexAdapterTransport {
     record.process.on('error', (error) => {
       if (record.stopped) return;
       record.stopped = true;
+      this.settleAcknowledgementWatches(record);
       const nowIso = this.now().toISOString();
       const interruptedTurnId = this.rejectPendingRpcRequests(
         record,
@@ -305,6 +322,7 @@ export class CodexAdapterTransport {
         return;
       }
       record.stopped = true;
+      this.settleAcknowledgementWatches(record);
       const nowIso = this.now().toISOString();
       const interruptedTurnId = this.rejectPendingRpcRequests(
         record,
@@ -382,7 +400,7 @@ export class CodexAdapterTransport {
     if (hasMethod(message) && hasId(message)) {
       this.handleServerRequest(
         record,
-        message as JsonRpcRequest & { id: string | number },
+        message as JsonRpcRequest & { id: JsonRpcId },
       );
       return;
     }
@@ -414,7 +432,7 @@ export class CodexAdapterTransport {
 
   sendResponse(
     record: CodexSessionRecord,
-    requestId: string,
+    requestId: JsonRpcId,
     result: unknown,
   ): void {
     record.process.stdin.write(
@@ -422,9 +440,226 @@ export class CodexAdapterTransport {
     );
   }
 
-  sendErrorResponse(
+  /**
+   * #2880: answer one approval Codex asked for and record the decision.
+   *
+   * `request.resolved` means "decision recorded" and is published whether or
+   * not the reply can be sent. A reply that fails Codex's decision
+   * vocabulary is refused and never written — Codex acknowledges even a
+   * reply it cannot parse, so this check is the only thing that keeps a
+   * malformed reply from reading as delivered — and is reported as
+   * `unacknowledged` (`invalid-reply`). A written reply is watched until
+   * Codex's `serverRequest/resolved` names it; nothing is ever re-sent.
+   */
+  replyToApproval(
+    record: CodexSessionRecord,
+    input: {
+      requestId: string;
+      rpcRequestId: JsonRpcId;
+      method: string;
+      result: unknown;
+      status: ApprovalStatus;
+    },
+  ): void {
+    const refusal = refuseCodexApprovalReply(input.method, input.result);
+    if (refusal === undefined) {
+      this.sendResponse(record, input.rpcRequestId, input.result);
+    }
+    const threadId = record.externalThreadId;
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'codex',
+      threadId,
+      createdAt: this.now().toISOString(),
+      requestId: input.requestId,
+      method: 'request.resolved',
+      status: input.status,
+      acknowledgement: CODEX_APPROVAL_ACKNOWLEDGEMENT,
+    });
+    if (refusal !== undefined) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId,
+        createdAt: this.now().toISOString(),
+        requestId: input.requestId,
+        method: 'request.delivery',
+        outcome: 'unacknowledged',
+        reason: 'invalid-reply',
+        waitedMs: 0,
+      });
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: CODEX_DECISION_REPLY_REFUSED_CODE,
+        message: `Station recorded the decision but did not send it to Codex, because ${refusal}. Codex is still waiting for an answer to this request.`,
+        details: { requestId: input.requestId },
+      });
+      return;
+    }
+    this.watchAcknowledgement(record, input.requestId, input.rpcRequestId);
+  }
+
+  private watchAcknowledgement(
     record: CodexSessionRecord,
     requestId: string,
+    rpcRequestId: JsonRpcId,
+  ): void {
+    if (record.acknowledgementsClosed) {
+      // A reply written after the session ended (the #2316 cancel that a
+      // turn/interrupt rejected by that teardown runs): nothing can
+      // acknowledge it any more, so it settles now — no window, no warning.
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.delivery',
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: 0,
+      });
+      return;
+    }
+    record.awaitingAcknowledgements ??= new Map();
+    const watches = record.awaitingAcknowledgements;
+    const key = jsonRpcIdKey(rpcRequestId);
+    const entry: AwaitingApprovalAcknowledgement = {
+      requestId,
+      rpcRequestId,
+      sentAt: this.now().getTime(),
+      warned: false,
+    };
+    entry.timer = setTimeout(() => {
+      entry.timer = undefined;
+      if (record.stopped || watches.get(key) !== entry) return;
+      entry.warned = true;
+      const waitedMs = Math.max(0, this.now().getTime() - entry.sentAt);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.delivery',
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs,
+      });
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: CODEX_DECISION_UNACKNOWLEDGED_CODE,
+        message: `Codex has not yet acknowledged the decision on this request after ${Math.round(waitedMs / 1000)} s. The decision is recorded; Station has not re-sent it.`,
+        details: { requestId, waitedMs },
+      });
+    }, CODEX_APPROVAL_ACK_WINDOW_MS);
+    entry.timer.unref?.();
+    watches.set(key, entry);
+  }
+
+  /**
+   * #2880: Codex's `serverRequest/resolved` — the engine closed the request.
+   * Matched on the wire id's value AND type. A late acknowledgement still
+   * publishes `acknowledged`, which supersedes the earlier `unacknowledged`.
+   *
+   * An id Station has NOT replied to yet but still holds pending means Codex
+   * closed the request on its own (e.g. on a turn interrupt, ahead of
+   * Station's #2316 cancel reply). Codex will never read an answer to it, so
+   * the request settles here — `request.resolved` `cancelled`, reason
+   * `closed-by-engine`, and no `acknowledgement` because Station made no
+   * decision — and leaves `pendingApprovals`. No later reply is written for
+   * it, so no decision can ever read as acknowledged by a request Codex
+   * discarded before seeing it. Any other id (an auto-approved grant) is
+   * ignored.
+   */
+  private acknowledgeServerRequest(
+    record: CodexSessionRecord,
+    params: unknown,
+  ): void {
+    const rpcRequestId = readJsonRpcId(
+      params && typeof params === 'object'
+        ? (params as { requestId?: unknown }).requestId
+        : undefined,
+    );
+    if (rpcRequestId === undefined) return;
+    const key = jsonRpcIdKey(rpcRequestId);
+    const entry = record.awaitingAcknowledgements?.get(key);
+    if (!entry) {
+      for (const [requestId, pending] of record.pendingApprovals) {
+        if (jsonRpcIdKey(pending.rpcRequestId) !== key) continue;
+        record.pendingApprovals.delete(requestId);
+        this.publish({
+          eventId: crypto.randomUUID(),
+          provider: 'codex',
+          threadId: record.externalThreadId,
+          createdAt: this.now().toISOString(),
+          requestId,
+          method: 'request.resolved',
+          status: 'cancelled',
+          response: { reason: 'closed-by-engine' },
+        });
+        return;
+      }
+      return;
+    }
+    record.awaitingAcknowledgements?.delete(key);
+    if (entry.timer) clearTimeout(entry.timer);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'codex',
+      threadId: record.externalThreadId,
+      createdAt: this.now().toISOString(),
+      requestId: entry.requestId,
+      method: 'request.delivery',
+      outcome: 'acknowledged',
+      waitedMs: Math.max(0, this.now().getTime() - entry.sentAt),
+    });
+  }
+
+  /**
+   * #2880: at every session-end door, a reply still waiting settles now: the
+   * process that could acknowledge it is gone, so it is reported
+   * `unacknowledged` (`no-acknowledgement`, the time actually waited) before
+   * `session.exited` — the same representation Muse uses when its host goes
+   * — rather than 30 s later or never. Each entry is kept, timer cleared and
+   * marked reported, so an acknowledgement still in the pipe supersedes it
+   * like any late one and a second door publishes nothing twice. The record
+   * is marked closed, so a reply written after this settles at once too.
+   */
+  private settleAcknowledgementWatches(record: CodexSessionRecord): void {
+    record.acknowledgementsClosed = true;
+    for (const entry of record.awaitingAcknowledgements?.values() ?? []) {
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = undefined;
+      if (entry.warned) continue;
+      entry.warned = true;
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        requestId: entry.requestId,
+        method: 'request.delivery',
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: Math.max(0, this.now().getTime() - entry.sentAt),
+      });
+    }
+  }
+
+  sendErrorResponse(
+    record: CodexSessionRecord,
+    requestId: JsonRpcId,
     message: string,
   ): void {
     record.process.stdin.write(
@@ -512,6 +747,7 @@ export class CodexAdapterTransport {
       return;
     }
     record.stopped = true;
+    this.settleAcknowledgementWatches(record);
 
     // Settle outstanding inbound approval requests before teardown so the
     // request event contract holds: every request.opened gets a matching
@@ -552,6 +788,7 @@ export class CodexAdapterTransport {
       await this.terminateRecord(record);
     } catch (error) {
       record.stopped = false;
+      record.acknowledgementsClosed = false;
       throw error;
     }
     this.unregisterSession(record);
@@ -602,7 +839,11 @@ export class CodexAdapterTransport {
     record: CodexSessionRecord,
     response: JsonRpcResponse,
   ): void {
-    const requestId = String(response.id);
+    // Station only issues string ids (`sendRequest`), and a peer echoes the
+    // id with its type, so a numeric id is never a reply to one of ours —
+    // `String()` would let a numeric `1` settle our pending `"1"` (#562).
+    if (typeof response.id !== 'string') return;
+    const requestId = response.id;
     const pending = record.pendingRpcRequests.get(requestId);
     if (!pending) return;
     record.pendingRpcRequests.delete(requestId);
@@ -620,9 +861,12 @@ export class CodexAdapterTransport {
 
   private handleServerRequest(
     record: CodexSessionRecord,
-    request: JsonRpcRequest & { id: string | number },
+    request: JsonRpcRequest & { id: JsonRpcId },
   ): void {
-    const requestId = String(request.id);
+    // #562: the reply must carry the id exactly as received (value and
+    // type). Codex sends numeric ids and drops a reply whose id is `"0"`
+    // for request `0`, leaving the approval recorded but never delivered.
+    const requestId = request.id;
     const canonicalRequestId = crypto.randomUUID();
     const event = mapServerRequestToEvent(
       record.externalThreadId,
@@ -643,9 +887,10 @@ export class CodexAdapterTransport {
     const payload = (request.params ?? {}) as Record<string, unknown>;
     const toolName = deriveApprovalToolName(request.method, payload);
     // Tool-level session grant: "Allow for this session" covers every later
-    // call of the tool, not just the one call the engine asked about (the
-    // command/file-change/elicitation wire responses carry no session
-    // scope). Granted tools never re-prompt; denies are never cached. A
+    // call of the tool, not just the one call the engine asked about
+    // (Station's own grant, on top of the decision Codex was sent; see
+    // `deriveApprovalToolName` for requests that never match one). Granted
+    // tools never re-prompt; denies are never cached. A
     // data-collecting elicitation has no truthful auto-acceptance, so it
     // always re-prompts even under a grant.
     const grantedAutoApproval =
@@ -683,6 +928,12 @@ export class CodexAdapterTransport {
       ACCOUNT_SCOPED_NOTIFICATION_METHODS.has(notification.method) &&
       emittingRecord.stopped
     ) {
+      return;
+    }
+    // #2880: the reply was written to the EMITTING process's stdin, and wire
+    // ids are scoped to that process, so its acknowledgement matches there.
+    if (notification.method === 'serverRequest/resolved') {
+      this.acknowledgeServerRequest(emittingRecord, notification.params);
       return;
     }
     const threadId = extractThreadId(notification.params);
@@ -1112,14 +1363,6 @@ export class CodexAdapterTransport {
   }
 }
 
-/** archive#896 wave 2: layered subprocess env for a codex session pointed at an
- * app-home profile. Always a copy: boot-internal secrets are scrubbed. */
-export function codexSpawnEnv(
-  extraEnv?: Record<string, string>,
-): NodeJS.ProcessEnv {
-  return childProcessEnvironment(extraEnv);
-}
-
 function spawnCodexProcess(
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
@@ -1131,11 +1374,19 @@ function spawnCodexProcess(
   // file and never touching the user's real `~/.codex/config.toml` (see
   // that module's header comment for why this is the wire-safe channel).
   //
-  // archive#1908: `TMPDIR` is merged into the spawn env HERE, at the one
-  // real spawn call site, rather than inside `codexSpawnEnv` itself — every
-  // real Codex `app-server` child still gets a Station-owned tmp dir
-  // Station reaps on a schedule (see `reapEngineSpawnTmpDir`). Boot-internal
-  // secrets are scrubbed by `codexSpawnEnv`.
+  // archive#896 wave 2: `extraEnv` layers an app-home profile
+  // (`CODEX_HOME`) over a copy of the process env; `childProcessEnvironment`
+  // scrubs boot-internal secrets from that copy.
+  //
+  // #2663: PATH is the augmented search PATH the `codex` binary was resolved
+  // from, as the Claude and ACP spawns already get through
+  // `augmentedSpawnEnv`. An npm-installed codex is `#!/usr/bin/env node`;
+  // found through a login-shell or mise directory the service PATH lacks, it
+  // was adopted and then died with `env: node: No such file or directory`.
+  // Layered UNDER `extraEnv`, so a per-connection override still wins.
+  //
+  // archive#1908: every real Codex `app-server` child gets a Station-owned
+  // tmp dir Station reaps on a schedule (see `reapEngineSpawnTmpDir`).
   //
   // station#2072: `extraEnv` now carries per-connection env overrides, so
   // TMPDIR is merged LAST — matching the claude seam's documented "TMPDIR
@@ -1144,7 +1395,11 @@ function spawnCodexProcess(
   // spawn tmp dir authoritative even if one arrives anyway.
   return spawn(binary, ['app-server', ...(extraArgs ?? [])], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: codexSpawnEnv({ ...extraEnv, TMPDIR: ensureEngineSpawnTmpDir() }),
+    env: childProcessEnvironment({
+      PATH: resolveAugmentedPathSync(),
+      ...extraEnv,
+      TMPDIR: ensureEngineSpawnTmpDir(),
+    }),
     windowsHide: true,
     detached: true,
   });

@@ -1,3 +1,4 @@
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
@@ -23,6 +24,7 @@ import type {
   StartTaskStarterLaunchResult,
 } from '@kontourai/station-contracts/starter-work';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
+import type { SessionOwnerStamp } from '../orchestration/session-owner-attribution.js';
 import type { TaskDispatcher } from '../projects/task-dispatcher.js';
 import type { TaskGraphService } from '../projects/task-graph-service.js';
 import type {
@@ -134,6 +136,15 @@ export type StarterSessionOwner = {
      * `/commands adoptSession`.
      */
     fullAccessGrant: FullAccessGrant | null;
+    /** #1796: the launching request's server-derived origin, for receipts. */
+    clientOrigin?: ClientOrigin;
+    /**
+     * The launching request's owner stamp. The source must be readable by
+     * its principal, and the adopted child records it as owner (acting for no
+     * one when the launch was an unverified agent's), exactly as a
+     * `/commands adoptSession` from the same caller would.
+     */
+    owner: SessionOwnerStamp;
   }): Promise<
     | {
         state: 'continued';
@@ -503,6 +514,10 @@ export class StarterRegistry {
     input: StartTaskStarterLaunchInput,
     /** #2436: the launching request's full-access grant; see TaskDispatcher. */
     fullAccessGrant: FullAccessGrant | null,
+    /** The launching request's owner stamp for the dispatched session. */
+    owner: SessionOwnerStamp,
+    /** #1796: the launching request's server-derived origin, for receipts. */
+    clientOrigin?: ClientOrigin,
   ): Promise<StartTaskStarterLaunchResult> {
     this.assertKnown(input.starterId);
     this.assertPrerequisite();
@@ -606,6 +621,12 @@ export class StarterRegistry {
       skillName: input.dispatch?.skillName ?? task.skillName,
       sourceSurface: 'starter-work',
       fullAccessGrant,
+      // #1796: the server-derived origin, never one the body carried.
+      clientOrigin,
+      ownerUserId: owner.ownerUserId,
+      ...(owner.ownerAttribution
+        ? { ownerAttribution: owner.ownerAttribution }
+        : {}),
     });
     let dispatch: Extract<
       StartTaskStarterLaunchResult,
@@ -654,6 +675,10 @@ export class StarterRegistry {
     input: ContinueSessionStarterLaunchInput,
     /** #2493: the launching request's grant; see `StarterSessionOwner.continue`. */
     fullAccessGrant: FullAccessGrant | null,
+    /** The launching request's owner stamp; see `StarterSessionOwner.continue`. */
+    owner: SessionOwnerStamp,
+    /** #1796: the launching request's server-derived origin, for receipts. */
+    clientOrigin?: ClientOrigin,
   ): Promise<ContinueSessionStarterLaunchResult> {
     this.assertKnown(input.starterId);
     this.assertPrerequisite();
@@ -676,6 +701,8 @@ export class StarterRegistry {
         sourceSessionId: input.sourceSessionId,
         operationId: input.operationId,
         fullAccessGrant,
+        owner,
+        ...(clientOrigin ? { clientOrigin } : {}),
       });
     } catch (error) {
       return {

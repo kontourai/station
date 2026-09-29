@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir, platform as hostPlatform } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { readPnpmLock } from './lib/pnpm-lockfile.mjs';
 
 const GUIDES_URL = 'https://v2.tauri.app/_llms-txt/guides.txt';
@@ -547,7 +548,7 @@ function humanReport(report) {
   return lines.join('\n');
 }
 
-export function parseArgs(argv) {
+function parseArgs(argv) {
   const options = {
     format: 'human',
     maxChars: 60_000,
@@ -615,10 +616,7 @@ async function main() {
   if (options.strict && report.summary.errors > 0) process.exitCode = 2;
 }
 
-if (
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === resolve(process.argv[1])
-) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error(
       `tauri-context: ${error instanceof Error ? error.message : String(error)}`,

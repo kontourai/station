@@ -200,7 +200,7 @@ describe('wireStrandsAgentHooks', () => {
     const deniedToolCalls = new Map<string, ToolCallDenial>();
     const execute = vi.fn();
     const reason =
-      "Tool 'write_file' requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). Add the tool to the agent's tools.autoApprove list to grant it for unattended runs.";
+      "Tool 'write_file' requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). Patterns in tools.autoApprove are for attended chat; to allow this tool with nobody present, add it to this agent's tools.unattendedAutoApprove list.";
 
     wireStrandsToolGate({
       strandsAgent: { addHook: registry.addHook } as any,

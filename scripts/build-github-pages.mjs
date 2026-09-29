@@ -11,6 +11,7 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -408,9 +409,12 @@ export function renderInline(value) {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => {
-      const normalized = href.endsWith('.md')
-        ? href.replace(/\.md$/, '.html')
-        : href.replace(/\.md#/, '.html#');
+      const external = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href);
+      const normalized = external
+        ? href
+        : href.endsWith('.md')
+          ? href.replace(/\.md$/, '.html')
+          : href.replace(/\.md#/, '.html#');
       const safeHref = /^(?:https?:|mailto:|#|\/|\.\.?\/)/i.test(normalized)
         ? normalized
         : '#';
@@ -560,7 +564,7 @@ function escapeAttribute(value) {
   return escapeHtml(value).replaceAll("'", '&#39;');
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error(error);
     process.exitCode = 1;

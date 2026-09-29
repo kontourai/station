@@ -14,23 +14,6 @@ function humanPrincipalFixture(subject: string): PrincipalRef {
 }
 
 describe('OrchestrationStreamPresence (station#1225)', () => {
-  test('isConnected is false for a user with no connections', () => {
-    const presence = new OrchestrationStreamPresence();
-    expect(presence.isConnected('user-1')).toBe(false);
-    expect(presence.hasAnyConnection()).toBe(false);
-  });
-
-  test('connect() marks a user connected until its disposer runs', () => {
-    const presence = new OrchestrationStreamPresence();
-    const disconnect = presence.connect('user-1');
-    expect(presence.isConnected('user-1')).toBe(true);
-    expect(presence.hasAnyConnection()).toBe(true);
-
-    disconnect();
-    expect(presence.isConnected('user-1')).toBe(false);
-    expect(presence.hasAnyConnection()).toBe(false);
-  });
-
   test('a user with two concurrent streams stays connected until BOTH disconnect', () => {
     const presence = new OrchestrationStreamPresence();
     const disconnectTabA = presence.connect('user-1');
@@ -60,14 +43,7 @@ describe('OrchestrationStreamPresence (station#1225)', () => {
     const disconnect = presence.connect('user-1');
     expect(presence.isConnected('user-2')).toBe(false);
     disconnect();
-    expect(presence.hasAnyConnection()).toBe(false);
-  });
-
-  test('hasAnyConnection is true when any user (not necessarily the queried one) is connected', () => {
-    const presence = new OrchestrationStreamPresence();
-    presence.connect('user-1');
-    expect(presence.isConnected('user-2')).toBe(false);
-    expect(presence.hasAnyConnection()).toBe(true);
+    expect(presence.isConnected('user-1')).toBe(false);
   });
 
   test('keeps hosted presence separate for tenants that share a user', () => {

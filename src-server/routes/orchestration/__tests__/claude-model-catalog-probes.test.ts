@@ -88,7 +88,6 @@ function serviceFor(adapter: ProviderAdapterShape) {
     eventBus: new EventBus(),
     eventStore: store,
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   });
 }
 

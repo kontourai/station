@@ -1,5 +1,14 @@
 # Route managed-agent chat through orchestration, behind a flag
 
+**Status:** Historical rollout plan. [ADR 0014](0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md)
+records the unconditional cutover on 2026-08-01/02 and supersedes this ADR's
+flag-based cutover mechanism. The orchestration destination, private execution
+adapter, and no-migration decisions remain its design rationale. The flag-off,
+rollback, and future-enablement instructions below describe that original plan;
+they are not current operating instructions. Follow the
+[session API](../reference/session-api.md) and current orchestration callers for
+today's contract rather than using this flag to select the chat path.
+
 ## Context
 
 Station has two parallel session stores for agent conversations. **Managed

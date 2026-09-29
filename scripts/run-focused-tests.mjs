@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { assertWorkspacePackageProvenance } from './workspace-dependency-provenance.mjs';
 
 const SCRIPT_ROOT = path.resolve(
@@ -230,6 +231,6 @@ async function main() {
   }
 }
 
-if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   await main();
 }

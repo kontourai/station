@@ -796,17 +796,8 @@ export interface ClaudeAdapterOptions {
     tenantExecutionContext?: TenantExecutionContext,
   ) => unknown;
   /**
-   * Fallback when {@link createInProcessStationControl} is absent: mints a
-   * `bearer-exposed` caller token for the stdio child's env. Absent (most
-   * unit tests), the child runs exactly as before and reports no caller.
-   */
-  mintStationControlCallerToken?: (
-    threadId: string,
-    tenantExecutionContext?: TenantExecutionContext,
-  ) => string;
-  /**
-   * Revokes whichever station-control credential the session was given
-   * (in-process or stdio). Called when the session stops or fails to start.
+   * Revokes the station-control credential the session was given. Called
+   * when the session stops or fails to start.
    */
   revokeStationControlCallerToken?: (threadId: string) => void;
   /**
@@ -1008,6 +999,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
   readonly metadata = {
+    // #2880: the protocol has no acknowledgement of a decision; delivery is
+    // not reported.
+    approvalAcknowledgement: 'none' as const,
     displayName: 'Claude Code',
     description: 'Claude Code integration with approvals and reasoning events.',
     capabilities: [
@@ -2049,6 +2043,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           : decision === 'decline'
             ? 'denied'
             : 'cancelled',
+      acknowledgement: this.metadata.approvalAcknowledgement,
     });
   }
 
@@ -2233,7 +2228,22 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // `claude` is on PATH" exactly as before; the sentence below reports
       // separately whether Station can hand THAT entry to the SDK.
       findBinary: () => executable.resolved,
-      detectAuthState: detectClaudeAuthState,
+      // Readiness judges the credentials a fresh session would launch with:
+      // the ambient env overlaid by the connection env exactly as
+      // `startSession` layers it (configHome → CLAUDE_CONFIG_DIR included).
+      // A proxy-routed connection authenticates through its env
+      // (`ANTHROPIC_AUTH_TOKEN`), and an empty-string value masks an
+      // inherited key here just as it does in the spawn. The app-home /
+      // credential-profile layer is not modelled: resolving it can create
+      // profile directories, which a readiness read must not do.
+      detectAuthState: async () =>
+        detectClaudeAuthState({
+          ...process.env,
+          ...claudeConnectionEnvForSpawn(
+            await this.resolveConnectionEnv(),
+            true,
+          ),
+        }),
       installStep: 'Install the Claude CLI and ensure `claude` is on PATH.',
       authStep: 'Run `claude auth login` before starting Station.',
       signal: options?.signal,
@@ -2481,15 +2491,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           ? {
               inProcess: () =>
                 this.options.createInProcessStationControl!(
-                  input.threadId,
-                  tenantExecutionContext,
-                ),
-            }
-          : {}),
-        ...(this.options.mintStationControlCallerToken
-          ? {
-              callerToken: () =>
-                this.options.mintStationControlCallerToken!(
                   input.threadId,
                   tenantExecutionContext,
                 ),

@@ -20,7 +20,6 @@ import { projectRequestAnswerability } from '../../orchestration/open-requests.j
 import { PluginLifecycleProposalService } from '../../plugins/plugin-lifecycle-proposals.js';
 import {
   AttentionProjectionService,
-  buildSessionFailedItem,
   type PausedGateReviewAggregate,
   type PausedGateReviewSource,
 } from '../attention-projection.js';
@@ -1613,6 +1612,89 @@ describe('AttentionProjectionService', () => {
         expect(new Set(rows.map((row) => row.title)).size).toBe(3);
       });
 
+      /*
+       * A field the summary did not record must be ABSENT from the row, not
+       * present-and-undefined: the UI branches on absence to say "no failure
+       * detail was recorded". `toEqual` cannot tell those apart, hence the
+       * explicit `not.toHaveProperty` below.
+       */
+      test('carries every recorded field, trimmed, and omits every unrecorded one', async () => {
+        const service = makeService({
+          sessions: [
+            baseSession({
+              threadId: 'thread-full',
+              lifecycleState: 'failed',
+              displayTitle: '  Fix the login redirect  ',
+              blockedReason: 'ECONNREFUSED api.example.com:443',
+              provider: 'claude',
+              assignedAgentSlug: 'reviewer',
+              updatedAt: '2026-07-23T12:00:00.000Z',
+            }),
+            baseSession({
+              threadId: 'thread-bare',
+              lifecycleState: 'failed',
+              provider: 'codex',
+              updatedAt: '2026-07-23T11:00:00.000Z',
+            }),
+          ],
+        });
+
+        const [full, bare] = (await service.list()).items;
+
+        expect(full).toEqual({
+          id: 'session-failed:thread-full',
+          kind: 'session-failed',
+          title: 'Fix the login redirect',
+          body: 'ECONNREFUSED api.example.com:443',
+          createdAt: now,
+          updatedAt: '2026-07-23T12:00:00.000Z',
+          sessionId: 'thread-full',
+          openHref: activityDeepLink({ sessionId: 'thread-full' }),
+          source: { threadId: 'thread-full' },
+          engine: 'claude',
+          agent: 'reviewer',
+        });
+        expect(bare).toEqual(
+          expect.objectContaining({
+            sessionId: 'thread-bare',
+            title: 'Untitled session',
+            engine: 'codex',
+          }),
+        );
+        expect(bare).not.toHaveProperty('body');
+        expect(bare).not.toHaveProperty('agent');
+      });
+
+      test('never titles the row with the thread id, even for a whitespace-only name (archive#3139)', async () => {
+        // The precedence has two branches and neither may fall through to an
+        // identifier — that regression is exactly what archive#3139 was.
+        const service = makeService({
+          sessions: [
+            baseSession({
+              threadId: 'external:claude:5dfa0c9e',
+              lifecycleState: 'failed',
+              updatedAt: '2026-07-23T12:00:00.000Z',
+            }),
+            baseSession({
+              threadId: 'external:claude:77aa01bb',
+              lifecycleState: 'failed',
+              displayTitle: '   ',
+              updatedAt: '2026-07-23T11:00:00.000Z',
+            }),
+          ],
+        });
+
+        expect(
+          (await service.list()).items.map((item) => [
+            item.sessionId,
+            item.title,
+          ]),
+        ).toEqual([
+          ['external:claude:5dfa0c9e', 'Untitled session'],
+          ['external:claude:77aa01bb', 'Untitled session'],
+        ]);
+      });
+
       test('a delegation target outranks the assigned agent slug as the row identity', async () => {
         const service = makeService({
           sessions: [
@@ -2167,65 +2249,6 @@ describe('AttentionProjectionService', () => {
           ?.openHref,
       ).toBe(activityDeepLink({ sessionId: 'thread-no-project' }));
     });
-  });
-});
-
-/*
- * archive#3203: the payload builder is pure — every field is a projection of
- * one session summary — so it is asserted directly rather than only through
- * `list()`. A field the summary did not record must be ABSENT from the
- * payload, not present-and-empty: the UI branches on absence to say "no
- * failure detail was recorded", and an empty string would render as a cause
- * that is simply blank.
- */
-describe('buildSessionFailedItem (#3203)', () => {
-  test('carries every recorded field and omits every unrecorded one', () => {
-    const full = buildSessionFailedItem(
-      baseSession({
-        threadId: 'thread-boom',
-        displayTitle: '  Fix the login redirect  ',
-        blockedReason: 'ECONNREFUSED api.example.com:443',
-        provider: 'claude',
-        assignedAgentSlug: 'reviewer',
-      }) as never,
-    );
-    expect(full).toEqual({
-      id: 'session-failed:thread-boom',
-      kind: 'session-failed',
-      title: 'Fix the login redirect',
-      body: 'ECONNREFUSED api.example.com:443',
-      createdAt: now,
-      updatedAt: now,
-      sessionId: 'thread-boom',
-      openHref: activityDeepLink({ sessionId: 'thread-boom' }),
-      source: { threadId: 'thread-boom' },
-      engine: 'claude',
-      agent: 'reviewer',
-    });
-
-    const bare = buildSessionFailedItem(
-      baseSession({ threadId: 'thread-bare', provider: 'codex' }) as never,
-    );
-    expect(bare.title).toBe('Untitled session');
-    expect(bare).not.toHaveProperty('body');
-    expect(bare).not.toHaveProperty('agent');
-    expect(bare.engine).toBe('codex');
-  });
-
-  test('never returns the thread id as the title (#3139)', () => {
-    // The precedence has two branches and neither may fall through to an
-    // identifier — that regression is exactly what archive#3139 was.
-    for (const session of [
-      baseSession({ threadId: 'external:claude:5dfa0c9e' }),
-      baseSession({
-        threadId: 'external:claude:5dfa0c9e',
-        displayTitle: '   ',
-      }),
-    ]) {
-      expect(buildSessionFailedItem(session as never).title).toBe(
-        'Untitled session',
-      );
-    }
   });
 });
 

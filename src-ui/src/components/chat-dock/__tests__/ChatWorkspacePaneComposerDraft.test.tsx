@@ -7,16 +7,36 @@
  * are stood in for, and the New Chat picker is a probe that records what it
  * was handed and picks an Agent on request (the picker itself is covered by
  * `NewChatModalSelectDispatch.test.tsx`).
+ *
+ * The same real pane also owns the dock's file-drop wiring: which view-model
+ * state counts as an attachment owner is decided in `ChatDock.tsx`, not in
+ * `ChatPaneFileDropBoundary`.
+ *
+ * Docked inside the real `DockShell`, it also owns the project-binding wiring
+ * (archive#4525/#4524): which Project the header badge names, what the
+ * switcher does, and which Project the New Chat picker defaults to. The pure
+ * resolvers are table-tested in `chat-dock-utils.test.ts`; these tests pin
+ * that the pane hands their results to the right surfaces.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { ActiveChatsProvider } from '../../../contexts/ActiveChatsContext';
 import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
+import { navigationStore } from '../../../contexts/navigation-store';
 import { RegionModelProvider } from '../../../contexts/RegionModelContext';
 import { ToastProvider } from '../../../contexts/ToastContext';
+import { useShowSurface } from '../../../contexts/useShowSurface';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import {
   type ProjectChatComposerDraft,
   requestProjectChat,
@@ -28,11 +48,25 @@ const { createChatSession, sendMessage, updateChat, pickerProps, dockProbe } =
     sendMessage: vi.fn(),
     updateChat: vi.fn(),
     pickerProps: [] as Record<string, any>[],
-    dockProbe: { mobile: false, sessions: [] as Record<string, any>[] },
+    dockProbe: {
+      mobile: false,
+      sessions: [] as Record<string, any>[],
+      agents: [{ slug: 'assistant', name: 'Assistant' }],
+    },
   }));
 
+const projects = [
+  { slug: 'pulse', name: 'Pulse', workingDirectory: '/work/pulse' },
+  { slug: 'other', name: 'Other', workingDirectory: '/work/other' },
+];
+
+// Honours the Agent argument the way the real hook does, so a pane that
+// passed a route-selected Agent would lose other Agents' chats.
 vi.mock('../../../hooks/useDerivedSessions', () => ({
-  useDerivedSessions: () => dockProbe.sessions,
+  useDerivedSessions: (_apiBase: string, agentSlug: string | null) =>
+    agentSlug
+      ? dockProbe.sessions.filter((session) => session.agentSlug === agentSlug)
+      : dockProbe.sessions,
 }));
 vi.mock('../../../hooks/useDockShellChrome', async (importOriginal) => {
   const actual =
@@ -48,8 +82,19 @@ vi.mock('../../../hooks/useDockShellChrome', async (importOriginal) => {
   };
 });
 vi.mock('../ChatDockMobileHeader', () => ({
-  ChatDockMobileHeader: ({ activeCount }: { activeCount: number }) => (
-    <div data-testid="mobile-dock-work-badge">{activeCount}</div>
+  ChatDockMobileHeader: ({
+    activeCount,
+    projectSwitcher,
+  }: {
+    activeCount: number;
+    projectSwitcher?: { projectName: string };
+  }) => (
+    <>
+      <div data-testid="mobile-dock-work-badge">{activeCount}</div>
+      <div data-testid="mobile-dock-project-name">
+        {projectSwitcher?.projectName}
+      </div>
+    </>
   ),
 }));
 
@@ -83,19 +128,43 @@ vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
 vi.mock('../../../contexts/ProjectsContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useProjects: () => ({
-    projects: [
-      { slug: 'pulse', name: 'Pulse' },
-      { slug: 'other', name: 'Other' },
-    ],
+    projects,
     isLoading: false,
     isConfirmedLoaded: true,
   }),
-  useProject: () => ({ project: undefined, isLoading: false }),
+  useProject: (slug: string) => ({
+    project: projects.find((project) => project.slug === slug),
+    isLoading: false,
+  }),
 }));
 vi.mock('../../../contexts/AgentsContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useAgents: () => [{ slug: 'assistant', name: 'Assistant' }],
+  useAgents: () => dockProbe.agents,
   useAgentsLoaded: () => true,
+}));
+
+// The active chat's transcript and composer are stood in for: the file-drop
+// test asks only which pane owns attachments, and the marker shows a chat is
+// active.
+vi.mock('../ChatDockBody', () => ({
+  ChatDockBody: () => <div data-testid="active-chat-body" />,
+}));
+
+// A chat's own Project facts: its layouts and the git state of its directory.
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useProjectLayoutsQuery: (projectSlug: string) => ({
+    data:
+      projectSlug === 'other'
+        ? [{ slug: 'other-code', name: 'Code', type: 'coding' }]
+        : [],
+  }),
+  useGitStatusQuery: (location: { workingDir?: string } | null) => ({
+    data:
+      location?.workingDir === '/work/other'
+        ? { isRepo: true, branch: 'other-branch', changes: [] }
+        : null,
+  }),
 }));
 
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
@@ -104,6 +173,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
 }));
 
 const { ChatWorkspacePane } = await import('../ChatDock');
+const { DockShell } = await import('../DockShell');
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -128,6 +198,10 @@ afterEach(() => {
   updateChat.mockClear();
   dockProbe.mobile = false;
   dockProbe.sessions = [];
+  dockProbe.agents = [{ slug: 'assistant', name: 'Assistant' }];
+  showSurface = undefined;
+  deviceSettingsStore.reset('chatDockProjectSlug');
+  navigationStore.navigate('/', { chat: null, dock: null });
 });
 
 const draft: ProjectChatComposerDraft = {
@@ -138,7 +212,34 @@ const draft: ProjectChatComposerDraft = {
   message: 'Read the `plugin-authoring` topic, then run `validate_plugin`.',
 };
 
+let showSurface: ReturnType<typeof useShowSurface> | undefined;
+function CaptureShowSurface() {
+  showSurface = useShowSurface();
+  return null;
+}
+
 function renderPane(projectSlug: string) {
+  renderInProviders(
+    <ChatWorkspacePane
+      placement="fullscreen"
+      projectSlug={projectSlug}
+      layoutSlug="coding"
+    />,
+  );
+}
+
+/** The ambient placement: docked inside the real shell that owns the binding. */
+function renderDockedPane() {
+  renderInProviders(
+    <DockShell>
+      {(shellChrome) => (
+        <ChatWorkspacePane placement="dock" shellChrome={shellChrome} />
+      )}
+    </DockShell>,
+  );
+}
+
+function renderInProviders(pane: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -150,11 +251,8 @@ function renderPane(projectSlug: string) {
             <ConversationsProvider>
               <ActiveChatsProvider>
                 <RegionModelProvider>
-                  <ChatWorkspacePane
-                    placement="fullscreen"
-                    projectSlug={projectSlug}
-                    layoutSlug="coding"
-                  />
+                  <CaptureShowSurface />
+                  {pane}
                 </RegionModelProvider>
               </ActiveChatsProvider>
             </ConversationsProvider>
@@ -279,4 +377,209 @@ test('the dock passes a background-only session into its mobile work badge', asy
   expect(
     (await screen.findByTestId('mobile-dock-work-badge')).textContent,
   ).toBe('1');
+});
+
+function chatSession(id: string): Record<string, any> {
+  return {
+    id,
+    agentSlug: 'assistant',
+    agentName: 'Assistant',
+    title: 'Pulse chat',
+    projectSlug: 'pulse',
+    status: 'idle',
+    source: 'manual',
+    input: '',
+    attachments: [],
+    queuedMessages: [],
+    inputHistory: [],
+    messages: [],
+    hasUnread: false,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
+/** Drags one file over the pane and reports whether it offered to take it. */
+function dragFileOverPane(): boolean {
+  const pane = screen.getByRole('region', { name: 'Chat dock' });
+  const dataTransfer = {
+    types: ['Files'],
+    files: [new File(['x'], 'note.txt')],
+    items: [],
+  } as unknown as DataTransfer;
+  fireEvent.dragEnter(pane, { dataTransfer, relatedTarget: null });
+  const offered = screen.queryByTestId('chat-pane-file-drop-overlay') !== null;
+  fireEvent.dragLeave(pane, { dataTransfer, relatedTarget: null });
+  return offered;
+}
+
+test('file drops follow the pane’s attachment owner: none without an active chat, none over an imported conversation', async () => {
+  dockProbe.sessions = [chatSession('chat-a')];
+  renderPane('pulse');
+  expect(dragFileOverPane(), 'a pane with no active chat took a file').toBe(
+    false,
+  );
+  cleanup();
+
+  navigationStore.navigate('/', { chat: 'chat-a' });
+  renderPane('pulse');
+  await act(async () => {});
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  expect(dragFileOverPane(), 'the active chat’s pane refused a file').toBe(
+    true,
+  );
+
+  // An imported conversation takes over the reading surface; the chat behind
+  // it still exists, but nothing on screen can hold an attachment.
+  act(() => showSurface!('chat', { session: 'imported-thread' }));
+  await act(async () => {});
+  expect(
+    dragFileOverPane(),
+    'an imported conversation’s pane took a file',
+  ).toBe(false);
+});
+
+/**
+ * The dock is bound to Pulse while the chat on screen belongs to Other: the
+ * badge keeps naming the binding, and the chat's own Project and directory
+ * are reported beside it rather than dropped (archive#4525 review HIGH-2,
+ * MED-1).
+ */
+function openForeignChatInPulseBoundDock() {
+  deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
+  dockProbe.sessions = [
+    { ...chatSession('chat-a'), projectSlug: 'other', projectName: 'Other' },
+  ];
+  navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
+  renderDockedPane();
+}
+
+test('the docked badge names the bound Project and reports a foreign chat’s own Project and directory', async () => {
+  openForeignChatInPulseBoundDock();
+  await act(async () => {});
+
+  const badge = screen.getByRole('button', { name: 'Pulse' });
+  // The directory is the chat's, not the bound Project's.
+  expect(badge.getAttribute('title')).toBe('Pulse — /work/other');
+  expect(
+    document.querySelector('.chat-dock__project-session-name')?.textContent,
+  ).toBe('Other ·');
+
+  // The switcher marks the bound Project as current.
+  fireEvent.click(badge);
+  await screen.findByRole('dialog', { name: 'Switch project' });
+  expect(
+    screen
+      .getByRole('button', { name: 'Switch to Pulse' })
+      .closest('li')
+      ?.getAttribute('aria-current'),
+  ).toBe('true');
+  expect(
+    screen
+      .getByRole('button', { name: 'Switch to Other' })
+      .closest('li')
+      ?.getAttribute('aria-current'),
+  ).toBeNull();
+});
+
+test('a foreign chat’s git state and code layout are its own Project’s, not the badge’s (archive#4525 review HIGH-2)', async () => {
+  openForeignChatInPulseBoundDock();
+  await act(async () => {});
+
+  expect(
+    document.querySelector('.chat-dock__project-context .git-badge__branch')
+      ?.textContent,
+  ).toContain('other-branch');
+
+  fireEvent.click(screen.getByRole('button', { name: 'More dock actions' }));
+  fireEvent.click(
+    await screen.findByRole('menuitem', { name: 'Open code layout' }),
+  );
+  expect(navigationStore.getSnapshot().pathname).toBe(
+    '/projects/other/layouts/other-code',
+  );
+});
+
+test('the mobile header names the same bound Project as the desktop badge', async () => {
+  dockProbe.mobile = true;
+  openForeignChatInPulseBoundDock();
+  expect(
+    (await screen.findByTestId('mobile-dock-project-name')).textContent,
+  ).toBe('Pulse');
+});
+
+test('switching Project rebinds the dock and opens no New Chat picker (archive#4524)', async () => {
+  openForeignChatInPulseBoundDock();
+  await act(async () => {});
+
+  fireEvent.click(screen.getByRole('button', { name: 'Pulse' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Switch to Other' }),
+  );
+  await act(async () => {});
+
+  expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('other');
+  expect(screen.getByRole('button', { name: 'Other' })).toBeTruthy();
+  expect(screen.queryByRole('dialog', { name: 'New chat picker' })).toBeNull();
+  expect(pickerProps).toHaveLength(0);
+  expect(createChatSession).not.toHaveBeenCalled();
+});
+
+test('the docked New button starts a lone ready Agent’s chat in the dock’s bound Project', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+
+  fireEvent.click(screen.getByRole('button', { name: 'New' }));
+  expect(createChatSession).toHaveBeenCalledWith(
+    'assistant',
+    'Assistant',
+    undefined,
+    'pulse',
+    'Pulse',
+    expect.anything(),
+  );
+  expect(screen.queryByRole('dialog', { name: 'New chat picker' })).toBeNull();
+});
+
+test('the docked New Chat picker defaults to the dock’s bound Project', async () => {
+  dockProbe.agents = [
+    { slug: 'assistant', name: 'Assistant' },
+    { slug: 'reviewer', name: 'Reviewer' },
+  ];
+  deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+
+  // Two ready Agents, so New opens the picker instead of choosing one.
+  fireEvent.click(screen.getByRole('button', { name: 'New' }));
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
+  expect(createChatSession).not.toHaveBeenCalled();
+});
+
+test('a route-selected Agent does not hide other Agents’ chats from the dock (#1053)', async () => {
+  dockProbe.sessions = [chatSession('chat-a')];
+  navigationStore.navigate('/agents/codex', { dock: 'open', chat: 'chat-a' });
+  expect(navigationStore.getSnapshot().selectedAgent).toBe('codex');
+  renderDockedPane();
+  await act(async () => {});
+
+  // `chat-a` belongs to `assistant`; the dock still shows it as the active chat.
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  expect(
+    document.querySelector('.chat-dock__active-identity-agent')?.textContent,
+  ).toBe('Assistant');
+});
+
+test('a Project-scoped pane shows only that Project’s chats', async () => {
+  dockProbe.sessions = [
+    { ...chatSession('chat-other'), projectSlug: 'other', title: 'Other chat' },
+  ];
+  navigationStore.navigate('/', { chat: 'chat-other' });
+  renderPane('pulse');
+  await act(async () => {});
+  expect(screen.queryByTestId('active-chat-body')).toBeNull();
 });

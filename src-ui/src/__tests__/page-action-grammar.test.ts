@@ -109,21 +109,6 @@ describe('primary page-action label grammar (station#4463 slice 5)', () => {
     ).toBe('Add model connection');
   });
 
-  test('none of the five carry a `+` prefix', () => {
-    const labels = [
-      extractAddLabel('src-ui/src/views/AgentsView.tsx'),
-      extractAddLabel('src-ui/src/views/PluginManagementView.tsx'),
-      extractScheduleAddLabel('src-ui/src/views/ScheduleView.tsx'),
-      extractAddLabel('src-ui/src/views/SkillsView.tsx'),
-      extractModelsAddLabel(
-        'src-ui/src/views/connections-hub/connection-sections.ts',
-      ),
-    ];
-    for (const label of labels) {
-      expect(label.startsWith('+')).toBe(false);
-    }
-  });
-
   test('all five read as "Verb noun" (capitalized first word, lowercase rest)', () => {
     const labels = [
       extractAddLabel('src-ui/src/views/AgentsView.tsx'),

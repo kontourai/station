@@ -21,28 +21,44 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = process.cwd();
 const BASELINE_PATH = join(ROOT, 'scripts/a11y-baseline.json');
 const BIOME_CONFIG_PATH = join(ROOT, 'biome.json');
+const PACKAGE_JSON_PATH = join(ROOT, 'package.json');
+
+const LINT_ROOT_PATTERN = /^[A-Za-z0-9_.][A-Za-z0-9_./-]*$/;
 
 /**
- * Must stay in step with the `lint:check` script in package.json.
- *
- * Explicit source roots rather than `.`: linting the whole repo also reaches
- * generated output (`src-desktop/gen/`), signed in-toto attestations under
- * `delivery/`, and Veritas Protected Standards — all of which the formatter
- * will happily rewrite.
+ * The ratchet measures exactly what `lint:check` lints, so its roots are read
+ * from that script rather than restated here. `lint:check` names explicit
+ * source roots rather than `.`: linting the whole repo also reaches generated
+ * output (`src-desktop/gen/`), signed in-toto attestations under `delivery/`,
+ * and Veritas Protected Standards, all of which the formatter would rewrite.
+ * A `lint:check` that is not `biome check <roots...>` is refused rather than
+ * guessed at, so the ratchet never silently measures a different tree.
  */
-const SOURCE_ROOTS = [
-  'src-server/',
-  'src-ui/',
-  'packages/',
-  'scripts/',
-  'tests/',
-  'examples/',
-  'src-shared/',
-];
+export function lintCheckRoots(packageJsonText) {
+  const script = JSON.parse(packageJsonText)?.scripts?.['lint:check'];
+  const [tool, verb, ...roots] =
+    typeof script === 'string' ? script.trim().split(/\s+/) : [];
+  // Roots are plain paths. A flag (`--write`, `--diagnostic-level=error`) or a
+  // shell operator (`&&`, `|`) after the roots would otherwise be handed to
+  // `biome lint` as a root, rewriting the tree or quieting the a11y warnings.
+  if (
+    tool !== 'biome' ||
+    verb !== 'check' ||
+    roots.length === 0 ||
+    !roots.every((root) => LINT_ROOT_PATTERN.test(root))
+  ) {
+    throw new Error(
+      `package.json lint:check must be "biome check <roots...>"; found ${JSON.stringify(script)}`,
+    );
+  }
+  return roots;
+}
 
 /** Is the a11y family switched on in the repo's biome config? */
 export function a11yEnabled(configText) {
@@ -90,6 +106,24 @@ export function evaluate(measured, baseline) {
 }
 
 /**
+ * Biome's own JS launcher under the current Node, never an `npx` shim: on
+ * Windows `npx.cmd` cannot be spawned without a shell (`EINVAL` since Node's
+ * CVE-2024-27980 hardening), which threw here once this gate first ran on
+ * Windows (#2682). Same form as `generate-basis-mcp-apps.mjs`.
+ */
+export function biomeLintInvocation() {
+  return {
+    command: process.execPath,
+    args: [
+      fileURLToPath(import.meta.resolve('@biomejs/biome/bin/biome')),
+      'lint',
+      '--max-diagnostics=5000',
+      ...lintCheckRoots(readFileSync(PACKAGE_JSON_PATH, 'utf8')),
+    ],
+  };
+}
+
+/**
  * Biome writes its summary to stdout but its diagnostics to stderr, and exits
  * 0 when everything it found was a warning. Capturing only stdout — or only the
  * throwing path — measures an empty string and silently reports a clean tree.
@@ -99,11 +133,13 @@ function runBiome() {
   // spawnSync rather than execFileSync: execFileSync only hands back stderr on
   // the throwing path, so a run that exits 0 with warnings loses every
   // diagnostic and measures as a clean tree.
-  const result = spawnSync(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['biome', 'lint', '--max-diagnostics=5000', ...SOURCE_ROOTS],
-    { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  );
+  const { command, args } = biomeLintInvocation();
+  const result = spawnSync(command, args, {
+    cwd: ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
   if (result.error) {
     throw new Error(`failed to run biome: ${result.error.message}`);
   }
@@ -180,6 +216,6 @@ function main() {
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

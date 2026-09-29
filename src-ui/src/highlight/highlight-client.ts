@@ -389,8 +389,3 @@ export function highlightCode(code: string, lang: string): Promise<string> {
       return html;
     });
 }
-
-/** Test-only visibility into the highlight cache (see highlight-code.test.ts). */
-export function highlightCacheSize(): number {
-  return cache.size;
-}

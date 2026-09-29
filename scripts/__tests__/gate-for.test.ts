@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { gateReport, veritasGuidanceForPaths } from '../gate-for.mjs';
 
@@ -20,9 +20,14 @@ describe('gate-for report', () => {
   });
 
   it('does not invent path guidance for an unrelated file', () => {
-    expect(
-      veritasGuidanceForPaths(['docs/plans/issue-class-prevention.md']),
-    ).toContain('no matching rules');
+    // documentation-source-currentness is a repo-wide Guide, so every path
+    // receives it; an unrelated file must receive nothing path-specific.
+    const guidance = veritasGuidanceForPaths([
+      'docs/plans/issue-class-prevention.md',
+    ]);
+    expect(guidance).toContain('documentation-source-currentness (Guide)');
+    expect(guidance).not.toContain('(Require)');
+    expect(guidance).not.toContain('session-transition-contract');
   });
   it('marks every scoped gate RUNS for a surface that feeds all four', () => {
     const report = gateReport({
@@ -102,13 +107,15 @@ describe('gate-for report', () => {
   });
 
   it('refuses an unrecognized flag instead of treating it as a path', () => {
-    expect(() =>
-      execFileSync('node', ['scripts/gate-for.mjs', '--bogus'], {
-        encoding: 'utf8',
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }),
-    ).toThrow();
+    const run = spawnSync('node', ['scripts/gate-for.mjs', '--bogus'], {
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    // The usage refusal, not a crash or any other nonzero exit.
+    expect(run.stderr).toContain('gate-for: unrecognized flag: --bogus');
+    expect(run.status).toBe(2);
+    expect(run.stdout).not.toContain('changed path(s)');
   });
 
   it('the npm entry point exists and prints a report', () => {

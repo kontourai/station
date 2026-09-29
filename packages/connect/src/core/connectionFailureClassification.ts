@@ -1,3 +1,4 @@
+import { AUTH_RATE_LIMITED_ERROR_CODE } from '@kontourai/station-contracts/http';
 import type { FailureClassification } from './ConnectionSupervisor';
 import type { ConnectionFailureReason } from './types';
 
@@ -65,16 +66,6 @@ export function connectionFailureNeedsDecision(
 ): boolean {
   return REASONS_NEEDING_A_DECISION.has(reason);
 }
-
-/**
- * The code a Station's HTTP boundary attaches when it is throttling one peer's
- * repeated AUTH failures (`AUTH_RATE_LIMITED_ERROR_CODE` in
- * `src-server/runtime/bootstrap/runtime-http.ts`). Declared here as a literal
- * rather than imported: `packages/connect` is a published client package and
- * must not depend on the server tree. `station-http-error-codes.test.ts` reads
- * the server source and fails if the two ever drift apart.
- */
-const AUTH_RATE_LIMITED_ERROR_CODE = 'authentication_rate_limited';
 
 /**
  * station#3297 — the derivation behind an HTTP failure response.

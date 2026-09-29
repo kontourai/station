@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { FAST_SCOPE_STATICS, fastScope } from '../run-ci-fast.mjs';
 import {
   CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES,
   incompleteDiagnosticReasons,
@@ -228,8 +229,23 @@ function changedDiagnosticBinding(context, attachmentRoot) {
   return { path: diagnosticPath };
 }
 
+/**
+ * #2709: a statics-scoped ci:fast (fast-checks-statics) runs no selector, so
+ * there is no changed-verification diagnostic to require; the sharded
+ * fast-checks jobs carry that evidence as their own receipts. Any other
+ * value, including an invalid one, keeps the attachment required.
+ */
+function isStaticsScoped(env) {
+  try {
+    return fastScope(env) === FAST_SCOPE_STATICS;
+  } catch {
+    return false;
+  }
+}
+
 export function attachCiFastDiagnostics(context, raw) {
   if (context.lane.id !== 'ci-fast') return raw;
+  if (isStaticsScoped(context.env ?? process.env)) return raw;
   const attachmentRoot = join(
     context.before.worktree,
     '.kontourai/test-impact',

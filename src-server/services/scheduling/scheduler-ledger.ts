@@ -567,6 +567,11 @@ export interface SchedulerLedger {
   activeMonitorTriggers(): SchedulerReadOutcome<
     readonly AttachedMonitorTrigger[]
   >;
+  /**
+   * One trigger with an attached Task, in any phase. Settling moves a trigger
+   * to phase `terminal`, and resolving an indeterminate one must still read
+   * it.
+   */
   monitorTrigger(
     triggerId: string,
   ): SchedulerReadOutcome<AttachedMonitorTrigger | undefined>;
@@ -2040,7 +2045,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           `SELECT trigger_id, monitor_id, task_id, session_id, turn_id, created_at, deadline_at,
                   reserved_turns, reserved_tokens
              FROM external_monitor_triggers
-            WHERE trigger_id=? AND phase='task-attached'`,
+            WHERE trigger_id=? AND task_id IS NOT NULL`,
         )
         .get(triggerId) as
         | {
@@ -3664,9 +3669,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
   }
 }
 
-export function toScheduledJob(
-  stored: StoredSchedulerJob,
-): ScheduledJob | null {
+function toScheduledJob(stored: StoredSchedulerJob): ScheduledJob | null {
   const schedule = stored.schedule
     ? stored.schedule
     : stored.cron

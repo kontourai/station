@@ -20,7 +20,6 @@ import {
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { installNodeHttpCompatibility } from '../packages/shared/src/node-http-compat.mjs';
 import { lookupProcessBirthFingerprint } from '../packages/shared/src/process-identity.mjs';
 import {
@@ -47,6 +46,7 @@ import {
   findPreferredPortBlock,
   findPreferredPortOutside,
 } from './lib/free-ports.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   executeOwnedProcess,
   terminateSuiteExecution,
@@ -139,6 +139,37 @@ export function retainE2EBucketFailureEvidence({
     { allowMissing: true, ignoredBasenames: ['.last-run.json', '.DS_Store'] },
   );
   return true;
+}
+
+/**
+ * Settle a run whose Playwright phases started. A failed run retains its bucket
+ * evidence before cleanup can reclaim the instance directory; a failed cleanup
+ * retains it again, because the lease and outputs stay behind. Retention is
+ * best-effort and never masks the failure it documents. Returns the cleanup
+ * failure, or null when cleanup settled.
+ */
+export async function settleStartedE2ERun({
+  runFailure,
+  suite,
+  retainEvidence,
+  cleanUp,
+}) {
+  const retain = (label) => {
+    try {
+      retainEvidence();
+    } catch (error) {
+      console.error(
+        `[e2e] could not retain ${suite} ${label} evidence: ${error.message}`,
+      );
+    }
+  };
+  if (runFailure) retain('failure');
+  const errors = await cleanUp();
+  if (errors.length === 0) return null;
+  retain('cleanup-failure');
+  return new Error(
+    `E2E cleanup failed; retained lease and outputs: ${errors.join('; ')}`,
+  );
 }
 
 const MAX_RETAINED_E2E_RESULT_ROOTS = 12;
@@ -1441,6 +1472,20 @@ export function classifyStartFailure(output, expectedServerPort) {
   ) {
     return 'boot-race';
   }
+  // The same waits, ended early because the child exited (#2805): a child
+  // that lost its bind race exits, so these stay retryable as the
+  // full-deadline forms above always were — unanswered, or answered by
+  // another instance.
+  if (
+    /Station process exited before .*(\/api\/system\/identity|\/__station\/identity) answered \(fetch failed\)/i.test(
+      output,
+    ) ||
+    /Station process exited; .*(\/api\/system\/identity|\/__station\/identity) answered as a different instance \(managed boot identity mismatch\)/i.test(
+      output,
+    )
+  ) {
+    return 'boot-race';
+  }
   return 'fatal';
 }
 
@@ -2375,66 +2420,50 @@ async function main() {
     }
     runFailure = error;
   } finally {
-    if (runFailure && process.env.STATION_E2E_EVIDENCE_ROOT)
-      try {
+    cleanupFailure = await settleStartedE2ERun({
+      runFailure,
+      suite,
+      retainEvidence: () =>
         retainE2EBucketFailureEvidence({
           testResultsRoot,
           evidenceRoot: process.env.STATION_E2E_EVIDENCE_ROOT,
           suite,
+        }),
+      cleanUp: async () => {
+        const cleanup = await cleanupE2ERun({
+          root: process.cwd(),
+          leasePath: runLease,
+          lease,
+          stopInstance: () => stopE2EInstance(instance),
         });
-      } catch (error) {
-        console.error(
-          `[e2e] could not retain ${suite} failure evidence: ${error.message}`,
-        );
-      }
-    const cleanup = await cleanupE2ERun({
-      root: process.cwd(),
-      leasePath: runLease,
-      lease,
-      stopInstance: () => stopE2EInstance(instance),
-    });
-    if (runFailure) {
-      if (existsSync(serverLog))
-        console.error(`[e2e] retained Station server log: ${serverLog}`);
-    } else {
-      rmSync(serverLog, { force: true });
-    }
-    rmSync(claudeConfigDir, { recursive: true, force: true });
-    rmSync(codexConfigDir, { recursive: true, force: true });
-    if (!runFailure && cleanup.errors.length === 0) {
-      try {
-        removeE2ETestResults(process.cwd(), instance);
-      } catch (error) {
-        cleanup.errors.push(
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-    }
-    if (cleanup.errors.length === 0) {
-      const pruned = sweepRetainedE2ETestResults(process.cwd());
-      if (pruned > 0) {
-        console.log(
-          `[e2e] pruned ${pruned} retained Playwright result root(s) after settlement`,
-        );
-      }
-    }
-    if (cleanup.errors.length > 0) {
-      if (process.env.STATION_E2E_EVIDENCE_ROOT)
-        try {
-          retainE2EBucketFailureEvidence({
-            testResultsRoot,
-            evidenceRoot: process.env.STATION_E2E_EVIDENCE_ROOT,
-            suite,
-          });
-        } catch (error) {
-          console.error(
-            `[e2e] could not retain ${suite} cleanup-failure evidence: ${error.message}`,
-          );
+        if (runFailure) {
+          if (existsSync(serverLog))
+            console.error(`[e2e] retained Station server log: ${serverLog}`);
+        } else {
+          rmSync(serverLog, { force: true });
         }
-      cleanupFailure = new Error(
-        `E2E cleanup failed; retained lease and outputs: ${cleanup.errors.join('; ')}`,
-      );
-    }
+        rmSync(claudeConfigDir, { recursive: true, force: true });
+        rmSync(codexConfigDir, { recursive: true, force: true });
+        if (!runFailure && cleanup.errors.length === 0) {
+          try {
+            removeE2ETestResults(process.cwd(), instance);
+          } catch (error) {
+            cleanup.errors.push(
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        }
+        if (cleanup.errors.length === 0) {
+          const pruned = sweepRetainedE2ETestResults(process.cwd());
+          if (pruned > 0) {
+            console.log(
+              `[e2e] pruned ${pruned} retained Playwright result root(s) after settlement`,
+            );
+          }
+        }
+        return cleanup.errors;
+      },
+    });
   }
   if (cleanupFailure) throw cleanupFailure;
   if (runFailure) throw runFailure;
@@ -2444,10 +2473,7 @@ async function main() {
 // import `sweepInterruptedBuildDirs` from here; without this guard that import
 // launched the whole e2e runner inside Vitest, and its process.exit(1) surfaced
 // as an unhandled rejection that failed verify:static with every test passing.
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error(error);
     process.exit(1);

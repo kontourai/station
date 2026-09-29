@@ -1,31 +1,21 @@
 import { describe, expect, test } from 'vitest';
 import {
   boundedToolResultText,
-  boundTailFragment,
   fullToolResultText,
   TOOL_RESULT_TAIL_CHARS,
 } from '../components/chat/bounded-tool-result';
 
 /**
  * station#330 unit coverage for the properties the rendered-DOM tests cannot
- * see: what the collector ALLOCATES, and what it does at the truncation
- * boundaries. The component test pins the rendered projection; these pin the
- * cost and the edges.
+ * see: that the retained projection stays bounded, and what the collector
+ * does at the truncation boundaries. The component test pins the rendered
+ * projection; these pin the bounds and the edges.
  */
-describe('bounded tool result — allocation', () => {
-  test('a huge fragment is sliced to the tail budget BEFORE any concatenation', () => {
+describe('bounded tool result — bounds', () => {
+  test('a single huge fragment keeps the head/tail projection bounded', () => {
     // The dominant real shape: file contents / command output arriving as one
-    // unescaped string. Concatenating it onto the tail first would materialize
-    // the whole payload — the exact allocation this collector exists to avoid.
-    // NOTE ON POWER: this pins the helper's contract, NOT its call site.
-    // Reverting `append` to `(this.tail + value).slice(-512)` produces
-    // byte-identical output, so nothing here would red — only the allocation
-    // differs, and ESM makes spying on a same-module call ineffective. The
-    // binding is held by review; do not read a green run as proof of it.
+    // unescaped string.
     const huge = 'x'.repeat(2_000_000);
-    expect(boundTailFragment(huge)).toHaveLength(TOOL_RESULT_TAIL_CHARS);
-    expect(boundTailFragment('short')).toBe('short');
-
     const bounded = boundedToolResultText({ output: huge });
     expect(bounded.truncated).toBe(true);
     expect(bounded.tail.length).toBeLessThanOrEqual(TOOL_RESULT_TAIL_CHARS);

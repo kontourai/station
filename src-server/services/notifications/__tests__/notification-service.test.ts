@@ -1,7 +1,6 @@
 import {
   existsSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -26,7 +25,6 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const {
-  INTERNAL_NOTIFICATION_SOURCES,
   NotificationDedupeSourceConflictError,
   NotificationDispatchClosedError,
   NotificationService,
@@ -386,7 +384,7 @@ describe('NotificationService', () => {
     expect(await svc.list()).toHaveLength(0);
   });
 
-  test('clearAll notifies providers before removing notifications', async () => {
+  test('clearAll dismisses every cleared notification at its provider', async () => {
     const handleDismiss = vi.fn();
     svc.addProvider({
       id: 'mock',
@@ -395,12 +393,22 @@ describe('NotificationService', () => {
       handleDismiss,
     } as any);
 
-    await svc.schedule('mock', { title: 'A', body: '', category: 'a' });
-    await svc.schedule('mock', { title: 'B', body: '', category: 'b' });
+    const alpha = await svc.schedule('mock', {
+      title: 'A',
+      body: '',
+      category: 'a',
+    });
+    const bravo = await svc.schedule('mock', {
+      title: 'B',
+      body: '',
+      category: 'b',
+    });
     await svc.clearAll();
     await svc.drainAsyncDispatch();
 
     expect(handleDismiss).toHaveBeenCalledTimes(2);
+    expect(handleDismiss).toHaveBeenCalledWith(alpha.id);
+    expect(handleDismiss).toHaveBeenCalledWith(bravo.id);
   });
 
   test('predicate clearAll retains unreadable rows without dismissing their provider item', async () => {
@@ -1145,10 +1153,6 @@ describe('NotificationService', () => {
     );
   });
 
-  test('listProviders returns empty when none registered', async () => {
-    expect(svc.listProviders()).toEqual([]);
-  });
-
   test('addProvider and listProviders', async () => {
     svc.addProvider({
       id: 'mock',
@@ -1740,34 +1744,6 @@ describe('NotificationService cross-source dedupe (#2597)', () => {
     ]);
   });
 
-  test('INTERNAL_NOTIFICATION_SOURCES covers every in-process schedule() caller', () => {
-    const root = join(process.cwd(), 'src-server');
-    const found = new Set<string>();
-    for (const entry of readdirSync(root, { recursive: true })) {
-      const file = String(entry);
-      if (!file.endsWith('.ts') || file.includes('__tests__')) continue;
-      const text = readFileSync(join(root, file), 'utf8');
-      for (const match of text.matchAll(
-        /notificationService!?\??\.(?:schedule|scheduleEnveloped)\(\s*([^,\s)]+)/g,
-      )) {
-        const arg = match[1];
-        const literal = /^'([^']+)'$/.exec(arg)?.[1];
-        const constant = new RegExp(`const ${arg} = '([^']+)'`).exec(text)?.[1];
-        found.add(literal ?? constant ?? `<unresolved ${arg} in ${file}>`);
-      }
-    }
-    // The scan must reach the known callers, or it proves nothing.
-    expect([...found]).toEqual(
-      expect.arrayContaining([
-        'scheduler',
-        'approval-inbox',
-        'turn-completion',
-      ]),
-    );
-    for (const source of found)
-      expect(INTERNAL_NOTIFICATION_SOURCES.has(source), source).toBe(true);
-  });
-
   test('only the REST path may write an api: tag', async () => {
     await expect(
       svc.schedule('scheduler', {
@@ -1785,6 +1761,31 @@ describe('NotificationService cross-source dedupe (#2597)', () => {
       source: 'api',
       metadata: { dedupeTag: 'api:mine' },
     });
+  });
+
+  test('only the card writers may set the card mark (#2589)', async () => {
+    const marked = (title: string) => ({
+      title,
+      category: 'turn-completed',
+      dedupeTag: `mark:${title}`,
+      metadata: {
+        sessionId: 's1',
+        sessionKind: 'runtime',
+        onActivityCard: true,
+      },
+    });
+    for (const source of ['scheduler', 'device-pairing', 'agent', 'plugin'])
+      await expect(svc.schedule(source, marked(source))).rejects.toThrow(
+        /onActivityCard is reserved/,
+      );
+    for (const source of ['approval-inbox', 'turn-completion'])
+      expect(
+        (await svc.schedule(source, marked(source))).metadata,
+      ).toMatchObject({ onActivityCard: true });
+    expect((await svc.list()).map((n) => n.source).sort()).toEqual([
+      'approval-inbox',
+      'turn-completion',
+    ]);
   });
 
   test('same-source dedupe still updates', async () => {

@@ -27,6 +27,7 @@ import './PluginManagementView.css';
 import './IntegrationsView.css';
 import './page-layout.css';
 import './editor-layout.css';
+import { userFacingErrorMessage } from '../utils/errorText';
 
 const loadSecretBindingsSection = () =>
   import('./integrations/SecretBindingsSection').then((module) => ({
@@ -163,7 +164,7 @@ export function IntegrationsView({
             }
           : current,
       );
-      setMessage({ type: 'error', text: error.message });
+      setMessage({ type: 'error', text: userFacingErrorMessage(error) });
       saveMutation.reset();
       removeSettledSecretMutation(variables);
     },
@@ -174,20 +175,23 @@ export function IntegrationsView({
       deselect();
       setEditForm(null);
     },
-    onError: (error) => setMessage({ type: 'error', text: error.message }),
+    onError: (error) =>
+      setMessage({ type: 'error', text: userFacingErrorMessage(error) }),
   });
 
   const reconnectMutation = useReconnectIntegrationMutation({
     onSuccess: () => {
       setMessage({ type: 'success', text: 'Reconnecting…' });
     },
-    onError: (error) => setMessage({ type: 'error', text: error.message }),
+    onError: (error) =>
+      setMessage({ type: 'error', text: userFacingErrorMessage(error) }),
   });
 
   const renderPermMutation = useSetIntegrationRenderPermissionMutation({
     onSuccess: () =>
       setMessage({ type: 'success', text: 'Render permission updated' }),
-    onError: (error) => setMessage({ type: 'error', text: error.message }),
+    onError: (error) =>
+      setMessage({ type: 'error', text: userFacingErrorMessage(error) }),
   });
   const enabledMutation = useSetIntegrationEnabledMutation({
     onSuccess: (result) => {
@@ -201,7 +205,8 @@ export function IntegrationsView({
           : { type: 'success', text: 'Lifecycle updated' },
       );
     },
-    onError: (error) => setMessage({ type: 'error', text: error.message }),
+    onError: (error) =>
+      setMessage({ type: 'error', text: userFacingErrorMessage(error) }),
   });
   const toolsMutation = useApplyIntegrationToolsMutation({
     onSuccess: (result) => {
@@ -215,7 +220,8 @@ export function IntegrationsView({
           : { type: 'success', text: 'Tool changes applied' },
       );
     },
-    onError: (error) => setMessage({ type: 'error', text: error.message }),
+    onError: (error) =>
+      setMessage({ type: 'error', text: userFacingErrorMessage(error) }),
   });
 
   // Render permission is a global per-server setting; read it from the list

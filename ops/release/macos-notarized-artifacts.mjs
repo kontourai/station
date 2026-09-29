@@ -15,6 +15,7 @@ import {
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
   sealEmbeddedMacosMachOBounded,
 } from '../nightly/macos-embedded-signing.mjs';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 const MAX_CODESIGN_REQUIREMENT_STREAM_BYTES = 64 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
@@ -36,10 +37,6 @@ export const NOTARY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 // bounded by one explicit authority so every complete-payload operation gets
 // the same release budget without widening the short command default.
 export const LARGE_ARTIFACT_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
-// Retain the named export for downstream release checks while making the
-// common large-artifact policy the single timeout authority.
-export const DMG_CREATION_COMMAND_TIMEOUT_MS =
-  LARGE_ARTIFACT_COMMAND_TIMEOUT_MS;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
 // `hdiutil create` on hosted macOS runners intermittently exits nonzero under
@@ -1209,7 +1206,7 @@ export function parseMacosNotarizedArtifactsCli(argv) {
   };
 }
 
-if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   createMacosNotarizedArtifacts(
     parseMacosNotarizedArtifactsCli(process.argv.slice(2)),
   ).catch((error) => {

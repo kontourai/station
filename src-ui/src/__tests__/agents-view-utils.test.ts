@@ -5,7 +5,6 @@ import {
 } from '@kontourai/station-sdk/client';
 import { describe, expect, test, vi } from 'vitest';
 import {
-  AGENT_SPEC_COPY_CLASSIFICATION,
   agentSaveErrorMessage,
   buildAgentPayload,
   cloneableAgentFields,
@@ -17,31 +16,10 @@ import {
   resolveStationModelBinding,
   validateAgentForm,
 } from '../views/agent-editor/agentsViewUtils';
+import { toggleIntegrationToolAutoApprove } from '../views/agent-editor/utils';
 
 describe('agents view utils', () => {
-  test('copy allowlist classifies every AgentSpec field', () => {
-    expect(AGENT_SPEC_COPY_CLASSIFICATION).toEqual({
-      name: 'clone',
-      prompt: 'clone',
-      description: 'clone',
-      icon: 'clone',
-      model: 'clone',
-      execution: 'clone',
-      region: 'clone',
-      maxSteps: 'clone',
-      guardrails: 'clone',
-      tools: 'clone',
-      skills: 'clone',
-      project: 'exclude',
-      delegation: 'exclude',
-      streaming: 'exclude',
-      commands: 'exclude',
-      ui: 'exclude',
-      provenance: 'exclude',
-    });
-  });
-
-  test('cloneableAgentFields excludes credentials, tool env, and ownership', () => {
+  test('cloneableAgentFields excludes credentials, tool env, the unattended opt-in, and ownership', () => {
     expect(
       cloneableAgentFields({
         slug: 'source',
@@ -55,6 +33,7 @@ describe('agents view utils', () => {
           mcpServers: ['safe-server'],
           available: ['safe-server_read'],
           autoApprove: ['safe-server_read'],
+          unattendedAutoApprove: ['safe-server_read'],
           env: { PATH: '/tmp/must-not-copy' },
         } as AgentTools,
         execution: {
@@ -77,6 +56,9 @@ describe('agents view utils', () => {
         mcpServers: ['safe-server'],
         available: ['safe-server_read'],
         autoApprove: ['safe-server_read'],
+        // #2613: the unattended opt-in is a standing grant the editor can't
+        // show yet (#2658), so a copy starts without it.
+        unattendedAutoApprove: [],
         // #90 D14: the browser tools default on (the source never switched
         // them off).
         browser: true,
@@ -140,6 +122,7 @@ describe('agents view utils', () => {
         mcpServers: ['server-1'],
         available: ['server-1_tool-a'],
         autoApprove: ['server-1_tool-a'],
+        unattendedAutoApprove: [],
         browser: true,
       },
       // The spec's tools object verbatim, so a save can tell an ABSENT key
@@ -171,6 +154,7 @@ describe('agents view utils', () => {
           mcpServers: ['server-2'],
           available: [],
           autoApprove: [],
+          unattendedAutoApprove: [],
           browser: true,
         },
       },
@@ -271,6 +255,7 @@ describe('agents view utils', () => {
           mcpServers: ['server-1'],
           available: [],
           autoApprove: [],
+          unattendedAutoApprove: [],
           browser: true,
         },
         // The spec's tools object verbatim, so a save can tell an ABSENT key
@@ -506,6 +491,52 @@ describe('agents view utils', () => {
     expect(buildAgentPayload(form).tools).toMatchObject({
       autoApprove: ['builtin_read'],
     });
+  });
+
+  // #2613: the editor has no control for `unattendedAutoApprove` yet (#2658),
+  // so a save must write back exactly what it loaded and never invent the key.
+  test('load then save keeps an unattended opt-in exactly', () => {
+    const form = formFromAgent({
+      slug: 'nightly',
+      toolsConfig: {
+        mcpServers: ['station-control'],
+        unattendedAutoApprove: ['station-control_list_*', 'fs_read'],
+      },
+    });
+    expect(buildAgentPayload(form).tools?.unattendedAutoApprove).toEqual([
+      'station-control_list_*',
+      'fs_read',
+    ]);
+  });
+
+  test('load then save of an agent without an unattended opt-in does not add one', () => {
+    const form = formFromAgent({
+      slug: 'planner',
+      toolsConfig: { mcpServers: ['github'], autoApprove: ['github_run'] },
+    });
+    expect(buildAgentPayload(form).tools).not.toHaveProperty(
+      'unattendedAutoApprove',
+    );
+  });
+
+  test('toggling a tool auto-approve keeps the unattended opt-in', () => {
+    const form = formFromAgent({
+      slug: 'nightly',
+      toolsConfig: {
+        mcpServers: ['github'],
+        autoApprove: [],
+        unattendedAutoApprove: ['github_find'],
+      },
+    });
+    const edited = toggleIntegrationToolAutoApprove(
+      form,
+      'github',
+      'github_run',
+      [],
+    );
+    const tools = buildAgentPayload(edited).tools;
+    expect(tools?.autoApprove).toEqual(['github_run']);
+    expect(tools?.unattendedAutoApprove).toEqual(['github_find']);
   });
 });
 

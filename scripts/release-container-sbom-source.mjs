@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { canonicalJson } from './lib/release-sboms.mjs';
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
@@ -271,7 +272,7 @@ export function containerSourceToFragment({ source, descriptor, sourceSha }) {
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const output = resolve(option('--output'));
     const sourceSha = option('--source-sha');

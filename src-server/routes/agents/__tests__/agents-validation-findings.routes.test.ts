@@ -11,7 +11,6 @@ function setup(getRuntimeConnections?: any, getProjectSlugs?: any) {
   const agentService = {
     getAgentCatalog: vi.fn().mockResolvedValue([]),
     listAgents: vi.fn().mockResolvedValue([]),
-    loadAgentSpec: vi.fn().mockResolvedValue({ name: 'Default' }),
     createAgent: vi
       .fn()
       .mockResolvedValue({ slug: 'new', spec: { name: 'New' } }),

@@ -22,8 +22,11 @@ describe('focus-visible outline ratchet', () => {
   it('keeps a global keyboard-focus floor over legacy component rules', () => {
     const css = readFileSync('src-ui/src/index.css', 'utf8');
     expect(css).toContain(':focus-visible');
+    // The floor reads the focus role first (@kontourai/ui 1.14+, a channel
+    // retint, or a white-label theme) and falls back to the accent, so it is
+    // unchanged where no role is defined (#2836). Still 2px, still !important.
     expect(css).toContain(
-      'outline: 2px solid var(--accent-primary) !important',
+      'outline: 2px solid var(--k-focus, var(--accent-primary)) !important',
     );
   });
 });

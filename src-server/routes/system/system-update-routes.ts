@@ -14,20 +14,32 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type {
+  SelfUpdateUnavailableCode,
   SystemRuntimeIdentity,
   UpdateProvenanceIssue,
 } from '@kontourai/station-contracts/system-status';
+import {
+  OWNED_DEPENDENCY_INSTALL_SCRIPT,
+  ownedDependencyInstallerUnavailable,
+} from '@kontourai/station-shared/owned-dependency-installer';
 import {
   DEFAULT_SERVER_PORT,
   DEFAULT_UI_PORT,
 } from '@kontourai/station-shared/ports';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import { readServiceUpdateProgress } from '@kontourai/station-shared/service-launcher-protocol';
 import { type Context, Hono } from 'hono';
 import { systemOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { isRecord } from '../../utils/is-record.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { errorMessage } from '../schemas/schemas.js';
+import {
+  type ArchiveUpdateOptions,
+  applyArchiveUpdate,
+  archiveApplyMethod,
+  archiveUpdateStatus,
+} from './archive-update.js';
 import { readSystemRuntimeIdentity } from './build-provenance.js';
 import {
   fetchChannelLatestSha,
@@ -50,6 +62,78 @@ import type { SystemStatusDeps } from './system-route-types.js';
 
 const execFileAsync = promisify(execFileCb);
 const DEFAULT_INSTANCE_ID = 'default';
+
+/**
+ * Whether this process runs under a supervisor that restarts it on exit, which
+ * the git-pull path's detach-then-`exit(0)` restart would fight (#2674):
+ *
+ * - `STATION_SUPERVISOR_PID` is the operative fact, not a label. A supervisor
+ *   sets it on exactly the server it supervises — `station service run`
+ *   passes `supervisorPid`, the desktop sets it on its sidecar, and dev
+ *   harnesses set it on the servers they own — and it is what arms this
+ *   server's parent watchdog. `station start` deletes it from its plain
+ *   spawns (lifecycle.ts), and the child-env scrub removes it from terminals
+ *   and engine children (child-process-environment.ts). It covers the
+ *   Windows service too.
+ * - `STATION_SERVICE_MANAGED=1` is written by the launchd/systemd unit and
+ *   (since #2675) the Windows task wrapper, and inherited through the
+ *   supervisor. It catches the case the PID cannot: a replacement a PREVIOUS git-pull restart spawned under the service, which
+ *   `performGitPullRestart` strips of the PID but still lives in the unit's
+ *   process group (systemd `KillMode=mixed`) and is still restarted by it.
+ *
+ * The two signals prove different things, so they map to different codes:
+ * the unit's marker proves the installed service (`service-managed`); the PID
+ * alone proves only that SOME supervisor exists (`supervised`) — the Windows
+ * service, the desktop, or a dev harness — and its remedy says so rather than
+ * claiming the service.
+ *
+ * The desktop app's sidecar runs from its bundle (`desktop-bundle`
+ * provenance, its own installer-driven self-update), so in practice this
+ * predicate only gates the source checkout's git-pull path.
+ */
+function coreUpdateSupervision(
+  env: NodeJS.ProcessEnv = process.env,
+): SelfUpdateUnavailableCode | null {
+  if (env.STATION_SERVICE_MANAGED === '1') return 'service-managed';
+  if (env.STATION_SUPERVISOR_PID?.trim()) return 'supervised';
+  return null;
+}
+
+/**
+ * The remedy for `service-managed`, phrased as a clause (the GET reason) …
+ * Plain quotes, not backticks: both strings render as plain text in the
+ * settings card, where backticks would print literally.
+ */
+const SERVICE_MANAGED_REASON =
+  'this server runs under the installed Station service, which restarts it on exit. Stop the service with "station service stop", run "station upgrade", then start it again with "station service start" (pass the same --instance/--base options the service was installed with)';
+
+/** … and as the POST refusal sentence. */
+const SERVICE_MANAGED_REFUSAL =
+  'This Station server cannot update itself in place: it runs under the installed Station service, which restarts it on exit and would race the rebuild. Stop the service with "station service stop", run "station upgrade", then start it again with "station service start" (pass the same --instance/--base options the service was installed with).';
+
+/** The remedy for `supervised`: a supervisor, not necessarily the service. */
+const SUPERVISED_REASON =
+  'a supervising process runs this server and restarts or stops it with its own lifecycle. Stop that supervisor, then run "station upgrade" from this checkout (for the installed Station service on Windows: "station service stop", "station upgrade", then "station service start")';
+
+const SUPERVISED_REFUSAL =
+  'This Station server cannot update itself in place: a supervising process runs it and would restart or stop it mid-rebuild. Stop that supervisor, then run "station upgrade" from this checkout (for the installed Station service on Windows: "station service stop", "station upgrade", then "station service start").';
+
+const SUPERVISION_REMEDY: Record<
+  SelfUpdateUnavailableCode,
+  { reason: string; refusal: string }
+> = {
+  'service-managed': {
+    reason: SERVICE_MANAGED_REASON,
+    refusal: SERVICE_MANAGED_REFUSAL,
+  },
+  supervised: { reason: SUPERVISED_REASON, refusal: SUPERVISED_REFUSAL },
+};
+
+/**
+ * The repository's owned dependency bootstrap, the same script `station
+ * upgrade` runs (station#1747); see `@kontourai/station-shared/owned-dependency-installer`.
+ */
+const CORE_UPDATE_DEPENDENCY_INSTALL = ['run', OWNED_DEPENDENCY_INSTALL_SCRIPT];
 
 function restartVerificationDeadlineAt(startedAt: string): string | null {
   const startedAtMs = Date.parse(startedAt);
@@ -459,12 +543,75 @@ export function performGitPullRestart(input: GitPullRestartInput): void {
   input.exitFn(0);
 }
 
+/**
+ * Output ceiling for the install and build subprocesses. `execFile` buffers
+ * stdout/stderr and kills the child when the default 1 MiB is exceeded — a
+ * full dependency install plus a Vite build prints far more than that, which
+ * would read as a failed step while the step itself was fine.
+ */
+const CORE_UPDATE_STEP_MAX_BUFFER = 64 * 1024 * 1024;
+
+/**
+ * Runs the owned dependency install, then the build; returns the user-facing
+ * failure, or `null` when both succeeded. Nothing has been restarted when
+ * this fails, but the install may already have replaced dependencies under
+ * the running server — which is why the message says so.
+ */
+async function runInstallAndBuild(gitRoot: string): Promise<string | null> {
+  const stepOptions = {
+    cwd: gitRoot,
+    timeout: 600000,
+    maxBuffer: CORE_UPDATE_STEP_MAX_BUFFER,
+    windowsHide: true,
+  };
+  let step = 'installing dependencies';
+  try {
+    await execFileAsync('npm', CORE_UPDATE_DEPENDENCY_INSTALL, stepOptions);
+    // Build through the pulled checkout's own `station build`, which runs
+    // buildApplication(): raw `npm run build:*` never refreshes
+    // dist-server/station-build.json, and a stale manifest is what sends a
+    // supervisor into the "managed boot identity mismatch" kill-loop
+    // (station#2671). A subprocess rather than an import: the pulled tree's
+    // CLI is the one that knows how to build the pulled tree, and the server
+    // does not reach into the CLI package. `--instance=default` targets
+    // dist-server/dist-ui — the same directories the raw builds wrote and
+    // the restart below launches.
+    step = 'building';
+    await execFileAsync(
+      join(gitRoot, 'station'),
+      ['build', `--instance=${DEFAULT_INSTANCE_ID}`],
+      stepOptions,
+    );
+    return null;
+  } catch (error) {
+    // An execFile failure message carries the child's whole stderr; with the
+    // raised buffer that can be megabytes. Keep the tail, where the failure is.
+    const detail = errorMessage(error);
+    const boundedDetail =
+      detail.length > 4000 ? `…${detail.slice(-4000)}` : detail;
+    return `Core update failed while ${step}: ${boundedDetail}. The pull already landed and nothing was restarted, but dependencies may already be updated under this running server; fix the failure, then rerun the update or restart the server.`;
+  }
+}
+
+/**
+ * Seams for the archive update path (#2675 D3): where this server's module
+ * lives (the install it belongs to), its environment (the launcher context),
+ * and the release-manifest fetch and keys.
+ */
+export interface SystemUpdateRouteOptions extends ArchiveUpdateOptions {
+  moduleDir?: string;
+}
+
 export function createSystemUpdateRoutes(
   deps: SystemStatusDeps,
   logger: any,
   restartStateWriter: typeof writeSelfUpdateRestartRecord = writeSelfUpdateRestartRecord,
+  options: SystemUpdateRouteOptions = {},
 ) {
   const app = new Hono();
+  const moduleDir =
+    options.moduleDir ?? dirname(fileURLToPath(import.meta.url));
+  const provenanceOfThisServer = () => resolveInstallProvenance(moduleDir);
 
   const verifyManagedRuntime = async (c: any) => {
     try {
@@ -522,6 +669,7 @@ export function createSystemUpdateRoutes(
         : provenance.ref,
       currentHash: provenance.sha.substring(0, 7),
       selfUpdateUnavailableReason,
+      selfUpdateUnavailableCode: null,
     };
     try {
       const latestSha = await fetchChannelLatestSha(
@@ -636,9 +784,7 @@ export function createSystemUpdateRoutes(
     // whatever the env says by the time the response is written.
     const serverIdentity: SystemRuntimeIdentity | null =
       readSystemRuntimeIdentity();
-    const provenance = resolveInstallProvenance(
-      dirname(fileURLToPath(import.meta.url)),
-    );
+    const provenance = provenanceOfThisServer();
     const provenanceIssue: UpdateProvenanceIssue | null =
       provenance.installKind === 'unknown' ? provenance.reason : null;
 
@@ -651,6 +797,17 @@ export function createSystemUpdateRoutes(
       });
     }
 
+    if (provenance.installKind === 'archive') {
+      const status = await archiveUpdateStatus(provenance, options);
+      if (status.technicalDetail) {
+        logger.warn('Core update check: release manifest check failed', {
+          releaseCheck: status.releaseCheck,
+          error: status.technicalDetail,
+        });
+      }
+      return c.json({ ...status, serverIdentity, provenanceIssue });
+    }
+
     if (provenance.installKind === 'unknown') {
       return c.json({
         installKind: 'unknown',
@@ -661,8 +818,17 @@ export function createSystemUpdateRoutes(
         // Filesystem paths live here, not in user-facing copy.
         technicalDetail: provenance.detail,
         selfUpdateUnavailableReason: null,
+        selfUpdateUnavailableCode: null,
       });
     }
+
+    // Source-checkout apply is refused under a supervisor (#2674); the GET
+    // says so up front so a client never offers an apply the POST refuses.
+    const selfUpdateUnavailableCode = coreUpdateSupervision();
+    const selfUpdateUnavailableReason =
+      selfUpdateUnavailableCode === null
+        ? null
+        : SUPERVISION_REMEDY[selfUpdateUnavailableCode].reason;
 
     try {
       const { gitRoot, branch, sha: currentHash } = provenance;
@@ -713,7 +879,8 @@ export function createSystemUpdateRoutes(
           serverIdentity,
           provenanceIssue,
           technicalDetail: null,
-          selfUpdateUnavailableReason: null,
+          selfUpdateUnavailableReason,
+          selfUpdateUnavailableCode,
         });
       }
 
@@ -762,7 +929,8 @@ export function createSystemUpdateRoutes(
         serverIdentity,
         provenanceIssue,
         technicalDetail: null,
-        selfUpdateUnavailableReason: null,
+        selfUpdateUnavailableReason,
+        selfUpdateUnavailableCode,
       });
     } catch (error: unknown) {
       return c.json({
@@ -773,7 +941,8 @@ export function createSystemUpdateRoutes(
         // The caught comparison diagnostic; the `error` message above stays
         // the SDK-thrown surface.
         technicalDetail: errorMessage(error),
-        selfUpdateUnavailableReason: null,
+        selfUpdateUnavailableReason,
+        selfUpdateUnavailableCode,
       });
     }
   });
@@ -784,9 +953,7 @@ export function createSystemUpdateRoutes(
    * request to that durable verification outcome after the old server exits.
    */
   app.get('/core-update/restart-status', (c) => {
-    const provenance = resolveInstallProvenance(
-      dirname(fileURLToPath(import.meta.url)),
-    );
+    const provenance = provenanceOfThisServer();
     if (provenance.installKind !== 'source-checkout') {
       return c.json({ status: 'unavailable' });
     }
@@ -812,15 +979,31 @@ export function createSystemUpdateRoutes(
     });
   });
 
+  /**
+   * A launcher-run archive's update progress (#2675 D3), read from the
+   * install's runtime files only: cheap enough to poll through the restart
+   * an update causes, and answered the same way by the old version (after a
+   * rollback) and the new one (after a commit).
+   */
+  app.get('/core-update/service-update', (c) => {
+    const provenance = provenanceOfThisServer();
+    if (
+      provenance.installKind !== 'archive' ||
+      !provenance.installRoot ||
+      archiveApplyMethod(provenance, options.env) !== 'service-update'
+    ) {
+      return c.json({ state: 'unavailable' });
+    }
+    return c.json(readServiceUpdateProgress(provenance.installRoot));
+  });
+
   app.post('/core-update', async (c) => {
     // Applying an update is git-pull + rebuild, which only a source checkout
     // can do — except a desktop bundle whose verified source checkout is on
     // this machine, which self-updates by running that checkout's installer
     // (archive#1624). Everything else refuses cleanly instead of letting
     // resolveGitInfo throw "Not a git repository" into a 500.
-    const provenance = resolveInstallProvenance(
-      dirname(fileURLToPath(import.meta.url)),
-    );
+    const provenance = provenanceOfThisServer();
     if (provenance.installKind === 'desktop-bundle') {
       const eligibility = await resolveSelfUpdateEligibility(provenance);
       if (!eligibility.eligible) {
@@ -834,12 +1017,45 @@ export function createSystemUpdateRoutes(
       }
       return applyDesktopSelfUpdate(c, eligibility);
     }
+    if (provenance.installKind === 'archive') {
+      const result = await applyArchiveUpdate(provenance, options);
+      if (!result.ok) {
+        return c.json({ success: false, error: result.error }, result.status);
+      }
+      systemOps.add(1, { op: 'apply_service_update' });
+      logger.info('Service update requested', {
+        requestId: result.requestId,
+        version: provenance.version,
+      });
+      return c.json(
+        {
+          success: true,
+          serviceUpdate: { requestId: result.requestId },
+          message:
+            'Update requested. The Station service downloads and verifies the release, then trials it and keeps the current version if the trial fails.',
+        },
+        202,
+      );
+    }
     if (provenance.installKind !== 'source-checkout') {
       return c.json(
         {
           success: false,
           error:
             'This install carries no update provenance, so it cannot update itself.',
+        },
+        409,
+      );
+    }
+    // Before any git or build work (#2674): under a supervisor the restart
+    // below would exit into a respawn racing this very rebuild.
+    const supervision = coreUpdateSupervision();
+    if (supervision !== null) {
+      return c.json(
+        {
+          success: false,
+          error: SUPERVISION_REMEDY[supervision].refusal,
+          selfUpdateUnavailableCode: supervision,
         },
         409,
       );
@@ -863,14 +1079,26 @@ export function createSystemUpdateRoutes(
         cwd: gitRoot,
         timeout: 30000,
       });
-      await execFileAsync('npm', ['run', 'build:server'], {
-        cwd: gitRoot,
-        timeout: 120000,
-      });
-      await execFileAsync('npm', ['run', 'build:ui'], {
-        cwd: gitRoot,
-        timeout: 120000,
-      });
+      // #2673: the pulled tree may have moved dependencies, so install them
+      // through the repository's owned lifecycle exactly as `station upgrade`
+      // does — and refuse, as it does, when the pulled tree lacks it.
+      const installerUnavailable = ownedDependencyInstallerUnavailable(
+        gitRoot,
+        errorMessage,
+      );
+      if (installerUnavailable !== null) {
+        return c.json(
+          {
+            success: false,
+            error: `Core update cannot install dependencies: ${installerUnavailable}. The pull already landed; nothing was rebuilt and this server keeps running its current build. A raw "npm install" is not a substitute — this workspace installs through a pinned pnpm with reviewed lifecycle hooks.`,
+          },
+          500,
+        );
+      }
+      const installAndBuildFailure = await runInstallAndBuild(gitRoot);
+      if (installAndBuildFailure !== null) {
+        return c.json({ success: false, error: installAndBuildFailure }, 500);
+      }
 
       const newHashFull = (
         await execGit(['rev-parse', 'HEAD'], {

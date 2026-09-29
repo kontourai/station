@@ -27,6 +27,7 @@ import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
 } from '../../services/identity/principal-resolver.js';
+import type { Logger } from '../../utils/logger.js';
 import { errorMessage } from '../schemas/schemas.js';
 
 /**
@@ -432,4 +433,40 @@ export function canRelayPluginIdentityEvent(input: {
   }
   if (typeof name !== 'string' || name.length === 0) return false;
   return canSee(principal, name);
+}
+
+/**
+ * The SSE relay's plugin-event gate as the runtime composition mounts it:
+ * {@link canRelayPluginIdentityEvent} over a grant record that may not read.
+ *
+ * The relay asks this per frame on a long-lived stream, so a grant record
+ * that cannot be read (oversized, corrupt, mid-write) must neither take the
+ * stream down nor relay the frame: it denies, and logs, because a stream
+ * that silently relays nothing is hard to tell from one with nothing to
+ * relay. The predicate above stays pure, so a defect inside it surfaces as a
+ * throw rather than being absorbed into a silent global denial here.
+ */
+export function createPluginEventRelayGate<C>(deps: {
+  /** The subscriber, or null when this request cannot be attributed. */
+  resolvePrincipal: (c: C) => PrincipalRef | null;
+  canSee: (principal: PrincipalRef, pluginName: string) => boolean;
+  logger: Pick<Logger, 'debug'>;
+}): (event: string, data: unknown, c: C) => boolean {
+  return (event, data, c) =>
+    canRelayPluginIdentityEvent({
+      event,
+      data,
+      principal: deps.resolvePrincipal(c),
+      canSee: (principal, pluginName) => {
+        try {
+          return deps.canSee(principal, pluginName);
+        } catch (error) {
+          deps.logger.debug(
+            'Plugin event relay denied: the visibility record could not be read',
+            { event, error: error instanceof Error ? error.message : error },
+          );
+          return false;
+        }
+      },
+    });
 }

@@ -28,6 +28,17 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: false,
     isError: false,
   }),
+  // The Tools tab's workflow section mounts these on every editor render;
+  // inert here, exercised in AgentEditorWorkflows.test.tsx.
+  useAgentWorkflowsQuery: () => ({ data: [], isLoading: false, error: null }),
+  useWorkflowContentQuery: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+  }),
+  useUpdateWorkflowMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateWorkflowMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteWorkflowMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock('../components/icons/AgentIcon', () => ({
@@ -48,7 +59,13 @@ function createForm(overrides: Partial<AgentFormData> = {}): AgentFormData {
     region: '',
     guardrails: null,
     maxSteps: '',
-    tools: { mcpServers: [], available: [], autoApprove: [], browser: true },
+    tools: {
+      mcpServers: [],
+      available: [],
+      autoApprove: [],
+      unattendedAutoApprove: [],
+      browser: true,
+    },
     execution: {
       agentConnectionId: 'bedrock-runtime',
       modelConnectionId: '',
@@ -137,7 +154,7 @@ describe('AgentEditorForm', () => {
     );
   });
 
-  test('codex-bound agent with nothing authored hides Prompt/Skills/Commands tabs, but shows Tools (station#1195: toolServers is now deliverable)', () => {
+  test('codex-bound agent with nothing authored shows Skills and tools but no Commands or Engine connection section (archive#1195: toolServers is now deliverable)', () => {
     agentConnections = [
       {
         id: 'codex',
@@ -160,7 +177,6 @@ describe('AgentEditorForm', () => {
 
     render(<AgentEditorForm {...baseProps({ form, agentConnections })} />);
 
-    expect(screen.queryByRole('button', { name: 'Prompt' })).toBeNull();
     expect(
       screen.queryByRole('heading', { name: 'Skills and tools' }),
     ).toBeTruthy();
@@ -282,6 +298,9 @@ describe('AgentEditorForm', () => {
     expect(screen.getByRole('status').textContent).toContain(
       "Codex can't run Station-defined slash commands",
     );
+    // Positive control for the catalog-owned test below: undeliverable
+    // authored commands DO render the Commands section heading.
+    expect(screen.getByRole('heading', { name: 'Commands' })).toBeTruthy();
     expect(screen.getByText('/release-review')).toBeTruthy();
     expect(screen.getByText('Inspect the release evidence.')).toBeTruthy();
     fireEvent.click(
@@ -311,7 +330,7 @@ describe('AgentEditorForm', () => {
         })}
       />,
     );
-    expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Commands' })).toBeNull();
   });
 
   test('Basic renders denials for an external engine separately from the Agent-configured ones', () => {

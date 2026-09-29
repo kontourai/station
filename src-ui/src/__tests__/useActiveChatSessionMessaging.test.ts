@@ -614,6 +614,77 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(notice?.action).toBeUndefined();
   });
 
+  // #1796 G2: a full-access refusal is decided before anything runs. It is
+  // neither a failed chat nor a temporary failure: no "Failed", no
+  // "Retrying may help", and the only way on is an explicit send at the
+  // chat's current mode, which must not carry full access again.
+  it('a refused full access is not a failure: the draft returns and the resend drops full access', async () => {
+    activeChatsStore.updateChat(sessionId, { queuedApprovalMode: 'never' });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      Object.assign(
+        new CodedOrchestrationError(
+          403,
+          "Full access was not applied. Only this Station's operator can allow full access, for this device (id ffb80147).",
+          'approval-full-access-not-granted',
+        ),
+        {
+          details: {
+            requested: 'never',
+            requester: {
+              kind: 'device',
+              deviceId: 'ffb80147',
+              deviceName: 'Laptop CLI',
+            },
+            station: {},
+            grant: {
+              by: 'operator',
+              scope: 'approval:full-access',
+              uiSteps: ["Open the Station desktop app on the Station's host."],
+              cli: 'station environment access scope ffb80147 --add approval:full-access',
+            },
+          },
+        },
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'hello');
+    });
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.status).toBe('idle');
+    expect(chat?.error).toBeUndefined();
+    expect(chat?.queuedApprovalMode).toBeUndefined();
+    expect(chat?.input).toBe('hello');
+    expect(chat?.ephemeralMessages).toHaveLength(1);
+    const notice = chat?.ephemeralMessages?.[0];
+    expect(notice?.content).toBe('Full access was not applied.');
+    expect(notice?.content).not.toContain('Retrying may help');
+    expect(notice?.fullAccessRefusal).toMatchObject({
+      outcome: 'message-not-sent',
+      draftRestored: true,
+      details: { requester: { kind: 'device', deviceName: 'Laptop CLI' } },
+    });
+    expect(notice?.action?.label).toBe(
+      'Send without full access (current mode: Default)',
+    );
+    expect(JSON.stringify(sendExecutionMessageMock.mock.calls[0])).toContain(
+      '"never"',
+    );
+
+    await act(async () => {
+      notice?.action?.handler();
+    });
+    await vi.waitFor(() =>
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2),
+    );
+    expect(
+      JSON.stringify(sendExecutionMessageMock.mock.calls[1]),
+    ).not.toContain('"never"');
+    expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe('');
+  });
+
   // The discriminating counter-case: an ordinary send failure is NOT a
   // Station-side refusal and must still read as an error, or the fix above
   // would have silently swallowed real failures.
@@ -628,6 +699,47 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('error');
+  });
+
+  // #2708 A-3a: a send refused by the validation middleware, as the REAL
+  // execution fetcher throws it, reads as the server's reason.
+  it('shows a validation refusal from the real fetcher by its reason', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: { message: ['Write a message to send.'] },
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    let refusal: unknown;
+    try {
+      refusal = await actual
+        .sendExecutionMessage('http://api.test', {} as never)
+        .catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    sendExecutionMessageMock.mockRejectedValueOnce(refusal);
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'hello');
+    });
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.error).toBe('Write a message to send.');
+    const notice = chat?.ephemeralMessages?.at(-1)?.content ?? '';
+    expect(notice).toContain('Write a message to send.');
+    expect(notice).not.toContain('Validation failed');
   });
 
   it('restores supervised attachments and stage refs after a definitive rejection', async () => {
@@ -2219,27 +2331,28 @@ describe('useCancelMessage', () => {
   });
 
   // The label must describe what the SERVER derived. A cooperative stop keeps
-  // the engine warm; only the forced path ends the process.
+  // the engine warm; only the forced path ends the process. A stop that took
+  // effect leads with "Stopped." (#898).
   it.each([
     [
       'cooperative',
       { outcome: 'cooperative', threadId: 'server-thread-1', turnId: 't' },
-      'engine is kept warm',
+      /^Stopped\. .*engine is kept warm/,
     ],
     [
       'forced',
       { outcome: 'forced', threadId: 'server-thread-1', turnId: 't' },
-      'forced the turn to stop',
+      /^Stopped\. .*forced the turn to stop/,
     ],
     [
       'turn-completed',
       { outcome: 'turn-completed', threadId: 'server-thread-1', turnId: 't' },
-      'finished before the stop took effect',
+      /finished before the stop took effect/,
     ],
     [
       'no-active-turn',
       { outcome: 'no-active-turn', threadId: 'server-thread-1' },
-      'no turn running to stop',
+      /no turn running to stop/,
     ],
   ])(
     'renders the %s outcome the server derived',
@@ -2253,9 +2366,10 @@ describe('useCancelMessage', () => {
       });
 
       expect(outcome).toEqual({ kind: 'settled', result: serverResult });
-      expect(describeStopTurnOutcome(outcome as StopTurnOutcome)).toContain(
-        expected,
-      );
+      const copy = describeStopTurnOutcome(outcome as StopTurnOutcome);
+      expect(copy).toMatch(expected);
+      // The raw engine field never reaches the reader (#898).
+      expect(copy).not.toContain('stop_reason');
     },
   );
 });

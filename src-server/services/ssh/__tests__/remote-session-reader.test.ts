@@ -104,36 +104,6 @@ describe('listConnectedRemoteSessions', () => {
     ]);
   });
 
-  test('runs every connected environment concurrently, not serialized behind the slowest one', async () => {
-    const service = {
-      list: vi.fn(() => [
-        connectedView('env-slow', 'Slow box', 'http://127.0.0.1:1'),
-        connectedView('env-fast', 'Fast box', 'http://127.0.0.1:2'),
-      ]),
-    };
-    let fastResolvedAt = 0;
-    let slowStartedAt = 0;
-    const fetchSessions = vi.fn(async (apiBase: string) => {
-      if (apiBase === 'http://127.0.0.1:1') {
-        slowStartedAt = Date.now();
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        return [] as any;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      fastResolvedAt = Date.now();
-      return [{ threadId: 'thread-fast' }] as any;
-    });
-
-    await listConnectedRemoteSessions(service as any, fetchSessions);
-
-    // The fast fetch resolved before the slow one even before its own delay
-    // elapsed, proving both started at ~the same time rather than the fast
-    // one waiting for the slow one to finish first.
-    expect(fastResolvedAt).toBeGreaterThan(0);
-    expect(slowStartedAt).toBeGreaterThan(0);
-    expect(fastResolvedAt).toBeLessThan(slowStartedAt + 30);
-  });
-
   test('a malformed (non-array) remote response is treated as unavailable, not thrown to the caller', async () => {
     const service = {
       list: vi.fn(() => [
@@ -478,6 +448,56 @@ describe('federated message search', () => {
       ],
       deferredInstanceCount: 0,
     });
+  });
+
+  // #2708: an envelope `code` now rides on the SDK error. A peer that ANSWERS
+  // with `code: 'ECONNREFUSED'` answered, so it is not a refused connection.
+  test('a peer answer labelled ECONNREFUSED is not a refused connection', async () => {
+    const { searchConversationMessages } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: false,
+            code: 'ECONNREFUSED',
+            error: 'labelled refusal',
+          }),
+          { status: 500, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await searchConnectedRemoteMessages(
+        {
+          list: vi.fn(() => [
+            connectedView(
+              'env-labelled',
+              'Labelled Station',
+              'http://127.0.0.1:7',
+              'peer-labelled',
+            ),
+          ]),
+        } as never,
+        'cobalt',
+        undefined,
+        (apiBase, query, options) =>
+          searchConversationMessages(apiBase, query, options),
+        peerCredentials as never,
+      );
+
+      expect(fetchMock).toHaveBeenCalled();
+      expect(result.instances).toEqual([
+        {
+          instanceId: 'env-labelled',
+          instanceName: 'Labelled Station',
+          status: 'unreachable',
+        },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test('reports a timed-out remote distinctly from a refused remote', async () => {

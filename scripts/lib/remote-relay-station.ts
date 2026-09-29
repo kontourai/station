@@ -23,6 +23,7 @@ import {
   localLabEnvironment,
   runLabCommand,
 } from './local-collaboration-process.mjs';
+import { invokedDirectly } from './module-entry.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -471,9 +472,7 @@ async function remoteRelayRun(
   );
   return lifetime;
 }
-const invoked =
-  process.argv[1]?.endsWith('/remote-relay-station.ts') ||
-  process.argv[1]?.endsWith('/remote-relay-station.js');
+const invoked = invokedDirectly(import.meta.url);
 if (invoked) {
   try {
     const [mode, path] = process.argv.slice(2);

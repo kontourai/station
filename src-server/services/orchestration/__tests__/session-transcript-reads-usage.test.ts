@@ -1,9 +1,10 @@
-import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { describe, expect, test } from 'vitest';
 import {
-  SessionTranscriptReads,
-  USAGE_COVERAGE_EVIDENCE_CAP,
-} from '../session-transcript-reads.js';
+  parseHostedTenantRegistry,
+  sessionReadAuthorityFromRequest,
+  tenantId,
+} from '@kontourai/station-contracts/tenancy';
+import { describe, expect, test } from 'vitest';
+import { SessionTranscriptReads } from '../session-transcript-reads.js';
 
 const authority = sessionReadAuthorityFromRequest(
   'usage-reader',
@@ -54,31 +55,43 @@ function reads(coverageEvents: any[]) {
 }
 
 describe('SessionTranscriptReads usage coverage (station#4135)', () => {
+  // The evidence cap is 1,000 observations: the literals below pin it, so a
+  // silent change to the cap (or an off-by-one at it) turns one case red.
+  function coverageFor(count: number) {
+    const coverageEvents = Array.from({ length: count }, (_, index) =>
+      event({
+        id: `reported-${index}`,
+        provider: 'claude',
+        method: 'token-usage.updated',
+        turnId: `turn-${index}`,
+        createdAt: '2026-08-07T23:00:00.000Z',
+      }),
+    );
+    return reads(coverageEvents).listUsageReceipts(authority, 'local', request)
+      .coverage;
+  }
+
   test('treats the 1001st coverage observation as an evidence-cap sentinel, never complete usage', () => {
-    const coverageEvents = Array.from(
-      { length: USAGE_COVERAGE_EVIDENCE_CAP + 1 },
-      (_, index) =>
-        event({
-          id: `reported-${index}`,
-          provider: 'claude',
-          method: 'token-usage.updated',
-          turnId: `turn-${index}`,
-          createdAt: '2026-08-07T23:00:00.000Z',
-        }),
-    );
-    const result = reads(coverageEvents).listUsageReceipts(
-      authority,
-      'local',
-      request,
-    );
-    expect(result.coverage).toMatchObject({
+    const coverage = coverageFor(1_001);
+    expect(coverage).toMatchObject({
       state: 'partial',
       reason: expect.stringContaining('coverage evidence cap reached'),
     });
-    expect(result.coverage.providers?.[0]).toMatchObject({
+    expect(coverage.providers?.[0]).toMatchObject({
       state: 'partial',
       reason: expect.stringContaining('coverage evidence cap reached'),
     });
+  });
+
+  test('exactly 1000 coverage observations are within the evidence cap', () => {
+    const coverage = coverageFor(1_000);
+    expect(coverage.reason ?? '').not.toContain(
+      'coverage evidence cap reached',
+    );
+    expect(coverage.providers?.[0]?.reason ?? '').not.toContain(
+      'coverage evidence cap reached',
+    );
+    expect(coverage.providers?.[0]?.provider).toBe('claude');
   });
 
   test('keeps fresh and stale provider clocks distinct and makes their source partial', () => {
@@ -182,5 +195,92 @@ describe('SessionTranscriptReads: the fold drop reaches the composition (#464)',
     expect(dropped).toEqual([
       expect.objectContaining({ field: 'promptTokens', value: null }),
     ]);
+  });
+});
+
+describe('SessionTranscriptReads usage owner set (#2568)', () => {
+  function recordingReads() {
+    const receiptQueries: unknown[] = [];
+    const coverageQueries: unknown[] = [];
+    const reads = new SessionTranscriptReads({
+      canReadSession: () => true,
+      isEphemeralSession: () => false,
+      sessionAttributionFor: () => null,
+      listEventPayloads: () => [],
+      listUsageEventRecords: () => [],
+      listUsageReceiptEvents: (options) => {
+        receiptQueries.push(options);
+        return [];
+      },
+      listUsageCoverageEvents: (options) => {
+        coverageQueries.push(options);
+        return [];
+      },
+      searchConversationMessages: () => [],
+      // The personal conversation account: a paired device reads the
+      // operator's and its own rows.
+      transcriptOwnerConstraint: (reader) => ({
+        ownerUserId: reader.userId,
+        ...(reader.mode === 'personal' && reader.userId === 'human:device:phone'
+          ? {
+              ownerUserIds: ['human:device:phone', 'human:local:operator'],
+            }
+          : {}),
+      }),
+      readSessionThreadIds: () => [],
+      requireTenantExecutionContext: () => false,
+      reportDroppedUsageFigure: () => {},
+    });
+    return { reads, receiptQueries, coverageQueries };
+  }
+
+  test('a personal caller reads its personal account’s owners, receipts and coverage alike', () => {
+    const { reads, receiptQueries, coverageQueries } = recordingReads();
+    reads.listUsageReceipts(
+      sessionReadAuthorityFromRequest(
+        'human:device:phone',
+        undefined,
+        undefined,
+      ),
+      'local',
+      request,
+    );
+    for (const query of [receiptQueries[0], coverageQueries[0]]) {
+      expect(query).toMatchObject({
+        ownerUserIds: ['human:device:phone', 'human:local:operator'],
+      });
+      expect(query).not.toHaveProperty('tenantId');
+    }
+  });
+
+  test('a hosted caller reads its exact owner within its tenant, never an account', () => {
+    const { reads, receiptQueries, coverageQueries } = recordingReads();
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: tenantId('alpha'), authority: 'alpha.example.test' }],
+    });
+    reads.listUsageReceipts(
+      sessionReadAuthorityFromRequest(
+        'human:device:phone',
+        { tenantId: tenantId('alpha') },
+        registry,
+      ),
+      'local',
+      request,
+    );
+    for (const query of [receiptQueries[0], coverageQueries[0]]) {
+      expect(query).toMatchObject({
+        ownerUserIds: ['human:device:phone'],
+        tenantId: 'alpha',
+      });
+    }
+  });
+
+  test('a caller outside any account reads only its own rows', () => {
+    const { reads, receiptQueries } = recordingReads();
+    reads.listUsageReceipts(authority, 'local', request);
+    expect(receiptQueries[0]).toMatchObject({
+      ownerUserIds: ['usage-reader'],
+    });
   });
 });

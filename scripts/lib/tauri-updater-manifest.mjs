@@ -11,6 +11,7 @@
 
 import { lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { invokedDirectly } from './module-entry.mjs';
 
 const PUB_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const HTTPS_URL_PATTERN = /^https:\/\/\S+$/;
@@ -97,49 +98,14 @@ function assertUpdaterAssetFileMatchesUrl(
 }
 
 /**
- * `releaseTag` is required and the `url` MUST resolve under that exact tag's
- * download path. Without this, the asset name, the `--release-tag` the
- * notarization step signed under, and this manifest's `url` are three
- * independent literals that a workflow edit can drift apart silently — a
- * manifest can point at a real, reachable, correctly-signed asset that
- * simply lives under the WRONG release, and every check here would still
- * pass.
+ * `releaseTag` is required and every platform `url` MUST resolve under that
+ * exact tag's download path. Without this, the asset name, the
+ * `--release-tag` the notarization step signed under, and this manifest's
+ * `url` are three independent literals that a workflow edit can drift apart
+ * silently — a manifest can point at a real, reachable, correctly-signed
+ * asset that simply lives under the WRONG release, and every check here
+ * would still pass.
  *
- * @param {{
- *   version: string,
- *   notes?: string,
- *   pubDate: string,
- *   platform: string,
- *   signature: string,
- *   url: string,
- *   releaseTag: string,
- * }} input
- * @returns {{
- *   version: string,
- *   notes: string,
- *   pub_date: string,
- *   platforms: Record<string, { signature: string, url: string }>,
- * }}
- */
-export function createUpdaterManifest({
-  version,
-  notes = '',
-  pubDate,
-  platform,
-  signature,
-  url,
-  releaseTag,
-}) {
-  return createUpdaterManifestForPlatforms({
-    version,
-    notes,
-    pubDate,
-    releaseTag,
-    platforms: [{ platform, signature, url }],
-  });
-}
-
-/**
  * @param {{
  *   version: string,
  *   notes?: string,
@@ -147,6 +113,12 @@ export function createUpdaterManifest({
  *   releaseTag: string,
  *   platforms: Array<{ platform: string, signature: string, url: string }>,
  * }} input
+ * @returns {{
+ *   version: string,
+ *   notes: string,
+ *   pub_date: string,
+ *   platforms: Record<string, { signature: string, url: string }>,
+ * }}
  */
 export function createUpdaterManifestForPlatforms({
   version,
@@ -413,7 +385,7 @@ function assertKnownCliArguments(args) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   const args = process.argv.slice(2);
   assertKnownCliArguments(args);
   if (args.includes('--assert-not-regressing')) {

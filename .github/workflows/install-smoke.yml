@@ -6,7 +6,18 @@ on:
       - 'install.sh'
       - '.gitattributes'
       - 'scripts/package-portable-release.sh'
-      - 'packages/cli/src/commands/lifecycle.ts'
+      - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/smoke-install-prebuilt-archive.sh'
+      - 'packaging/portable-server/**'
+      - 'config/portable-server-node-runtime.json'
+      - 'config/release-manifest-keys.json'
+      - 'scripts/ecosystem-manifest.mjs'
+      - 'packages/shared/src/portable-server-targets.mjs'
+      - 'packages/shared/src/release-manifest.mjs'
+      # The CLI the archive bundles and packaged `station upgrade` runs.
+      - 'packages/cli/src/**'
+      - 'scripts/station-cli.ts'
       - '.github/workflows/install-smoke.yml'
       - '.github/workflows/release.yml'
   workflow_dispatch:
@@ -20,6 +31,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        # These legs install the SOURCE release (station-portable.tar.gz,
+        # schema 1 manifest), built on the host. The prebuilt per-platform
+        # archive path, which nightly uses, is install-prebuilt-archive below.
         channel: [stable, preview]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -130,10 +144,13 @@ jobs:
                 },
               }, null, 2)}\n`);
             ' "$RUNNER_TEMP/manifest-payload.json" "$serve_dir" "$release_channel" "$version" "$release_tag" "$source_sha"
+            # The keyId must name a pinned installer key; the throwaway key
+            # stands in for its bytes only through the test-only
+            # STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL override below.
             STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS=1 node "$GITHUB_WORKSPACE/scripts/ecosystem-manifest.mjs" create \
               --payload "$RUNNER_TEMP/manifest-payload.json" \
               --private-key "$RUNNER_TEMP/manifest-private.pem" \
-              --key-id station-install-smoke-v1 \
+              --key-id station-portable-release-2026-09 \
               --output "$manifests_dir/manifest.json"
           }
           write_manifest_payload
@@ -173,7 +190,24 @@ jobs:
             PATH="$SMOKE_HOME/fake-bin:$PATH" \
             STATION_CHANNEL="$RUNTIME_CHANNEL" \
             "${public_install_env[@]}" \
-            sh
+            sh 2>&1 | tee "$RUNNER_TEMP/install.log"
+
+          # #2703: install.sh must build the release under the lifecycle
+          # instance id its start uses. Otherwise the start after install
+          # prints a second "Building application" and rebuilds, leaving the
+          # install-time build orphaned beside the one it serves.
+          build_count=$(grep -c 'Building application' "$RUNNER_TEMP/install.log" || true)
+          if [ "$build_count" != 1 ]; then
+            echo "Expected one build (at install, none at start); saw $build_count" >&2
+            exit 1
+          fi
+          for build_output in dist-server dist-ui; do
+            outputs=$(find "$install_root/current/" -maxdepth 1 -name "$build_output*" | wc -l | tr -d ' ')
+            if [ "$outputs" != 1 ]; then
+              echo "Expected one $build_output build in the release; saw $outputs" >&2
+              exit 1
+            fi
+          done
 
           previous_current=$(readlink "$install_root/current")
           env \
@@ -201,18 +235,26 @@ jobs:
           tar -czf "$bad_release/station-portable.tar.gz" -C "$bad_work" station
           # Swap the served fixture and re-sign the manifest so the packaged
           # upgrade verifies the bad candidate, fails its start, and rolls back.
+          # The bad candidate reuses the installed version with new bytes, which
+          # the installer refuses as a possible replay unless the exact version
+          # is named with STATION_INSTALL_ALLOW_ROLLBACK=1.
           cp "$bad_release/station-portable.tar.gz" "$serve_dir/station-portable.tar.gz"
           write_manifest_payload
           if env \
             HOME="$SMOKE_HOME" \
             PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
             "${public_install_env[@]}" \
-            "$launcher" upgrade
+            STATION_VERSION="$release_tag" \
+            STATION_INSTALL_ALLOW_ROLLBACK=1 \
+            "$launcher" upgrade 2>"$RUNNER_TEMP/bad-upgrade.err"
           then
             echo "Expected failed candidate start" >&2
             exit 1
           fi
           test "$(readlink "$install_root/current")" = "$previous_current"
+          # Fail for the reason under test, not an earlier refusal.
+          cat "$RUNNER_TEMP/bad-upgrade.err" >&2
+          grep -q 'the new release did not start' "$RUNNER_TEMP/bad-upgrade.err"
           node -e '
             const fs = require("node:fs");
             const state = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -251,3 +293,100 @@ jobs:
             echo "===== $log (last 200 lines) ====="
             tail -200 "$log"
           done
+
+  # #2675 B2: the public-manifest path installs a prebuilt per-platform
+  # server archive. Builds two archives of this candidate on the runner,
+  # signs schema 2 manifests for them with a throwaway key under the pinned
+  # release key id (install.sh's test-only key override), then installs,
+  # starts, upgrades (`station upgrade`, from the recorded manifest URL) and
+  # uninstalls with NO Node.js on PATH, and fails if anything builds. The
+  # preview ring exercises this install/upgrade path; Nightly publication
+  # has its own signed-manifest workflow and evidence.
+  install-prebuilt-archive:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: linux-x64
+          - runner: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+      # Node.js builds and signs; install.sh and the launcher never see it.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm run dependencies:ci
+      - name: Confirm the runner is the matrix target
+        run: test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
+      - run: npm run build
+      - name: Build two archives of this candidate
+        # The provenance SHA is the commit actually checked out: under
+        # pull_request_target GITHUB_SHA is the base tip, not the candidate.
+        # The second archive is built from an empty local commit on top, so
+        # the two generations carry different SHAs (baked into the server
+        # bundle and its build stamp alike) and the service path's identity
+        # check can tell them apart (#2675 slice C). The commit is never
+        # pushed; the checkout holds no credentials to push it with.
+        run: |
+          set -euo pipefail
+          npm run build:portable-server -- --ref v0.0.0-preview.1 \
+            --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-1"
+          git -c user.name='install smoke' -c user.email='install-smoke@invalid' \
+            commit --quiet --allow-empty -m 'test(install-smoke): second archive generation'
+          npm run build:portable-server -- --ref v0.0.0-preview.2 \
+            --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-2"
+      - name: Start a systemd user manager for the service path
+        # Linger starts user@<uid>.service without a login session, which is
+        # what `station service install` registers with. No secrets, no token.
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo loginctl enable-linger "$(id -un)"
+          runtime_dir="/run/user/$(id -u)"
+          for _ in $(seq 1 60); do
+            [ -S "$runtime_dir/bus" ] && break
+            sleep 1
+          done
+          XDG_RUNTIME_DIR="$runtime_dir" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+            systemctl --user show-environment >/dev/null
+          {
+            echo "XDG_RUNTIME_DIR=$runtime_dir"
+            echo "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime_dir/bus"
+          } >>"$GITHUB_ENV"
+      - name: Install, start, upgrade and uninstall with no Node.js on PATH
+        env:
+          SMOKE_SYSTEMD_SERVICE: ${{ runner.os == 'Linux' && '1' || '0' }}
+          SMOKE_SERVICE_SKIP_REASON: this leg does not register a LaunchAgent on a hosted macOS runner, so the service path runs on the Linux leg only and the plist is covered by unit tests
+        run: |
+          scripts/smoke-install-prebuilt-archive.sh \
+            "$RUNNER_TEMP/archive-1/station-server-${{ matrix.target }}.tar.gz" \
+            "$RUNNER_TEMP/archive-2/station-server-${{ matrix.target }}.tar.gz" \
+            "$RUNNER_TEMP/prebuilt-install-smoke"
+      - name: Dump Station instance logs on failure
+        if: failure()
+        run: |
+          set -uo pipefail
+          for log in "$RUNNER_TEMP"/prebuilt-install-smoke/home/.station/instances/*/logs/*.log; do
+            [ -f "$log" ] || continue
+            echo "===== $log (last 200 lines) ====="
+            tail -200 "$log"
+          done
+          if [ "$RUNNER_OS" = Linux ] && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+            echo '===== journalctl --user -u station-smoke-service.service ====='
+            journalctl --user -u station-smoke-service.service --no-pager -n 200 || true
+          fi

@@ -1,8 +1,4 @@
-import {
-  nextOccurrences,
-  type Schedule,
-  validateSchedule,
-} from '@kontourai/ephemeris';
+import { type Schedule, validateSchedule } from '@kontourai/ephemeris';
 import {
   SCHEDULER_EXECUTION_LIMITS,
   type SchedulerConcurrencyDisposition,
@@ -298,6 +294,8 @@ export class BuiltinScheduler implements ISchedulerProvider {
   private readonly announcementOutbox: SchedulerAnnouncementOutbox;
   private readonly monitorTerminalOutbox: MonitorTerminalAnnouncementOutbox;
   private readonly monitorProbeTerminalOutbox: MonitorProbeTerminalAnnouncementOutbox;
+  /** Failed runs this scheduler already announced (the outbox's fast path). */
+  private readonly announcedRunIds = new Set<string>();
   /** In-flight announcements, so `stop()` cannot outrun the bell. */
   private pendingAnnouncements = new Set<Promise<void>>();
   /** At most one armed re-sweep for a run another claimant still holds. */
@@ -396,6 +394,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
         broadcast: (event) => this.broadcast(event),
         notificationService: this.notificationService,
         outbox: this.announcementOutbox,
+        announcedRunIds: this.announcedRunIds,
       }),
     );
   }
@@ -982,6 +981,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
             notificationService: this.notificationService,
             broadcast: (event) => this.broadcast(event),
             announcementOutbox: this.announcementOutbox,
+            announcedRunIds: this.announcedRunIds,
             logger: jobLogger,
             signal: this.stopController.signal,
           }));
@@ -1012,6 +1012,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
               broadcast: (event) => this.broadcast(event),
               notificationService: this.notificationService,
               outbox: this.announcementOutbox,
+              announcedRunIds: this.announcedRunIds,
             }),
           );
           if (recovered.kind === 'terminal') {
@@ -2075,16 +2076,6 @@ export class BuiltinScheduler implements ISchedulerProvider {
       healthy:
         this.timer !== null && (tickAge === null || tickAge < HEALTH_WINDOW_MS),
     };
-  }
-
-  async previewSchedule(cron: string, count = 5): Promise<string[]> {
-    // Back-compat: the UI passes a bare cron string. Wrap as a UTC cron
-    // schedule and defer to ephemeris. The caller (SchedulerService) already
-    // validates the cron shape via the route schema before reaching here.
-    const schedule: Schedule = { kind: 'cron', expr: cron };
-    return nextOccurrences(schedule, count, Date.now()).map((ms) =>
-      new Date(ms).toISOString(),
-    );
   }
 
   subscribe(send: (data: string) => void): () => void {

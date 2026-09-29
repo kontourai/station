@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { loadPublicDocs } from './build-github-pages.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ABSOLUTE_DEVELOPER_PATH =
   /(?:^|[\s`"'(])(?:\/(?:Users|home|private(?:\/(?:tmp|var))?|tmp|var|opt|Volumes)(?=\/|\b)|[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+)/gim;
@@ -28,7 +28,7 @@ export const MARKETING_FILES = Object.freeze([
 // protocol references, compatibility notes, and required attribution may name
 // third parties when the name is part of the technical truth.
 const MARKETING_EXTERNAL_BRAND =
-  /\b(?:Anthropic|Bedrock|Claude(?: Code)?|Codex|Copilot|Cursor|Kiro|Ollama|OpenAI|OpenCode|T3 Code|Windsurf|Zed)\b/gi;
+  /\b(?:Anthropic|Bedrock|Claude(?: Code)?|Codex|Copilot|Cursor|Kiro|Ollama|OpenAI|OpenCode|Windsurf|Zed)\b/gi;
 
 // The privacy subset also backs scripts/repo-docs-hygiene.mjs, which sweeps
 // EVERY tracked doc rather than the public manifest's nine — these patterns
@@ -134,5 +134,5 @@ export async function runPublicDocsHygiene() {
   return 1;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1])
+if (invokedDirectly(import.meta.url))
   process.exitCode = await runPublicDocsHygiene();

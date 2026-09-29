@@ -1,8 +1,11 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
-import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
+import {
+  outsideStationServerScope,
+  stationServerScopeHeaders,
+} from '../security/station-server-scope.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -109,13 +112,11 @@ export type StationControlCallerAssurance =
 /**
  * How the acting principal was derived (see `SessionActingPrincipal` in
  * `services/orchestration/session-authorization.ts`). Declared once here; the
- * session-authorization module derives its type from this list.
+ * session-authorization module derives its type from this list. The only
+ * derivation is the session's recorded owner; a session with none acts for
+ * no one, so there is no inferred source.
  */
-const STATION_CONTROL_CALLER_PRINCIPAL_SOURCES = [
-  'session-owner',
-  'legacy-personal-owner',
-  'ownerless-single-operator',
-] as const;
+const STATION_CONTROL_CALLER_PRINCIPAL_SOURCES = ['session-owner'] as const;
 export type StationControlCallerPrincipalSource =
   (typeof STATION_CONTROL_CALLER_PRINCIPAL_SOURCES)[number];
 
@@ -124,11 +125,10 @@ export interface StationControlCallerPrincipal {
   readonly source: StationControlCallerPrincipalSource;
   /**
    * True only for `session-owner`: an owner Station recorded from the
-   * authenticated caller that started the session. A legacy alias mapping
-   * and the ownerless single-operator mapping name the operator by
-   * inference, so they must never grant anything beyond what the session
-   * already had; a consumer that elevates (a Project-role check for browser
-   * tools) must require this flag.
+   * authenticated caller that started the session. That is today the only
+   * source, but a consumer that elevates (a Project-role check for browser
+   * tools) must still require this flag rather than assume it, so a future
+   * inferred derivation cannot elevate by default.
    */
   readonly elevationEligible: boolean;
 }
@@ -168,9 +168,17 @@ export const STATION_CONTROL_CALLER_TOKEN_HEADER =
  */
 export const STATION_CONTROL_ORIGIN_HEADER = 'x-station-control-origin';
 export const STATION_CONTROL_ORIGIN_AGENT_TOOL = 'agent-tool';
-/** Spawn-env key carrying a stdio child's per-session caller credential. */
+/**
+ * Retired spawn-env key that once carried a stdio child's per-session caller
+ * credential. Nothing delivers or reads it; `withStationControlRuntimeEnv`
+ * still strips it from every child's env so an inherited value never
+ * reaches one.
+ */
 export const STATION_CONTROL_CALLER_TOKEN_ENV = 'STATION_CONTROL_CALLER_TOKEN';
-/** The REST projection of the verified caller (used by stdio children). */
+/**
+ * The REST projection of the verified caller. It has no production client:
+ * in-process tools resolve their caller directly, and a stdio child has none.
+ */
 export const STATION_CONTROL_CALLER_PATH =
   '/api/orchestration/station-control/caller';
 
@@ -192,120 +200,65 @@ interface StationControlCallerContext {
 }
 const callerContexts = new AsyncLocalStorage<StationControlCallerContext>();
 
-// Installed only by the stdio entry point (`station-control-server.ts`), which
-// reads it from its own spawn env. Station's own process never installs one,
-// so an in-process tool call outside an HTTP MCP request has no caller rather
-// than inheriting whatever the server's environment happens to hold.
-let stdioCallerToken: string | undefined;
+// Set by the stdio entry point (`station-control-server.ts`). A stdio child is a station-control tool
+// process by definition, so nothing it sends is Station's own server code
+// (`serverSelfHeaders`), whatever else this process happens to hold.
+let stdioEntryInstalled = false;
 
 /** Verified MCP transport identity only; never sourced from public tool input. */
 export function withStationControlCallerContext<T>(
   context: StationControlCallerContext,
   operation: () => T,
 ): T {
-  return callerContexts.run(context, operation);
+  // A tool call never runs as server code, whatever scope it inherited.
+  return outsideStationServerScope(() =>
+    callerContexts.run(context, operation),
+  );
 }
 
 /**
- * Stdio entry point only: adopt the per-session caller credential from the
- * spawn env and remove it from `process.env`, so nothing this child spawns
- * inherits it.
+ * Stdio entry point only: mark this process as a station-control stdio
+ * child. A stdio child carries no per-session caller credential, so it has
+ * no caller, and it never sends the server-self attestation.
  */
-export function installStationControlStdioCallerCredential(
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  const value = env[STATION_CONTROL_CALLER_TOKEN_ENV];
-  delete env[STATION_CONTROL_CALLER_TOKEN_ENV];
-  stdioCallerToken =
-    typeof value === 'string' && value.length > 0 ? value : undefined;
+export function installStationControlStdioEntry(): void {
+  stdioEntryInstalled = true;
 }
 
-/** Test-only reset for the stdio credential. */
-export function __resetStationControlStdioCallerCredentialForTests(): void {
-  stdioCallerToken = undefined;
+/** Test-only reset for the stdio entry marker. */
+export function __resetStationControlStdioEntryForTests(): void {
+  stdioEntryInstalled = false;
+}
+
+/**
+ * #2377 slice A: the server-self attestation, only inside an explicit server
+ * scope (`runAsStationServer`) and never for a station-control tool call (a
+ * verified-caller context, or a stdio child). Outside a server scope nothing
+ * is sent and the authority guard fails closed. See
+ * `INTERNAL_SERVER_SELF_HEADER`.
+ */
+function serverSelfHeaders(): Record<string, string> {
+  if (callerContexts.getStore() || stdioEntryInstalled) return {};
+  return stationServerScopeHeaders();
 }
 
 function callerCredential(): string | undefined {
-  const context = callerContexts.getStore();
-  // An HTTP MCP request always decides for itself; it never falls back to a
-  // process-level credential.
-  if (context) return context.token;
-  return stdioCallerToken;
-}
-
-function parseCallerProjection(value: unknown): StationControlCaller | null {
-  if (!value || typeof value !== 'object') return null;
-  const record = value as Record<string, unknown>;
-  if (typeof record.sessionId !== 'string' || record.sessionId.length === 0)
-    return null;
-  if (
-    typeof record.assurance !== 'string' ||
-    !(STATION_CONTROL_CALLER_ASSURANCES as readonly string[]).includes(
-      record.assurance,
-    )
-  )
-    return null;
-  const principal = record.principal as Record<string, unknown> | undefined;
-  const source = principal?.source;
-  return Object.freeze({
-    sessionId: record.sessionId,
-    assurance: record.assurance as StationControlCallerAssurance,
-    ...(principal &&
-    typeof principal.id === 'string' &&
-    principal.id.length > 0 &&
-    typeof source === 'string' &&
-    (STATION_CONTROL_CALLER_PRINCIPAL_SOURCES as readonly string[]).includes(
-      source,
-    )
-      ? {
-          // Re-derived locally: a projection cannot assert eligibility.
-          principal: stationControlCallerPrincipal(
-            principal.id,
-            source as StationControlCallerPrincipalSource,
-          ),
-        }
-      : {}),
-    ...(typeof record.localProjectId === 'string'
-      ? {
-          localProjectId: record.localProjectId,
-          // Unknown or missing provenance is treated as the weaker source.
-          projectIdSource:
-            record.projectIdSource === 'session-record'
-              ? ('session-record' as const)
-              : ('slug-lookup' as const),
-        }
-      : {}),
-    ...(typeof record.projectSlug === 'string'
-      ? { projectSlug: record.projectSlug }
-      : {}),
-    ...(typeof record.conversationId === 'string'
-      ? { conversationId: record.conversationId }
-      : {}),
-  });
+  // Only a verified MCP request context carries a credential; there is no
+  // process-level fallback.
+  return callerContexts.getStore()?.token;
 }
 
 /**
  * The verified caller of the current station-control tool call, or `null`
- * when this delivery path carries no per-session credential, the credential
- * is revoked or expired, or Station cannot be reached. In-process (HTTP MCP)
- * calls resolve directly against the token registry; a stdio child asks
- * Station's REST projection, which runs the same derivation.
+ * when this delivery path carries no per-session credential (a stdio child
+ * never does) or the credential is revoked or expired. In-process and HTTP
+ * MCP calls resolve directly against the token registry.
  */
 export async function getStationControlCaller(): Promise<StationControlCaller | null> {
   const context = callerContexts.getStore();
-  if (context) {
-    try {
-      return context.resolve();
-    } catch {
-      return null;
-    }
-  }
-  if (!stdioCallerToken) return null;
+  if (!context) return null;
   try {
-    const body = (await api(STATION_CONTROL_CALLER_PATH)) as {
-      caller?: unknown;
-    };
-    return parseCallerProjection(body?.caller);
+    return context.resolve();
   } catch {
     return null;
   }
@@ -329,6 +282,7 @@ function executionContextHeaders(): Record<string, string> {
   const tenantId = context?.tenantId ?? process.env.STATION_INTERNAL_TENANT;
   return {
     ...(tenantId ? { 'x-station-internal-tenant': tenantId } : {}),
+    ...serverSelfHeaders(),
     [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL,
     ...(callerToken
       ? { [STATION_CONTROL_CALLER_TOKEN_HEADER]: callerToken }
@@ -382,10 +336,48 @@ export async function api(path: string, opts?: RequestInit) {
   return res.json() as Promise<any>;
 }
 
-export function jsonToolResult(data: unknown) {
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
-  };
+/**
+ * A station-control tool result carrying `data` as JSON text.
+ *
+ * #2795 (catch s5-436): a `{ success: false, … }` body is a failure, so the
+ * result also sets MCP `isError`. The native invoke route
+ * (`invoke-agent.ts`) recognises a failed control tool only by that flag;
+ * without it a refusal answered HTTP 200 with success telemetry. This is the
+ * one place every station-control tool builds a JSON result — the tool-side
+ * authority refusal, every `toToolEnvelope` family, the delegation tools and
+ * every tool that forwards a route's envelope — so the rule lives here rather
+ * than at each failure site. Agents still receive the same JSON, typed `code`
+ * included; `isError` only marks it.
+ */
+export function jsonToolResult(
+  data: unknown,
+  options?: {
+    /**
+     * A refusal whose body is not a `success: false` envelope (`notify_user`'s
+     * `caller-required`, `install_plugin`'s `installed: false`): the caller
+     * states it, since only it knows the shape means "did not happen".
+     */
+    failed?: boolean;
+  },
+): {
+  content: { type: 'text'; text: string }[];
+  isError?: true;
+} {
+  const content = [
+    { type: 'text' as const, text: JSON.stringify(data, null, 2) },
+  ];
+  return options?.failed === true || isFailureEnvelope(data)
+    ? { content, isError: true }
+    : { content };
+}
+
+function isFailureEnvelope(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    !Array.isArray(data) &&
+    (data as { success?: unknown }).success === false
+  );
 }
 
 /**
@@ -469,114 +461,73 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
         data: typed.receipt,
       };
     }
+    // #2377: the server's typed `code` (a station-control authority refusal,
+    // or any other envelope code the SDK error kept) survives, so an agent
+    // can act on it even when no tool-side check answered first.
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Request failed',
+      ...(err instanceof Error && typeof typed.code === 'string'
+        ? { code: typed.code }
+        : {}),
     };
   }
 }
 
-export function buildAnalyticsUsagePath(from?: string, to?: string) {
-  const params = new URLSearchParams();
-  if (from) {
-    params.set('from', from);
+/**
+ * #2708: THIS Station's own typed refusal of a station-control request —
+ * its guard or route decided it, and nothing else may build one. The
+ * delegation tools reach their current Station through the same helpers they
+ * use for peers; a peer's answer is never trusted as a code (a peer can send
+ * any string, `station_control_caller_required` included), so only the call
+ * sites that KNOW the target is this Station wrap its answer in one of these,
+ * as a `cause` beneath their own sentence. The code is in `refusalCode`, not
+ * `code`, so no route's `errorCode()` and no peer-refusal mapping reads it.
+ */
+export class LocalStationRefusal extends Error {
+  constructor(
+    readonly refusalCode: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'LocalStationRefusal';
   }
-  if (to) {
-    params.set('to', to);
+}
+
+function localRefusalCode(error: unknown): string | undefined {
+  let current: unknown = error;
+  for (let depth = 0; current instanceof Error && depth < 8; depth += 1) {
+    if (current instanceof LocalStationRefusal) return current.refusalCode;
+    current = current.cause;
   }
-  const query = params.toString();
-  return `/api/analytics/usage${query ? `?${query}` : ''}`;
+  return undefined;
 }
 
-export function buildChatRequest(
-  message: string,
-  conversationId: string,
-  options?: {
-    delegation?: AgentDelegationContext;
-    userId?: string;
-    model?: string;
-    projectSlug?: string;
-  },
-) {
-  return {
-    input: message,
-    options: {
-      conversationId,
-      ...(options?.delegation ? { delegation: options.delegation } : {}),
-      ...(options?.userId ? { userId: options.userId } : {}),
-      ...(options?.model ? { model: options.model } : {}),
-    },
-    ...(options?.projectSlug ? { projectSlug: options.projectSlug } : {}),
-  };
-}
-
-export function createConversationId(agent: string, conversationId?: string) {
-  return conversationId || `${agent}:${Date.now()}`;
-}
-
-export function buildSentMessageResult(agent: string, conversationId: string) {
-  return jsonToolResult({
-    success: true,
-    conversationId,
-    agent,
-    message: 'Message sent (non-blocking)',
-  });
-}
-
-export async function dispatchAgentMessage(
-  agent: string,
-  message: string,
-  conversationId: string,
-  options?: {
-    delegation?: AgentDelegationContext;
-    userId?: string;
-  },
-) {
-  return dispatchAgentMessageAt(
-    resolveControlApiBase(),
-    agent,
-    message,
-    conversationId,
-    options,
-  );
-}
-
-export async function dispatchAgentMessageAt(
-  apiBase: string,
-  agent: string,
-  message: string,
-  conversationId: string,
-  options?: {
-    delegation?: AgentDelegationContext;
-    userId?: string;
-    model?: string;
-    projectSlug?: string;
-    headers?: Record<string, string>;
-    requireAcceptance?: boolean;
-  },
-) {
-  const request = fetch(
-    `${apiBase}/api/agents/${encodeURIComponent(agent)}/chat`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...options?.headers },
-      body: JSON.stringify(buildChatRequest(message, conversationId, options)),
-    },
-  );
-  if (options?.requireAcceptance) {
-    let response: Response;
-    try {
-      response = await request;
-    } catch {
-      throw new Error(`Agent '${agent}' did not accept the delegated task`);
-    }
-    if (!response.ok) {
-      throw new Error(`Agent '${agent}' did not accept the delegated task`);
-    }
-    return;
+/**
+ * A delegation tool's result: its value on success, exactly as before, and on
+ * ANY failure `toToolEnvelope`'s failure shape — `{ success: false, error,
+ * code? }` — marked `isError`, so one tool never fails two ways and every
+ * consumer that reads the MCP flag sees the failure. `error` is the tool's own
+ * sentence. `code` is present only when a `LocalStationRefusal` is in the
+ * error's cause chain: this Station decided it. Not `toToolEnvelope` itself:
+ * its success arm would wrap these tools' results as `{ success, data }`, and
+ * its failure arm relays any `.code`, which on these errors can be a peer's.
+ */
+export async function delegationToolResult(
+  run: () => Promise<unknown>,
+): Promise<ReturnType<typeof jsonToolResult>> {
+  try {
+    return jsonToolResult(await run());
+  } catch (error) {
+    const code = localRefusalCode(error);
+    // A `success: false` body, so `jsonToolResult` marks it `isError`
+    // (catch s5-436).
+    return jsonToolResult({
+      success: false,
+      error: error instanceof Error ? error.message : 'Request failed',
+      ...(code === undefined ? {} : { code }),
+    });
   }
-  request.catch(() => {});
-  await new Promise((resolve) => setTimeout(resolve, 500));
 }
 
 export async function navigateTo(path: string) {

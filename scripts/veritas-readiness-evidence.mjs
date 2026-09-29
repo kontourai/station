@@ -20,6 +20,7 @@ import {
   parseReadinessArgs,
   runMergeReadiness,
 } from '@kontourai/veritas/engine';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export function classifyReadinessEvidence({ evidenceCheckFailure, record }) {
   // A required Veritas policy is a real readiness failure even when a nested
@@ -167,6 +168,6 @@ async function main() {
   }
 }
 
-if (import.meta.url === new URL(process.argv[1], 'file:').href) {
+if (invokedDirectly(import.meta.url)) {
   await main();
 }

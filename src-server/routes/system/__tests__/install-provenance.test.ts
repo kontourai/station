@@ -7,9 +7,7 @@ import {
   DEFAULT_REPOSITORY,
   fetchChannelLatestSha,
   NIGHTLY_SOURCE_STAMP_FILENAME,
-  normalizeOriginUrl,
   readNightlySourceStamp,
-  refspecFromStampRef,
   resolveInstallProvenance,
   resolveSelfUpdateEligibility,
 } from '../install-provenance.js';
@@ -256,29 +254,28 @@ describe('resolveInstallProvenance', () => {
   });
 });
 
-describe('refspecFromStampRef', () => {
+describe('fetchChannelLatestSha', () => {
   test.each([
     ['origin/main', 'refs/heads/main'],
     ['main', 'refs/heads/main'],
     ['origin/release/v2', 'refs/heads/release/v2'],
     ['refs/tags/v1.0.0', 'refs/tags/v1.0.0'],
-  ])('%s → %s', (input, expected) => {
-    expect(refspecFromStampRef(input)).toBe(expected);
-  });
-});
-
-describe('fetchChannelLatestSha', () => {
-  test('returns the sha ls-remote reports', async () => {
-    const exec = async () => ({
-      stdout: `${OTHER_SHA}\trefs/heads/main\n`,
-      stderr: '',
-    });
-    await expect(
-      fetchChannelLatestSha(DEFAULT_REPOSITORY, 'origin/main', {
-        exec: exec as never,
-      }),
-    ).resolves.toBe(OTHER_SHA);
-  });
+  ])(
+    'asks ls-remote for stamp ref %s as %s and returns its sha',
+    async (ref, refspec) => {
+      const exec = vi.fn().mockResolvedValue({
+        stdout: `${OTHER_SHA}\t${refspec}\n`,
+        stderr: '',
+      });
+      await expect(
+        fetchChannelLatestSha(DEFAULT_REPOSITORY, ref, { exec: exec as never }),
+      ).resolves.toBe(OTHER_SHA);
+      expect(exec).toHaveBeenCalledWith(
+        ['ls-remote', DEFAULT_REPOSITORY, refspec],
+        expect.anything(),
+      );
+    },
+  );
 
   test('throws when ls-remote returns nothing (unknown ref)', async () => {
     const exec = async () => ({ stdout: '', stderr: '' });
@@ -376,28 +373,37 @@ describe('resolveSelfUpdateEligibility (#1624)', () => {
     return root;
   }
 
-  test('eligible when the checkout exists, origin matches, installer present', async () => {
-    const checkout = checkoutWithInstaller();
-    const exec = vi.fn().mockResolvedValue({
-      stdout: 'git@github.com:kontourai/station.git\n',
-      stderr: '',
-    });
-    const result = await resolveSelfUpdateEligibility(
-      { repository: REPO, sourceCheckout: checkout },
-      { exec: exec as never, platform: 'darwin' },
-    );
-    expect(result).toEqual({
-      eligible: true,
-      checkoutPath: checkout,
-      installerPath: join(checkout, 'ops', 'nightly', 'install-macos.zsh'),
-    });
-    // Origin was asked of the checkout itself — identity is proven live,
-    // never taken from the stamp.
-    expect(exec).toHaveBeenCalledWith(
-      ['remote', 'get-url', 'origin'],
-      expect.objectContaining({ cwd: checkout }),
-    );
-  });
+  // The checkout's origin may be spelled any way git accepts; each names the
+  // same repository as the https stamp.
+  test.each([
+    'git@github.com:kontourai/station.git',
+    'ssh://git@github.com:2222/kontourai/station.git',
+    'https://github.com/kontourai/station',
+  ])(
+    'eligible when the checkout exists, origin %s matches, installer present',
+    async (origin) => {
+      const checkout = checkoutWithInstaller();
+      const exec = vi.fn().mockResolvedValue({
+        stdout: `${origin}\n`,
+        stderr: '',
+      });
+      const result = await resolveSelfUpdateEligibility(
+        { repository: REPO, sourceCheckout: checkout },
+        { exec: exec as never, platform: 'darwin' },
+      );
+      expect(result).toEqual({
+        eligible: true,
+        checkoutPath: checkout,
+        installerPath: join(checkout, 'ops', 'nightly', 'install-macos.zsh'),
+      });
+      // Origin was asked of the checkout itself — identity is proven live,
+      // never taken from the stamp.
+      expect(exec).toHaveBeenCalledWith(
+        ['remote', 'get-url', 'origin'],
+        expect.objectContaining({ cwd: checkout }),
+      );
+    },
+  );
 
   test.each([
     ['no recorded checkout', null, undefined, 'no source checkout recorded'],
@@ -462,25 +468,75 @@ describe('resolveSelfUpdateEligibility (#1624)', () => {
   });
 });
 
-describe('normalizeOriginUrl', () => {
-  test.each([
-    [
-      'git@github.com:kontourai/station.git',
-      'https://github.com/kontourai/station',
-    ],
-    [
-      'ssh://git@github.com:2222/kontourai/station.git',
-      'https://github.com/kontourai/station',
-    ],
-    [
-      'https://github.com/kontourai/station',
-      'https://github.com/kontourai/station',
-    ],
-    [
-      'https://github.com/kontourai/station.git',
-      'https://github.com/kontourai/station',
-    ],
-  ])('%s → %s', (input, expected) => {
-    expect(normalizeOriginUrl(input)).toBe(expected);
+describe('resolveInstallProvenance on a prebuilt archive (#2675 D3)', () => {
+  function archiveVersion(
+    installRoot: string,
+    { git = false }: { git?: boolean } = {},
+  ): string {
+    const versionRoot = join(installRoot, 'versions', '0.8.0-preview.1');
+    mkdirSync(join(versionRoot, 'dist-server'), { recursive: true });
+    if (git) mkdirSync(join(versionRoot, '.git'));
+    writeFileSync(
+      join(versionRoot, '.station-prebuilt-archive'),
+      'station-prebuilt-archive-v1\n',
+    );
+    writeFileSync(
+      join(versionRoot, '.station-release.json'),
+      JSON.stringify({
+        schemaVersion: 2,
+        sha: SHA,
+        ref: 'v0.8.0-preview.1',
+        createdAt: '2026-09-20T00:00:00.000Z',
+        channel: 'beta',
+        releaseChannel: 'preview',
+        prerelease: true,
+      }),
+    );
+    return versionRoot;
+  }
+
+  test('names the archive, its release and the install.sh install it is a version of', () => {
+    const installRoot = tempRoot();
+    writeFileSync(
+      join(installRoot, '.station-portable-install-root'),
+      'station-portable-install-root-v1\n',
+    );
+    const versionRoot = archiveVersion(installRoot);
+    expect(
+      resolveInstallProvenance(join(versionRoot, 'dist-server'), {
+        resolveGit: notACheckout,
+      }),
+    ).toMatchObject({
+      installKind: 'archive',
+      archiveRoot: versionRoot,
+      version: '0.8.0-preview.1',
+      release: { releaseChannel: 'preview', channel: 'beta' },
+      installRoot,
+    });
+  });
+
+  test('an archive copy outside an install.sh install has no install root', () => {
+    const versionRoot = archiveVersion(tempRoot());
+    expect(
+      resolveInstallProvenance(join(versionRoot, 'dist-server'), {
+        resolveGit: notACheckout,
+      }),
+    ).toMatchObject({ installKind: 'archive', installRoot: null });
+  });
+
+  test('only the archive’s own dist-server, and never a checkout, is an archive', () => {
+    const versionRoot = archiveVersion(tempRoot());
+    mkdirSync(join(versionRoot, 'lib'));
+    expect(
+      resolveInstallProvenance(join(versionRoot, 'lib'), {
+        resolveGit: notACheckout,
+      }).installKind,
+    ).toBe('unknown');
+    const checkout = archiveVersion(tempRoot(), { git: true });
+    expect(
+      resolveInstallProvenance(join(checkout, 'dist-server'), {
+        resolveGit: notACheckout,
+      }).installKind,
+    ).toBe('unknown');
   });
 });

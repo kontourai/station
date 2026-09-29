@@ -1,5 +1,15 @@
 # ADR 0019 — Host the Browser pane server-side, behind a host adapter
 
+> **Reading this record today:** the decision and verification statements below
+> describe the design accepted on 2026-09-22. Implementation has since added
+> personal-host browser/live-surface routes and the pane's `2.0` state and
+> migration. See the [current glossary and source links](../glossary.md#browser-pane-live-surface-control-lease).
+> “Planned,” “does not exist yet,” and NOT_VERIFIED below retain their dated
+> meaning; they are not a current feature inventory or a completed audit of
+> those original gaps.
+> Current operator instructions and source boundaries are in the
+> [Browser workspace guide](../guides/browser-workspace.md).
+
 **Status:** Accepted, 2026-09-22. It records six owner decisions (D1–D6) made
 that day for epic [#90](https://github.com/kontourai/station/issues/90). It
 **supersedes in part** three records, and each names the parts superseded:
@@ -94,11 +104,11 @@ Facts this decision depends on, checked on this branch:
   the main webview), #15656 (Wayland bounds) and #11794 (no mobile
   `add_child`).
 
-Prior art: [pingdotgg/t3code](https://github.com/pingdotgg/t3code) (MIT) runs
-an Electron webview driven over the Chrome DevTools Protocol (CDP). It has a
-server-side automation broker, human-input control epochs, and uses
-Playwright's injected script for locators. Station borrows its broker, tool and
-arbitration model. The host is different.
+Prior art: an existing product runs an Electron webview driven over the Chrome
+DevTools Protocol (CDP). It has a server-side automation broker, human-input
+control epochs, and uses Playwright's injected script for locators. Station's
+broker, tool and arbitration model follow that prior art. The host is what
+differs.
 
 ## Decision
 
@@ -151,7 +161,7 @@ desktop as the renderer.
     scripts or workers is subresource use, not navigation, and is allowed.
 - **Downloads are denied.** **File choosers are denied too**, because an
   upload dialog would expose host filesystem paths (BA-R4). Popups load in the
-  same tab, as t3code does, so no second target opens.
+  same tab, so no second target opens.
 
 **This amends #90 BA-R4 a first time.** "External navigation fails closed"
 becomes "navigation outside `http(s)` fails closed, and on personal hosts
@@ -192,7 +202,7 @@ enforcement rule.
 - **No Playwright at runtime.** Playwright's Page and Locator APIs are not
   used, because a CEF host gives raw CDP only. Playwright's injected script
   (from `playwright-core`) may be installed through `Runtime.evaluate` for
-  locators, as t3code does.
+  locators.
 
 ### D4 — JavaScript evaluation exists, behind a per-Project permission that defaults off
 
@@ -442,7 +452,7 @@ frames to catch up. Improving relay throughput is separate work that overlaps
 - **Tauri 2 child webview inside the main window.** Rejected, as in ADR 0017.
   It requires the `unstable` feature, and tauri-apps/tauri#15682, #15656 and
   #11794 remain open. It would also reach only the desktop client.
-- **Port Station to Electron** (t3code's host). Rejected. ADR 0017 already
+- **Port Station to Electron.** Rejected. ADR 0017 already
   declined an Electron migration for this feature. It would buy an embedded
   webview on desktop only, at the cost of a new distribution, patch and
   signing programme, and web and mobile would still need a stream.

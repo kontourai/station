@@ -28,6 +28,20 @@ src-desktop/*
 scripts/__tests__/
 scripts/dogfood/
 
+# Station's shipped docs are build inputs, not documentation: the server build
+# reads STATION_DOCS_INPUT_PATHS out of docs/ (see scripts/generate-station-docs.mjs).
+# Excluded from the build context until #2886 wired that generation into
+# esbuild.config.mjs without adding docs/ here, which broke every container
+# build that actually ran with ENOENT docs/reference/station-docs.md. The build
+# stage is discarded, so this costs context size and not image size.
+!docs/
+!docs/**
+# That generation formats through Biome and byte-compares the committed output,
+# so it needs the repository's formatter config (and .gitignore, which
+# biome.json's vcs.useIgnoreFile requires) or the build fails "stale".
+!biome.json
+!.gitignore
+
 !config/
 !patches/
 !patches/**

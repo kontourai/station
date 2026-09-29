@@ -89,6 +89,16 @@ export interface AppConfig {
    * start, and nothing computes that without launching a process.
    */
   defaultTerminalShell?: string;
+  /**
+   * HTTP address of the local device helper Station lists simulators and
+   * emulators through (`http://127.0.0.1:<high port>`). Resolution follows
+   * the registry entry's chain — this stored value, then the
+   * `STATION_MOBILE_DEVICE_HUB_URL` environment variable, then unconfigured —
+   * so the Settings row and the Device pane's setup copy name the same
+   * source. The host validates the value itself and reports a refused
+   * address as a typed failure rather than a boot error.
+   */
+  mobileDeviceHubUrl?: string;
   disableDefaultSkillRegistries?: boolean;
   approvalGuardian?: ApprovalGuardianConfig;
   /**
@@ -120,11 +130,9 @@ export interface AppConfig {
    */
   surfaceTrustFromVeritasEvidence?: boolean;
   /**
-   * Register the K2 `KnowledgeStoreProvider` seam (root registry + adapter-backed
-   * record CRUD) alongside today's `KnowledgeService`/namespace-based knowledge path.
-   * **Default off** (same pattern as `mcpUiHost`) — no read path is rewired, no data
-   * moves, and existing `ProjectConfig.knowledgeNamespaces` behavior is byte-identical
-   * with this flag unset, until an explicit future migration/cutover (ADR-0009 K3+).
+   * Create the read-only `root:conversations` projection at personal startup
+   * when absent. Default off. Disabling does not remove an existing root;
+   * hosted mode skips this projection. Other Knowledge routes are independent.
    */
   knowledgeStores?: boolean;
   /**

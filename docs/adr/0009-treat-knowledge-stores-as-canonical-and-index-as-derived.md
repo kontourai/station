@@ -1,5 +1,19 @@
 # Treat knowledge stores as canonical and the index as derived
 
+**Reading status (2026-09-26 source review):** This records the 2026-07-05
+authority decision and evaluation, not current setup instructions. The probe
+versions, timings, dependency sizes, and then-current implementation descriptions
+below are historical. The store/index split now exists alongside the older
+document/namespace API. Current roots can include multiple personal stores and
+a read-only conversation root; the original one-personal-root target is not a
+server-enforced limit. The index must be rebuilt explicitly and its model,
+freshness, migration, and open-database recovery limits matter; “disposable” does
+not authorize deleting a running database or promise identical future ranking.
+Follow the [Knowledge guide](../guides/knowledge.md),
+[root owner](../../src-server/knowledge-store/knowledge-store-provider.ts), and
+[index owner](../../src-server/knowledge-index/sqlite-vec-index-provider.ts)
+for current behavior. The original decision and probe transcripts remain below.
+
 ## Context
 
 Station's knowledge system conflates storage and retrieval into one seam: `KnowledgeService` writes document metadata/content to a per-project directory tree and embeds chunks into a single globally-resolved `IVectorDbProvider` — `resolveRuntimeVectorDbProvider` picks the **one** enabled `vectordb`-capability connection (`findRuntimeCapabilityConnection(providerService, 'vectordb')`, `src-server/runtime/plugins/runtime-provider-resolution.ts:91-99`), partitioned only by a namespace string (`project-<slug>` / `project-<slug>:<namespace>`, `knowledgeVectorNamespace()`). There is no per-store adapter selection and no personal tier — only per-project namespaces. The built-in "LanceDB" provider is not the LanceDB library: `src-server/providers/lancedb-provider.ts` (`id: 'lancedb-file'`, lines 42–113) is a hand-rolled flat-JSON-file store with a brute-force cosine-similarity scan — the vector data it holds is the only place the knowledge lives in retrievable form, so today the *index is the store*. The user never chose this deliberately ("Lance was free so I stuffed it in there") and decided on 2026-07-05 to replace it outright via an evidence matrix. Meanwhile the Flow Agents Knowledge Kit publishes a store contract (`kits/knowledge/docs/store-contract.md`, shipped inside the `@kontourai/flow-agents` package) with portable markdown-frontmatter records, typed links, provenance, supersede-not-delete lifecycle, and a `KnowledgeStoreAdapter` interface (§8, constructor `{ storeRoot }`) with peer adapters (default-file, Obsidian) — and explicitly parks vector/semantic retrieval as a non-goal (Kit README "Non-Goals", I10). Per ADR-0001, Station consumes the Kit only through this published contract — file format, CLI/flows, documented interfaces — never internals.

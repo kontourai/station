@@ -1,5 +1,15 @@
 # Design: portable Project identity — remote-keyed resources, per-Station bindings
 
+> **Reading status: staged Project identity design with a historical migration survey.**
+> [Project identity contracts](../../packages/contracts/src/project-identity.ts),
+> [resource resolver](../../src-server/services/projects/project-resource-resolver.ts),
+> [session-directory adapter](../../src-server/services/projects/project-session-directory.ts),
+> and [execution-offer routes](../../src-server/routes/projects/project-contribution-routes.ts)
+> are current owners. The dated consumer inventory, proposed shapes, and
+> unimplemented collaboration requirements below are not one current-state
+> inventory. An identity, binding, or prepared directory does not itself grant
+> membership or execution authority; physical fleet qualification remains separate.
+
 > Current implementation note: new engine starts resolve the primary resource
 > through `project-session-directory.ts` in runtime composition. An explicit
 > local binding overrides legacy `workingDirectory`; missing, drifted or
@@ -417,10 +427,10 @@ Two corrections to make before leaning on it:
    actually be exchanged between machines cannot repeat this — §3.2 requires
    the version to gate parsing.
 
-There is also a live hardening note worth carrying: `packages/connect/src/core/nodeStorage.ts:26-31`
-records that its writer has no symlink/permission hardening, "acceptable today
-only because `KnownEnvironment` holds no secrets." The no-secrets rule is not
-decorative; a future sensitive field silently converts a store into a
+There is also a hardening note worth carrying: the unwired Node
+`StorageAdapter` for `KnownEnvironment` in `packages/connect` (since removed) recorded that its writer had no symlink/permission hardening,
+"acceptable today only because `KnownEnvironment` holds no secrets." The
+no-secrets rule is not decorative; a future sensitive field silently converts a store into a
 vulnerability. The binding store (§3.5) holds credential *references*, so it
 inherits the same obligation.
 
@@ -855,8 +865,8 @@ Properties that are design commitments, not incidental:
   availability and when it was checked; the reference itself lives in the
   manifest, the value in the OS keystore. Per §2.5 this store therefore
   inherits `KnownEnvironment`'s obligation: if a secret ever lands here, the
-  file's write path needs the hardening `packages/connect/src/core/nodeStorage.ts:26-31`
-  says it lacks.
+  file's write path needs the symlink and permission hardening that the
+  removed Node `KnownEnvironment` adapter lacked (see §2.5).
 - **`path` is stored as the user gave it; `remotes` is stored canonicalized.**
   The path stays verbatim to preserve the existing tilde behavior (§2.2) and is
   canonicalized at each read by the resolver, in one place. The remotes are
@@ -1257,7 +1267,7 @@ returning one of the four states — not a rules language.
 | Term | Means | Notes |
 |---|---|---|
 | **Member** | A person in the project or channel | May back nothing and still be first-class (§4.1) |
-| **Station** | One machine running Station | Backing is a property of a Station, never of a member |
+| **Station** | An application instance; one physical machine may run several | An instance's contribution is distinct from a person's membership; see [Station topology](station-topology.md) |
 | **Contribution** | An explicit, per-space, default-none offer of named resources by a Station | The consent layer. One noun across fleet and project, one schema across scopes (§4.2) |
 | **Binding** | The private local realization of a manifest resource on one Station | Never leaves the machine (§3.5) |
 | **Requirement** | A project-declared floor an offer is checked against | Sketched only (§4.4) |

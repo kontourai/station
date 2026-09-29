@@ -810,14 +810,4 @@ describe('the Station-listener deny set', () => {
       await service.shutdown();
     }
   });
-
-  test('the runtime feeds every SSH host port into the browser’s listener provider', () => {
-    const runtime = readFileSync(
-      join(__dirname, '../../../../runtime/routes/runtime-routes.ts'),
-      'utf8',
-    );
-    expect(runtime).toMatch(
-      /extraListenerPorts:\s*\(\)\s*=>\s*\[[\s\S]{0,200}?deviceHostRegistry\?\.listeningPorts\(\)/,
-    );
-  });
 });

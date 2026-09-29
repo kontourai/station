@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   decideStaticGateScope,
   failureNote,
@@ -9,6 +11,8 @@ import {
   STATIC_GATE_INPUT_PREFIXES,
   staticGateInputs,
 } from '../check-prepush-static-gates.mjs';
+
+const makeTempDir = trackTempDirs();
 
 describe('static gate input detection', () => {
   it('recognizes the source roots these ratchets read', () => {
@@ -110,7 +114,7 @@ describe('the gate list', () => {
    * rather than running each gate: executing all eleven cost ~8s of the
    * process-heavy phase's 240s budget, and that group already runs at ~226s
    * on a quiet host — this suite's addition was most of the remaining
-   * headroom (#3127). One real execution below keeps the spawn path proven.
+   * headroom (archive#3127). The stubbed CLI runs below keep the spawn path proven.
    */
   it('names scripts that exist and parse', () => {
     for (const name of PREPUSH_STATIC_GATES) {
@@ -122,13 +126,54 @@ describe('the gate list', () => {
     }
   }, 30_000);
 
-  it('the spawn path executes a real gate and reports its exit status', () => {
-    // The cheapest gate (~75ms): proves runRatchet's child-process path with
-    // one execution instead of eleven.
-    const result = spawnSync('node', ['scripts/lazy-boundary-ratchet.mjs'], {
-      encoding: 'utf8',
-    });
+  /**
+   * The real CLI, run from a scratch cwd whose `scripts/` holds a stub per
+   * listed gate: `runRatchet` resolves gates relative to cwd, so this reaches
+   * the spawn path, exit-status propagation, and the failure note in `main`
+   * without paying for the real gates. An absent base ref forces the
+   * "cannot be scoped, run anyway" branch.
+   */
+  function runCliAgainstStubs(failing: string | undefined) {
+    const cwd = makeTempDir('station-prepush-static-gates-');
+    mkdirSync(join(cwd, 'scripts'));
+    for (const name of PREPUSH_STATIC_GATES) {
+      writeFileSync(
+        join(cwd, 'scripts', `${name}.mjs`),
+        `console.log('ran ${name}'); process.exitCode = ${name === failing ? 3 : 0};\n`,
+      );
+    }
+    return spawnSync(
+      process.execPath,
+      [resolve('scripts/check-prepush-static-gates.mjs')],
+      {
+        cwd,
+        encoding: 'utf8',
+        env: { ...process.env, STATION_BASE_REF: 'refs/station-test/absent' },
+        windowsHide: true,
+      },
+    );
+  }
+
+  it('the real CLI runs every gate and refuses the push when one fails', () => {
+    const failing = 'motion-contract-ratchet';
+    const result = runCliAgainstStubs(failing);
     expect(result.error).toBeUndefined();
+    // Every gate still runs after the failure, in list order.
+    expect(
+      result.stdout
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith('ran '))
+        .map((line) => line.slice('ran '.length)),
+    ).toEqual([...PREPUSH_STATIC_GATES]);
+    expect(result.stderr).toContain(failureNote([failing]));
+    expect(result.status).toBe(1);
+  }, 30_000);
+
+  it('the real CLI passes when every gate passes', () => {
+    const result = runCliAgainstStubs(undefined);
+    expect(result.error).toBeUndefined();
+    expect(result.stdout).toContain('Static gates: checking');
+    expect(result.stderr).not.toContain('FAIL:');
     expect(result.status).toBe(0);
   }, 30_000);
 

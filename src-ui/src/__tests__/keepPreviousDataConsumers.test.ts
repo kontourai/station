@@ -10,12 +10,12 @@ import { describe, expect, test } from 'vitest';
  * calling it either branches on `isPlaceholderData` to mark the held render,
  * or explicitly opts out at the call site (`keepPreviousData: false`).
  *
- * `keyedQueryDefaults.test.ts` pins the *producer* side — which
- * query-domain files opt in — which cannot see whether the *consumer*
- * marks the render. This is exactly the gap that shipped once:
+ * A producer-side pin of which query-domain files opt in cannot see whether
+ * the *consumer* marks the render. This is exactly the gap that shipped once:
  * `CodingInspectorPanel` consumed two opted-in hooks with no marking and no
  * opt-out, rendering the outgoing project's attention dot under the
- * incoming project (fixed by opting both calls out here).
+ * incoming project (fixed by opting both calls out at the call site; that
+ * shell has since been deleted).
  *
  * This test enforces the consumer half. It is deliberately grep/AST-shaped
  * against SYNTAX, not semantics: it proves `isPlaceholderData` is
@@ -63,14 +63,28 @@ function optedInHookNames(): string[] {
   for (const file of sourceFiles(SDK_QUERY_DOMAINS_ROOT)) {
     const sourceFile = parse(file);
     for (const node of sourceFile.statements) {
-      if (
-        ts.isFunctionDeclaration(node) &&
-        node.name &&
-        node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
-      ) {
-        const body = node.getText(sourceFile);
-        if (/keepPreviousData\s*:/.test(body)) {
+      const exported =
+        ts.canHaveModifiers(node) &&
+        ts
+          .getModifiers(node)
+          ?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+      if (!exported) continue;
+      if (ts.isFunctionDeclaration(node) && node.name) {
+        if (/keepPreviousData\s*:/.test(node.getText(sourceFile))) {
           names.add(node.name.text);
+        }
+      } else if (ts.isVariableStatement(node)) {
+        // `export const useX = () => ...` hooks are exports too.
+        for (const decl of node.declarationList.declarations) {
+          if (
+            ts.isIdentifier(decl.name) &&
+            decl.initializer &&
+            (ts.isArrowFunction(decl.initializer) ||
+              ts.isFunctionExpression(decl.initializer)) &&
+            /keepPreviousData\s*:/.test(decl.initializer.getText(sourceFile))
+          ) {
+            names.add(decl.name.text);
+          }
         }
       }
     }

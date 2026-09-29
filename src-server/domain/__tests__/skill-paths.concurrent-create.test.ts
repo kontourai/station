@@ -26,22 +26,24 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...actual, realpathSync };
 });
 
-const { isDirectoryPhysicallyWithin } = await import('../skill-paths.js');
+const { resolveSkillDirectory } = await import('../skill-paths.js');
 
 const makeTempDir = trackTempDirs();
 
 describe('directory containment under a concurrent root create (#2596)', () => {
+  let home: string;
   let root: string;
   beforeEach(() => {
-    root = join(makeTempDir('skill-paths-race-'), 'skills');
+    home = makeTempDir('skill-paths-race-');
+    root = join(home, 'skills');
     mkdirSync(root);
   });
 
   test('a root that appeared between the first read and the existence check is resolved, not refused', () => {
     failures.path = root;
     failures.remaining = 1;
-    expect(isDirectoryPhysicallyWithin(root, join(root, 'new-skill'))).toBe(
-      true,
+    expect(resolveSkillDirectory(home, 'new-skill')).toBe(
+      join(root, 'new-skill'),
     );
     expect(failures.remaining).toBe(0);
   });
@@ -49,8 +51,8 @@ describe('directory containment under a concurrent root create (#2596)', () => {
   test('a root that exists but still cannot be read is refused', () => {
     failures.path = root;
     failures.remaining = 2;
-    expect(isDirectoryPhysicallyWithin(root, join(root, 'new-skill'))).toBe(
-      false,
+    expect(() => resolveSkillDirectory(home, 'new-skill')).toThrow(
+      /could not be read/,
     );
   });
 });

@@ -2,9 +2,11 @@
  * #2456 no-loss pin: the delegate and provider cards now render through
  * `backgroundTaskEntryFromChildWork`, and every expected string below was
  * produced by the PRE-contract `background-tasks-store.ts` (commit a671a619d)
- * from the same event sequences, then frozen. Compared as `JSON.stringify`,
- * so key order and every member are pinned byte for byte — a card that gains,
- * loses or reorders a field fails here.
+ * from the same event sequences, then frozen. Compared as parsed JSON, so
+ * every member and every list order is pinned — a card that gains, loses or
+ * changes a field fails here — while the key order inside one object, which
+ * no reader observes, is not. `CHILD_WORK_PARITY_PRINT=1` prints the actual
+ * strings for a deliberate, commented update.
  */
 import {
   type DelegateChildWorkSource,
@@ -255,7 +257,7 @@ const EXPECTED: Record<string, string> = {
     '{"running":[{"id":"del-6","kind":"agent","source":"delegate-session","chatThreadId":"chat-1","delegateThreadId":"del-6","stop":{"kind":"delegate-interrupt"},"title":"Delegated task","startedAt":1790157840000,"state":"running"},{"id":"task-a","kind":"agent","source":"provider-task","chatThreadId":"chat-1","title":"Explore the repo","detail":"Reading the test logs — Grep","startedAt":1790157900000,"state":"running","sessionThreadId":"exec-1","stop":{"kind":"provider-task-stop"}},{"id":"task-b","kind":"agent","source":"provider-task","chatThreadId":"chat-1","title":"general-purpose","detail":"general-purpose","state":"running"},{"id":"task-c","kind":"agent","source":"provider-task","chatThreadId":"chat-1","title":"Background task","state":"running"}],"finished":[]}',
 };
 
-describe('#2456 background-task cards are byte-equal through the child-work renderer', () => {
+describe('#2456 background-task cards are unchanged through the child-work renderer', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
@@ -270,7 +272,7 @@ describe('#2456 background-task cards are byte-equal through the child-work rend
       if (process.env.CHILD_WORK_PARITY_PRINT) {
         console.log(`PARITY ${name} ${JSON.stringify(actual)}`);
       }
-      expect(actual).toBe(EXPECTED[name]);
+      expect(JSON.parse(actual)).toEqual(JSON.parse(EXPECTED[name]));
     });
   }
 
@@ -282,9 +284,9 @@ describe('#2456 background-task cards are byte-equal through the child-work rend
     'snapshotSeedDemoteStale',
   ]) {
     test(`${name} from a current server's childWork.asChild`, () => {
-      expect(JSON.stringify(SCENARIOS[name](currentServerRow))).toBe(
-        EXPECTED[name],
-      );
+      expect(
+        JSON.parse(JSON.stringify(SCENARIOS[name](currentServerRow))),
+      ).toEqual(JSON.parse(EXPECTED[name]));
     });
   }
 });

@@ -364,6 +364,7 @@ function assertContained(root: string, candidate: string): void {
 /**
  * Holds one prior tree per registry ownership identity. It never writes the
  * live plugin directory; rollback staging must re-enter the existing installer.
+ * Not active yet: see "Applied registry trust policy" in docs/guides/plugins.md.
  */
 export class RegistryLastKnownGoodStore {
   readonly #root: string;

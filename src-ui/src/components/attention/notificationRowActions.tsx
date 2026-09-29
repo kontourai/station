@@ -39,39 +39,23 @@
  * rather than written beside each mutation, so if the vocabulary does change
  * it changes in one place instead of five.
  */
-type NotificationRowMechanism =
-  | 'acknowledge-attention'
-  | 'dismiss-notification';
-
 interface NotificationRowAction {
-  mechanism: NotificationRowMechanism;
   /** The word the user reads. Never chosen at the call site. */
   label: string;
-  /**
-   * Whether the action destroys a record. FALSE for both today — see the
-   * module doc. A `true` here would have to point at a store that forgets.
-   */
-  destroys: boolean;
-  /**
-   * Whether the same fact can surface again by itself. An attention item can
-   * (the projection re-derives it); a dismissed notification cannot be
-   * re-raised for its dedupe tag.
-   */
-  reversibleByFact: boolean;
 }
 
-/** Hides an attention fact. It resurfaces if the fact recurs. */
+/**
+ * Hides an attention fact. It resurfaces if the fact recurs, and destroys no
+ * record.
+ */
 export const ACKNOWLEDGE_ATTENTION_ACTION: NotificationRowAction = {
-  mechanism: 'acknowledge-attention',
   label: 'Dismiss',
-  destroys: false,
-  reversibleByFact: true,
 };
 
-/** Marks the stored notification dismissed. Terminal for its dedupe tag. */
+/**
+ * Marks the stored notification dismissed. Terminal for its dedupe tag, and
+ * the record is kept.
+ */
 export const DISMISS_NOTIFICATION_ACTION: NotificationRowAction = {
-  mechanism: 'dismiss-notification',
   label: 'Dismiss',
-  destroys: false,
-  reversibleByFact: false,
 };

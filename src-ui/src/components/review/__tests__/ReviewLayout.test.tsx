@@ -461,4 +461,118 @@ describe('the review layout kind', () => {
     expect(alert).not.toContain('review list could not be built');
     expect(screen.getByText('src/index.ts')).toBeTruthy();
   });
+  /**
+   * The run action lives in the header, not in the list, so a Project with
+   * nothing recorded yet can still produce its first receipt.
+   */
+  test('offers the run action when every source is empty', () => {
+    changes = [];
+    surveyReviews = [];
+    reviewReceipts = [];
+
+    renderLayout();
+
+    expect(screen.getByText('Nothing to review')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Run independent review' }),
+    ).toBeTruthy();
+  });
+
+  /**
+   * The review-evidence feed's own per-Project unavailability. A Project
+   * Station could not read has receipts it cannot show; rendering that as
+   * "Nothing to review" would be absence-as-success. Another Project's
+   * unavailability belongs to that Project's layout.
+   */
+  test('a Project whose review evidence could not be read is named, not read as no receipts', () => {
+    changes = [];
+    surveyReviews = [];
+    reviewReceipts = [];
+    unavailableReviewProjects = [
+      { projectSlug: 'project-a', reason: 'lock-unavailable' },
+      { projectSlug: 'project-b', reason: 'receipts-unreadable' },
+    ];
+
+    renderLayout('project-a');
+
+    const alert = screen.getByRole('alert').textContent ?? '';
+    expect(alert).toContain(
+      'Independent review evidence is unavailable for project-a',
+    );
+    expect(alert).toContain(
+      'contended — another Station process or a long repair',
+    );
+    expect(alert).not.toContain('receipts unreadable');
+    expect(screen.queryByText('Nothing to review')).toBeNull();
+  });
+
+  test('another Project’s review-evidence unavailability is not reported here', () => {
+    changes = [];
+    surveyReviews = [];
+    reviewReceipts = [];
+    unavailableReviewProjects = [
+      { projectSlug: 'project-b', reason: 'receipts-unreadable' },
+    ];
+
+    renderLayout('project-a');
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('Nothing to review')).toBeTruthy();
+  });
+
+  /**
+   * No findings is only a clean review when every reviewer completed. A
+   * receipt whose reviewer failed and recorded nothing is incomplete
+   * evidence, and must not read as "no concrete findings".
+   */
+  test('a receipt with no findings is clean only when every reviewer completed', () => {
+    const base = makeReceipt();
+    const [execution] = base.executions;
+    reviewReceipts = [
+      makeReceipt({
+        findings: [],
+        executions: [
+          { ...execution, findings: [] },
+          {
+            ...execution,
+            reviewerId: 'security-1',
+            actor: { actorId: 'agent:security' },
+            status: 'failed',
+            failureReason: 'reviewer exited',
+            findings: [],
+          },
+        ],
+      }),
+      makeReceipt({
+        receiptId: 'c'.repeat(64),
+        findings: [],
+        executions: [{ ...execution, findings: [] }],
+      }),
+    ];
+    window.history.replaceState(
+      {},
+      '',
+      `/projects/project-a/layouts/review?receipt=${'a'.repeat(64)}`,
+    );
+
+    const { unmount } = renderLayout();
+
+    let detail = screen.getByTestId('independent-review-receipt-detail');
+    expect(detail.textContent).toContain('Review evidence is incomplete.');
+    expect(detail.textContent).not.toContain('All reviewers completed');
+    unmount();
+
+    window.history.replaceState(
+      {},
+      '',
+      `/projects/project-a/layouts/review?receipt=${'c'.repeat(64)}`,
+    );
+    renderLayout();
+
+    detail = screen.getByTestId('independent-review-receipt-detail');
+    expect(detail.textContent).toContain(
+      'All reviewers completed; no concrete findings were recorded.',
+    );
+    expect(detail.textContent).not.toContain('Review evidence is incomplete.');
+  });
 });

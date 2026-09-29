@@ -144,6 +144,11 @@ test.describe('compatibility-aware reconnect', () => {
       concurrentAlert.dataset.bannerId = 'test:concurrent-alert';
       concurrentAlert.textContent = 'Concurrent host notice';
       document.body.append(concurrentAlert);
+      // Survives only if the document does: a recovery that reloads the page
+      // would still hide the banner, show connected and adopt the new boot id.
+      (
+        window as unknown as { __reconnectSentinel?: true }
+      ).__reconnectSentinel = true;
     });
 
     state.healthy = false;
@@ -194,6 +199,14 @@ test.describe('compatibility-aware reconnect', () => {
         }),
       )
       .toBe('boot-2');
+    // Recovered in place: the same document, not a reload.
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __reconnectSentinel?: true })
+            .__reconnectSentinel,
+      ),
+    ).toBe(true);
   });
 
   test('keeps the reconnect action reachable on a phone viewport', async ({

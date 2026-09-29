@@ -1,5 +1,18 @@
 # Design: the inference fleet — receipted model routing across your Stations
 
+> **Reading status: fleet design and chronological implementation record.**
+> The August baseline, package-version table, and numbered slices describe
+> different revisions; later amendments supersede earlier absence claims.
+> Current [serving routes](../../src-server/routes/inference/fleet-inference.ts),
+> [candidate admission](../../src-server/services/inference/fleet-candidate-service.ts),
+> [Dispatch composition](../../src-server/runtime/conversation/dispatch-model-policy.ts),
+> and [receipt log](../../src-server/runtime/conversation/fleet-routing-receipt-log.ts)
+> own the implemented path. The serving response and Dispatch model are buffered;
+> the consumer excludes non-local contributions as `reference-unresolvable`.
+> The full history below is not a fresh provider, remote-host, privacy, cost,
+> or conformance qualification. Use [machine relationships](../guides/machine-relationships.md)
+> for the current distinction between inference and task delegation.
+
 > Status: **direction recorded (owner decisions, 2026-08-01); tracking issue
 > [#1398](https://github.com/kontourai/station/issues/1398).** All nine open
 > questions are resolved — see §10 and the
@@ -126,19 +139,20 @@ landed:
   (`packages/contracts/src/environment-security.ts:94-105`, docblock `:63-93`).
 - **`DelegationTarget.kind` is `'current' | 'ssh' | 'peer'`**, and a `'peer'`
   target always carries an `Authorization: Bearer` header from a server-side
-  `PeerCredentialStore` (`src-server/tools/station-control-delegation.ts:58-88`).
+  `PeerCredentialStore`. Since #2377 slice C2b that target is minted only by
+  the runtime's remote forwarder
+  ([`remote-station-forwarder.ts`](../../src-server/services/remote-stations/remote-station-forwarder.ts)),
+  which attaches the bearer in-process; a station-control tool never holds it.
 - **All protected callers require a credential.** Direct loopback and
   SSH-forwarded requests receive `401 authentication_required` unless they
   present a valid bearer or device-session credential. Station's exact
   per-boot internal-token attestation is a separate process credential;
   ordinary UI-proxy browser traffic remains remote.
 
-**The documented SSH loopback auth gap in `docs/design/station-peer-pairing.md`
-§4 is therefore narrowed but not closed, and this design must not build on it.**
-The residual gap is stated precisely in the shipped comment
-(`runtime-http.ts:175-187`): an adversary holding an SSH tunnel but no minted
-credential simply *omits* the header and lands in the unconditional-pass
-branch. **Consequence for this design: fleet inference must never be reachable
+**The old SSH loopback floor is historical, not a remaining bypass.**
+The current protected-route boundary requires credentials for ordinary direct
+loopback and SSH-forwarded callers. The earlier pre-#2051 residual described
+below in the slice history does not describe today's authentication path. **Consequence for this design: fleet inference must never be reachable
 on a route whose only authorization is "the request arrived on loopback."** Every
 inference route defined in §3 requires a presented credential and fails closed
 without one — which means it also cannot be exposed over a bare SSH forward to a
@@ -309,11 +323,20 @@ slice 3 for what that means when the same evidence crosses a machine boundary.
 
 This is the section most likely to be skimmed and most likely to invalidate a
 plan. The authority boundary in #1398's first comment describes six owners;
-**Datum and Bearing are not direct Station dependencies; Conduit remains on its
-older host-hook contract; Dispatch and Relay are pinned at the versions used by
+**Bearing is not a direct Station dependency and Datum is declared only by the
+contracts package for secret references; Conduit is used only for the
+agent-host hook seam; Dispatch and Relay are pinned at the versions used by
 the implemented fleet path.**
 
-**Declared vs. resolved vs. installed:**
+**Historical declared/resolved/installed snapshot:** the table below records
+this design's earlier dependency assessment. Current pins come from
+[package.json](../../package.json) and [pnpm-lock.yaml](../../pnpm-lock.yaml).
+Conduit is now used at its current pinned hook contract, and contracts expose
+[Datum secret references](../../packages/contracts/src/datum-secret-reference.ts).
+Station no longer depends on Bearing directly; its unwired OpenRouter pricing
+consumer was deleted. These uses do not establish the proposed fleet
+Datum/Bearing composition.
+
 
 | Package | `package.json` | lockfile (root) | installed in this tree | published latest |
 |---|---|---|---|---|
@@ -326,10 +349,12 @@ the implemented fleet path.**
 Version drift between a pin and the install is guarded by
 `packages/cli/src/__tests__/kontour-dependency-drift.test.ts`.
 
-- **Datum and Bearing are present but unused.** They arrive transitively
-  (Bearing is a hard dependency of Datum; both are optional peers of Dispatch)
-  and **no Station source file imports either** — repo-wide, the only
-  non-`node_modules` mentions are in `package-lock.json`. #423's Datum routing
+- **Datum and Bearing are not part of the fleet path.** Bearing arrives only
+  transitively (a hard dependency of Datum and an optional peer of Dispatch) and no
+  Station source imports it. Datum's only Station consumer is the
+  secret-reference seam
+  ([datum-secret-reference.ts](../../packages/contracts/src/datum-secret-reference.ts))
+  that secret bindings use; nothing in fleet routing imports it. #423's Datum routing
   is unimplemented; Station's own `resolveManagedModelBinding`
   (`src-server/runtime/plugins/runtime-provider-resolution.ts`) is a separate,
   Station-owned resolution path, not Datum's. "Datum resolves configured
@@ -437,12 +462,13 @@ by default; nothing is routed to unverified; nothing degrades silently.
 |---|---|---|
 | `KnownEnvironment` | Host execution authority, environment identity | shipped (§2.2) |
 | Bearing | Evidence-backed capability observations | installed transitively, **zero imports** (§2.6) |
-| Datum | Resolving configured candidates | installed transitively, **zero imports** (§2.6) |
+| Datum | Resolving configured candidates | secret-reference seam only; **no fleet imports** (§2.6) |
 | Dispatch | Ordered routing/fallback receipts | wired at 0.5.0 with fleet routing receipts (§2.5/§2.6) |
 | Relay | Invocation without credential leakage | pinned at 0.6.0; direct error-vocabulary imports in `fleet-inference-model.ts` and fake-runtime imports in routing tests; no native streaming (§2.6/§2.7) |
 | Station | Availability, consent, mobile control, presentation | shipped |
 
-Datum and Bearing remain transitive-only; the implemented fleet path directly
+Bearing remains transitive-only and Datum serves only secret references; the
+implemented fleet path directly
 uses current pinned Dispatch and Relay contracts.
 **This doc does not pretend otherwise, and the slice plan in §11 sequences the
 composition rather than assuming it.** In particular, slices 1–4 deliberately
@@ -904,10 +930,11 @@ owner's.
 
 Stated as the contract:
 
-- **No third party sees prompt or completion content, because there is no third
-  party in the request path.** This holds by construction in v1 and must be
-  re-argued, not assumed, the moment any coordinator, relay, or directory is
-  introduced (#615, #1392).
+- **The intended personal-fleet path has no application-content coordinator.**
+  Content disclosure still depends on the selected transport, serving Station,
+  and model provider. A hosted provider or a TLS-terminating intermediary can
+  add another party; absence of a fleet coordinator is not a blanket promise
+  that only two machines see content.
 - **Station B — the serving machine — sees everything it is asked to
   generate.** It must, to generate it. This is the same bound the reference mesh
   concedes in its own vision doc: prompts go to people rather than a vendor,

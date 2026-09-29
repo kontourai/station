@@ -12,14 +12,14 @@
 // ordinary text.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
  * C0 controls minus TAB (0x09), LF (0x0A) and CR (0x0D), plus DEL (0x7F).
  * A PCRE class string rather than a JS RegExp because it is handed to
- * `git grep -P`; the gate's test drives the same string.
+ * `git grep -P`.
  */
-export const CONTROL_CHARACTER_CLASS =
-  '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]';
+const CONTROL_CHARACTER_CLASS = '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]';
 
 // DERIVED from `CONTROL_CHARACTER_CLASS` (a `\xHH`-escaped JS RegExp class is
 // also valid PCRE), not a second hand-maintained byte range: one source of
@@ -222,6 +222,6 @@ export function runGate({ log = console.log, error = console.error } = {}) {
 }
 
 // Run only as a script, not when the gate's own test imports it.
-if (process.argv[1]?.endsWith('content-integrity-gate.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(runGate());
 }

@@ -64,15 +64,33 @@ describe('cronToHuman names the zone its hour is written in', () => {
     expect(human).toContain('UTC');
   });
 
-  test('never labels an hour with a zone abbreviation it did not convert into', () => {
-    // The exact shape of the old defect: a local abbreviation appended to a
-    // UTC-shifted hour. Whatever the runner's own zone is, it must not appear
-    // unless it IS the schedule's zone.
-    const runnerZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const other = runnerZone === BRISBANE ? DENVER : BRISBANE;
-    const human = cronToHuman('0 8 * * 1-5', { timezone: other });
-    expect(human).toContain(other);
-    expect(human).not.toContain(runnerZone);
+  test("never labels an hour with the reader's own zone abbreviation", () => {
+    // The exact shape of the old defect: the READER's short abbreviation
+    // ("MDT") appended to the hour. Pin the reader to Denver so the
+    // abbreviation is known rather than whatever this runner happens to be.
+    const previousTz = process.env.TZ;
+    process.env.TZ = DENVER;
+    try {
+      const readerAbbreviation = new Intl.DateTimeFormat(undefined, {
+        timeZoneName: 'short',
+      })
+        .formatToParts(new Date(Date.UTC(2026, 6, 1)))
+        .find((part) => part.type === 'timeZoneName')?.value;
+      // Proves the reader zone took effect, so the negative below is not
+      // vacuous (July in Denver is MDT, or its GMT-6 spelling).
+      expect(readerAbbreviation).toMatch(/^(MDT|GMT-6)$/);
+
+      const human = cronToHuman('0 8 * * 1-5', { timezone: BRISBANE });
+      expect(human).toContain(`8:00 AM · ${BRISBANE}`);
+      // A regression would format whatever date it runs on, so reject Denver
+      // under both halves of its DST year, in either spelling.
+      for (const spelling of ['MDT', 'MST', 'GMT-6', 'GMT-7']) {
+        expect(human).not.toContain(spelling);
+      }
+    } finally {
+      if (previousTz === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTz;
+    }
   });
 });
 

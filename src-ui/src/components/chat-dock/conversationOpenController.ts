@@ -175,6 +175,7 @@ export function conversationOpenPatch(
               sessionAutoApprove: [],
               pendingApprovals: [],
               approvalToasts: new Map(),
+              unacknowledgedDecisions: [],
               // Engine reports about the predecessor's session. The
               // recorded posture is the CONVERSATION's and stays, as does a
               // queued pick (#2436).

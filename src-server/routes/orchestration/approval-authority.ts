@@ -3,29 +3,35 @@
  * needs the operator in person or a device holding `approval:full-access`,
  * on every route that can put a session there: recording it
  * (`setApprovalMode`), carrying it on a send, or asking for it on a start or
- * turn's `modelOptions`. Tightening, and a Default pick, need neither.
+ * turn's `modelOptions`. Tightening needs neither. A Default pick needs the
+ * grant only where it would run the engine at `never` unconfined, on a
+ * `host`-stamped session (#2377 slice C1); elsewhere the owner decided a
+ * member may pick it (2026-09-23, fork 1).
  * `mayGrantFullAccess` (security/coding-authority.ts) is the one derivation;
  * this only reads the request's granted scope and shapes the refusal.
  */
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import type { Context } from 'hono';
 import { isKnownFullAccessAcpModeId } from '../../providers/adapters/acp-session-mode.js';
 import {
   type FullAccessGrant,
+  FullAccessNotGrantedError,
   fullAccessGrantFor,
   mayGrantFullAccess,
 } from '../../security/coding-authority.js';
+import { fullAccessRefusalBody } from '../../security/full-access-refusal.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
 
-export const APPROVAL_FULL_ACCESS_NOT_GRANTED = {
-  success: false as const,
-  code: APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
-  error:
-    "This device is not allowed to give an agent full access. The Station's operator can allow it: Devices, this device's access, Allow full access.",
-};
+/**
+ * The 403 for a refused full-access request (#1796): who asked, which
+ * Station refused, and what only its operator can do about it
+ * (`security/full-access-refusal.ts`).
+ */
+export function fullAccessRefusal(c: Context): Response {
+  return c.json(fullAccessRefusalBody(c.req.raw), 403);
+}
 
 /**
  * The approval posture a `modelOptions` bag asks for, if any. #2569: an ACP
@@ -63,7 +69,46 @@ export function refuseUngrantedFullAccess(
     )
   )
     return undefined;
-  return c.json(APPROVAL_FULL_ACCESS_NOT_GRANTED, 403);
+  return fullAccessRefusal(c);
+}
+
+/**
+ * #2377 slice C1: a recorded pick is checked by the posture it puts the
+ * session in, not only by its literal value. A Default (`connection-default`)
+ * is asked `reachesFullAccess`
+ * (`OrchestrationService.approvalPickReachesFullAccess`: the resolution a
+ * turn applies, on a `host`-stamped session), so a Default that would run the
+ * engine at `never` unconfined needs the same grant as `never`. A check that
+ * fails counts as full access.
+ */
+export async function refuseUngrantedPick(
+  c: Context,
+  pick: unknown,
+  reachesFullAccess: () => Promise<boolean>,
+): Promise<Response | undefined> {
+  if (pick !== 'connection-default')
+    return refuseUngrantedFullAccess(c, [pick]);
+  let fullAccess: boolean;
+  try {
+    fullAccess = await reachesFullAccess();
+  } catch {
+    fullAccess = true;
+  }
+  return fullAccess ? refuseUngrantedFullAccess(c, ['never']) : undefined;
+}
+
+/**
+ * #2377 slice C1: the 403 for a pick a recording seam refused itself
+ * (`FullAccessNotGrantedError`, thrown by the foreground executor, which
+ * alone knows a carried pick's thread).
+ */
+export function fullAccessRefusalFor(
+  c: Context,
+  error: unknown,
+): Response | undefined {
+  return error instanceof FullAccessNotGrantedError
+    ? fullAccessRefusal(c)
+    : undefined;
 }
 
 /**

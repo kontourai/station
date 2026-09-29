@@ -50,7 +50,7 @@ test.beforeAll(async () => {
   script = bundle.outputFiles[0].text;
 });
 
-async function mount(page: Page, theme = 'dark') {
+async function mount(page: Page) {
   await page.setContent(
     '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>',
   );
@@ -62,9 +62,9 @@ async function mount(page: Page, theme = 'dark') {
   ]) {
     await page.addStyleTag({ path: join(ROOT, file) });
   }
-  await page.evaluate((value) => {
-    document.documentElement.dataset.theme = value;
-  }, theme);
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
   await page.addScriptTag({ content: script });
   await page
     .getByRole('button', { name: 'Inspect attachment', exact: true })
@@ -161,61 +161,57 @@ test('pointer drag pans without dismissing and Alt+wheel preserves the pointer a
   );
 });
 
-for (const theme of ['light', 'dark']) {
-  test(`narrow ${theme} preview keeps controls reachable through rotation and traps focus`, async ({
-    page,
-  }, testInfo) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await mount(page, theme);
-    const panel = dialog(page);
-    for (const button of await panel.getByRole('button').all()) {
-      const box = (await button.boundingBox())!;
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(390);
-      expect(box.height).toBeGreaterThanOrEqual(44);
-    }
-    const toolbarButtons = [
-      panel.getByRole('button', { name: 'Fit', exact: true }),
-      panel.getByRole('button', { name: 'Actual size', exact: true }),
-      panel.getByRole('button', { name: 'Zoom out', exact: true }),
-      panel.getByRole('button', { name: 'Zoom in', exact: true }),
-    ];
-    const toolbarTop = (await toolbarButtons[0].boundingBox())!.y;
-    for (const button of toolbarButtons)
-      expect((await button.boundingBox())!.y).toBe(toolbarTop);
-    const level = (await panel.getByLabel('Image zoom level').boundingBox())!;
-    const firstButton = (await toolbarButtons[0].boundingBox())!;
-    expect(level.y + level.height / 2).toBeCloseTo(
-      firstButton.y + firstButton.height / 2,
-      1,
-    );
-    // Download rides the zoom row as a 44px icon link rather than a row of
-    // its own, and fits the narrow viewport with the controls.
-    const download = (await panel
-      .getByRole('link', { name: /^Download / })
-      .boundingBox())!;
-    expect(download.y).toBe(toolbarTop);
-    expect(download.x + download.width).toBeLessThanOrEqual(390);
-    expect(download.height).toBeGreaterThanOrEqual(44);
-    expect(download.width).toBeGreaterThanOrEqual(44);
-    await expect(panel.getByText('Pinch to zoom. Drag to pan.')).toBeVisible();
-    const view = panel.getByRole('region', { name: 'Image viewport' });
-    await view.focus();
-    await page.keyboard.press('Tab');
-    await expect(
-      panel.getByRole('button', { name: 'Close preview', exact: true }),
-    ).toBeFocused();
-    await page.setViewportSize({ width: 844, height: 390 });
-    await panel.getByRole('button', { name: 'Fit', exact: true }).click();
-    const image = (await panel.getByRole('img').boundingBox())!;
-    const frame = (await view.boundingBox())!;
-    expect(image.height).toBeLessThanOrEqual(frame.height);
-    expect(frame.height).toBeGreaterThan(20);
-    await page.screenshot({
-      path: testInfo.outputPath(`image-preview-${theme}.png`),
-    });
-  });
-}
+// Geometry, touch floors and focus do not vary by theme, so one theme runs.
+test('narrow preview keeps controls reachable through rotation and traps focus', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+  const panel = dialog(page);
+  for (const button of await panel.getByRole('button').all()) {
+    const box = (await button.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(390);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+  const toolbarButtons = [
+    panel.getByRole('button', { name: 'Fit', exact: true }),
+    panel.getByRole('button', { name: 'Actual size', exact: true }),
+    panel.getByRole('button', { name: 'Zoom out', exact: true }),
+    panel.getByRole('button', { name: 'Zoom in', exact: true }),
+  ];
+  const toolbarTop = (await toolbarButtons[0].boundingBox())!.y;
+  for (const button of toolbarButtons)
+    expect((await button.boundingBox())!.y).toBe(toolbarTop);
+  const level = (await panel.getByLabel('Image zoom level').boundingBox())!;
+  const firstButton = (await toolbarButtons[0].boundingBox())!;
+  expect(level.y + level.height / 2).toBeCloseTo(
+    firstButton.y + firstButton.height / 2,
+    1,
+  );
+  // Download rides the zoom row as a 44px icon link rather than a row of
+  // its own, and fits the narrow viewport with the controls.
+  const download = (await panel
+    .getByRole('link', { name: /^Download / })
+    .boundingBox())!;
+  expect(download.y).toBe(toolbarTop);
+  expect(download.x + download.width).toBeLessThanOrEqual(390);
+  expect(download.height).toBeGreaterThanOrEqual(44);
+  expect(download.width).toBeGreaterThanOrEqual(44);
+  await expect(panel.getByText('Pinch to zoom. Drag to pan.')).toBeVisible();
+  const view = panel.getByRole('region', { name: 'Image viewport' });
+  await view.focus();
+  await page.keyboard.press('Tab');
+  await expect(
+    panel.getByRole('button', { name: 'Close preview', exact: true }),
+  ).toBeFocused();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await panel.getByRole('button', { name: 'Fit', exact: true }).click();
+  const image = (await panel.getByRole('img').boundingBox())!;
+  const frame = (await view.boundingBox())!;
+  expect(image.height).toBeLessThanOrEqual(frame.height);
+  expect(frame.height).toBeGreaterThan(20);
+});
 
 for (const width of [320, 402]) {
   test(`image zoom toolbar remains one touch-safe row at ${width}px`, async ({

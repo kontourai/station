@@ -117,10 +117,19 @@ export interface IUserDirectoryProvider {
   searchPeople(query: string): Promise<UserDetailVM[]>;
 }
 
+/**
+ * White-label theme overrides. Flat `--k-*` keys apply to both modes; a
+ * `dark` or `light` object overrides per mode. The UI applies the theme only
+ * if every key is in the brand-slot allowlist with a hex value and every
+ * contrast check passes; otherwise it applies none of it
+ * (src-ui/src/lib/branding-theme.ts).
+ */
+export type BrandingTheme = Record<string, string | Record<string, string>>;
+
 export interface IBrandingProvider {
   getAppName(): Promise<string>;
   getLogo?(): Promise<{ src: string; alt?: string } | null>;
-  getTheme?(): Promise<Record<string, string> | null>;
+  getTheme?(): Promise<BrandingTheme | null>;
   getWelcomeMessage?(): Promise<string | null>;
 }
 
@@ -137,12 +146,7 @@ export interface ISchedulerProvider {
   addJob(opts: AddJobOpts): Promise<string>;
   editJob(target: string, opts: Record<string, unknown>): Promise<string>;
   removeJob(target: string): Promise<void>;
-  /**
-   * Legacy internally composed providers returned only user-facing output.
-   * Keep that source-compatible while SchedulerService normalizes it to a
-   * confirmed legacy result with no invented run identity or receipt.
-   */
-  runJob(target: string): Promise<string | SchedulerManualRunReceipt>;
+  runJob(target: string): Promise<SchedulerManualRunReceipt>;
   enableJob(target: string): Promise<void>;
   disableJob(target: string): Promise<void>;
   getJobLogs(target: string, count?: number): Promise<SchedulerLogEntry[]>;
@@ -151,7 +155,6 @@ export interface ISchedulerProvider {
   readRunFile?(path: string): Promise<string>;
   getStats(): Promise<SchedulerProviderStats>;
   getStatus(): Promise<SchedulerProviderStatus>;
-  previewSchedule?(cron: string, count?: number): Promise<string[]>;
   subscribe?(send: (data: string) => void): () => void;
   getPrerequisites?(): Promise<Prerequisite[]>;
 }

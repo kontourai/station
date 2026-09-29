@@ -1,5 +1,16 @@
 # Design: Agent–engine unification
 
+> **Reading status: design record with later implementation amendments.** The
+> original “today” descriptions, seed matrix, version probes, and slice statuses
+> are snapshots of their recorded work, not a current capability inventory.
+> For current setup, use the [Agent guide](../guides/agents.md) and
+> [Connections guide](../guides/connections.md). The current declarations and
+> delivery resolution belong to the
+> [engine capability matrix](../../packages/contracts/src/engine-capability-matrix.ts)
+> and [Session Agent resolver](../../src-server/services/orchestration/session-agent-resolution.ts).
+> The decisions and dated evidence below are preserved; their presence does not
+> establish current delivery or live CLI compatibility.
+
 > Status: **direction recorded (owner sessions, 2026-07-26); tracking issue #893.** One
 > agent definition for all of Station, executed by an engine. This doc is the contract
 > for the arc — the vocabulary migration, the unified `AgentSpec`, the engine capability
@@ -402,7 +413,7 @@ via three channels, and only these:
    the SDK's `Options.env` REPLACES the subprocess environment wholesale rather than
    merging, so the spread is load-bearing and `env` is left entirely unset when the
    toggle is off, keeping prior behavior byte-identical. **Wave 2 (shipped):** the Codex
-   spawn boundary is now closed too — `codex-adapter-transport.ts`'s `codexSpawnEnv()`
+   spawn boundary is now closed too — `codex-adapter-transport.ts`'s `spawnCodexProcess()`
    layers `CODEX_HOME` onto a full `process.env` spread, and `CodexAdapter.
    startReservedSession` resolves it via the same `getAppHomeEnv`/degrade-to-`undefined`
    contract as Claude, gated on the `codex` connection's `config.useAppHome`.

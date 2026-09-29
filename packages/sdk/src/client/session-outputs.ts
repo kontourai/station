@@ -4,14 +4,39 @@ import type {
   SessionOutputsPage,
 } from '@kontourai/station-contracts/session-outputs';
 import { SESSION_OUTPUTS_V1 } from '@kontourai/station-contracts/session-outputs';
+import { envelopeError, type StationHttpError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const encoder = new TextEncoder();
 export class SessionOutputsRequestError extends Error {
-  constructor(readonly status: number) {
+  readonly status: number;
+  /**
+   * The refusal's machine `code` and `Retry-After`, when Station answered
+   * (#2708). The message stays generic on purpose: nothing the route sent
+   * about protected content crosses this seam.
+   */
+  readonly code?: string;
+  readonly retryAfterMs?: number;
+
+  /** `0` when no response was observed; else the envelope helper's error. */
+  constructor(answer: number | StationHttpError) {
     super('Session outputs unavailable');
+    this.status = typeof answer === 'number' ? answer : answer.status;
+    if (typeof answer !== 'number') {
+      if (answer.code !== undefined) this.code = answer.code;
+      if (answer.retryAfterMs !== undefined)
+        this.retryAfterMs = answer.retryAfterMs;
+    }
   }
+}
+
+/** The observed answer, withholding everything the route said but its code. */
+function answered(response: Response, body?: unknown): StationHttpError {
+  return envelopeError(response, body, 'Session outputs unavailable', {
+    message: 'Session outputs unavailable',
+  });
 }
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -238,14 +263,16 @@ async function unwrap<T>(
   response: Response,
   parse: (value: unknown) => T | undefined,
 ): Promise<T> {
+  let body: Record<string, unknown> | undefined;
   try {
-    const body = record(await response.json());
+    body = record(await response.json());
     const parsed = body?.success === true ? parse(body.data) : undefined;
     if (response.ok && parsed) return parsed;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     /* normalized below */
   }
-  throw new SessionOutputsRequestError(response.status);
+  throw new SessionOutputsRequestError(answered(response, body));
 }
 export async function listSessionOutputs(
   apiBase: string,

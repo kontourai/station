@@ -9,6 +9,7 @@ import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   ProviderAdapterMetadata,
@@ -21,6 +22,99 @@ import { EventStore } from '../../services/orchestration/event-store.js';
 import type { ForegroundInvocationAdmission } from '../../services/orchestration/foreground-invocation-admission.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { ReceiverExecutionRefusal } from '../../services/projects/project-contribution-service.js';
+
+/**
+ * #2377 slice C2b: another Station is reached only through the one remote
+ * seam runtime composition passes to these functions. This suite exercises
+ * the SERVER side of a cross-Station call (the route's forward), so every
+ * exported entry point is called with a real `RemoteStationForwarder` over
+ * this fixture: the saved SSH profile `installRemoteStationFetch` describes,
+ * else the peer credential for `environment-remote`. A tool's own call (no
+ * forwarder) relays to this Station's route instead; that path is pinned in
+ * `station-control-delegation-relay.test.ts`.
+ */
+const remoteFixture = vi.hoisted(() => ({
+  ssh: undefined as
+    | undefined
+    | {
+        profile: Record<string, unknown>;
+        state: { phase: 'connected'; localUrl: string };
+      },
+}));
+
+vi.mock('../station-control-delegation.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../station-control-delegation.js')>();
+  const { createRemoteStationForwarder } = await import(
+    '../../services/remote-stations/remote-station-forwarder.js'
+  );
+  const remote = createRemoteStationForwarder({
+    ssh: {
+      list: () => (remoteFixture.ssh ? [remoteFixture.ssh as never] : []),
+      connect: async () => remoteFixture.ssh as never,
+    },
+    peers: {
+      get: (environmentId: string) =>
+        environmentId === 'environment-remote'
+          ? {
+              environmentId,
+              apiBase: 'http://127.0.0.1:45123',
+              scope: 'orchestration:read orchestration:operate',
+              credential: 'peer-secret',
+              label: 'Station B',
+              createdAt: 0,
+              updatedAt: 0,
+            }
+          : null,
+    },
+  });
+  type Remote = typeof remote;
+  return {
+    ...actual,
+    discoverDelegationOptions: (input: never, r?: Remote) =>
+      actual.discoverDelegationOptions(input, r ?? remote),
+    delegateTask: (input: never, service?: never, r?: Remote) =>
+      actual.delegateTask(input, service, r ?? remote),
+    executeExecutionTargetMessage: (
+      input: never,
+      service?: never,
+      admission?: never,
+      r?: Remote,
+    ) =>
+      actual.executeExecutionTargetMessage(
+        input,
+        service,
+        admission,
+        r ?? remote,
+      ),
+    continueExecutionTargetMessage: (
+      input: never,
+      service?: never,
+      r?: Remote,
+    ) => actual.continueExecutionTargetMessage(input, service, r ?? remote),
+    continueDelegatedTask: (input: never, service?: never, r?: Remote) =>
+      actual.continueDelegatedTask(input, service, r ?? remote),
+    respondToDelegatedTaskRequest: (
+      input: never,
+      service?: never,
+      r?: Remote,
+    ) => actual.respondToDelegatedTaskRequest(input, service, r ?? remote),
+    interruptDelegatedTask: (input: never, service?: never, r?: Remote) =>
+      actual.interruptDelegatedTask(input, service, r ?? remote),
+    listDelegatedTasks: (input: never, service?: never, r?: Remote) =>
+      actual.listDelegatedTasks(input, service, r ?? remote),
+    observeDelegatedTask: (input: never, service?: never, r?: Remote) =>
+      actual.observeDelegatedTask(input, service, r ?? remote),
+    observeDelegatedTaskEvents: (input: never, service?: never, r?: Remote) =>
+      actual.observeDelegatedTaskEvents(input, service, r ?? remote),
+    refreshPeerDelegationActivity: (input: never, service: never, r?: Remote) =>
+      actual.refreshPeerDelegationActivity(input, service, r ?? remote),
+  };
+});
+
+beforeEach(() => {
+  remoteFixture.ssh = undefined;
+});
 
 process.env.STATION_API_BASE = 'http://control-delegation.test';
 process.env.STATION_INTERNAL_API_TOKEN = 'internal-test-token';
@@ -428,56 +522,23 @@ function installRemoteStationFetch(
     existingSessionCwd?: string;
   },
 ) {
+  remoteFixture.ssh = {
+    profile: {
+      id: 'profile-1',
+      name: 'Brian media',
+      environmentId: 'environment-remote',
+      remoteHome:
+        discovery && 'remoteHome' in discovery
+          ? discovery.remoteHome
+          : '/home/brian',
+      verifiedProjectPath: discovery?.verifiedProjectPath ?? '/srv/station',
+    },
+    state: { phase: 'connected', localUrl: REMOTE_API },
+  };
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
     if (url === `${CURRENT_API}/.well-known/station/v1`) {
       return json({ environmentId: 'environment-current' });
-    }
-    if (url === `${CURRENT_API}/api/environments/ssh`) {
-      return json({
-        success: true,
-        data: [
-          {
-            profile: {
-              id: 'profile-1',
-              name: 'Brian media',
-              environmentId: 'environment-remote',
-              remoteHome:
-                discovery && 'remoteHome' in discovery
-                  ? discovery.remoteHome
-                  : '/home/brian',
-              verifiedProjectPath:
-                discovery?.verifiedProjectPath ?? '/srv/station',
-            },
-            state: { phase: 'connected', localUrl: REMOTE_API },
-          },
-        ],
-      });
-    }
-    if (url === `${CURRENT_API}/api/environments/ssh/profile-1/connect`) {
-      return json({
-        success: true,
-        data: {
-          profile: {
-            id: 'profile-1',
-            name: 'Brian media',
-            environmentId: 'environment-remote',
-            remoteHome:
-              discovery && 'remoteHome' in discovery
-                ? discovery.remoteHome
-                : '/home/brian',
-            verifiedProjectPath:
-              discovery?.verifiedProjectPath ?? '/srv/station',
-          },
-          state: { phase: 'connected', localUrl: REMOTE_API },
-        },
-      });
-    }
-    if (
-      url ===
-      `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-    ) {
-      return json({ success: false, error: 'not found' }, 404);
     }
     const projectPrefix = `${REMOTE_API}/api/projects/`;
     const projectSlug = url.startsWith(projectPrefix)
@@ -765,7 +826,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       };
       if (kind === 'foreground') {
         await executeExecutionTargetMessage(
-          { target, message: 'Use this Project' },
+          { target, message: 'Use this Project', userId: 'test-user' },
           service as never,
         );
       } else {
@@ -1048,24 +1109,6 @@ describe('Station Control canonical Environment + Agent execution', () => {
       if (url === `${CURRENT_API}/.well-known/station/v1`) {
         return json({ environmentId: 'environment-current' });
       }
-      if (url === `${CURRENT_API}/api/environments/ssh`) {
-        return json({ success: true, data: [] });
-      }
-      if (
-        url ===
-        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-      ) {
-        return json({
-          success: true,
-          data: {
-            environmentId: 'environment-remote',
-            apiBase: REMOTE_API,
-            scope: 'station:peer',
-            credential: 'peer-secret',
-            label: 'Station B',
-          },
-        });
-      }
       if (url === `${REMOTE_API}/api/orchestration/delegations`) {
         return json({
           success: true,
@@ -1130,24 +1173,6 @@ describe('Station Control canonical Environment + Agent execution', () => {
       if (url === `${CURRENT_API}/.well-known/station/v1`) {
         return json({ environmentId: 'environment-current' });
       }
-      if (url === `${CURRENT_API}/api/environments/ssh`) {
-        return json({ success: true, data: [] });
-      }
-      if (
-        url ===
-        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-      ) {
-        return json({
-          success: true,
-          data: {
-            environmentId: 'environment-remote',
-            apiBase: REMOTE_API,
-            scope: 'station:peer',
-            credential: 'peer-secret',
-            label: 'Station B',
-          },
-        });
-      }
       if (
         url ===
         `${REMOTE_API}/api/orchestration/delegations/task-peer-847-observe`
@@ -1182,24 +1207,6 @@ describe('Station Control canonical Environment + Agent execution', () => {
       const url = String(input);
       if (url === `${CURRENT_API}/.well-known/station/v1`) {
         return json({ environmentId: 'environment-current' });
-      }
-      if (url === `${CURRENT_API}/api/environments/ssh`) {
-        return json({ success: true, data: [] });
-      }
-      if (
-        url ===
-        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-      ) {
-        return json({
-          success: true,
-          data: {
-            environmentId: 'environment-remote',
-            apiBase: REMOTE_API,
-            scope: 'station:peer',
-            credential: 'peer-secret',
-            label: 'Station B',
-          },
-        });
       }
       if (
         url === `${REMOTE_API}/api/orchestration/delegations/task-peer-legacy`
@@ -1248,7 +1255,10 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(fallbackSignal).toBeInstanceOf(AbortSignal);
   });
 
-  test('relays target-side delegation validation errors without a fallback', async () => {
+  // #2377 C2b review: the target Station's words are replaced by this
+  // Station's fixed copy and the status (they reach an agent's tool result);
+  // there is still exactly one request and no fallback.
+  test('reports a target-side validation error as fixed copy, without a fallback', async () => {
     installRemoteStationFetch('/api/orchestration/delegations', undefined);
     // Replace only the canonical target response with a rejection while the
     // SSH resolution requests continue through the installed implementation.
@@ -1266,7 +1276,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     await expect(
       delegateTask({ prompt: 'Run tests', target: savedTarget() }),
-    ).rejects.toThrow('Agent is not currently launchable.');
+    ).rejects.toThrow(
+      'The selected Station could not start the delegated task (HTTP 400)',
+    );
     expect(
       fetchMock.mock.calls.filter(([url]) =>
         String(url).endsWith('/api/orchestration/delegations'),
@@ -1793,6 +1805,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     await expect(
       continueExecutionTargetMessage(
         {
+          userId: 'test-user',
           conversationId: 'conversation:local-directory',
           message: 'Continue where this conversation already lives',
         },
@@ -1835,7 +1848,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
       }),
       expect.anything(),
       expect.objectContaining({
-        nativeMemoryReadAuthority: expect.objectContaining({ userId: '' }),
+        nativeMemoryReadAuthority: expect.objectContaining({
+          userId: 'test-user',
+        }),
       }),
     );
   });
@@ -1906,6 +1921,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     const result = await executeExecutionTargetMessage(
       {
+        userId: 'test-user',
         target: currentTarget(),
         message: 'Inspect this',
         conversationId: 'conversation-local',
@@ -2036,6 +2052,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     await executeExecutionTargetMessage(
       {
+        userId: 'test-user',
         target: currentTarget(),
         message: 'Webhook delivery',
         conversationId: 'conversation-webhook',
@@ -2061,6 +2078,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     await executeExecutionTargetMessage(
       {
+        userId: 'test-user',
         target: currentTarget(),
         message: 'Delegated delivery',
         conversationId: 'conversation-delegated',
@@ -2090,6 +2108,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     await executeExecutionTargetMessage(
       {
+        userId: 'test-user',
         target: currentTarget(),
         message: 'Queued replay',
         conversationId: 'conversation-background',
@@ -2120,6 +2139,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     await expect(
       executeExecutionTargetMessage(
         {
+          userId: 'test-user',
           target: currentTarget(),
           message: 'Do not dispatch twice',
           conversationId: 'unknown-creation',
@@ -2163,6 +2183,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     await expect(
       executeExecutionTargetMessage(
         {
+          userId: 'test-user',
           target: currentTarget(),
           message: 'Do not dispatch twice',
           conversationId: 'conversation-uncertain',
@@ -2545,9 +2566,6 @@ describe('Station Control canonical Environment + Agent execution', () => {
         },
         eventBus: new EventBus(),
         eventStore,
-        // The production bootstrap (runtime-initialize) configures exactly
-        // this for the single-local-account deployment mode.
-        ownerlessSessionAccess: 'single-user-compat',
         logger: { debug: vi.fn(), warn: vi.fn() },
       });
       const authority = sessionReadAuthorityFromRequest(
@@ -3490,6 +3508,261 @@ describe('Station Control canonical Environment + Agent execution', () => {
  * could not perform (it holds neither the target's adapter registry nor its
  * thread attachments).
  */
+describe('observeDelegatedTask reports the last decision apart from its delivery (#2880)', () => {
+  function installTaskFetch(decisionEvents: Array<Record<string, unknown>>) {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`) {
+        return json({ environmentId: 'environment-current' });
+      }
+      if (url === `${CURRENT_API}/api/orchestration/delegations/task-1`) {
+        return json({ success: false, error: 'route not found' }, 404);
+      }
+      if (url === `${CURRENT_API}/api/orchestration/sessions/task-1`) {
+        return json({
+          success: true,
+          data: {
+            session: { threadId: 'task-1', status: 'running' },
+            events: [
+              {
+                method: 'session.configured',
+                metadata: {
+                  taskId: 'task-1',
+                  environmentId: 'environment-current',
+                  targetKind: 'agent',
+                  targetId: 'reviewer',
+                },
+              },
+              {
+                method: 'request.opened',
+                requestId: 'req-1',
+                requestType: 'approval',
+                title: 'touch probe.txt',
+              },
+              ...decisionEvents,
+            ],
+          },
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  const recorded = (acknowledgement?: string) => ({
+    method: 'request.resolved',
+    requestId: 'req-1',
+    status: 'approved',
+    ...(acknowledgement ? { acknowledgement } : {}),
+  });
+  const delivery = (fields: Record<string, unknown>) => ({
+    method: 'request.delivery',
+    requestId: 'req-1',
+    ...fields,
+  });
+
+  test.each([
+    [
+      'awaiting an engine acknowledgement',
+      [recorded('engine')],
+      { delivery: 'awaiting-acknowledgement' },
+    ],
+    [
+      'acknowledged by the engine',
+      [recorded('engine'), delivery({ outcome: 'acknowledged', waitedMs: 12 })],
+      { delivery: 'acknowledged', waitedMs: 12 },
+    ],
+    [
+      'not acknowledged within the window',
+      [
+        recorded('engine'),
+        delivery({
+          outcome: 'unacknowledged',
+          reason: 'no-acknowledgement',
+          waitedMs: 30_000,
+        }),
+      ],
+      {
+        delivery: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: 30_000,
+      },
+    ],
+    [
+      'a late acknowledgement superseding the warning',
+      [
+        recorded('engine'),
+        delivery({
+          outcome: 'unacknowledged',
+          reason: 'no-acknowledgement',
+          waitedMs: 30_000,
+        }),
+        delivery({ outcome: 'acknowledged', waitedMs: 31_000 }),
+      ],
+      { delivery: 'acknowledged', waitedMs: 31_000 },
+    ],
+    [
+      'an engine with no acknowledgement',
+      [recorded('none')],
+      { delivery: 'not-reported' },
+    ],
+    [
+      'a decision predating delivery reporting',
+      [recorded()],
+      { delivery: 'not-reported' },
+    ],
+    [
+      'Station consuming it in-process',
+      [recorded('in-process')],
+      {
+        delivery: 'in-process',
+      },
+    ],
+  ])('%s', async (_name, decisionEvents, expected) => {
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    installTaskFetch(decisionEvents);
+
+    const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
+
+    expect(snapshot.lastDecision).toEqual({
+      requestId: 'req-1',
+      status: 'approved',
+      ...expected,
+    });
+    // The recorded decision closes the request whatever its delivery.
+    expect(snapshot.pendingRequest).toBeUndefined();
+  });
+
+  test('a delivery observation for another request never speaks for this one', async () => {
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    installTaskFetch([
+      recorded('engine'),
+      {
+        ...delivery({ outcome: 'acknowledged', waitedMs: 5 }),
+        requestId: 'req-other',
+      },
+    ]);
+    const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
+    expect(snapshot.lastDecision?.delivery).toBe('awaiting-acknowledgement');
+  });
+
+  test('an earlier unacknowledged decision stays visible after a later one is acknowledged', async () => {
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    const on = (requestId: string, event: Record<string, unknown>) => ({
+      ...event,
+      requestId,
+    });
+    installTaskFetch([
+      // req-1: never acknowledged.
+      recorded('engine'),
+      delivery({
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: 30_000,
+      }),
+      // req-2: unacknowledged, then a late acknowledgement supersedes it.
+      on('req-2', recorded('engine')),
+      on('req-2', delivery({ outcome: 'unacknowledged', waitedMs: 30_000 })),
+      on('req-2', delivery({ outcome: 'acknowledged', waitedMs: 31_000 })),
+      // req-3: the latest decision, acknowledged.
+      on('req-3', recorded('engine')),
+      on('req-3', delivery({ outcome: 'acknowledged', waitedMs: 9 })),
+    ]);
+    const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
+    expect(snapshot.lastDecision).toMatchObject({
+      requestId: 'req-3',
+      delivery: 'acknowledged',
+    });
+    expect(snapshot.earlierUnacknowledgedDecisions).toEqual([
+      {
+        requestId: 'req-1',
+        status: 'approved',
+        delivery: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: 30_000,
+      },
+    ]);
+  });
+
+  test('a request the engine closed before Station answered reads closed-by-engine', async () => {
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    // The shape the Codex transport publishes: no acknowledgement, because
+    // Station made no decision.
+    installTaskFetch([
+      {
+        method: 'request.resolved',
+        requestId: 'req-1',
+        status: 'cancelled',
+        response: { reason: 'closed-by-engine' },
+      },
+    ]);
+    const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
+    expect(snapshot.lastDecision).toEqual({
+      requestId: 'req-1',
+      status: 'cancelled',
+      delivery: 'closed-by-engine',
+    });
+  });
+
+  test('an earlier request is judged on its latest request.resolved', async () => {
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    installTaskFetch([
+      // req-1 was reported unacknowledged, then resolved again: the
+      // re-resolution has no report yet, so it is awaiting, not unacknowledged.
+      recorded('engine'),
+      delivery({ outcome: 'unacknowledged', reason: 'no-acknowledgement' }),
+      { ...recorded('engine'), status: 'denied' },
+      {
+        method: 'request.resolved',
+        requestId: 'req-3',
+        status: 'approved',
+        acknowledgement: 'engine',
+      },
+      {
+        method: 'request.delivery',
+        requestId: 'req-3',
+        outcome: 'acknowledged',
+        waitedMs: 9,
+      },
+    ]);
+    const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
+    expect(snapshot.lastDecision?.requestId).toBe('req-3');
+    expect(snapshot).not.toHaveProperty('earlierUnacknowledgedDecisions');
+  });
+
+  test('no earlier list when the only unacknowledged decision is the latest', async () => {
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    installTaskFetch([
+      recorded('engine'),
+      delivery({ outcome: 'unacknowledged', reason: 'invalid-reply' }),
+    ]);
+    const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
+    expect(snapshot.lastDecision?.delivery).toBe('unacknowledged');
+    expect(snapshot).not.toHaveProperty('earlierUnacknowledgedDecisions');
+  });
+});
+
 describe('observeDelegatedTask answerability passthrough (station#1783)', () => {
   const observation = {
     answerable: false,
@@ -4028,24 +4301,6 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
         if (url === `${CURRENT_API}/.well-known/station/v1`) {
           return json({ environmentId: 'environment-current' });
         }
-        if (url === `${CURRENT_API}/api/environments/ssh`) {
-          return json({ success: true, data: [] });
-        }
-        if (
-          url ===
-          `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-        ) {
-          return json({
-            success: true,
-            data: {
-              environmentId: 'environment-remote',
-              apiBase: REMOTE_API,
-              scope: 'orchestration:read orchestration:operate',
-              credential: 'peer-secret',
-              label: 'Station B',
-            },
-          });
-        }
         if (url === `${REMOTE_API}/.well-known/station/v1`) {
           return json({
             environmentId: 'environment-remote',
@@ -4170,24 +4425,6 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
           const url = String(input);
           if (url === `${CURRENT_API}/.well-known/station/v1`) {
             return json({ environmentId: 'environment-current' });
-          }
-          if (url === `${CURRENT_API}/api/environments/ssh`) {
-            return json({ success: true, data: [] });
-          }
-          if (
-            url ===
-            `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-          ) {
-            return json({
-              success: true,
-              data: {
-                environmentId: 'environment-remote',
-                apiBase: REMOTE_API,
-                scope: 'orchestration:read orchestration:operate',
-                credential: 'peer-secret',
-                label: 'Station B',
-              },
-            });
           }
           if (
             url ===
@@ -4426,5 +4663,167 @@ describe('#2324 a delegated task event carries a provider-triggered turn’s tri
         ...trigger,
       }),
     ).not.toHaveProperty('trigger');
+  });
+});
+
+/**
+ * #2708 A-3a: `getAgent` now keeps a refusal's `code`, and the delegate
+ * route relays a typed code it finds on the error (`delegationRefusal`, the
+ * receiver-refusal mapping). Only the current Station's Agent is read here
+ * (a peer target forwards before resolution); its refusal rides as a
+ * `LocalStationRefusal` cause, which only the station-control tools read,
+ * never as the error's `code`.
+ */
+describe('delegation Agent and Project reads keep a refusal code off the route', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  const REFUSAL = {
+    success: false,
+    code: 'delegation_depth_exceeded',
+    error: 'Delegation depth exceeded.',
+  };
+
+  test('this Station’s coded Agent refusal rides as a LocalStationRefusal cause', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`)
+        return json({ environmentId: 'environment-current' });
+      if (url === `${CURRENT_API}/api/agents/reviewer`)
+        return json(REFUSAL, 403);
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const { LocalStationRefusal } = await import(
+      '../station-control-shared.js'
+    );
+
+    const error = await delegateTask(
+      { prompt: 'Local work', target: currentTarget() },
+      localService() as never,
+    ).catch((caught: unknown) => caught);
+
+    expect((error as { code?: unknown }).code).toBeUndefined();
+    expect((error as Error).message).toBe('Delegation depth exceeded.');
+    const cause = (error as Error).cause;
+    expect(cause).toBeInstanceOf(LocalStationRefusal);
+    expect(cause).toMatchObject({ refusalCode: 'delegation_depth_exceeded' });
+  });
+
+  test('this Station’s coded Project refusal rides as a LocalStationRefusal cause', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`)
+        return json({ environmentId: 'environment-current' });
+      if (url === `${CURRENT_API}/api/agents/reviewer`)
+        return json({
+          success: true,
+          data: { slug: 'reviewer', name: 'Reviewer', available: true },
+        });
+      if (url === `${CURRENT_API}/api/projects/workspace`)
+        return json(REFUSAL, 403);
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const { LocalStationRefusal } = await import(
+      '../station-control-shared.js'
+    );
+
+    const error = await delegateTask(
+      {
+        prompt: 'Local work',
+        target: {
+          ...currentTarget(),
+          workspace: { kind: 'project', projectSlug: 'workspace' },
+        },
+      },
+      localService() as never,
+    ).catch((caught: unknown) => caught);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${CURRENT_API}/api/projects/workspace`,
+      expect.anything(),
+    );
+    expect((error as { code?: unknown }).code).toBeUndefined();
+    expect((error as Error).message).toBe('Delegation depth exceeded.');
+    expect((error as Error).cause).toBeInstanceOf(LocalStationRefusal);
+  });
+});
+
+/**
+ * #2708: the one place a delegation read decides whether a refusal's code is
+ * this Station's. Both the Agent and the Project read go through it; only a
+ * `current` target keeps the code, and only as a cause.
+ */
+describe('readRelayingLocalRefusal', () => {
+  let readRelayingLocalRefusal: typeof import('../station-control-delegation.js').readRelayingLocalRefusal;
+  let LocalStationRefusal: typeof import('../station-control-shared.js').LocalStationRefusal;
+  beforeEach(async () => {
+    ({ readRelayingLocalRefusal } = await import(
+      '../station-control-delegation.js'
+    ));
+    ({ LocalStationRefusal } = await import('../station-control-shared.js'));
+  });
+
+  const refusal = () =>
+    new StationHttpError(403, 'Delegation depth exceeded.', {
+      code: 'delegation_depth_exceeded',
+    });
+  const failed = (kind: string, error: unknown) =>
+    readRelayingLocalRefusal({ kind }, async () => {
+      throw error;
+    }).catch((caught: unknown) => caught as Error);
+
+  test('this Station’s coded refusal rides as a cause, never as code', async () => {
+    const error = await failed('current', refusal());
+
+    expect(error).not.toBeInstanceOf(StationHttpError);
+    expect((error as { code?: unknown }).code).toBeUndefined();
+    expect(error.message).toBe('Delegation depth exceeded.');
+    expect(error.cause).toBeInstanceOf(LocalStationRefusal);
+    expect(error.cause).toMatchObject({
+      refusalCode: 'delegation_depth_exceeded',
+    });
+  });
+
+  // #2377 C2b review: another Station's words are dropped as well as its
+  // code; only the status survives, in this Station's fixed copy.
+  test.each(['peer', 'ssh'])(
+    'a %s Station’s coded refusal loses its code and its words',
+    async (kind) => {
+      const error = await failed(kind, refusal());
+
+      expect((error as { code?: unknown }).code).toBeUndefined();
+      expect(error.message).toBe(
+        'The selected Station refused the request (HTTP 403)',
+      );
+      expect(error.cause).toBeUndefined();
+    },
+  );
+
+  test('a refusal without a code carries no cause', async () => {
+    const error = await failed('current', new StationHttpError(404, 'gone'));
+
+    expect(error.message).toBe('gone');
+    expect(error.cause).toBeUndefined();
+  });
+
+  test('a failure that is not a refusal passes through unchanged', async () => {
+    const transport = new TypeError('fetch failed');
+
+    expect(await failed('current', transport)).toBe(transport);
+  });
+
+  test('an answer passes through', async () => {
+    await expect(
+      readRelayingLocalRefusal({ kind: 'peer' }, async () => 42),
+    ).resolves.toBe(42);
   });
 });

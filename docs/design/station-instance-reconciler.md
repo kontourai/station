@@ -1,16 +1,27 @@
 # Station instance reconciliation
 
+> **Reading status: current reconciliation contract.** The
+> [module](../../packages/cli/src/commands/station-instance-reconciler.ts) owns
+> coordination and outcomes; the [service adapter and caller](../../packages/cli/src/commands/service.ts)
+> own platform observations and actions. The detailed timing and lock behavior
+> below is distinct from qualification against a real launchd, systemd, or
+> Windows service installation.
+
 `StationInstanceReconciler` is the Module for a Station service instance. Its
 Interface is deliberately small: `inspect(ref)` returns one versioned
-`InstanceState`; `reconcile({ ref, desired })` converges only `running` or
+`InstanceState`; `reconcile({ instance, desired })` converges only `running` or
 `stopped`. Installation and upgrade remain separate Modules, and destructive
 home reset is not a desired state.
 
 The platform Adapter owns the implementation facts behind that Interface:
 manifest presence, orphaned registration, supervisor state, the exact
 authenticated Station identity, readiness, and configured ports. `station
-service status` only renders the returned `InstanceState`; it does not issue a
-second process probe or reinterpret a platform status record. A stopped state
+service status` takes supervisor and authenticated identity state from that
+single `InstanceState`. It also reports separate scheduling-policy and installed
+PATH-drift observations and, for a launcher-run archive, the update read from
+that install's runtime files (`update` in `--json`); these do not replace the
+reconciler's lifecycle state.
+A stopped state
 requires both an inactive supervisor and an absent exact identity, so a
 stranded live process is never called stopped merely because its supervisor
 has gone inactive.
@@ -45,10 +56,12 @@ unsettled await. A deadline before any platform action is a `timed-out`
 outcome. Once start or stop has begun, a timeout, failed readiness, or failed
 post-action inspection is `partial`: ownership of the external state is
 uncertain and callers must inspect again rather than retry speculatively.
-If an Adapter ignores cancellation, reconciliation keeps both its process-wide
-coordination and filesystem lock until that Adapter promise settles. An
-opposing desired state is therefore `contended` during that uncertainty rather
-than issuing an unsafe second platform action.
+After a platform action has begun, a timed-out action, readiness wait, or
+post-action inspection retains both process-wide coordination and the filesystem
+lock until its Adapter promise settles. An opposing desired state is therefore
+`contended` during that uncertainty. A timeout in the initial inspection releases
+the lock because no platform action has begun; it does not wait for that read
+to settle.
 An immediate owned-lock release failure is returned as `failed` before action
 or `partial` after action; delayed cleanup failure is logged with the already
 partial uncertainty rather than being silently discarded.

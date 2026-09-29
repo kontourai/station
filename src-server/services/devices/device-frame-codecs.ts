@@ -6,16 +6,13 @@
  * - `JpegStreamSplitter`: a bare concatenation of JPEG images (ffmpeg's
  *   `image2pipe` output when decoding Android's H.264 into frames).
  * - `parseSemuPacket`: serve-emu's per-access-unit "SEMU" frame-meta header.
- * - `jpegSize` / `pngSize`: an image's pixel size from its own header.
  *
  * Every parser is incremental (chunk boundaries are arbitrary) and BOUNDED:
  * a part or image larger than its cap is a protocol error, never an
  * unbounded buffer.
  *
- * The SEMU layout is adapted from t3code
- * (packages/client-runtime/src/device/stream.ts, `parseSemuPacket`) and the
- * hub's own `shared/frame-meta.js` (v2 adds an 8-byte send time).
- * t3code: MIT License, Copyright (c) 2026 T3 Tools Inc.
+ * The SEMU layout follows the hub's own `shared/frame-meta.js` (v2 adds an
+ * 8-byte send time).
  */
 
 export class DeviceFrameProtocolError extends Error {
@@ -306,57 +303,6 @@ export class JpegStreamSplitter {
       if (marker === 0xda) this.inEntropy = true;
     }
   }
-}
-
-/** Pixel size from a JPEG's Start-of-Frame segment, or null. */
-export function jpegSize(
-  bytes: Uint8Array,
-): { width: number; height: number } | null {
-  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
-  let i = 2;
-  while (i + 3 < bytes.length) {
-    if (bytes[i] !== 0xff) return null;
-    const marker = bytes[i + 1]!;
-    if (marker === 0xff) {
-      i += 1;
-      continue;
-    }
-    if (marker === 0xd9 || marker === 0xda) return null;
-    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
-      i += 2;
-      continue;
-    }
-    const length = (bytes[i + 2]! << 8) | bytes[i + 3]!;
-    // SOF0..SOF15 except DHT (C4), JPG (C8) and DAC (CC).
-    if (
-      marker >= 0xc0 &&
-      marker <= 0xcf &&
-      marker !== 0xc4 &&
-      marker !== 0xc8 &&
-      marker !== 0xcc
-    ) {
-      if (i + 8 >= bytes.length) return null;
-      const height = (bytes[i + 5]! << 8) | bytes[i + 6]!;
-      const width = (bytes[i + 7]! << 8) | bytes[i + 8]!;
-      return width > 0 && height > 0 ? { width, height } : null;
-    }
-    i += 2 + length;
-  }
-  return null;
-}
-
-/** Pixel size from a PNG's IHDR, or null. */
-export function pngSize(
-  bytes: Uint8Array,
-): { width: number; height: number } | null {
-  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
-  if (bytes.length < 24 || signature.some((byte, i) => bytes[i] !== byte))
-    return null;
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (latin1.decode(bytes.subarray(12, 16)) !== 'IHDR') return null;
-  const width = view.getUint32(16);
-  const height = view.getUint32(20);
-  return width > 0 && height > 0 ? { width, height } : null;
 }
 
 const SEMU_MAGIC = 0x53454d55;

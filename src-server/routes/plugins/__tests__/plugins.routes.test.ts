@@ -10,6 +10,10 @@ import {
 import { cp, readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import {
+  assertSafeContextText,
+  ContextSafetyError,
+} from '../../../services/orchestration/context-safety.js';
 import { PluginIncarnationError } from '../../../services/plugins/plugin-incarnation.js';
 import { hasGrant } from '../../../services/plugins/plugin-permissions.js';
 
@@ -29,7 +33,6 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   pluginSettingsUpdates: { add: vi.fn() },
 }));
 
-const clearPluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProvidersForSource = vi.hoisted(() => vi.fn());
 const replacePluginProvidersForSourceGeneration = vi.hoisted(() =>
@@ -69,7 +72,6 @@ const pluginRegistryProviderEntries = vi.hoisted<
 >(() => []);
 vi.mock('../../../providers/registries/registry.js', () => ({
   disposePreparedPluginProviders: vi.fn(async () => {}),
-  clearPluginProviders,
   replacePluginProviders,
   replacePluginProvidersForSource,
   replacePluginProvidersForSourceGeneration,
@@ -148,7 +150,6 @@ const rebindGrantsAfterContentChange = vi.hoisted(() =>
 const snapshotPluginGrantEntry = vi.hoisted(() =>
   vi.fn().mockReturnValue(null),
 );
-const restorePluginGrantEntry = vi.hoisted(() => vi.fn());
 // The update route opens one grant mutation scope per update and closes it
 // with `commit()` on success or `rollback()` on failure; this fixture stands
 // in for the receipt-owning scope so the suite can pin which branch ran.
@@ -224,7 +225,6 @@ vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
     ...(manifest.providers?.length ? ['providers.register'] : []),
     ...(manifest.serverModule ? ['plugin.server'] : []),
   ]),
-  restorePluginGrantEntry,
   revokeAllGrants: vi.fn(),
   readPluginDependencyOwnership: vi.fn().mockReturnValue([]),
   removePluginHostRecord: vi.fn().mockResolvedValue(undefined),
@@ -520,7 +520,6 @@ describe('Plugin Routes', () => {
   // mutates this module-level object, which leaked into GET /providers (the
   // provider's `enabled` flag) when tests ran in a different order.
   beforeEach(() => {
-    clearPluginProviders.mockClear();
     replacePluginProviders.mockClear();
     replacePluginProvidersForSource.mockClear();
     agentRegistryProvider.install.mockClear();
@@ -550,7 +549,6 @@ describe('Plugin Routes', () => {
     });
     snapshotPluginGrantEntry.mockClear();
     snapshotPluginGrantEntry.mockReturnValue(null);
-    restorePluginGrantEntry.mockClear();
     forgetPluginContentDigest.mockClear();
     scanPluginPromptGeneration.mockClear();
     scanPluginCommandSkills.mockClear();
@@ -718,7 +716,14 @@ describe('Plugin Routes', () => {
 
     expect(response.status).toBe(200);
     expect(execGit).toHaveBeenCalledWith(
-      ['pull', '--ff-only'],
+      [
+        '--git-dir',
+        expect.stringMatching(/test-plugin[\\/]\.git$/),
+        '--work-tree',
+        expect.stringMatching(/test-plugin$/),
+        'pull',
+        '--ff-only',
+      ],
       expect.anything(),
     );
     expect(complete).toHaveBeenCalledWith(LEGACY_UPDATE_PROPOSAL.id, {
@@ -1003,33 +1008,12 @@ describe('Plugin Routes', () => {
     vi.mocked(hasGrant).mockReturnValue(true);
   });
 
-  // Proves the mock above is bound to the seam the routes actually call. A
-  // mock pointed at a module nothing imports is indistinguishable from a
-  // working one until you make it misbehave and nothing changes (review M3).
-  test('a plugin update runs the plugin-command-skill scanner this suite controls', async () => {
-    vi.mocked(existsSync).mockImplementation((p: any) => {
-      if (typeof p !== 'string') return false;
-      if (p.endsWith('/.git')) return false;
-      if (p.includes('nonexistent')) return false;
-      if (p.includes('/plugins/test-plugin')) return true;
-      if (p.includes('/dist/bundle')) return true;
-      return false;
-    });
-    pluginRegistryProvider.listInstalled.mockResolvedValue([
-      { id: 'test-plugin', version: '1.0.0', installed: true },
-    ]);
-    const app = setup({
-      applyConfigurationMutation: vi.fn(async (operation) =>
-        operation(vi.fn(), { status: 'applied' }),
-      ),
-      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
-    });
-
-    await app.request('/test-plugin/update', { method: 'POST' });
-
-    expect(scanPluginPromptGeneration).toHaveBeenCalled();
-  });
-
+  // Also proves the scanner mock is bound to the seam the routes actually
+  // call: a mock pointed at a module nothing imports is indistinguishable
+  // from a working one until you make it misbehave and nothing changes
+  // (review M3). Unreached, this update succeeds exactly as the non-Git
+  // registry update does ('updates non-Git plugins through the plugin
+  // registry ...'), which uses the same setup.
   test('a scanner refusal fails the update instead of being scanned around', async () => {
     vi.mocked(existsSync).mockImplementation((p: any) => {
       if (typeof p !== 'string') return false;
@@ -1042,8 +1026,18 @@ describe('Plugin Routes', () => {
     pluginRegistryProvider.listInstalled.mockResolvedValue([
       { id: 'test-plugin', version: '1.0.0', installed: true },
     ]);
+    // The refusal the real scanner throws for a blocked prompt file.
+    let refusal: unknown;
+    try {
+      assertSafeContextText('Hidden\u200Bmarker', {
+        source: "plugin 'test-plugin' prompt files",
+      });
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(ContextSafetyError);
     scanPluginPromptGeneration.mockImplementationOnce(() => {
-      throw new Error('context-safety refusal');
+      throw refusal;
     });
     const app = setup({
       applyConfigurationMutation: vi.fn(async (operation) =>
@@ -1056,8 +1050,11 @@ describe('Plugin Routes', () => {
       method: 'POST',
     });
 
-    expect(response.status).not.toBe(200);
-    expect((await json(response)).success).toBe(false);
+    expect(response.status).toBe(400);
+    expect(await json(response)).toEqual({
+      success: false,
+      error: (refusal as ContextSafetyError).message,
+    });
   });
 
   test('updates aliased registry plugins by installed name while calling the provider registry id', async () => {
@@ -1445,10 +1442,9 @@ describe('Plugin Routes', () => {
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ success: true });
     expect(pluginRegistryProvider.update).toHaveBeenCalledWith('test-plugin');
-    expect(execGit).not.toHaveBeenCalledWith(
-      ['pull', '--ff-only'],
-      expect.anything(),
-    );
+    expect(
+      execGit.mock.calls.some(([args]) => (args as string[]).includes('pull')),
+    ).toBe(false);
   });
 
   test('rejects updates when the installed plugin root is a symbolic link', async () => {
@@ -1772,29 +1768,36 @@ describe('Plugin Routes', () => {
 
   // ── GET / — SDK usePluginsQuery reads json.plugins ──
 
-  test('GET / returns { plugins } with fields the UI reads', async () => {
-    const app = setup();
-    const body = await json(await app.request('/'));
-    expect(body.plugins).toBeDefined();
-    expect(Array.isArray(body.plugins)).toBe(true);
-    const p = body.plugins[0];
-    // PluginManagementView reads these fields
-    expect(p).toHaveProperty('name');
-    expect(p).toHaveProperty('displayName');
-    expect(p).toHaveProperty('version');
-    expect(p).toHaveProperty('description');
-    expect(p).toHaveProperty('hasBundle');
-    expect(p).toHaveProperty('hasSettings');
-    expect(p).toHaveProperty('permissions');
-    expect(p.permissions).toHaveProperty('declared');
-    expect(p.permissions).toHaveProperty('granted');
-    expect(p.permissions).toHaveProperty('missing');
-    expect(p.permissions.declared).toContain('providers.register');
-    expect(p.permissions.missing).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ permission: 'providers.register' }),
-      ]),
-    );
+  test('GET / projects the installed manifest into the row the UI reads', async () => {
+    const body = await json(await setup().request('/'));
+    // `declared`, `granted` and each tier are this fixture's grant
+    // derivations (the plugin-permissions mock above). The route owns the
+    // projection of `mockManifest` and the `missing` split between the two.
+    expect(body).toEqual({
+      plugins: [
+        {
+          name: 'test-plugin',
+          displayName: 'Test Plugin',
+          version: '1.0.0',
+          description: 'A test plugin',
+          installationReadiness: { state: 'ready' },
+          hasBundle: true,
+          hasSettings: true,
+          layout: { slug: 'test-layout', source: 'layout.js' },
+          agents: [],
+          providers: [{ type: 'test-provider', module: 'provider.js' }],
+          links: null,
+          git: { hash: '', branch: '', remote: '' },
+          permissions: {
+            declared: ['network', 'providers.register'],
+            granted: ['network'],
+            missing: [{ permission: 'providers.register', tier: 'standard' }],
+            contentBinding: 'bound',
+            withheld: [],
+          },
+        },
+      ],
+    });
   });
 
   test('GET / keeps a rejected manifest visible with exact recovery copy', async () => {
@@ -1861,19 +1864,7 @@ describe('Plugin Routes', () => {
     expect(res.status).toBe(404);
   });
 
-  // ── PUT /:name/settings — returns { success: true } ──
-
-  test('PUT /:name/settings saves and returns { success: true }', async () => {
-    const app = setup();
-    const body = await json(
-      await app.request('/test-plugin/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: { displayLabel: 'new-key' } }),
-      }),
-    );
-    expect(body).toEqual({ success: true });
-  });
+  // ── PUT /:name/settings — saves and returns { success: true } ──
 
   test('PUT /:name/settings preserves stored secrets when clients send redacted null values', async () => {
     mockOverrides['test-plugin'] = {

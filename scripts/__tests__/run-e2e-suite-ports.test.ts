@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { childExitedBeforeReadinessMessage } from '../../packages/cli/src/commands/lifecycle.js';
 import {
   appendE2EStartupOutputTail,
   assertSupportedE2EPlatform,
@@ -39,6 +40,7 @@ import {
   runE2EExecutionPhases,
   seedE2EEngineChoice,
   settleE2EExecution,
+  settleStartedE2ERun,
   startWithPortRetry,
   suiteStationE2EEnv,
   sweepInterruptedBuildDirs,
@@ -179,20 +181,71 @@ describe('runE2EExecutionPhases', () => {
 });
 
 describe('full-run failure evidence retention', () => {
-  test('routes both post-start test and cleanup failures through retention before rethrow', () => {
+  test('retains evidence for a failed run before cleanup and again when cleanup fails', async () => {
+    const settle = async (
+      runFailure: Error | null,
+      cleanupErrors: string[],
+    ) => {
+      const events: string[] = [];
+      const failure = await settleStartedE2ERun({
+        runFailure,
+        suite: 'product',
+        retainEvidence: () => {
+          events.push('retain');
+          // Retention is best-effort: its own failure must not mask the run.
+          throw new Error('evidence disk full');
+        },
+        cleanUp: async () => {
+          events.push('cleanup');
+          return cleanupErrors;
+        },
+      });
+      return { events, failure };
+    };
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(await settle(new Error('red'), [])).toEqual({
+        events: ['retain', 'cleanup'],
+        failure: null,
+      });
+      const cleanupRed = await settle(null, ['lease stuck']);
+      expect(cleanupRed.events).toEqual(['cleanup', 'retain']);
+      expect(cleanupRed.failure?.message).toBe(
+        'E2E cleanup failed; retained lease and outputs: lease stuck',
+      );
+      expect((await settle(new Error('red'), ['lease stuck'])).events).toEqual([
+        'retain',
+        'cleanup',
+        'retain',
+      ]);
+      expect(await settle(null, [])).toEqual({
+        events: ['cleanup'],
+        failure: null,
+      });
+      expect(errorLog).toHaveBeenCalledWith(
+        '[e2e] could not retain product failure evidence: evidence disk full',
+      );
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  // The helper above is proven directly; this is the only proof main()'s
+  // finally-block still hands it the real retainer. Running main() needs a
+  // live Station and Playwright, so the wiring is read from source, loosely.
+  test('main hands the real bucket retainer to the settle step', () => {
     const source = readFileSync(
       resolve(import.meta.dirname, '../run-e2e-suite.mjs'),
       'utf8',
     );
-    const finalizer = source.slice(
-      source.indexOf('  } finally {', source.indexOf('await run(')),
+    const settleCall = source.indexOf('await settleStartedE2ERun({');
+    expect(settleCall).toBeGreaterThanOrEqual(0);
+    const retainer = source.slice(
+      source.indexOf('retainEvidence:', settleCall),
+      source.indexOf('cleanUp:', settleCall),
     );
-    expect(finalizer).toContain(
-      'if (runFailure && process.env.STATION_E2E_EVIDENCE_ROOT)',
-    );
-    expect(finalizer).toContain('if (cleanup.errors.length > 0)');
-    expect(finalizer.match(/retainE2EBucketFailureEvidence\(/g)).toHaveLength(
-      2,
+    expect(retainer).toMatch(
+      /^retainEvidence: \(\) =>\s+retainE2EBucketFailureEvidence\(\{[^}]*evidenceRoot: process\.env\.STATION_E2E_EVIDENCE_ROOT/,
     );
   });
 
@@ -1645,6 +1698,47 @@ describe('classifyStartFailure (#1177)', () => {
     expect(
       classifyStartFailure(
         'Timed out waiting for http://localhost:3542/api/system/identity (fetch failed)',
+      ),
+    ).toBe('boot-race');
+  });
+
+  test('an identity wait ended early by the child exiting stays retryable (#2805)', () => {
+    expect(
+      classifyStartFailure(
+        'Station process exited before http://localhost:3542/api/system/identity answered (fetch failed)',
+      ),
+    ).toBe('boot-race');
+    // Our child exited and another instance answered: the #1177 lost race.
+    expect(
+      classifyStartFailure(
+        'Failed to start instance e2e-1. Station process exited; http://localhost:3542/api/system/identity answered as a different instance (managed boot identity mismatch): bootId expected "a", got "b"',
+      ),
+    ).toBe('boot-race');
+    expect(
+      classifyStartFailure(
+        'Station process exited; http://localhost:5574/__station/identity answered as a different instance (managed boot identity mismatch): sha expected "a", got "b"',
+      ),
+    ).toBe('boot-race');
+    expect(
+      classifyStartFailure(
+        'Station process exited; http://localhost:3542/api/system/identity answered 500 Internal Server Error',
+      ),
+    ).toBe('fatal');
+    // Bound to the CLI's own wording, so the two cannot drift apart.
+    const url = 'http://localhost:3542/api/system/identity';
+    expect(
+      classifyStartFailure(
+        childExitedBeforeReadinessMessage(url, 'fetch failed', 'no-listener'),
+      ),
+    ).toBe('boot-race');
+    expect(
+      classifyStartFailure(
+        childExitedBeforeReadinessMessage(
+          url,
+          'managed boot identity mismatch',
+          'identity-mismatch',
+          'bootId expected "a", got "b"',
+        ),
       ),
     ).toBe('boot-race');
   });

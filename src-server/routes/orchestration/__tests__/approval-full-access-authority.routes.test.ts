@@ -25,7 +25,9 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { AgentConfigNotFoundError } from '../../../domain/config-loader-agents.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { bindFullAccessRefusalIdentity } from '../../../security/full-access-refusal.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -55,7 +57,9 @@ afterEach(async () => {
 
 const THREAD = 'full-access-thread';
 
-async function fixture() {
+async function fixture(
+  options: { stationDefault?: string; stationDefaultFails?: boolean } = {},
+) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = mkdtempSync(join(tmpdir(), 'station-full-access-grant-'));
   roots.push(root);
@@ -87,12 +91,12 @@ async function fixture() {
 
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   const eventBus = new EventBus();
+  const engine = new GateTestAdapter();
   const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+    adapterRegistry: createGateTestRegistry(engine),
     eventBus,
     eventStore: store,
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   });
   cleanups.push(async () => {
     await service.shutdown();
@@ -102,6 +106,20 @@ async function fixture() {
     type: 'startSession',
     input: { threadId: THREAD, provider: 'claude' },
   });
+  // Owned by the routes' caller, as an engine records it: a session with no
+  // recorded owner accepts no one's command.
+  engine.events.push({
+    eventId: `${THREAD}-owner`,
+    provider: 'claude',
+    threadId: THREAD,
+    createdAt: new Date().toISOString(),
+    method: 'session.started',
+    sessionId: THREAD,
+    metadata: { userId: 'operator' },
+  } as never);
+  await vi.waitFor(() =>
+    expect(store.findSessionOwnerUserId(THREAD)).toBe('operator'),
+  );
 
   // An Agent store whose `builder` Agent starts at `previousDefault`.
   let previousDefault: string | undefined;
@@ -128,6 +146,7 @@ async function fixture() {
       verifyCredential: (candidate, request) =>
         request !== undefined &&
         security.authorizeCredential(candidate, request),
+      recognizeCredential: (candidate) => security.verifyCredential(candidate),
       resolveGrantedScope: (candidate) =>
         security.resolveGrantedScope(candidate),
       resolveCredentialAuthority: (candidate) =>
@@ -144,6 +163,18 @@ async function fixture() {
         security.credentialMintKind(candidate),
       allowedOrigins: [],
     },
+  });
+  // The runtime composition's binding (#1796): the refusal names this
+  // Station and the paired device from the security service's own records.
+  app.use('*', async (c, next) => {
+    bindFullAccessRefusalIdentity(c.req.raw, {
+      environmentId: () => security.devicePairing.environmentId(),
+      deviceName: (deviceId) =>
+        security.devicePairing
+          .listDevices()
+          .find((device) => device.id === deviceId)?.name,
+    });
+    await next();
   });
   // A send that got past the gate would reach these; the refusals below
   // assert they never do.
@@ -171,6 +202,14 @@ async function fixture() {
       (async (operation: (begin: () => void) => Promise<unknown>) =>
         operation(() => undefined)) as never,
       () => undefined,
+      undefined,
+      undefined,
+      undefined,
+      async () => {
+        if (options.stationDefaultFails)
+          throw new Error('app config unreadable');
+        return options.stationDefault;
+      },
     ),
   );
 
@@ -280,12 +319,55 @@ function internalRequestInit(agent: boolean, init: RequestInit) {
   ] as const;
 }
 
-const REFUSAL = {
-  success: false,
-  code: 'approval-full-access-not-granted',
-  error:
-    "This device is not allowed to give an agent full access. The Station's operator can allow it: Devices, this device's access, Allow full access.",
-};
+const UI_STEPS = [
+  "Open the Station desktop app on the Station's host.",
+  'Select the Station name (top right), then Paired devices.',
+  'Select the device by its name, then Change access.',
+  'Turn on Allow full access, then Apply.',
+];
+
+/**
+ * #1796: the refusal names who asked (the paired device, by name and short
+ * id, or an Agent), this Station, and the operator's grant path. Written out
+ * here, not built from the module under test.
+ */
+function refusedFor(
+  requester: { device: { id: string; name: string } } | 'agent',
+) {
+  if (requester === 'agent')
+    return {
+      success: false,
+      code: 'approval-full-access-not-granted',
+      error:
+        'Full access was not applied. An agent can never put itself, or any session, at full access. A person must choose it in Station, from a device the operator has allowed full access.',
+      details: {
+        requested: 'never',
+        requester: { kind: 'agent' },
+        station: { environmentId: expect.any(String) },
+        grant: null,
+      },
+    };
+  const { id, name } = requester.device;
+  const short = id.slice(0, 8);
+  const cli = `station environment access scope ${short} --add approval:full-access`;
+  return {
+    success: false,
+    code: 'approval-full-access-not-granted',
+    // The device's own (requester-chosen) name stays out of the prose.
+    error: `Full access was not applied. Only this Station's operator can allow full access, for this device (id ${short}). On the Station's host, the operator can run: ${cli}`,
+    details: {
+      requested: 'never',
+      requester: { kind: 'device', deviceId: short, deviceName: name },
+      station: { environmentId: expect.any(String) },
+      grant: {
+        by: 'operator',
+        scope: 'approval:full-access',
+        uiSteps: UI_STEPS,
+        cli,
+      },
+    },
+  };
+}
 
 test('an operate device is refused full access with a stable code, and nothing is recorded', async () => {
   const f = await fixture();
@@ -293,8 +375,35 @@ test('an operate device is refused full access with a stable code, and nothing i
 
   const refused = await f.decide(phone.credential, 'never');
 
-  expect(refused).toEqual({ status: 403, body: REFUSAL });
+  expect(refused).toEqual({ status: 403, body: refusedFor(phone) });
   expect(f.recorded()).toEqual([]);
+});
+
+test('G1: a hostile pairing name never reaches the refusal prose, and is sanitized as data', async () => {
+  const f = await fixture();
+  // The security review's exact name: Markdown link, ANSI escapes, emphasis.
+  const hostile =
+    '[Grant here](https://evil.example) \x1b[31mRED\x1b[0m **bold**';
+  const phone = f.pair(hostile);
+  expect(phone.device.name).toBe(hostile);
+
+  const refused = await f.decide(phone.credential, 'never');
+
+  const body = refused.body as {
+    error: string;
+    details: { requester: { deviceName: string }; grant: unknown };
+  };
+  expect(refused.status).toBe(403);
+  for (const fragment of ['Grant here', 'evil.example', '**', '\x1b', 'RED'])
+    expect(body.error).not.toContain(fragment);
+  expect(JSON.stringify(body.details.grant)).not.toMatch(
+    // JSON escapes ESC as \u001b.
+    /evil|Grant here|u001b/,
+  );
+  // Carried as data, control characters removed; a client renders it as text.
+  expect(body.details.requester.deviceName).toBe(
+    '[Grant here](https://evil.example) [31mRED[0m **bold**',
+  );
 });
 
 test('the same device may tighten to Ask or Auto, and pick Default', async () => {
@@ -349,13 +458,13 @@ test.each(['bypassPermissions', 'full-access', 'yolo'])(
       message: 'go',
       target: { agent: 'opencode', model: { options: { mode } } },
     });
-    expect(chat).toEqual({ status: 403, body: REFUSAL });
+    expect(chat).toEqual({ status: 403, body: refusedFor(phone) });
     const continued = await f.post(
       phone.credential,
       `/api/orchestration/chat/${THREAD}/continue`,
       { message: 'go', model: { options: { mode } } },
     );
-    expect(continued).toEqual({ status: 403, body: REFUSAL });
+    expect(continued).toEqual({ status: 403, body: refusedFor(phone) });
     expect(f.executeForegroundMessage).not.toHaveBeenCalled();
     expect(f.continueForegroundMessage).not.toHaveBeenCalled();
 
@@ -406,20 +515,20 @@ test('a send that carries full access, or asks for it on the options, is refused
     setApprovalMode: 'never',
     setApprovalModeBasedOn: null,
   });
-  expect(carried).toEqual({ status: 403, body: REFUSAL });
+  expect(carried).toEqual({ status: 403, body: refusedFor(phone) });
 
   const onOptions = await f.post(phone.credential, '/api/orchestration/chat', {
     message: 'go',
     target: { agent: 'claude', model: { options: { approvalMode: 'never' } } },
   });
-  expect(onOptions).toEqual({ status: 403, body: REFUSAL });
+  expect(onOptions).toEqual({ status: 403, body: refusedFor(phone) });
 
   const continued = await f.post(
     phone.credential,
     `/api/orchestration/chat/${THREAD}/continue`,
     { message: 'go', model: { options: { approvalMode: 'never' } } },
   );
-  expect(continued).toEqual({ status: 403, body: REFUSAL });
+  expect(continued).toEqual({ status: 403, body: refusedFor(phone) });
   expect(f.executeForegroundMessage).not.toHaveBeenCalled();
   expect(f.continueForegroundMessage).not.toHaveBeenCalled();
 });
@@ -435,11 +544,11 @@ test("a delegation device cannot set an Agent's default to full access; the oper
 
   expect(await f.post(delegate.credential, '/api/agents', body)).toEqual({
     status: 403,
-    body: REFUSAL,
+    body: refusedFor(delegate),
   });
   expect(
     await f.post(delegate.credential, '/api/agents/builder', body, 'PUT'),
-  ).toEqual({ status: 403, body: REFUSAL });
+  ).toEqual({ status: 403, body: refusedFor(delegate) });
   expect(f.agentService.createAgent).not.toHaveBeenCalled();
   expect(f.agentService.updateAgent).not.toHaveBeenCalled();
 
@@ -504,7 +613,7 @@ test("an agent's station-control call, marked or not, cannot record full access 
 
   expect(
     await f.internal(true, '/api/orchestration/commands', command()),
-  ).toEqual({ status: 403, body: REFUSAL });
+  ).toEqual({ status: 403, body: refusedFor('agent') });
   expect(
     await f.internal(
       true,
@@ -512,7 +621,7 @@ test("an agent's station-control call, marked or not, cannot record full access 
       { execution: { approvalMode: 'never' } },
       'PUT',
     ),
-  ).toEqual({ status: 403, body: REFUSAL });
+  ).toEqual({ status: 403, body: refusedFor('agent') });
   expect(f.recorded()).toEqual([]);
   expect(f.agentService.updateAgent).not.toHaveBeenCalled();
 
@@ -522,7 +631,7 @@ test("an agent's station-control call, marked or not, cannot record full access 
   // reaches Station through the proxy with its own credential instead.
   expect(
     await f.internal(false, '/api/orchestration/commands', command()),
-  ).toEqual({ status: 403, body: REFUSAL });
+  ).toEqual({ status: 403, body: refusedFor('agent') });
   expect(
     await f.internal(
       false,
@@ -530,7 +639,178 @@ test("an agent's station-control call, marked or not, cannot record full access 
       { execution: { approvalMode: 'never' } },
       'PUT',
     ),
-  ).toEqual({ status: 403, body: REFUSAL });
+  ).toEqual({ status: 403, body: refusedFor('agent') });
   expect(f.recorded()).toEqual([]);
   expect(f.agentService.updateAgent).not.toHaveBeenCalled();
+});
+
+/**
+ * #2377 slice C1: an Agent with no default of its own falls through to the
+ * Station's. Leaving it there when the Station default is `never` raises the
+ * Agent to full access as surely as saving `never`.
+ */
+test('clearing an Agent default over a Station default of never needs the grant; tightening and unrelated edits do not', async () => {
+  const f = await fixture({ stationDefault: 'never' });
+  const delegate = f.pair('Delegate', 'delegation');
+  f.setPreviousDefault('ask');
+
+  // Clearing it (an execution block without a default, or null) is refused.
+  for (const execution of [{}, null]) {
+    expect(
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { execution },
+        'PUT',
+      ),
+    ).toEqual({ status: 403, body: refusedFor(delegate) });
+  }
+  // So is creating an Agent that has no default of its own.
+  expect(
+    await f.post(delegate.credential, '/api/agents', {
+      name: 'Builder',
+      prompt: 'Build.',
+    }),
+  ).toEqual({ status: 403, body: refusedFor(delegate) });
+  expect(f.agentService.updateAgent).not.toHaveBeenCalled();
+  expect(f.agentService.createAgent).not.toHaveBeenCalled();
+
+  // Keeping Ask, or an edit that does not touch execution, is not a raise.
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { execution: { approvalMode: 'ask' } },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { description: 'Now documented' },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+
+  // An Agent already at the Station's never stays editable.
+  f.setPreviousDefault(undefined);
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { description: 'Again', execution: {} },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+
+  // The operator, and a granted device, may clear it.
+  f.setPreviousDefault('ask');
+  expect(
+    (
+      await f.post(
+        f.operator.credential,
+        '/api/agents/builder',
+        { execution: {} },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+  f.grant(delegate.device.id, true, 'delegation');
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { execution: {} },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+});
+
+test('with a Station default short of never, clearing an Agent default needs nothing', async () => {
+  const f = await fixture({ stationDefault: 'ask' });
+  const delegate = f.pair('Delegate', 'delegation');
+  f.setPreviousDefault('auto');
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { execution: {} },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+  expect(
+    (
+      await f.post(delegate.credential, '/api/agents', {
+        name: 'Builder',
+        prompt: 'Build.',
+      })
+    ).status,
+  ).toBeLessThan(300);
+});
+
+/**
+ * #2377 slice C1 delta review (G1, G2): an Agent write that falls through to
+ * the Station default fails closed when either side cannot be read.
+ */
+test('an Agent that cannot be read, or does not exist, is no evidence of an earlier never: clearing it is a raise', async () => {
+  const f = await fixture({ stationDefault: 'never' });
+  const delegate = f.pair('Delegate', 'delegation');
+  f.agentService.getAgent.mockRejectedValueOnce(new Error('EACCES'));
+  expect(
+    await f.post(
+      delegate.credential,
+      '/api/agents/builder',
+      { execution: {} },
+      'PUT',
+    ),
+  ).toEqual({ status: 403, body: refusedFor(delegate) });
+  // A PUT on a slug with no Agent is a create, held to the create rule.
+  f.agentService.getAgent.mockRejectedValueOnce(
+    new AgentConfigNotFoundError('ghost', '/nowhere/agent.json'),
+  );
+  expect(
+    await f.post(
+      delegate.credential,
+      '/api/agents/ghost',
+      { execution: {} },
+      'PUT',
+    ),
+  ).toEqual({ status: 403, body: refusedFor(delegate) });
+  expect(f.agentService.updateAgent).not.toHaveBeenCalled();
+});
+
+test('a Station default that cannot be read counts as never', async () => {
+  const f = await fixture({ stationDefaultFails: true });
+  const delegate = f.pair('Delegate', 'delegation');
+  f.setPreviousDefault('ask');
+  expect(
+    await f.post(
+      delegate.credential,
+      '/api/agents/builder',
+      { execution: {} },
+      'PUT',
+    ),
+  ).toEqual({ status: 403, body: refusedFor(delegate) });
+  // A concrete default of the Agent's own needs no Station read to decide.
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { execution: { approvalMode: 'ask' } },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
 });

@@ -52,7 +52,10 @@ import {
   runEnvironmentCommand,
   type SshEnvironmentProfileStoreFactory,
 } from './commands/environment.js';
-import { explainRequestFailure } from './commands/errors.js';
+import {
+  explainFullAccessRefusal,
+  explainRequestFailure,
+} from './commands/errors.js';
 import { exportConfig } from './commands/export.js';
 import {
   DEFAULT_SERVER_PORT,
@@ -746,6 +749,7 @@ function buildProgram(
     const lifecycleArgs = parseLifecycleArgs(rawArgs);
     validateLifecyclePorts(lifecycleArgs.serverPort, lifecycleArgs.uiPort);
     await upgrade({
+      ignoreUnknownServiceState: rawArgs.includes('--ignore-service-state'),
       baseDir: lifecycleArgs.baseDir,
       serverPort: lifecycleArgs.serverPort,
       uiPort: lifecycleArgs.uiPort,
@@ -1044,6 +1048,10 @@ function buildProgram(
         ? lifecycleArgs.uiPort
         : undefined,
       ...(lifecycleArgs.stopIntent ? { intent: lifecycleArgs.stopIntent } : {}),
+      // The home this command resolved (--home, --base, STATION_HOME or the
+      // default), whether or not it narrows the match: a prebuilt archive
+      // keeps records in that home's Station root (#2675).
+      stateHome: lifecycleArgs.baseDir,
     });
   });
 
@@ -1549,6 +1557,8 @@ export async function runCli(
  */
 export function describeCliError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  const refusal = explainFullAccessRefusal(error, getResolvedApiBase());
+  if (refusal) return refusal;
   return explainRequestFailure(error, getResolvedApiBase()) ?? message;
 }
 

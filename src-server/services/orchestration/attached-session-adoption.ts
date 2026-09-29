@@ -10,6 +10,7 @@ import {
   type ModelLaunchPlan,
   type ProviderSession,
   type ProviderSessionStartInput,
+  STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   type StationConfinement,
 } from '@kontourai/station-contracts/provider';
@@ -24,6 +25,7 @@ import {
   snapshotSessionSourceAffinity,
 } from '../../providers/sessions/session-source-affinity.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
+import type { FullAccessGrantor } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type {
   AdoptionLedger,
@@ -56,9 +58,9 @@ import {
 // promise `adopt()` awaits; its rejection must reach the adoption path (no
 // internal catch), and the `Promise.resolve()` initializer keeps
 // pre-initialize adoptions from hanging. `registerOwner()` is called from
-// the service's `initialize()`, NEVER from this constructor — the suite
-// constructs the service 126 times per process, and a ctor-registered owner
-// would mark every crashed test reservation as live (plan condition 3).
+// the service's `initialize()` and `unregisterOwner()` from `shutdown()`
+// (plan condition 3). `dispatch()` initializes before `adopt()` can reserve,
+// so no reservation carries the id of an owner that never initialized.
 
 export class AdoptionContinuationInProgressError extends Error {
   readonly code = 'adoption_continuation_in_progress';
@@ -87,7 +89,13 @@ interface AdoptionContext {
    * (`STATION_CONFINEMENT_METADATA_KEY`): `host` only when the request that
    * adopted may grant full access, the same rule as `prepareStart`.
    */
-  confinementStamp?: StationConfinement;
+  confinementStamp?: AdoptionConfinement;
+}
+
+/** #2493 / #1796: the adopting request's confinement and who granted it. */
+export interface AdoptionConfinement {
+  readonly stamp: StationConfinement;
+  readonly grantor?: FullAccessGrantor;
 }
 
 const liveAdoptionOwners = new Set<string>();
@@ -206,7 +214,7 @@ export class AttachedSessionAdoption {
     requestTenantExecutionContext?: TenantExecutionContext,
     idempotencyKey?: string,
     ownerAttribution?: SessionOwnerAttribution,
-    confinementStamp?: StationConfinement,
+    confinementStamp?: AdoptionConfinement,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     if (idempotencyKey) {
       // Coalescing must retain the same authority boundary as durable lookup:
@@ -261,7 +269,7 @@ export class AttachedSessionAdoption {
     requestTenantExecutionContext?: TenantExecutionContext,
     idempotencyKey?: string,
     ownerAttribution?: SessionOwnerAttribution,
-    confinementStamp?: StationConfinement,
+    confinementStamp?: AdoptionConfinement,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     await this.reconciliation;
     // Resolve and authorize the source before treating an existing child as
@@ -658,9 +666,18 @@ export class AttachedSessionAdoption {
         ...sessionOwnerAttributionMetadata(context.ownerAttribution),
         // #2493: server-built, so no strip is needed; absent is `workspace`.
         [STATION_CONFINEMENT_METADATA_KEY]:
-          context.confinementStamp === 'host' ? 'host' : 'workspace',
+          context.confinementStamp?.stamp === 'host' ? 'host' : 'workspace',
+        // #1796: who granted the `host` stamp, as `prepareStart` records it.
+        ...(context.confinementStamp?.stamp === 'host' &&
+        context.confinementStamp.grantor
+          ? {
+              [STATION_CONFINEMENT_GRANTOR_METADATA_KEY]:
+                context.confinementStamp.grantor,
+            }
+          : {}),
       },
-      confinement: context.confinementStamp === 'host' ? 'host' : 'workspace',
+      confinement:
+        context.confinementStamp?.stamp === 'host' ? 'host' : 'workspace',
       ...(context.tenantExecutionContext
         ? { tenantExecutionContext: context.tenantExecutionContext }
         : {}),

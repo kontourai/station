@@ -7,7 +7,6 @@ vi.mock('../api', () => ({
 import {
   fetchResourcePosture,
   type ResourcePostureVM,
-  useResourcePostureQuery,
 } from '../query-domains/resourcePosture';
 
 function mockJsonResponse(payload: unknown, ok = true) {
@@ -50,9 +49,5 @@ describe('resourcePosture SDK domain', () => {
   it('surfaces a server-reported error', async () => {
     mockJsonResponse({ success: false, error: 'boom' }, false);
     await expect(fetchResourcePosture()).rejects.toThrow('boom');
-  });
-
-  it('exports a usable query hook', () => {
-    expect(typeof useResourcePostureQuery).toBe('function');
   });
 });

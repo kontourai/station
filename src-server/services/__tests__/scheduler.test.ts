@@ -35,9 +35,6 @@ const { ANNOUNCEMENT_LEASE_MS, createSchedulerLedger } = await import(
 );
 type BuiltinSchedulerOptions =
   import('../scheduling/builtin-scheduler.js').BuiltinSchedulerOptions;
-const { resetAnnouncedSchedulerFailuresForTests } = await import(
-  '../scheduling/builtin-scheduler-execution.js'
-);
 const { SchedulerService } = await import('../scheduling/scheduler-service.js');
 const {
   schedulerConcurrencyDeferrals,
@@ -107,12 +104,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
-});
-
-// The announcement dedupe is keyed by run id and lives for the process; run
-// ids are unique in production but a test corpus is one process.
-beforeEach(() => {
-  resetAnnouncedSchedulerFailuresForTests();
 });
 
 /**
@@ -620,9 +611,9 @@ describe('BuiltinScheduler', () => {
     await booted.scheduler.stop();
     expect(booted.failures()).toHaveLength(1);
 
-    // A restart clears the in-process dedupe Set, so silence here can only
-    // come from the stamp the first boot wrote on the run itself.
-    resetAnnouncedSchedulerFailuresForTests();
+    // A restarted scheduler starts with an empty in-process dedupe Set, so
+    // silence here can only come from the stamp the first boot wrote on the
+    // run itself.
     const restarted = schedulerOver(directory);
     restarted.scheduler.start();
     await restarted.scheduler.stop();
@@ -646,7 +637,6 @@ describe('BuiltinScheduler', () => {
     expect(refused.schedule).not.toHaveBeenCalled();
     expect(owedIds(directory)).toEqual([runId]);
 
-    resetAnnouncedSchedulerFailuresForTests();
     const recovered = schedulerOver(directory);
     recovered.scheduler.start();
     await recovered.scheduler.stop();
@@ -684,7 +674,6 @@ describe('BuiltinScheduler', () => {
       // the row is still owed, and still leased by the process that died.
       expect(owedIds(directory)).toHaveLength(1);
 
-      resetAnnouncedSchedulerFailuresForTests();
       const restarted = schedulerOver(directory);
       restarted.scheduler.start();
       expect(restarted.schedule).not.toHaveBeenCalled();
@@ -714,13 +703,10 @@ describe('BuiltinScheduler', () => {
     const first = schedulerOver(directory);
     const second = schedulerOver(directory);
     first.scheduler.start();
-    // Two PROCESSES: the in-process dedupe Set is per-process, so leaving
-    // this test's shared one populated would hide the very race it exists to
-    // pin (it did — an injected always-claim lease passed until this line).
-    // The second scheduler starts while the first one's notification write
-    // is still in flight, so nothing is stamped yet and only the lease can
-    // prevent the duplicate.
-    resetAnnouncedSchedulerFailuresForTests();
+    // Two PROCESSES: each scheduler owns its in-process dedupe Set, so the
+    // second one cannot see the first's. It starts while the first one's
+    // notification write is still in flight, so nothing is stamped yet and
+    // only the lease can prevent the duplicate.
     second.scheduler.start();
     await first.scheduler.stop();
     await second.scheduler.stop();
@@ -1477,23 +1463,6 @@ describe('BuiltinScheduler', () => {
     expect(await scheduler.getJobLogs('no-logs')).toEqual([]);
   });
 
-  test('previewSchedule returns ISO strings', async () => {
-    // `new Date(x)` throws for NOTHING -- `new Date('garbage')` is an Invalid
-    // Date -- so the previous `expect(() => new Date(p)).not.toThrow()` passed
-    // for any string this method could return. Parse it instead, and pin the
-    // schedule the expression names: two consecutive noons, 24h apart.
-    const previews = await scheduler.previewSchedule('0 12 * * *', 2);
-    expect(previews).toHaveLength(2);
-    for (const preview of previews) {
-      expect(preview).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-      expect(Number.isNaN(Date.parse(preview))).toBe(false);
-      expect(new Date(preview).getUTCHours()).toBe(12);
-    }
-    expect(Date.parse(previews[1]) - Date.parse(previews[0])).toBe(
-      24 * 60 * 60 * 1000,
-    );
-  });
-
   test('subscribe / unsubscribe manages SSE clients', async () => {
     const messages: string[] = [];
     const unsub = scheduler.subscribe((d) => messages.push(d));
@@ -2192,8 +2161,6 @@ describe('SchedulerService', () => {
     chatFnBehavior = { ok: true, text: 'confirmed output' };
     await service.addJob({ name: 'manual-run-correlation', prompt: 'run' });
     const completed = await service.runJob('manual-run-correlation');
-    if ('output' in completed)
-      throw new Error('built-in scheduler must return an observable receipt');
     if (!completed.runId) throw new Error('expected completed run identity');
     const completedRun = await service.readRunSummary(completed.runId);
     expect(completedRun).toMatchObject({
@@ -2204,8 +2171,6 @@ describe('SchedulerService', () => {
 
     chatFnBehavior = { ok: false, text: '' };
     const indeterminate = await service.runJob('manual-run-correlation');
-    if ('output' in indeterminate)
-      throw new Error('built-in scheduler must return an observable receipt');
     if (!indeterminate.runId)
       throw new Error('expected indeterminate run identity');
     const indeterminateRun = await service.readRunSummary(indeterminate.runId);
@@ -2229,10 +2194,21 @@ describe('SchedulerService', () => {
     expect(status.providers['built-in'].running).toBe(true);
   });
 
-  test('previewSchedule returns ISO strings', async () => {
+  test('previewSchedule returns the requested count of consecutive UTC fire times', async () => {
+    // Parse each preview rather than pattern-match it, and pin the schedule the
+    // expression names: consecutive noons, 24h apart.
     const previews = await service.previewSchedule('0 12 * * *', 3);
     expect(previews).toHaveLength(3);
-    previews.forEach((p) => expect(p).toMatch(/^\d{4}-\d{2}-\d{2}T/));
+    for (const preview of previews) {
+      expect(preview).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(preview).getUTCHours()).toBe(12);
+    }
+    expect(Date.parse(previews[1]) - Date.parse(previews[0])).toBe(
+      24 * 60 * 60 * 1000,
+    );
+    expect(Date.parse(previews[2]) - Date.parse(previews[1])).toBe(
+      24 * 60 * 60 * 1000,
+    );
   });
 
   test('previewSchedule projects in the zone it is given', async () => {
@@ -2269,42 +2245,8 @@ describe('SchedulerService', () => {
     },
   );
 
-  test('addProvider registers a custom provider', async () => {
-    const mock: any = {
-      id: 'mock-provider',
-      displayName: 'Mock',
-      capabilities: [],
-      listJobs: vi.fn().mockResolvedValue([]),
-      getStats: vi.fn().mockResolvedValue({ jobs: [] }),
-      getStatus: vi.fn().mockResolvedValue({ running: true, jobCount: 0 }),
-    };
-    service.addProvider(mock);
-    const providers = service.listProviders();
-    expect(providers.find((p) => p.id === 'mock-provider')).toBeDefined();
-  });
-
   test('preserves authoritative completed and indeterminate provider outcomes when metrics throw', async () => {
-    const provider: any = {
-      id: 'metric-provider',
-      displayName: 'Metric provider',
-      capabilities: [],
-      listJobs: vi.fn().mockResolvedValue([{ name: 'metric-job' }]),
-      getStats: vi.fn().mockResolvedValue({ jobs: [] }),
-      getStatus: vi.fn().mockResolvedValue({ running: true, jobCount: 1 }),
-      runJob: vi
-        .fn()
-        .mockResolvedValueOnce({
-          outcome: 'completed',
-          message: 'completed by provider',
-          runId: 'schedule:metric:metric-job:run-1',
-        })
-        .mockResolvedValueOnce({
-          outcome: 'indeterminate',
-          message: 'provider may have started',
-          runId: 'schedule:metric:metric-job:run-2',
-        }),
-    };
-    service.addProvider(provider);
+    await service.addJob({ name: 'metric-job', prompt: 'run' });
     vi.spyOn(schedulerJobRuns, 'add').mockImplementation(() => {
       throw new Error('metrics unavailable');
     });
@@ -2312,13 +2254,15 @@ describe('SchedulerService', () => {
       throw new Error('metrics unavailable');
     });
 
+    chatFnBehavior = { ok: true, text: 'completed by provider' };
     await expect(service.runJob('metric-job')).resolves.toMatchObject({
       outcome: 'completed',
-      runId: 'schedule:metric:metric-job:run-1',
+      runId: expect.any(String),
     });
+    chatFnBehavior = { ok: false, text: '' };
     await expect(service.runJob('metric-job')).resolves.toMatchObject({
       outcome: 'indeterminate',
-      runId: 'schedule:metric:metric-job:run-2',
+      runId: expect.any(String),
     });
   });
 });
@@ -2333,6 +2277,10 @@ describe('Scheduler Routes', () => {
     service = createSchedulerService();
     app = createSchedulerRoutes(service, mockLogger);
   });
+
+  async function jobNamed(name: string) {
+    return (await service.listJobs()).find((job) => job.name === name);
+  }
 
   afterEach(() => {
     (service as any).builtin.stop();
@@ -2357,6 +2305,10 @@ describe('Scheduler Routes', () => {
     });
     const body = await json(res);
     expect(body.success).toBe(true);
+    expect(await jobNamed('route-job')).toMatchObject({
+      prompt: 'test',
+      cron: '0 * * * *',
+    });
   });
 
   test('GET /jobs lists jobs', async () => {
@@ -2383,6 +2335,7 @@ describe('Scheduler Routes', () => {
       body: JSON.stringify({ prompt: 'updated' }),
     });
     expect((await json(res)).success).toBe(true);
+    expect((await jobNamed('edit-route'))?.prompt).toBe('updated');
   });
 
   test('DELETE /jobs/:target removes a job', async () => {
@@ -2391,8 +2344,10 @@ describe('Scheduler Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'del-route', prompt: 'bye' }),
     });
+    expect(await jobNamed('del-route')).toBeDefined();
     const res = await app.request('/jobs/del-route', { method: 'DELETE' });
     expect((await json(res)).success).toBe(true);
+    expect(await jobNamed('del-route')).toBeUndefined();
   });
 
   test('DELETE /jobs/:target returns 500 for missing job', async () => {
@@ -2407,8 +2362,11 @@ describe('Scheduler Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'enable-me', prompt: 'test' }),
     });
+    await service.disableJob('enable-me');
+    expect((await jobNamed('enable-me'))?.enabled).toBe(false);
     const res = await app.request('/jobs/enable-me/enable', { method: 'PUT' });
     expect((await json(res)).success).toBe(true);
+    expect((await jobNamed('enable-me'))?.enabled).toBe(true);
   });
 
   test('PUT /jobs/:target/disable disables a job', async () => {
@@ -2417,10 +2375,12 @@ describe('Scheduler Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'disable-me', prompt: 'test' }),
     });
+    expect((await jobNamed('disable-me'))?.enabled).toBe(true);
     const res = await app.request('/jobs/disable-me/disable', {
       method: 'PUT',
     });
     expect((await json(res)).success).toBe(true);
+    expect((await jobNamed('disable-me'))?.enabled).toBe(false);
   });
 
   test('GET /stats returns stats', async () => {
@@ -2464,50 +2424,22 @@ describe('Scheduler Routes', () => {
   });
 
   test('POST /webhook broadcasts event', async () => {
+    const received: string[] = [];
+    const unsubscribe = service.subscribe((data) => received.push(data));
     const res = await app.request('/webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event: 'job.completed', job: 'test' }),
     });
+    unsubscribe();
     expect((await json(res)).success).toBe(true);
+    expect(received.map((data) => JSON.parse(data))).toEqual([
+      { event: 'job.completed', job: 'test' },
+    ]);
   });
 
   test('POST /jobs/:target/run returns 500 for missing job', async () => {
     const res = await app.request('/jobs/ghost/run', { method: 'POST' });
     expect(res.status).toBe(500);
-  });
-
-  test('routes an internally composed legacy provider output without inventing a receipt', async () => {
-    service.addProvider({
-      id: 'legacy-scheduler',
-      displayName: 'Legacy scheduler',
-      capabilities: [],
-      listJobs: async () => [
-        {
-          name: 'legacy-job',
-          prompt: 'run',
-          provider: 'legacy-scheduler',
-          enabled: true,
-        },
-      ],
-      addJob: async () => 'unused',
-      editJob: async () => 'unused',
-      removeJob: async () => undefined,
-      runJob: async () => 'legacy provider completed',
-      enableJob: async () => undefined,
-      disableJob: async () => undefined,
-      getJobLogs: async () => [],
-      getStats: async () => ({ jobs: [] }),
-      getStatus: async () => ({ running: true, jobCount: 1 }),
-    });
-
-    const response = await app.request('/jobs/legacy-job/run', {
-      method: 'POST',
-    });
-    expect(response.status).toBe(200);
-    await expect(json(response)).resolves.toEqual({
-      success: true,
-      data: { output: 'legacy provider completed' },
-    });
   });
 });

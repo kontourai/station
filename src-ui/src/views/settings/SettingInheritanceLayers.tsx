@@ -15,10 +15,8 @@
  * (archive#1557, and `isStoredValue`'s docblock in
  * `src-server/domain/settings-registry-server.ts`).
  *
- * Shape mirrors T3 Code's compact layer list
- * (`apps/web/src/components/settings/SettingInheritance.tsx:79-113`) — a
- * top-down list, innermost first, one row marked as the winner. Nothing but
- * the shape is borrowed; the sources are Station's own.
+ * The shape is a compact top-down list, innermost first, with one row
+ * marked as the winner.
  */
 
 import './SettingInheritanceLayers.css';

@@ -35,7 +35,7 @@ import {
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../hooks/useUrlSelection';
-import { errorText } from '../utils/errorText';
+import { userFacingErrorMessage } from '../utils/errorText';
 import { SkillCommandSection } from './skills/SkillCommandSection';
 import {
   buildSkillFilename,
@@ -314,7 +314,9 @@ export function SkillsView({
       showToast('Skill saved');
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : 'Failed to save skill',
+        error instanceof Error
+          ? userFacingErrorMessage(error)
+          : 'Failed to save skill',
       );
     }
   }
@@ -334,7 +336,9 @@ export function SkillsView({
       showToast('Skill duplicated');
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : 'Failed to duplicate skill',
+        error instanceof Error
+          ? userFacingErrorMessage(error)
+          : 'Failed to duplicate skill',
       );
     }
   }
@@ -400,7 +404,7 @@ export function SkillsView({
           : `Imported ${result.imported} skill${result.imported === 1 ? '' : 's'}`,
       );
     } catch (error) {
-      setImportError(errorText(error));
+      setImportError(userFacingErrorMessage(error));
     }
   }
 

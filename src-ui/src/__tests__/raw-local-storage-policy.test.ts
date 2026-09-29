@@ -39,6 +39,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station:chat-drafts:v1', // Draft message content, not a setting.
   'theme', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-accent-color', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
+  'station-branding-theme-v1', // Validated branding cache for first paint; re-validated on read. Server data, not a device setting.
 ] as const;
 
 // Known accepted limitation ( 2, accepted-with-rationale): this is
@@ -52,6 +53,7 @@ const ALLOWED_COMPUTED_KEY_FILES = new Set([
   'components/SplitPaneLayout.tsx', // Pane geometry is scoped by the caller-provided pane id.
   'components/split-pane-metrics.ts', // Shared pane restoration reads the same pane-id-scoped geometry key.
   'core/remotePluginBundleConsent.ts', // Consent is scoped by the normalized remote plugin origin.
+  'platform/native/deliveryFeed.ts', // The alert cursor is scoped by the feed's scope key; the prefix is module-private and only the default deps read or write it.
 ]);
 
 function productionFiles(directory: string): string[] {

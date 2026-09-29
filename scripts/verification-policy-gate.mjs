@@ -1,15 +1,16 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { validateE2EManifest } from '../tests/e2e-manifest.mjs';
 import { instructionGateErrors } from './agent-instructions-gate.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { FAST_STATIC_COMMANDS } from './run-ci-fast.mjs';
 import {
   CI_FAST_TIMEOUT_MS,
   LANES,
   renderFullRegressionPhaseSchedule,
   renderLaneCatalogTable,
+  validateLaneCatalog,
 } from './verification-lanes.mjs';
 import {
   discoverVitestResourceGroups,
@@ -95,10 +96,36 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
+  // #2922: cheap verify:static gates on the PR-visible lane; see
+  // run-ci-fast.mjs.
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'gate:evidence-check-execution']),
+  ]),
+  Object.freeze(['npm', Object.freeze(['run', 'install-script:check'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'mobile:permissions:gate'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'agent-plugin:validators:gate']),
+  ]),
+  Object.freeze(['npm', Object.freeze(['run', 'settings:registry:gate'])]),
   Object.freeze(['npm', Object.freeze(['run', 'content:integrity'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'content:excluded-names'])]),
   // CLI help ↔ docs/reference/cli.md parity. Pure source read, ~50ms; see
   // run-ci-fast.mjs for why this belongs on the PR-visible lane.
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
+  // #2803: the docs-reference and link gates, until then composed only by
+  // verify:static. Whole-tree reads, ~1s each; see run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'docs:reference:gate'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:links:check'])]),
+  // #2803 review: the docs:truth:gate members that reject a docs-only edit;
+  // see run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'docs:public:hygiene'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:issue-lifecycle:check'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'docs:public:contract-examples']),
+  ]),
   // Generates the git-ignored Basis MCP app bundles the typecheck lanes
   // resolve; a precondition of the aggregate below, like `build:connect`.
   Object.freeze([
@@ -206,7 +233,7 @@ export const VERIFICATION_SCHEDULING_SECTION_END =
 export const VERIFICATION_SCHEDULING_DOCS = Object.freeze([
   'docs/guides/testing.md',
 ]);
-export const E2E_LATEST_GUIDANCE_MARKERS = Object.freeze([
+const E2E_LATEST_GUIDANCE_MARKERS = Object.freeze([
   'ignored latest E2E projection',
   '.kontourai/e2e-latest/index.html',
   '.kontourai/e2e-latest/manifest.json',
@@ -225,7 +252,7 @@ export function renderVerificationSchedulingSection(lanes = LANES) {
     '',
     renderLaneCatalogTable(lanes),
     '',
-    `\`ci:fast\` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every \`typecheck:*\` lane through \`scripts/typecheck-aggregate.mjs\` (station#4273), preceded by \`build:connect\` because \`typecheck:ui\` resolves \`@kontourai/station-connect\` through its \`dist\`. It was added because the lane was previously uncovered per-PR: a red \`main\` displayed green on every contributor's checks, twice in 24 hours. \`lint:check\`, \`proof:repo-governance\`, and \`veritas:readiness\` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached \`main\` unobserved while that Nightly was itself red. Its ${ciFast?.weight ?? 'unknown'}-unit reservation overlaps each ${ordinary?.weight ?? 'unknown'}-unit ordinary shard phase so feedback can admit while completion work runs.`,
+    `\`ci:fast\` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every \`typecheck:*\` lane through \`scripts/typecheck-aggregate.mjs\` (station#4273), preceded by \`build:connect\` because \`typecheck:ui\` resolves \`@kontourai/station-connect\` through its \`dist\`. It was added because the lane was previously uncovered per-PR: a red \`main\` displayed green on every contributor's checks, twice in 24 hours. \`lint:check\`, \`proof:repo-governance\`, and \`veritas:readiness\` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached \`main\` unobserved while that Nightly was itself red. Its ${ciFast?.weight ?? 'unknown'}-unit reservation overlaps each ${ordinary?.weight ?? 'unknown'}-unit ordinary shard phase so feedback can admit while completion work runs.`,
     '',
     '`full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:',
     renderFullRegressionPhaseSchedule(lanes),
@@ -236,8 +263,6 @@ export function renderVerificationSchedulingSection(lanes = LANES) {
     VERIFICATION_SCHEDULING_SECTION_END,
   ].join('\n');
 }
-export const VERIFICATION_SCHEDULING_SECTION =
-  renderVerificationSchedulingSection();
 
 /**
  * Marker-bounded canonical policy section in AGENTS.md. Unlike the loose
@@ -426,6 +451,7 @@ export function verificationPolicyErrors({
 } = {}) {
   const errors = [];
   errors.push(...instructionGateErrors());
+  errors.push(...validateLaneCatalog(lanes).errors);
   for (const lane of lanes.filter((lane) => lane.id !== 'test-changed')) {
     const expected = `node scripts/run-verification.mjs request ${lane.id}`;
     if (manifest.scripts?.[lane.publicScript] !== expected)
@@ -820,5 +846,4 @@ export function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href)
-  main();
+if (invokedDirectly(import.meta.url)) main();

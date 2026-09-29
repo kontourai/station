@@ -10,38 +10,10 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  test,
-} from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
-import {
-  ChatTurnDedupStore,
-  getChatTurnDedupStore,
-  resetChatTurnDedupStoresForTest,
-} from '../chat-turn-dedup.js';
-
-// These project homes were the fixed paths `/tmp/station-test-home-{a,b,c}`,
-// and `getChatTurnDedupStore` really creates a store under each: it lands
-// `<home>/data/orchestration.sqlite` (plus `-shm`/`-wal`) and nothing removed
-// it. All three directories were observed on this host on 2026-09-08, dated
-// Sep 5 -- left by a run twelve days earlier.
-// A directory shared with every other process is the wrong place to persist
-// test state: it accumulates, and anything else on the host can occupy or
-// replace the name. Own the root, and remove it in `afterAll`.
-const DEDUP_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-dedup-home-'));
-const DEDUP_HOME_A = join(DEDUP_TEMP_ROOT, 'station-test-home-a');
-const DEDUP_HOME_B = join(DEDUP_TEMP_ROOT, 'station-test-home-b');
-const DEDUP_HOME_C = join(DEDUP_TEMP_ROOT, 'station-test-home-c');
-
-afterAll(() => {
-  rmSync(DEDUP_TEMP_ROOT, { force: true, recursive: true });
-});
+import { ChatTurnDedupStore } from '../chat-turn-dedup.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -196,16 +168,6 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
     });
   });
 
-  test('an unresolved (in-flight) claim reports claimed:false with conversationId null', () => {
-    const store = new ChatTurnDedupStore(filePath);
-    store.claim('turn-a');
-
-    expect(store.claim('turn-a')).toEqual({
-      claimed: false,
-      conversationId: null,
-    });
-  });
-
   test('releasing an unresolved claim lets a retry genuinely re-claim it', () => {
     const store = new ChatTurnDedupStore(filePath);
     store.claim('turn-a');
@@ -237,17 +199,26 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
   });
 
   test('station#1224 CRITICAL fix: an in-flight claim stays held indefinitely within the same process — repeated attempts never reclaim it', () => {
-    const store = new ChatTurnDedupStore(filePath);
-    store.claim('turn-a');
-
     // A long-running turn easily runs well past the OLD 10-minute stale
-    // window while still legitimately executing. Repeated in-process
-    // attempts must never see `claimed: true` again.
-    for (let i = 0; i < 5; i += 1) {
-      expect(store.claim('turn-a')).toEqual({
-        claimed: false,
-        conversationId: null,
-      });
+    // window while still legitimately executing. Each retry lands a day
+    // later than the last, so any age-based expiry would hand it back.
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const start = Date.parse('2026-01-01T00:00:00.000Z');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(start);
+      const store = new ChatTurnDedupStore(filePath);
+      store.claim('turn-a');
+
+      for (let day = 1; day <= 5; day += 1) {
+        vi.setSystemTime(start + day * DAY_MS);
+        expect(store.claim('turn-a')).toEqual({
+          claimed: false,
+          conversationId: null,
+        });
+      }
+    } finally {
+      vi.useRealTimers();
     }
   });
 
@@ -560,23 +531,5 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       conversationId: `conversation-${CHAT_TURN_DEDUP_MAX_ENTRIES}`,
     });
     expect(store.claim('turn-0')).toEqual({ claimed: true });
-  });
-});
-
-describe('getChatTurnDedupStore', () => {
-  afterEach(() => {
-    resetChatTurnDedupStoresForTest();
-  });
-
-  test('returns the SAME instance for the same projectHomeDir', () => {
-    const store1 = getChatTurnDedupStore(DEDUP_HOME_A);
-    const store2 = getChatTurnDedupStore(DEDUP_HOME_A);
-    expect(store1).toBe(store2);
-  });
-
-  test('returns DIFFERENT instances for different projectHomeDirs', () => {
-    const store1 = getChatTurnDedupStore(DEDUP_HOME_B);
-    const store2 = getChatTurnDedupStore(DEDUP_HOME_C);
-    expect(store1).not.toBe(store2);
   });
 });

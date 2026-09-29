@@ -495,6 +495,7 @@ export function usePluginManagementViewModel() {
             : {}),
           permissions: basis.permissions.required,
           contentDigest: basis.contentDigest,
+          ...(basis.gitMetadata ? { gitMetadata: basis.gitMetadata } : {}),
           dependencies: (basis.dependencies ?? []).map(
             (dependency) => dependency.id,
           ),

@@ -15,8 +15,9 @@
  * - an account-bound guest's device credential queries NEGATIVE (its grant
  *   is the person's, never a delegation);
  * - a REVOKED delegation credential is refused outright;
- * - the loopback internal-token operator performs the offer mutation
- *   POSITIVE against a real Project + manifest.
+ * - the operator credential performs the offer mutation POSITIVE against a
+ *   real Project + manifest (the per-boot internal token is refused by the
+ *   station-control authority guard, #2377).
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -79,6 +80,7 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const operatorApproval: PairingApproval = { kind: 'presented-credential' };
+const OPERATOR_CREDENTIAL = 'test-only-operator-credential-contribution-auth';
 const REMOTE_TAILNET_ENV = {
   incoming: { socket: { remoteAddress: '100.96.12.7' } },
 } as never;
@@ -182,18 +184,29 @@ describe('project contribution routes over the REAL auth path (execution offers 
   function environmentSecurityServiceFor(pairing: DevicePairingService) {
     return deepStub({
       verifyCredential: (credential: string) =>
+        credential === OPERATOR_CREDENTIAL ||
         pairing.verifyCredential(credential),
       authorizeCredential: (credential: string) =>
+        credential === OPERATOR_CREDENTIAL ||
         pairing.verifyCredential(credential),
-      verifyOperatorCredential: () => false,
+      verifyOperatorCredential: (credential: string) =>
+        credential === OPERATOR_CREDENTIAL,
       resolveGrantedScope: (credential: string) =>
-        pairing.identifyDevice(credential)?.scope,
+        credential === OPERATOR_CREDENTIAL
+          ? pairingScopePresetString('standard')
+          : pairing.identifyDevice(credential)?.scope,
       identifyDevice: (credential: string) =>
         pairing.identifyDevice(credential),
+      // The operator's own client holds a credential minted with proof of
+      // home possession (the local-grant path the Station UI uses).
       credentialLocality: (credential: string) =>
-        pairing.credentialLocality(credential),
+        credential === OPERATOR_CREDENTIAL
+          ? 'home-possession'
+          : pairing.credentialLocality(credential),
       credentialMintKind: (credential: string) =>
-        pairing.credentialMintKind(credential),
+        credential === OPERATOR_CREDENTIAL
+          ? 'local-grant'
+          : pairing.credentialMintKind(credential),
       devicePairing: pairing,
     });
   }
@@ -381,13 +394,33 @@ describe('project contribution routes over the REAL auth path (execution offers 
     expect(forbidden.status).toBe(403);
     expect(h.config().contribution).toBeUndefined();
 
-    // The real local operator: Station's own loopback proxy hop, attested by
-    // the per-boot internal token — the path that binds
-    // `isBoundRuntimeLocalOperator`.
+    // #2377 slice A: the per-boot internal token is not the operator. It is
+    // what Station's station-control tools present (the CLI's UI proxy marks
+    // every browser hop `remote`), and no tool reaches this route, so the
+    // station-control authority guard refuses it before the route runs.
+    const internalToken = await h.app.request(
+      '/api/project-contributions/offer',
+      {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+          [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        },
+        body: JSON.stringify(offerBody),
+      },
+      LOOPBACK_ENV,
+    );
+    expect(internalToken.status).toBe(403);
+    expect(await internalToken.json()).toMatchObject({
+      code: 'station_control_route_unmapped',
+    });
+    expect(h.config().contribution).toBeUndefined();
+    // The real local operator: a home-possession operator credential — the
+    // path that binds `isBoundRuntimeLocalOperator`.
     const operatorHeaders = {
       'content-type': 'application/json',
-      [INTERNAL_PROXY_CALLER_HEADER]: 'local',
-      [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      Authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
     };
     const offered = await h.app.request(
       '/api/project-contributions/offer',

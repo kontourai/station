@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const DESKTOP_DIR = 'src-desktop';
 const CONFIG_PATH = `${DESKTOP_DIR}/tauri.conf.json`;
@@ -191,10 +191,7 @@ function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main();
   } catch (error) {

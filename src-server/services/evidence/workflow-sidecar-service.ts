@@ -67,6 +67,9 @@ const SCHEMA_FILES = {
 
 type SchemaKind = keyof typeof SCHEMA_FILES;
 
+/** Schemas the sidecar schemas `$ref` by `$id`, shipped beside them. */
+const REFERENCED_SCHEMA_FILES = ['run-correlation-envelope.schema.json'];
+
 /** Task slugs are path segments — keep them strictly filesystem-safe. */
 const TASK_SLUG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -133,11 +136,6 @@ export class WorkflowSidecarService {
       options.packageRoot,
       options.env ?? process.env,
     );
-  }
-
-  /** True when the package's schema files were found. */
-  get schemaAvailable(): boolean {
-    return this.schemaDir !== null;
   }
 
   /** List the workspace's task sidecars (valid state.json files). */
@@ -505,6 +503,7 @@ export class WorkflowSidecarService {
           Ajv2020: new (
             opts: Record<string, unknown>,
           ) => {
+            addSchema(schema: unknown): unknown;
             compile(schema: unknown): ((data: unknown) => boolean) & {
               errors?: Array<{
                 instancePath?: string;
@@ -514,6 +513,12 @@ export class WorkflowSidecarService {
           };
         };
         const ajv = new Ajv2020({ strict: false, validateFormats: false });
+        for (const file of REFERENCED_SCHEMA_FILES)
+          ajv.addSchema(
+            JSON.parse(
+              fs.readFileSync(path.join(this.schemaDir, file), 'utf-8'),
+            ),
+          );
         const compiled = ajv.compile(schema);
         loaded = (data: unknown) => {
           if (compiled(data)) return { ok: true };

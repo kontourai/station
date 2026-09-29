@@ -12,6 +12,7 @@ import {
   ComparisonMessage,
   comparisonMetadata,
   deriveComparisonView,
+  isArchiveInstall,
   serverIdentityMatchesView,
   TechnicalDetails,
   UpdateChannelRow,
@@ -111,12 +112,29 @@ function SourceInstallationFacts({
   const historicalTime =
     dataUpdatedAt > 0 ? new Date(dataUpdatedAt).toLocaleTimeString() : null;
 
+  const affectedServer = (
+    <p className="settings__field-hint">
+      Affected server: {context.identity?.instanceId ?? 'unknown'} ·{' '}
+      {context.apiBase}
+    </p>
+  );
+  // A prebuilt release archive (#2675) has no source to rebuild from: its
+  // update path is the release check above, never a source update.
+  if (status && isArchiveInstall(status)) {
+    return (
+      <div className="settings__source-facts">
+        {affectedServer}
+        <p className="settings__field-hint">
+          This server runs a prebuilt Station release, so it has no source
+          installation.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="settings__source-facts">
-      <p className="settings__field-hint">
-        Affected server: {context.identity?.instanceId ?? 'unknown'} ·{' '}
-        {context.apiBase}
-      </p>
+      {affectedServer}
       {checking && !status && (
         <SkeletonBlock count={1} label="Checking for updates" />
       )}

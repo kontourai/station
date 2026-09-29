@@ -46,27 +46,15 @@ const LOOPBACK_ENVIRONMENT = {
 
 describe('local-mode invariant: no identity source configured, no network', () => {
   test('identifyIngress returns null for a loopback request with no ingress-identity headers', () => {
+    // identifyIngress asks every registered source in turn, so this fails if
+    // ANY of them vouches for a bare request. With no source registered it
+    // would pass vacuously, hence the premise.
+    expect(INGRESS_IDENTITY_SOURCES.length).toBeGreaterThan(0);
     const identity = identifyIngress({
       env: LOOPBACK_ENVIRONMENT,
       req: { header: () => undefined },
     });
     expect(identity).toBeNull();
-  });
-
-  test('every registered ingress source declines a request carrying no credential', () => {
-    // Guards the invariant at the list level: a bare request must not be
-    // recognized by ANY source, regardless of how many are registered. Today
-    // the tailnet source is the only entry; this keeps future additive sources
-    // honest.
-    expect(INGRESS_IDENTITY_SOURCES.length).toBeGreaterThan(0);
-    for (const source of INGRESS_IDENTITY_SOURCES) {
-      expect(
-        source.identify({
-          environment: LOOPBACK_ENVIRONMENT,
-          header: () => undefined,
-        }),
-      ).toBeNull();
-    }
   });
 });
 
@@ -120,6 +108,9 @@ function createHarness() {
         credential === MASTER_CREDENTIAL ||
         (!request?.path.startsWith('/api/pairing') &&
           pairing.verifyCredential(credential)),
+      recognizeCredential: (credential) =>
+        credential === MASTER_CREDENTIAL ||
+        pairing.verifyCredential(credential),
       resolveGrantedScope: (credential) =>
         credential === MASTER_CREDENTIAL
           ? DEFAULT_GRANT_PAIRING_SCOPE

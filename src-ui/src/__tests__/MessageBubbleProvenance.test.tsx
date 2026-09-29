@@ -199,9 +199,13 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     expect(screen.queryByRole('button', { name: 'Provenance' })).toBeNull();
 
     // The MENU lists both the record and the action…
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'More answer actions' }),
-    );
+    const more = await screen.findByRole('button', {
+      name: 'More answer actions',
+    });
+    // It rides the footer's action cluster, so it shares that cluster's
+    // hover reveal and keyboard access.
+    expect(more.closest('.turn-footer__actions')).not.toBeNull();
+    fireEvent.click(more);
     expect(
       await screen.findByRole(
         'menuitem',
@@ -339,20 +343,35 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     expect(screen.queryByLabelText(/^Answer provenance/)).toBeNull();
   });
 
-  it('does not offer Task attachment while the latest assistant turn is still active', () => {
+  // The row is eligible and its overflow renders for the provenance record, so
+  // only the thinking gate on the Task target can keep the attachment out.
+  it('does not offer Task attachment while the latest assistant turn is still active', async () => {
+    // Both the menu and its Task item are lazy chunks: preload them and let
+    // the menu settle, or the item's absence would hold before it could load.
+    await import('../components/chat/TurnActionsMenu');
+    await import('../components/chat/AttachAnswerToTaskButton');
     renderRow(
       {
         role: 'assistant',
         content: 'Still working.',
         turnId: 'turn-active',
+        answerEligible: true,
+        provenance: envelope,
       },
       { isThinking: true },
     );
 
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
     expect(
-      screen.queryByRole('button', {
-        name: 'Add this answer to a Task (turn turn-active)',
-      }),
+      screen.getByRole('menuitem', { name: 'Turn provenance' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('menuitem', { name: /Add this answer to a Task/ }),
     ).toBeNull();
   });
 

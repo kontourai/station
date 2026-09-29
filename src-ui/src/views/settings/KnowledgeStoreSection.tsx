@@ -1,27 +1,8 @@
 /**
- * K4 global Settings surface (`s202-knowledge-onboarding` Wave 2) — the
- * personal knowledge-store card. Mirrors the visual idiom of sibling
- * sections (`AgentDefaultsSection`/`VoiceFeaturesSection`):
- * a `SettingsSection` shell, `settings__field*` classes for structured rows,
- * and the shared `.button`/`.button--*` classes for actions — no new design
- * language.
- *
- * Every empty/loading/error surface below goes through the canonical
- * `Empty`/`ErrorState`/`Skeleton` family (`../../components/state`), never
- * raw markup or an ad-hoc "No X" string (state-primitives ratchet stop-short
- * risk — `npm run state-primitives:ratchet`'s ad-hoc-string ceiling is
- * already fully spent, so new copy here is deliberately phrased to avoid the
- * literal "No <Word>" pattern while keeping the same meaning).
- *
- * Copy uses the glossary noun "knowledge store" / "personal knowledge
- * store" throughout; "vault" is reserved for the Obsidian-specific object a
- * user connects (docs/design/knowledge-foundation.md's K4 noun decision).
- *
- * The "connect an existing Obsidian vault" affordance never calls create
- * before a successful `POST /api/knowledge/roots/validate` — on `ok:false`
- * it renders the adapter's own `reason` string verbatim via `ErrorState`
- * (dishonest-validation stop-short risk), never a generic message or a
- * silent fallback to `kit-default-store`.
+ * Settings card for the first registered personal Knowledge root.
+ * The scope tag also includes read-only conversation roots; this UI selection
+ * is not a server-enforced one-writable-store invariant. Obsidian connection
+ * still requires validation of the exact currently entered path.
  */
 import {
   useCreateKnowledgeRootMutation,
@@ -34,7 +15,7 @@ import { ArchiveGlyph, BrainGlyph } from '../../components/icons/Glyph';
 import { PathAutocomplete } from '../../components/PathAutocomplete';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { errorText } from '../../utils/errorText';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import './KnowledgeStoreSection.css';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -42,9 +23,7 @@ import { settingsRow } from './settings-catalog';
 const PERSONAL_DEFAULT_ADAPTER_ID = 'kit-default-store';
 const OBSIDIAN_ADAPTER_ID = 'kit-obsidian-store';
 
-/** Secondary "connect an existing Obsidian vault instead" affordance, only
- * ever shown while there is no personal root yet (a user has exactly one
- * personal root — once it exists there is nothing left to connect). */
+/** The connection form appears only while this UI's first-personal-root lookup is empty. */
 function ConnectObsidianVault() {
   const createRoot = useCreateKnowledgeRootMutation();
   const validateRoot = useValidateKnowledgeRootMutation();
@@ -144,7 +123,7 @@ function ConnectObsidianVault() {
           className="knowledge-store-section__obsidian-error"
           variant="default"
           title="Couldn't connect that vault"
-          description={errorText(createRoot.error)}
+          description={userFacingErrorMessage(createRoot.error)}
         />
       )}
     </div>
@@ -192,7 +171,7 @@ export function KnowledgeStoreSection() {
         ) : rootsQuery.isError ? (
           <ErrorState
             title="Couldn't load your knowledge store"
-            description={errorText(rootsQuery.error)}
+            description={userFacingErrorMessage(rootsQuery.error)}
             action={
               <button
                 type="button"
@@ -247,7 +226,7 @@ export function KnowledgeStoreSection() {
                       className="knowledge-store-section__create-error"
                       variant="default"
                       title="Couldn't create your knowledge store"
-                      description={errorText(createRoot.error)}
+                      description={userFacingErrorMessage(createRoot.error)}
                     />
                   )}
                   <ConnectObsidianVault />

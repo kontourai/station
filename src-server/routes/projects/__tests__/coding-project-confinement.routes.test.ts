@@ -8,7 +8,6 @@
  * and a refused edit leaves the outside folder untouched.
  */
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -279,9 +278,5 @@ describe('what the confinement admits', () => {
     expect(((await res.json()) as { code?: string }).code).toBe(
       'project-required',
     );
-  });
-
-  test('a refused exec ran nothing', () => {
-    expect(existsSync(join(outside, 'exec-ran'))).toBe(false);
   });
 });

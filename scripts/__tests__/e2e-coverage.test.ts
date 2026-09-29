@@ -864,12 +864,6 @@ describe('coverage arguments', () => {
       expect(result.stdout).not.toContain('e2e bucket:');
     }
   });
-
-  it('uses the resolved file URL entry guard rather than a fragile string URL', () => {
-    expect(readFileSync('scripts/run-e2e-coverage.mjs', 'utf8')).toContain(
-      'pathToFileURL(resolve(process.argv[1])).href',
-    );
-  });
 });
 
 describe('E2E capacity configuration', () => {
@@ -900,11 +894,7 @@ describe('coverage contract', () => {
   it('runs every bucket the manifest assigns work to', () => {
     // The runner must cover the manifest's buckets, or coverage silently
     // narrows — the exact failure mode the && chain produced.
-    const runner = readFileSync('scripts/run-e2e-coverage.mjs', 'utf8');
-    const manifest = readFileSync('tests/e2e-manifest.mjs', 'utf8');
-    const assigned = new Set(
-      [...manifest.matchAll(/bucket:\s*'([a-z-]+)'/g)].map((m) => m[1]),
-    );
+    const assigned = new Set(e2eManifest.map((entry) => entry.bucket));
     assigned.delete('pr-smoke'); // bounded pre-PR lane, not full coverage
     // Deliberately unrun (tests/e2e-manifest.mjs:236's own docblock, and the
     // manifest's `bucket === 'quarantine' && !entry.replacement` check that
@@ -913,9 +903,8 @@ describe('coverage contract', () => {
     // so admitting it to coverage would permanently red this gate for a
     // defect the spec exists to prove, not hide.
     assigned.delete('quarantine');
-    for (const bucket of assigned) {
-      expect(runner, `bucket ${bucket}`).toContain(`name: '${bucket}'`);
-    }
+    const run = new Set(BUCKETS.map((bucket) => bucket.name));
+    expect([...assigned].filter((bucket) => !run.has(bucket))).toEqual([]);
   });
 
   it('does not chain buckets with && any more', () => {

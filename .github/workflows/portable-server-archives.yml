@@ -1,0 +1,260 @@
+name: Portable server archives
+
+# Builds station-server-<os>-<arch> on each target's native runner and proves
+# it runs with no Node.js on PATH (#2675). An archive carries the build host's
+# platform-specific native modules (node-pty, @napi-rs/keyring, esbuild, the
+# Claude Agent SDK binary), so each target is built where it runs; there is
+# no cross-build. Linux uses ubuntu-22.04 images, like the node-pty prebuild
+# matrix, to keep the glibc floor of compiled modules low; the smoke reports
+# that floor.
+#
+# Packaging proof only: archives are uploaded as short-lived workflow
+# artifacts. Nothing is released, signed, attested or published, and no
+# secret is read. On its own triggers the ref is the placeholder v0.0.0 that
+# install-smoke uses.
+#
+# It is also a reusable workflow (workflow_call): the portable Nightly
+# publication (portable-nightly-publish.yml) calls it with the release
+# version and ring, and reads the same station-server-<target> run
+# artifacts. A caller still gets only a read-only token and no secret here;
+# signing and upload happen in the caller. The called build checks out the
+# caller's event SHA (the one checkout expression the actionlint gate admits
+# for this workflow) and refuses to run unless that is the `ref` input.
+#
+# Repository policy routes pull requests through pull_request_target (see
+# scripts/actionlint-gate.mjs). Candidate code therefore runs only from an
+# explicit head-repository/head-SHA checkout that persists no credentials,
+# on ephemeral GitHub-hosted runners, under a read-only token.
+
+# Every input that changes an archive's bytes or its proof triggers a run.
+# scripts/__tests__/portable-server-archive.test.ts derives the builder's and
+# the smoke's local imports and fails if one is missing here, and holds push
+# and pull_request_target to the same list. Server, UI and shared package
+# sources are deliberately not listed: they change on most pull requests,
+# and ordinary CI owns them.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact 40-hex commit to build; must be the caller's event SHA.
+        required: true
+        type: string
+      version:
+        description: Release version without the leading v (for example 0.1.11-nightly.245600).
+        required: true
+        type: string
+      ring:
+        description: Release ring the version must belong to (config/channel-ports.json releaseRings).
+        required: true
+        type: string
+      non_blocking:
+        description: Let a failed target fail only its own job, not the caller's run (a dry run).
+        required: false
+        default: false
+        type: boolean
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/portable-server-archives.yml'
+      - '.nvmrc'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
+      - 'esbuild.config.mjs'
+      - 'docs/reference/station-docs.md'
+      - 'docs/learn/mcp-topics.json'
+      - 'docs/architecture/module-map.md'
+      - 'docs/learn/atlas.json'
+      - 'install.sh'
+      - 'schemas/**'
+      - 'config/portable-server-node-runtime.json'
+      # The release ring table and grammar that stamp .station-release.json.
+      - 'config/channel-ports.json'
+      - 'packages/shared/src/portable-server-targets.mjs'
+      - 'packages/shared/src/release-manifest.mjs'
+      - 'packages/shared/src/release-rings.generated.mjs'
+      - 'packaging/portable-server/**'
+      - 'packages/cli/**'
+      - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/generate-station-docs.mjs'
+      - 'scripts/smoke-portable-server-archive.mjs'
+      - 'scripts/station-cli.ts'
+      - 'scripts/station-cli-implementation.ts'
+      - 'scripts/source-bootstrap.ts'
+      - 'scripts/lib/container-release-metadata.mjs'
+      - 'scripts/lib/desktop-build-manifest.mjs'
+      - 'scripts/lib/desktop-server-runtime.mjs'
+      - 'scripts/lib/documentation-model.mjs'
+      - 'scripts/lib/elf-symbol-floor.mjs'
+      - 'scripts/lib/free-ports.mjs'
+      - 'scripts/lib/git-environment.mjs'
+      - 'scripts/lib/module-entry.mjs'
+      - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/lib/portable-smoke-diagnostics.mjs'
+      - 'scripts/lib/server-build-config.mjs'
+      - 'scripts/lib/station-stop-hint.mjs'
+  pull_request_target:
+    paths:
+      - '.github/workflows/portable-server-archives.yml'
+      - '.nvmrc'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
+      - 'esbuild.config.mjs'
+      - 'docs/reference/station-docs.md'
+      - 'docs/learn/mcp-topics.json'
+      - 'docs/architecture/module-map.md'
+      - 'docs/learn/atlas.json'
+      - 'install.sh'
+      - 'schemas/**'
+      - 'config/portable-server-node-runtime.json'
+      # The release ring table and grammar that stamp .station-release.json.
+      - 'config/channel-ports.json'
+      - 'packages/shared/src/portable-server-targets.mjs'
+      - 'packages/shared/src/release-manifest.mjs'
+      - 'packages/shared/src/release-rings.generated.mjs'
+      - 'packaging/portable-server/**'
+      - 'packages/cli/**'
+      - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/generate-station-docs.mjs'
+      - 'scripts/smoke-portable-server-archive.mjs'
+      - 'scripts/station-cli.ts'
+      - 'scripts/station-cli-implementation.ts'
+      - 'scripts/source-bootstrap.ts'
+      - 'scripts/lib/container-release-metadata.mjs'
+      - 'scripts/lib/desktop-build-manifest.mjs'
+      - 'scripts/lib/desktop-server-runtime.mjs'
+      - 'scripts/lib/documentation-model.mjs'
+      - 'scripts/lib/elf-symbol-floor.mjs'
+      - 'scripts/lib/free-ports.mjs'
+      - 'scripts/lib/git-environment.mjs'
+      - 'scripts/lib/module-entry.mjs'
+      - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/lib/portable-smoke-diagnostics.mjs'
+      - 'scripts/lib/server-build-config.mjs'
+      - 'scripts/lib/station-stop-hint.mjs'
+
+permissions:
+  contents: read
+
+# A called run is keyed to its caller's run: under workflow_call github.ref
+# is the caller's ref, so sharing the push group would let a push to main
+# cancel a Nightly publication's build, or the reverse.
+concurrency:
+  group: portable-server-archives-${{ inputs.version != '' && format('call-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  archive:
+    name: Build and smoke ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: linux-x64
+            format: tar.gz
+          - runner: ubuntu-22.04-arm
+            target: linux-arm64
+            format: tar.gz
+          - runner: macos-15
+            target: darwin-arm64
+            format: tar.gz
+          - runner: macos-15-intel
+            target: darwin-x64
+            format: tar.gz
+          - runner: windows-latest
+            target: win32-x64
+            format: zip
+    runs-on: ${{ matrix.runner }}
+    # Only a caller's dry run sets non_blocking; every other trigger (and a
+    # pull request, where inputs is empty) keeps a failed target fatal.
+    continue-on-error: ${{ inputs.non_blocking == true }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup pinned pnpm
+        # #2675: pnpm v11 ships no working native binary for Intel macOS.
+        if: runner.os != 'macOS' || runner.arch != 'X64'
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+      - name: Setup pinned pnpm from its JS package (Intel macOS)
+        if: runner.os == 'macOS' && runner.arch == 'X64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          manager="$(node -p "require('./package.json').packageManager")"
+          if [[ ! "$manager" =~ ^pnpm@[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "packageManager must pin an exact pnpm version, got: $manager" >&2
+            exit 1
+          fi
+          prefix="$RUNNER_TEMP/pnpm-js"
+          mkdir -p "$prefix/bin"
+          npm pack "$manager" --pack-destination "$prefix" --ignore-scripts
+          tar -xzf "$prefix/pnpm-${manager#pnpm@}.tgz" -C "$prefix"
+          test "$(node -p 'const p = require(process.argv[1]); p.name + "@" + p.version' "$prefix/package/package.json")" = "$manager"
+          chmod +x "$prefix/package/bin/pnpm.mjs"
+          ln -s ../package/bin/pnpm.mjs "$prefix/bin/pnpm"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: npm run dependencies:ci
+
+      - name: Confirm the runner is the matrix target
+        run: test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
+
+      - name: Confirm a caller's ref is the checked-out commit
+        if: ${{ inputs.ref != '' }}
+        env:
+          CALLER_REF: ${{ inputs.ref }}
+        run: |
+          [[ "$CALLER_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "ref must be a 40-hex commit SHA, got: $CALLER_REF" >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$CALLER_REF" || { echo "checked out $(git rev-parse HEAD), but the caller asked for $CALLER_REF" >&2; exit 1; }
+
+      - run: npm run build
+
+      - name: Build the archive
+        # The provenance SHA is the commit actually checked out: under
+        # pull_request_target GITHUB_SHA is the base tip, not the candidate.
+        # A caller's version and ring come only from workflow_call inputs;
+        # every other trigger builds the v0.0.0 placeholder.
+        env:
+          RELEASE_REF: ${{ inputs.version != '' && format('v{0}', inputs.version) || 'v0.0.0' }}
+          RELEASE_RING: ${{ inputs.ring }}
+        run: npm run build:portable-server -- --ref "$RELEASE_REF" ${RELEASE_RING:+--ring "$RELEASE_RING"} --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/portable-server"
+
+      - name: Smoke the archive with no Node.js on PATH
+        # --long-path extracts beneath a directory long enough that the
+        # deepest node_modules path crosses Windows MAX_PATH (#2484).
+        run: npm run smoke:portable-server -- --archive "$RUNNER_TEMP/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}" --long-path
+
+      # Uploads only for main, dispatch, and same-repository pull requests. A
+      # fork's archive is never published even as a run artifact; for forks
+      # the smoke above is the whole proof. scripts/actionlint-gate.mjs pins
+      # this step exactly.
+      - name: Upload the archive and its descriptor
+        if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-server-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}
+            ${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}.json
+          if-no-files-found: error
+          retention-days: 7

@@ -16,10 +16,7 @@ describe('whether a session runs in its project checkout', () => {
 
   test('an isolated worktree, or a sibling with a longer name, is elsewhere', () => {
     expect(
-      sessionRunsInProjectDirectory(
-        '/u/me/.t3/worktrees/repo/lane',
-        '/u/me/repo',
-      ),
+      sessionRunsInProjectDirectory('/u/me/worktrees/repo/lane', '/u/me/repo'),
     ).toBe(false);
     expect(sessionRunsInProjectDirectory('/u/me/repo-2', '/u/me/repo')).toBe(
       false,

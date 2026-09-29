@@ -79,7 +79,9 @@ Bare `#NNNN` references in areas the sweep has not touched (notably `packages/cl
 
 ## Read only the route you need
 
-Codex loads this root file when launched here; it does not automatically load nested instructions after touching files. Read the routed scope explicitly. Claude loads nested `CLAUDE.md` when it reads that directory; each nested file imports its paired `AGENTS.md`.
+For behavior or public-contract changes, use [documentation-audit](.agents/skills/documentation-audit/SKILL.md).
+
+Codex loads only this root automatically; read the routed scope explicitly. Claude's nested `CLAUDE.md` imports its paired `AGENTS.md`.
 
 | Touched path | Read |
 | --- | --- |
@@ -92,7 +94,7 @@ Codex loads this root file when launched here; it does not automatically load ne
 | `packages/sdk/**` | [packages/sdk/AGENTS.md](packages/sdk/AGENTS.md) |
 | `tests/**` | [tests/AGENTS.md](tests/AGENTS.md) |
 
-Read [docs/glossary.md](docs/glossary.md), the affected canonical guide, and [docs/architecture/module-map.md](docs/architecture/module-map.md) only when their topic is in scope. Station consumes sibling Kontour products through published contracts, never their internals. `docs/strategy/roadmap.md` is historical, not live authority.
+Read [docs/glossary.md](docs/glossary.md), the affected canonical guide, and [docs/architecture/module-map.md](docs/architecture/module-map.md) only when their topic is in scope. Station consumes sibling Kontour products through published contracts, never their internals.
 
 <!-- veritas:governance-block:start -->
 This repo uses Veritas for AI governance. Read `.veritas/GOVERNANCE.md` before making changes.

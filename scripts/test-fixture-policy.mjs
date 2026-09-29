@@ -5,6 +5,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const STRICT_BROWSER_FILES = [
   'tests/mobile-chat-composer.spec.ts',
@@ -348,4 +349,4 @@ export function main(
   for (const error of result.errors) console.error(error);
   if (result.errors.length) process.exitCode = 1;
 }
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) main();
+if (invokedDirectly(import.meta.url)) main();

@@ -3,11 +3,10 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   collectWorkspaceProvenance,
   summarizeAttempts,
-  updateHashFromRegularFile,
   writeReceiptSecurely,
 } from './lib/test-reliability.mjs';
 import {
@@ -18,8 +17,6 @@ import {
 const DEFAULT_OUTPUT = '.kontourai/test-reliability/prepush-latest.json';
 const DEFAULT_REPEAT_OUTPUT =
   '.kontourai/test-reliability/prepush-repeat-latest.json';
-
-export { summarizeAttempts, updateHashFromRegularFile, writeReceiptSecurely };
 
 /** Preserve the schema-v2 pre-push provenance projection byte-for-byte. */
 export function collectProvenance() {
@@ -177,4 +174,4 @@ function main() {
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) main();
+if (invokedDirectly(import.meta.url)) main();

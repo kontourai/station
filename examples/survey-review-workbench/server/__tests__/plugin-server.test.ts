@@ -3,10 +3,10 @@
  * per-project review-session persistence (Survey ReviewSessionEventStore
  * backing), optimistic concurrency, path safety, and trust-bundle projection.
  *
- * Persistence routes are dependency-free and always run. The example-session
- * and trust-bundle routes import `@kontourai/survey` from the plugin's own
- * node_modules, so those tests skip when the plugin's deps are not installed
- * (run `npm install` in examples/survey-review-workbench to enable them).
+ * The example-session and trust-bundle routes import `@kontourai/survey`
+ * through the repository dependency graph. The file imports it up front so
+ * missing resolution fails rather than skipping projection tests.
+ * Run the repository's managed `npm run dependencies:ci` setup first.
  */
 
 import {
@@ -26,13 +26,7 @@ import { register } from '../plugin.mjs';
 
 const PROJECT = 'survey-proj';
 
-let surveyAvailable = false;
-try {
-  await import('@kontourai/survey/review-workbench');
-  surveyAvailable = true;
-} catch {
-  surveyAvailable = false;
-}
+await import('@kontourai/survey/review-workbench');
 
 interface Harness {
   app: Hono;
@@ -232,7 +226,7 @@ describe('survey-review-workbench server module', () => {
     expect((await append.json()).eventCount).toBe(2);
   });
 
-  describe.skipIf(!surveyAvailable)('with @kontourai/survey installed', () => {
+  describe('with @kontourai/survey', () => {
     it('creates an example session from Survey example data', async () => {
       const res = await harness.app.request(
         `/projects/${PROJECT}/review-sessions`,

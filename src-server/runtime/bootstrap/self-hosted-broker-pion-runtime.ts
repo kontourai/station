@@ -6,19 +6,25 @@ import type {
   ApprovedStationConnectionTrust,
   StationConnectionProofBinding,
 } from '@kontourai/station-contracts/connection-proof';
-import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-hosted-broker';
+import type {
+  SelfHostedBrokerNativeClientSurfaceV2,
+  SelfHostedBrokerScopeV1,
+} from '@kontourai/station-contracts/self-hosted-broker';
 import {
   connectionDescriptionDigest,
   createStationConnectionProofVerifier,
 } from '@kontourai/station-shared/connection-proof';
+import { createNativeV2PionApplicationAdapter } from '../../services/connections/native-v2-pion-application-adapter.js';
 import { startPionApplicationAdapter } from '../../services/connections/pion-application-adapter.js';
 import { SelfHostedBrokerClient } from '../../services/connections/self-hosted-broker-client.js';
+import type { BrokerNativeOfferAdapter } from '../../services/connections/self-hosted-broker-connector.js';
 import { SelfHostedBrokerConnector } from '../../services/connections/self-hosted-broker-connector.js';
 import type { BrokerCredential } from '../../services/connections/self-hosted-broker-service.js';
 import type {
   VerifiedPionApplicationRequestFacts,
   VirtualApplication,
 } from '../../services/connections/virtual-application.js';
+import type { ConnectionKeyCandidateIssuer } from '../../services/ssh/connection-key-candidate-issuer.js';
 import {
   SelfHostedBrokerRuntime,
   type SelfHostedBrokerStatus,
@@ -65,15 +71,24 @@ export interface SelfHostedBrokerPionRuntimeInput {
     isCurrent(value: ApprovedStationConnectionTrust): boolean;
   };
   issuer: { issue(binding: StationConnectionProofBinding): Promise<string> };
+  candidateIssuer?: ConnectionKeyCandidateIssuer;
   heartbeatMs: number;
   renewMs: number;
   pollMs: number;
   maxPeerLifetimeMs: number;
   maxPeers: number;
+  /** Explicit opt-in native application lane; absent means never composed,
+   * never polled, and no native offers are ever answered. */
+  native?: {
+    surface: SelfHostedBrokerNativeClientSurfaceV2;
+    /** Live owned native peer ceiling; default 4, hard-capped at 32. */
+    maxPeers?: number;
+  };
   observeStatus?: (status: SelfHostedBrokerStatus) => void;
 }
 export interface SelfHostedBrokerPionRuntimeDependencies {
   startAdapter: typeof startPionApplicationAdapter;
+  createNativeAdapter?: typeof createNativeV2PionApplicationAdapter;
 }
 
 type Adapter = Awaited<ReturnType<typeof startPionApplicationAdapter>>;
@@ -130,6 +145,7 @@ export function createSelfHostedBrokerPionRuntime(
   const turn = Object.freeze(structuredClone(input.turn));
   const trustOwner = input.trust;
   const issuerOwner = input.issuer;
+  const candidateIssuer = input.candidateIssuer;
   const heartbeatMs = input.heartbeatMs;
   const renewMs = input.renewMs;
   const pollMs = input.pollMs;
@@ -293,6 +309,59 @@ export function createSelfHostedBrokerPionRuntime(
   async function closeAndConfirm(entry: PeerEntry): Promise<void> {
     await retireTaskFor(entry);
   }
+
+  // Explicit opt-in native application lane. Composition happens exactly
+  // once against the SAME VirtualApplication, trust owner, and issuer as the
+  // browser path; there is no separate authority and no fabricated Origin.
+  const nativeConfig = input.native;
+  let nativeOwned: ReturnType<
+    typeof createNativeV2PionApplicationAdapter
+  > | null = null;
+  let nativeMaxPeers = 0;
+  let nativeClaims = 0;
+  let closeNative: (() => Promise<void>) | undefined;
+  if (nativeConfig) {
+    nativeMaxPeers = nativeConfig.maxPeers ?? 4;
+    if (
+      !Number.isSafeInteger(nativeMaxPeers) ||
+      nativeMaxPeers < 1 ||
+      nativeMaxPeers > 32
+    )
+      throw new Error('broker_runtime_native_peer_limit_invalid');
+    const createNativeAdapter =
+      dependencies.createNativeAdapter ?? createNativeV2PionApplicationAdapter;
+    nativeOwned = createNativeAdapter({
+      surface: nativeConfig.surface,
+      applicationOrigin,
+      application,
+      executable,
+      certificatePem,
+      privateKeyPem,
+      turn,
+      trust: trustOwner,
+      issuer: issuerOwner,
+    });
+    closeNative = () => nativeOwned!.close();
+  }
+  // Capacity-wrapped native adapter: a live owned native peer (plus in-flight
+  // admissions) counts against the explicit ceiling; at capacity the runtime
+  // simply does not poll the native lane, so offers are left queued for a
+  // later tick instead of failing the whole broker lifecycle.
+  const nativeAdapter: BrokerNativeOfferAdapter | undefined = nativeOwned
+    ? {
+        surface: nativeOwned.adapter.surface,
+        answer: async (offer, approved, signal) => {
+          if (nativeOwned!.activePeerCount + nativeClaims >= nativeMaxPeers)
+            throw new Error('broker_runtime_native_peer_capacity');
+          nativeClaims += 1;
+          try {
+            return await nativeOwned!.adapter.answer(offer, approved, signal);
+          } finally {
+            nativeClaims -= 1;
+          }
+        },
+      }
+    : undefined;
 
   const client = new SelfHostedBrokerClient(brokerOrigin, scope, credential);
   const connector = new SelfHostedBrokerConnector(
@@ -475,11 +544,46 @@ export function createSelfHostedBrokerPionRuntime(
         throw error;
       }
     },
+    // Fifth argument: the explicit native offer adapter, present only under
+    // opt-in configuration; without it the connector refuses the native lane.
+    nativeAdapter,
   );
   const lifecycle = {
     register: (signal: AbortSignal) => connector.register(signal),
     renew: (signal: AbortSignal) => connector.renew(signal),
-    poll: (signal: AbortSignal) => connector.poll(signal),
+    poll: async (signal: AbortSignal) => {
+      if (candidateIssuer)
+        await connector.pollNativeKeyCandidates(candidateIssuer, signal);
+      return connector.poll(signal);
+    },
+    // The native lane exists only under explicit opt-in configuration: with
+    // no native config the lifecycle has no pollNative at all, so the bounded
+    // runtime loop never requests, answers, or dispatches a native offer.
+    ...(nativeAdapter
+      ? {
+          pollNative: async (signal: AbortSignal) => {
+            // At native capacity, skip this tick: leave offers queued rather
+            // than answering beyond the owned-peer ceiling (and never crowd
+            // the shared admission slot with an offer that cannot be served).
+            if (nativeOwned!.activePeerCount + nativeClaims >= nativeMaxPeers)
+              return { observed: 0, answered: 0 };
+            try {
+              return await connector.pollNative(signal);
+            } catch (error) {
+              // Capacity can also be reached mid-loop while the connector
+              // drains its offer queue. The wrapper refuses BEFORE any peer
+              // is started, so there is nothing to dispose: treat it as
+              // backpressure for this tick instead of failing the broker.
+              if (
+                error instanceof Error &&
+                error.message === 'broker_runtime_native_peer_capacity'
+              )
+                return { observed: 0, answered: 0 };
+              throw error;
+            }
+          },
+        }
+      : {}),
     withdraw: async (signal: AbortSignal) => {
       let withdrawError: unknown;
       let withdrawFailed = false;
@@ -502,6 +606,16 @@ export function createSelfHostedBrokerPionRuntime(
           errors.push(error);
         }
       }
+      // Join owned native peers exactly once: the adapter's own close
+      // retires every live/retiring native peer and awaits its confirmed
+      // cleanup receipts, so shutdown cannot strand an opt-in native peer.
+      if (closeNative) {
+        try {
+          await closeNative();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
       if (errors.length > 1)
         throw new AggregateError(errors, 'broker_runtime_peer_cleanup_failed');
       if (errors.length === 1) throw errors[0];
@@ -515,6 +629,7 @@ export function createSelfHostedBrokerPionRuntime(
     heartbeatMs,
     renewMs,
     pollMs,
+    nativeOfferPolling: nativeAdapter !== undefined,
     observeStatus: input.observeStatus,
   });
 }

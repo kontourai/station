@@ -621,6 +621,8 @@ describe('AcpAdapter', () => {
       method: 'request.resolved',
       requestId: opened.requestId,
       status: 'approved',
+      // #2880: ACP defines no acknowledgement of a permission response.
+      acknowledgement: 'none',
     });
 
     // Turn completion (row 13).
@@ -2165,13 +2167,6 @@ describe('AcpAdapter', () => {
 
       // Rejected before ever spawning a process.
       expect(processes).toHaveLength(0);
-    });
-
-    test('sessions with an unset connection cwd but different effective workspace cwds get different fingerprints', () => {
-      const fingerprintA = kiroFingerprint('/workspace/one');
-      const fingerprintB = kiroFingerprint('/workspace/two');
-
-      expect(fingerprintA).not.toBe(fingerprintB);
     });
 
     test('resume fails closed when the effective cwd changed since capture', async () => {
@@ -3924,7 +3919,9 @@ describe('station#1182: runtime-reported model', () => {
     expect(processes[0].destroyCalls).toBe(1);
   });
 
-  test('keeps matrix and adapter lifecycle claims aligned', () => {
+  // The UI reads ACP_MODEL_OVERRIDE_PER_TURN directly (useChatInput) while the
+  // server enforces the adapter's declared metadata; both must agree.
+  test('the adapter declares the per-turn model override the UI reads, and the matrix cell matches', () => {
     const { adapter } = createAdapter();
     expect(ENGINE_CAPABILITY_MATRICES.acp.modelSelection).toEqual({
       state: 'session',
