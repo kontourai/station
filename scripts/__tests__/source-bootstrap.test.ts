@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { installerInheritedEnv } from '@kontourai/station-shared/prebuilt-archive';
 import {
   admitStationRuntimeHome,
   resolveRuntimeHome,
@@ -109,6 +110,34 @@ describe('source Station bootstrap', () => {
     expect(resolveRuntimeHome(env)).toBe(resolve('./runtime-home'));
     expect(env.STATION_PORT).toBe('29141');
   });
+
+  test.each(['development', 'nightly'])(
+    'hands a CLI-run installer none of the %s launch facts it wrote, except the ones every installer run replaces (#2675)',
+    (channel) => {
+      const env = sourceEnv({
+        STATION_CHANNEL: channel,
+        STATION_CONSENT_PORT: '47144',
+        KEEP_ME: 'yes',
+      });
+      const before = { ...env };
+      initializeSourceBootstrap({ env, wrapperUrl });
+      const installerSet = new Set([
+        'STATION_CHANNEL',
+        'STATION_ROOT',
+        'STATION_HOME',
+      ]);
+      const leaked = Object.entries(installerInheritedEnv(env))
+        .filter(
+          ([key, value]) => !installerSet.has(key) && before[key] !== value,
+        )
+        .map(([key]) => key);
+      expect(leaked).toEqual([]);
+      // The bootstrap did write them; the filter is what removed them.
+      expect(env.STATION_SERVER_PORT).toBeDefined();
+      expect(env.STATION_INSTANCE_ID).toBeDefined();
+      expect(installerInheritedEnv(env).KEEP_ME).toBe('yes');
+    },
+  );
 
   test('leaves implicit consent for the lifecycle parser to derive from an overridden API port', async () => {
     const env = sourceEnv({ STATION_SERVER_PORT: '5000' });
