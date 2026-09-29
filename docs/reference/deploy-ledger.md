@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-29T06:54:46Z | nightly-npm | 0.6.0-nightly.2463.36526165983 | `e8cbb94` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36526165983) |
 | 2026-09-29T05:51:27Z | nightly-desktop | 0.1.11-nightly.2463 | `99f9520` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36520805311) |
 | 2026-09-29T05:51:25Z | nightly-android | 0.1.11-nightly.2463 | `99f9520` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36520805311) |
 | 2026-09-29T05:21:53Z | nightly-npm | 0.6.0-nightly.2463.36520805311 | `99f9520` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36520805311) |
@@ -191,6 +192,26 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-29T06:54:46Z · nightly-npm · 0.6.0-nightly.2463.36526165983
+
+- Ship SHA: `e8cbb9412176d0fd372de92ef455132e952a409f`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2463.36526165983 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `99f9520` ([full sha](https://github.com/kontourai/station/commit/99f9520b0fde970a123c4dabc22137a55747aa17)):
+
+**Fixes**
+
+- [#2944](https://github.com/kontourai/station/pull/2944) fix(ui): channel brand text meets AA on its real surfaces
+- [#2940](https://github.com/kontourai/station/pull/2940) fix(ui): keep the approval card legible at narrow width, with accessible button states (#2917)
+
+**Other**
+
+- [#2951](https://github.com/kontourai/station/pull/2951) test(docs): stop the atlas browser test from dequeuing PRs over another PR's stale review
 
 ## 2026-09-29T05:51:27Z · nightly-desktop · 0.1.11-nightly.2463
 

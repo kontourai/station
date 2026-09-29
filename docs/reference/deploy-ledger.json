@@ -1,5 +1,37 @@
 [
   {
+    "timestampUtc": "2026-09-29T06:54:46Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2463.36526165983",
+    "sha": "e8cbb9412176d0fd372de92ef455132e952a409f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36526165983",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2463.36526165983 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "99f9520b0fde970a123c4dabc22137a55747aa17",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2944](https://github.com/kontourai/station/pull/2944) fix(ui): channel brand text meets AA on its real surfaces",
+          "[#2940](https://github.com/kontourai/station/pull/2940) fix(ui): keep the approval card legible at narrow width, with accessible button states (#2917)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2951](https://github.com/kontourai/station/pull/2951) test(docs): stop the atlas browser test from dequeuing PRs over another PR's stale review"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-09-29T05:51:27Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2463",
