@@ -2408,22 +2408,23 @@
       "kind": "historical",
       "state": "classified",
       "documentDigest": "87b0ed372ef7d96462c84e94492a525319dfda23e702a80bb8b83a9c88c3874c",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "summary": "Historical ACP chat proposal, explicitly routed to current ACP guide and adapter. Retained phases and status tables describe the original design.",
       "limits": "Historical measurements and external incidents were not rerun; classification does not certify current behavior.",
       "sources": [
         {
           "path": "docs/guides/acp.md",
-          "digest": "a902573fcf2c8caab6097af31941a73700df2906868bbbef1f2f13a97de5e02c"
+          "digest": "09aa4b0b197f01bbcccbb5330f4937f56b3c465d23f3020c9005f39c0ccaa467"
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         }
       ],
       "checks": [
         "Read the full record and checked the current owner or local validation route.",
-        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts and stamps it on request.resolved. The document's historical banner, which says ACP execution is a per-thread process lifecycle in the ACP adapter, is unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts and stamps it on request.resolved. The document's historical banner, which says ACP execution is a per-thread process lifecycle in the ACP adapter, is unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Historical ACP proposal; checked its request_permission sketch against the acp-adapter.ts delta (toolKind in the request payload, prompt-end settlement). It is classified as historical and routes to docs/guides/acp.md, which now states both. No prose change. Also checked the current acp.md wording it routes to."
       ]
     },
     {
@@ -2603,7 +2604,7 @@
     },
     {
       "path": "docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "historical",
       "state": "classified",
       "summary": "A top banner surfaces the existing 2026-08-26 supersession. Current FlowRunService.evaluate delegates to Flow evaluateRun; the retired Station probe, veto and switch remain historical rationale, while producerPin is a deprecated historical wire field.",
@@ -2620,7 +2621,7 @@
         },
         {
           "path": "packages/contracts/src/runtime-events.ts",
-          "digest": "9c918798c4c42c0548d938949cfa460ed7c4d5aacb2764cda365a95af23f55eb"
+          "digest": "b46b1b9c78c3ae6954f1c287d8213451703b2c07a4e2a3f086fc0e779e356c86"
         },
         {
           "path": "src-server/services/flow/__tests__/flow-run-service.test.ts",
@@ -2641,7 +2642,8 @@
         "Integration source review through d72f79b08: #2904 added only an optional `revocation` {reason, deviceId, cause} to SessionApprovalModeSetEvent in runtime-events. It does not touch producerPin, Flow evaluation or the superseded Station-side probe, so the historical classification and supersession banner stand. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds ApprovalAcknowledgement, RequestResolvedEvent.acknowledgement and RequestDeliveryEvent to runtime-events. FlowGateVerdictEvent and its producerPin field are untouched. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Checked against the runtime-events.ts delta (optional toolKind/EngineToolKind on tool.started/tool.completed). The ADR concerns the producer pin, a deprecated historical wire field; nothing it states touches tool events. No prose change."
       ]
     },
     {
@@ -2685,7 +2687,7 @@
     },
     {
       "path": "docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "design",
       "state": "classified",
       "summary": "A dated reading-status note separates the 2026-08-03 vendor survey from current support. The current ACP adapter installs the inbound refusal policy instead of fabricated empty success; original layer definitions, authority decision and vendor observations remain untouched.",
@@ -2698,7 +2700,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/services/acp/__tests__/acp-inbound-extension-policy.test.ts",
@@ -2717,7 +2719,8 @@
         "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
         "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
         "Integration source review through e0314c727: extension-notification-bindings.ts removed EXTENSION_NOTIFICATION_EVIDENCE_GAPS, EXTENSION_NOTIFICATION_PROMOTIONS and the reset seam. The `_kiro` v3 spelling stays unbound, with only a source comment. Corrected the rendering-table paragraph, which said the authority records an explicit gap entry. The dated survey and decisions are untouched. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata and a request.resolved acknowledgement stamp in acp-adapter.ts. The ADR's claims about extension-method binding (onExtMethod and friends) are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata and a request.resolved acknowledgement stamp in acp-adapter.ts. The ADR's claims about extension-method binding (onExtMethod and friends) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Checked against the acp-adapter.ts delta (request payload toolKind, prompt-end permission settlement). The ADR's inbound-extension refusal policy is unchanged by it. No prose change."
       ]
     },
     {
@@ -4014,7 +4017,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4418,7 +4421,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter-events.ts",
-          "digest": "f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427"
+          "digest": "81dff671713d9bd8cee6f2c9da3ae512651c8983bca4576a3df06d8ece8bbdd8"
         },
         {
           "path": "src-server/providers/adapters/station-agent-adapter.ts",
@@ -5765,7 +5768,8 @@
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked StationControlDispatchScope (scope decided before contacting another Station, which C2b's route refusals reinforce) and the SDK/http module rows; no claim names the removed caller-delegation route or the tool-side peer path. After merging main 91472e665, re-read main's edit here (the scheduler paragraph drops addProvider and the legacy-provider receipt wording); it names no station-control forwarding, caller-delegation or SDK body-read behaviour, so the above still holds.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Checked the ACP adapter/mapper sections against the acp-adapter-events.ts delta (kind forwarded to the tool-update supervisor, which carries toolKind). No module-map claim describes the tool event field set or kind handling. No prose change."
       ]
     },
     {
@@ -5797,7 +5801,7 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical.",
@@ -5822,7 +5826,7 @@
         },
         {
           "path": "packages/shared/src/tool-request-preview.ts",
-          "digest": "9b0d50b2a12103f2e8cf95f97707b88af83ff72ce420dd8c6176eb3f514a2cc8"
+          "digest": "0924755953305dda6c6d7b3649c55becae94a061333ba023e9fe603ca4ff5212"
         },
         {
           "path": "pnpm-lock.yaml",
@@ -5838,7 +5842,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -5874,11 +5878,11 @@
         },
         {
           "path": "src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts",
-          "digest": "14539d3339e37bbe5b206fa83b4e91d77200114f05a6bba099c0b4b22e3e3127"
+          "digest": "7abee95bbcee2f0310f5412ec54a80b013aa1dfe71186f6a1feba3abe686022a"
         },
         {
           "path": "src-ui/src/hooks/orchestration/approvalHandlers.ts",
-          "digest": "484017a4b2e02c040795a36dc0d98a9637197fafbee3ff40062e4dc3999d320e"
+          "digest": "100c06fccf1766d38a00fa85d0d42459ad8e370202579174caf73f61ef19dd76"
         }
       ],
       "checks": [
@@ -5890,7 +5894,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata and stamps acknowledgement on request.resolved in the claude and acp adapters, and adds handleRequestDeliveryEvent plus the toast copy 'this request is no longer open.' in approvalHandlers.ts (tests updated). None of this touches the tool-request preview readers, the pre-tool seams or the Ask-mode permission path the document describes. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Re-read 'Pre-tool blocking and grant delivery boundary' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Updated the locked Agent SDK version from 0.3.261 to 0.3.278 and confirmed the installed 0.3.278 sdk.d.ts still documents that omitted settingSources loads all filesystem settings; the 0.3.224 experiment references stay historical. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Updated the locked Agent SDK version from 0.3.261 to 0.3.278 and confirmed the installed 0.3.278 sdk.d.ts still documents that omitted settingSources loads all filesystem settings; the 0.3.224 experiment references stay historical. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Checked approval-surface claims against tool-request-preview.ts (nameless grant label now 'Allow for this session'), approvalHandlers.ts, and acp-adapter.ts. The doc says the standing-grant button names the tool when the payload supplies one, which still holds; ACP requestPermission coverage claims are unchanged. No prose change."
       ]
     },
     {
@@ -6425,7 +6430,7 @@
     {
       "path": "docs/design/ai-ui-bridge-expansion.md",
       "documentDigest": "345f2a8053c0620b5125b6d2c3c6ce1902f02648a40cb2359a251c17eb227c50",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "design",
       "state": "classified",
       "summary": "June design and recorded phased implementation; current form sender linked and overbroad harmlessness claim narrowed to the markup boundary.",
@@ -6441,7 +6446,7 @@
         },
         {
           "path": "src-ui/src/components/chat/ChatMessageList.tsx",
-          "digest": "a375f4aa8ad99e5e7312e08fd44d8c5021cf5daaa821adacee666ce0c40ee3b7"
+          "digest": "c50030d1ec1c394a73351b79a7d517979c0ef787a418daace1b03ee31d4c701e"
         },
         {
           "path": "src-ui/src/components/chat/UIBlockRenderer.tsx",
@@ -6464,7 +6469,8 @@
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Dated producer-seam investigation byte-identical; trust-model overclaim narrowed separately.",
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
-        "Integration source review through d72f79b08: #2904 changes useActiveChatSessionMessaging only on the full-access-refusal branch (idle rollback, restored draft, refusal card, explicit resend at the current mode). The current form sender link and the markup-boundary harmlessness claim are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 changes useActiveChatSessionMessaging only on the full-access-refusal branch (idle rollback, restored draft, refusal card, explicit resend at the current mode). The current form sender link and the markup-boundary harmlessness claim are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Checked against ChatMessageList.tsx's delta (the pending-approvals strip no longer excludes an open-turn request the projected transcript row answers). The document makes no claim about the strip. No prose change."
       ]
     },
     {
@@ -7379,7 +7385,7 @@
     {
       "path": "docs/design/collaborative-editor-pane.md",
       "documentDigest": "39b13443c5fd44c9c548a6563cb8840390f8df55533d03cd72637d812f06b06e",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Historical design for the deleted pure collaborative editor controller (#2900), marked not shipped. Only the server-owned editing capability remains current; the shipped Task path is ProjectTaskRoom.",
@@ -7395,7 +7401,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.tsx",
@@ -7417,7 +7423,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Grepped for tool-call, approval, button-state and contrast claims: none; the document describes no styling this change touches.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Re-grepped: no tool-call, approval-button or disabled-button styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
@@ -8454,8 +8461,8 @@
     },
     {
       "path": "docs/design/motion.md",
-      "documentDigest": "0604fe00d441d53cadddf32425c68cc32745dbf4ff04e98d0ae81a05ffe4dd8c",
-      "sourceRevision": "237890e97ce7112aa47cdc0fcc9521650cfdc43e",
+      "documentDigest": "eb292d8e0208afa69468d2df81db11e4c96129f5cdc1187eb1591fe527c666f1",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "policy",
       "state": "classified",
       "summary": "Motion grammar and structural enforcement with historical evidence; exact reduced-motion duration and three-declaration/two-file exception scope corrected.",
@@ -8479,12 +8486,13 @@
         },
         {
           "path": "src-ui/src/tokens.css",
-          "digest": "18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77"
+          "digest": "482e8e1faaaa1131ac3cd7079c7e222c9b309305b6e9a0be0582b26aa5aa887c"
         }
       ],
       "checks": [
         "Full body read; bounded actual-owner/caller inspection. Purpose classification, not whole-document semantic certification.",
-        "Detailed exception rationale and all recorded route/screenshot evidence preserved."
+        "Detailed exception rationale and all recorded route/screenshot evidence preserved.",
+        "Added the 'Status arrival' category for --ease-spring (the chat status pill and lifecycle chips), checked against tokens.css and live-status.css/LifecycleStatusChip.css, which now use only motion tokens (motion-contract:ratchet passes). Existing categories and the reduced-motion contract are unchanged."
       ]
     },
     {
@@ -8914,7 +8922,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -9090,7 +9098,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/layouts/index.tsx",
@@ -9216,7 +9224,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Its disabled-row claims are about pane chooser/coding rows (aria-disabled reasons), not the approval card; no tool-call or approval-button styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Its disabled claims concern pane chooser rows and its dockSlotPlacement right/left dock claims are unchanged by this CSS; no approval-button claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
@@ -9814,8 +9823,8 @@
     },
     {
       "path": "docs/design/session-tape-replay.md",
-      "documentDigest": "4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "documentDigest": "9fe0f90423e27d68971515879a0f4c6cacea68ed9c79285873c841a8f9c0d55f",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9839,11 +9848,11 @@
         },
         {
           "path": "src-ui/src/contexts/active-chats-state.ts",
-          "digest": "31149a87a81d9820f8bdeabb64de4da57c922d10144152117c03d48e400a2f12"
+          "digest": "d088cf815e2353872371d5af3aaa9e3f1c6494b96cb633e065cd2489c0e74883"
         },
         {
           "path": "src-ui/src/hooks/orchestration/eventHandlers.ts",
-          "digest": "62b998f27a529bd30545b11de5b1cc0448a2b9f041070aeaba59bf25e61cb6bc"
+          "digest": "eca9a7366659e1c3d1ef6322bd63ea602a1508cfa01cfa896cde33cc45422d03"
         },
         {
           "path": "src-ui/src/hooks/orchestration/queueDrain.ts",
@@ -9879,7 +9888,7 @@
         },
         {
           "path": "src-ui/src/hooks/orchestration/replay/tape-file.ts",
-          "digest": "813742674399abb340430b6b387be487e5371fef7f86d91eeb74e9f9f3cbc136"
+          "digest": "4d194fb74aea404db9f8b4e10b1e35252d6f60e6d4e15ad4053e328fb07eb931"
         },
         {
           "path": "src-ui/src/hooks/orchestration/replay/tape-validation.ts",
@@ -9899,7 +9908,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx",
@@ -9921,7 +9930,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Mentions approval only as a replayed event/disabled action class; no approval-card layout or colour claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The one other changed source is codex-adapter.ts, whose #2921 change since this record is a comment on the tool-level session grant; the page makes no claim about Codex session grants."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The one other changed source is codex-adapter.ts, whose #2921 change since this record is a comment on the tool-level session grant; the page makes no claim about Codex session grants.",
+        "Added that a live chat pane presents turn status in the floating status pill while a replay keeps the inline rows (ChatDockBody passes statusShownElsewhere/suppressActivity only for non-replay sessions), with the 2.5s outage threshold from useChatStreamStatus. Reviewed the tape-file.ts change (toolKind kept in redacted exports as protocol vocabulary) and the eventHandlers change (approval toasts dismissed by request identity); neither contradicts the tape design. The timed-row paragraph from the earlier review stands."
       ]
     },
     {
@@ -10697,8 +10707,8 @@
     },
     {
       "path": "docs/guides/acp.md",
-      "documentDigest": "a902573fcf2c8caab6097af31941a73700df2906868bbbef1f2f13a97de5e02c",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "documentDigest": "09aa4b0b197f01bbcccbb5330f4937f56b3c465d23f3020c9005f39c0ccaa467",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current ACP Agent binding, canonical execution seam, guarded cursor restoration, credentials/refusal behavior, extension notifications, and current probe outcomes.",
@@ -10706,11 +10716,11 @@
       "sources": [
         {
           "path": "src-server/providers/adapters/acp-adapter-events.ts",
-          "digest": "f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427"
+          "digest": "81dff671713d9bd8cee6f2c9da3ae512651c8983bca4576a3df06d8ece8bbdd8"
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -10734,13 +10744,14 @@
         "Integration source review through e0314c727: extension-notification-bindings.ts deleted the unused EXTENSION_NOTIFICATION_PROMOTIONS and EVIDENCE_GAPS tables and the reset helper, and moved the unobserved _kiro gap into a comment. The bound tuples, including _kiro.dev/error/rate_limit with acp.turn-error-cause, are unchanged, and the guide never described the removed tables, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement 'none' to AcpAdapter metadata and stamps it on request.resolved. ACP emits no request.delivery. The guide's request.opened/request.resolved row, its pointer to runtime-events as the shape source, and the requestPermission to allow_once/reject_once flow are all still accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Re-read 'Agent Communication Protocol (ACP) Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Agent Communication Protocol (ACP) Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
+        "Updated Tool Execution: ACP kind rides tool events as toolKind; nameless titles shown as written; request.opened is requestType 'approval' (was stated as 'permission', checked in acp-adapter.ts) with toolKind; decisions map to allow_once/allow_always/reject_once; prompt-end settlement of open permission requests; Station records its own grant only with a reported tool name. Round 2: request.opened also carries the runtime's programmatic toolName when reported, and the grant sentence now says Station records its grant under that name and the button names it (verified in acp-adapter.ts requestPermission/respondToRequest)."
       ]
     },
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "7d865d177cd57a733bba5caad0e3c575dcb98ae752733dc26194bba6af92ba3f",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10796,7 +10807,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -11069,7 +11080,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); attention-projection.ts (comment only); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "#2862: rewrote Theming & Colors; the only other change to this record is the added source station-tones.ts. Checked against installed @kontourai/ui 1.12.0: tokens.css defines --k-positive/--k-caution/--k-negative/--k-active/--k-neutral and --k-positive-soft/--k-caution-soft/--k-negative-soft/--k-active-soft (no neutral soft fill), and no --k-status-contrast, --k-trust-*, --k-action or --k-focus; Badge and StatusBadge take a tone and render their label; station-tones.ts is Station's domain-to-tone mapping; index.css restyles .tone-positive/caution/negative/active (positive-status-contrast.test.ts checks AA). DESIGN.md is linked upstream because 1.12.0 does not ship it. The rest of the guide is unchanged.",
-        "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines."
+        "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change."
       ]
     },
     {
@@ -11985,7 +11997,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11993,7 +12005,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "e05758675615bfd4d8b3655e80a9acde124bb8e969a756eb555c2d6d19d11b4d"
+          "digest": "30152aff8d4985eedbe95cb81bbde4e54ce5a03366e4cc3a162454685ec963f1"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -12109,7 +12121,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -12365,7 +12377,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -12500,7 +12512,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval here is key/device approval; no tool-call card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Re-read 'Connections Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; pairing-route-scopes.ts drops the /station-control/caller/delegation entry; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Connections Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; pairing-route-scopes.ts drops the /station-control/caller/delegation entry; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change. Also checked the index.css delta; no connections-page styling claim is affected."
       ]
     },
     {
@@ -14177,7 +14190,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14289,7 +14302,7 @@
         },
         {
           "path": "tests/mobile-chat-composer.spec.ts",
-          "digest": "e7b07dd80b333eff218771cbb7013535482873fcce11115ef991d0fa1f97316b"
+          "digest": "f59c57cda03763b2e96be23fb60addd011fd73845816ee632a017a228eb58973"
         },
         {
           "path": "tests/monitoring.spec.ts",
@@ -14351,7 +14364,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): tests/e2e-manifest.mjs adds tests/branding-theme-boot.spec.ts to the product bucket (parallel-safe, surface Shell, tier full); PR_BROWSER_SMOKE_CONTRACT and suite runner behavior are unchanged. The matrix names no Shell/theming row and claims no exhaustive coverage. Prose accurate. Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Checked against the mobile-chat-composer spec change: its reconnect assertion now reads the chat pane's status pill instead of the inline banner. The matrix row names the spec and its composer/geometry scope, which is unchanged. No prose change."
       ]
     },
     {
@@ -14848,7 +14862,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14856,7 +14870,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "e05758675615bfd4d8b3655e80a9acde124bb8e969a756eb555c2d6d19d11b4d"
+          "digest": "30152aff8d4985eedbe95cb81bbde4e54ce5a03366e4cc3a162454685ec963f1"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14964,7 +14978,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -15012,7 +15026,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No tool-call card or button-state claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Re-read 'Knowledge: stores and the retrieval index' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Knowledge: stores and the retrieval index' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
@@ -18340,7 +18355,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18448,7 +18463,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -18472,7 +18487,7 @@
         },
         {
           "path": "src-ui/src/tokens.css",
-          "digest": "18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77"
+          "digest": "482e8e1faaaa1131ac3cd7079c7e222c9b309305b6e9a0be0582b26aa5aa887c"
         },
         {
           "path": "src-ui/src/utils/logger.ts",
@@ -18501,13 +18516,14 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Shared mobile __actions rule unchanged; #2917 right-dock desktop case still consistent. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
         "Re-read 'Responsive UI contracts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change. The floating pill is absolutely positioned and the transcript inset is constant, consistent with the guide's no-layout-shift direction."
       ]
     },
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "618c04635531af10ce95cda65be2bd40e5b361f98b0fde1a8ae999b125bfb6a0",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18559,7 +18575,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -18802,7 +18818,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Corrected: forwarding to a saved Environment now says the tool never contacts the other Station, it names the Environment to this Station's route, and remote task listings share the bound-operator restriction (C2b added it on GET /delegations)."
+        "Corrected: forwarding to a saved Environment now says the tool never contacts the other Station, it names the Environment to this Station's route, and remote task listings share the bound-operator restriction (C2b added it on GET /delegations).",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change."
       ]
     },
     {
@@ -19056,7 +19073,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -19064,7 +19081,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "e05758675615bfd4d8b3655e80a9acde124bb8e969a756eb555c2d6d19d11b4d"
+          "digest": "30152aff8d4985eedbe95cb81bbde4e54ce5a03366e4cc3a162454685ec963f1"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -19208,11 +19225,11 @@
         },
         {
           "path": "src-ui/src/components/session-detail/AttachedSessionDetail.tsx",
-          "digest": "6b3b49f8f6404fcd87c738dac4ae70e49ebb1a86682cdb050d5c40641e4f66ce"
+          "digest": "16462c764f208999fd55987ce8bf3269aa91bb176b665012757205458cbe0efc"
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/lib/starter-work-operation-store.ts",
@@ -19304,7 +19321,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval flow only; no inline approval-card styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Re-read 'How Starter Work connects first steps to real work' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'How Starter Work connects first steps to real work' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "Checked AttachedSessionDetail.tsx's delta (the attached transcript mapper now forwards toolKind) and the index.css delta; the guide makes no claim about tool-row classification or these styles. No prose change."
       ]
     },
     {
@@ -19957,7 +19975,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "6b1815a15e332e6f0799348d7c2c7c2d7c29fee226f4fb91ca081590207ca08c",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -20065,7 +20083,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -20089,7 +20107,7 @@
         },
         {
           "path": "src-ui/src/tokens.css",
-          "digest": "18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77"
+          "digest": "482e8e1faaaa1131ac3cd7079c7e222c9b309305b6e9a0be0582b26aa5aa887c"
         },
         {
           "path": "src-ui/src/utils/logger.ts",
@@ -20134,7 +20152,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). The guide's new claim that --accent-primary/--text-on-accent read the action role holds, and the #2917 Allow Once button consumes exactly that pair (hover: --accent-hover-fill -> --accent-darker -> the action role), so channel and white-label action roles reach it. No prose change.",
         "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium.",
         "Re-read 'Station theming' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new white-label branding section and channel interaction-role text; they describe the UI's theme validation and cascade, not the SDK's deadline handling or pairing scopes.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change. The new token is a motion curve, not a colour or theme variable."
       ]
     },
     {
@@ -20884,7 +20903,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20892,7 +20911,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "e05758675615bfd4d8b3655e80a9acde124bb8e969a756eb555c2d6d19d11b4d"
+          "digest": "30152aff8d4985eedbe95cb81bbde4e54ce5a03366e4cc3a162454685ec963f1"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21012,7 +21031,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -21109,7 +21128,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval scene is Notifications inspection, not the inline card; no claim touched.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. The #2843 hover-contrast note concerns the release selection style, which this change does not touch.",
-        "Rechecked the knowledge walkthrough: the only knowledge.ts change is the body-read deadline guard in its unwrap, which changes no step or screen the walkthrough describes."
+        "Rechecked the knowledge walkthrough: the only knowledge.ts change is the body-read deadline guard in its unwrap, which changes no step or screen the walkthrough describes.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
@@ -21141,7 +21161,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -21249,7 +21269,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21273,7 +21293,7 @@
         },
         {
           "path": "src-ui/src/tokens.css",
-          "digest": "18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77"
+          "digest": "482e8e1faaaa1131ac3cd7079c7e222c9b309305b6e9a0be0582b26aa5aa887c"
         },
         {
           "path": "src-ui/src/utils/logger.ts",
@@ -21303,13 +21323,14 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
         "Re-read 'Backend patterns' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's scheduler-provider paragraph rewrite (no addProvider, every manual run returns a SchedulerManualRunReceipt); no claim about SDK body-read deadlines or the removed pairing scope.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21417,7 +21438,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21441,7 +21462,7 @@
         },
         {
           "path": "src-ui/src/tokens.css",
-          "digest": "18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77"
+          "digest": "482e8e1faaaa1131ac3cd7079c7e222c9b309305b6e9a0be0582b26aa5aa887c"
         },
         {
           "path": "src-ui/src/utils/logger.ts",
@@ -21474,7 +21495,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
         "Re-read 'Frontend patterns' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit (a hook may opt back into refetchOnWindowFocus); no claim about SDK body-read deadlines or pairing scopes.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
@@ -21778,7 +21800,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21786,7 +21808,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "e05758675615bfd4d8b3655e80a9acde124bb8e969a756eb555c2d6d19d11b4d"
+          "digest": "30152aff8d4985eedbe95cb81bbde4e54ce5a03366e4cc3a162454685ec963f1"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21830,7 +21852,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -21878,7 +21900,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No UI styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the captures this page cites and their evidence text are unchanged, so its claims hold."
+        "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the captures this page cites and their evidence text are unchanged, so its claims hold.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
@@ -21909,7 +21932,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -21978,7 +22001,7 @@
         },
         {
           "path": "packages/contracts/src/runtime-events.ts",
-          "digest": "9c918798c4c42c0548d938949cfa460ed7c4d5aacb2764cda365a95af23f55eb"
+          "digest": "b46b1b9c78c3ae6954f1c287d8213451703b2c07a4e2a3f086fc0e779e356c86"
         },
         {
           "path": "packages/contracts/src/runtime.ts",
@@ -22086,7 +22109,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/providers/adapters/bedrock-adapter.ts",
@@ -22620,7 +22643,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked the continuation-caller paragraph (it still rebuilds the target from the binding and forwards the model choice, now via this Station's route for a saved Environment) and the pairing-scope and deadline statements; none lists the removed credential or caller-delegation routes. After merging main 91472e665, re-read main's edits (the /api/branding theme override surface, and dropping the legacy scheduler provider sentence); neither touches the continuation-caller, pairing-scope or deadline statements checked above.",
-        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Checked against runtime-events.ts (optional toolKind on tool.started/tool.completed) and acp-adapter.ts. The documented tool event examples remain valid; the new field is optional and additive. No prose change."
       ]
     },
     {
@@ -22652,7 +22676,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22952,7 +22976,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/routes/evidence/flow-runs.ts",
@@ -23043,12 +23067,13 @@
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/cli/package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/publish-release.yml, .github/workflows/release.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/cli/package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/publish-release.yml, .github/workflows/release.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change. 'station approvals respond' decisions are unchanged."
       ]
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23297,7 +23322,7 @@
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-          "digest": "1b5cc5dffc75ad25fc60c09e7b8e29a45c8e192e31d3c9d6767a930e51540a78"
+          "digest": "ed522c4e1fe75a2e273ca4877dcc33e6b923c670f92dbfeb24579c2d7dbb659a"
         },
         {
           "path": "src-ui/src/components/chat-dock/retry-attachments.ts",
@@ -23326,7 +23351,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Re-read 'config reference' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route; pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Checked against ChatDockBody.tsx's delta (the floating status pill, suppressing inline activity rows for live chats). This reference documents configuration keys and logging; none concerns chat status presentation. No prose change."
       ]
     },
     {
@@ -23552,7 +23578,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -23629,7 +23655,7 @@
         },
         {
           "path": "packages/contracts/src/runtime-events.ts",
-          "digest": "9c918798c4c42c0548d938949cfa460ed7c4d5aacb2764cda365a95af23f55eb"
+          "digest": "b46b1b9c78c3ae6954f1c287d8213451703b2c07a4e2a3f086fc0e779e356c86"
         },
         {
           "path": "packages/contracts/src/runtime.ts",
@@ -23661,7 +23687,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/providers/adapters/claude-sdk-turns.ts",
@@ -23793,7 +23819,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Re-read '@kontourai/station-contracts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new PullRequestBranchMergeability paragraph; it makes no claim about SDK body-read deadlines, orchestration delegation refusals or the forwarder."
+        "Re-read '@kontourai/station-contracts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new PullRequestBranchMergeability paragraph; it makes no claim about SDK body-read deadlines, orchestration delegation refusals or the forwarder.",
+        "Checked the runtime-events module row and tool-event claims against the additive EngineToolKind type and optional toolKind fields; the table describes runtime-events as event payloads, still accurate. No prose change."
       ]
     },
     {
@@ -24251,7 +24278,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -24259,7 +24286,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "e05758675615bfd4d8b3655e80a9acde124bb8e969a756eb555c2d6d19d11b4d"
+          "digest": "30152aff8d4985eedbe95cb81bbde4e54ce5a03366e4cc3a162454685ec963f1"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -24291,7 +24318,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -24345,7 +24372,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Re-read 'Project/Task room collaboration acceptance' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Project/Task room collaboration acceptance' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
@@ -25358,7 +25386,7 @@
     {
       "path": "docs/reference/session-api.md",
       "documentDigest": "9682fc55f0f8d89811a1c467cf86b9872abfdd37a3483734bd18a90df98c680e",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection.",
@@ -25370,7 +25398,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -25491,7 +25519,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by attached-session-adoption.ts (comment only); attention-projection.ts (comment only); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Re-read 'Session API: the programmatic chat surface' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Session API: the programmatic chat surface' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change. respondToRequest decisions and request.resolved publication for an answered request are unchanged."
       ]
     },
     {
@@ -25772,7 +25801,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25856,7 +25885,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/routes/agents/enriched-agents.ts",
@@ -26020,7 +26049,8 @@
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); session-agent-resolution.ts (never-read provider input removed); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); station-docs-content.ts (regenerated module-map scheduler paragraph); claims unaffected. 2026-09-28 test-audit follow-up: removed the sentence 'Other scheduler providers have their own capabilities.' because addProvider was deleted and only the built-in provider can exist; station-docs-content.ts regenerated with npm run docs:mcp:generate. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). station-control still needs an instance credential over reviewed channels and remains subject to caller authority; the prose remains accurate. Source review only.",
-        "Re-read 'Station shipped documentation' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit (drops 'Other scheduler providers have their own capabilities'); no claim about SDK body-read deadlines."
+        "Re-read 'Station shipped documentation' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit (drops 'Other scheduler providers have their own capabilities'); no claim about SDK body-read deadlines.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change."
       ]
     },
     {
@@ -27115,7 +27145,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -27132,7 +27162,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "e05758675615bfd4d8b3655e80a9acde124bb8e969a756eb555c2d6d19d11b4d"
+          "digest": "30152aff8d4985eedbe95cb81bbde4e54ce5a03366e4cc3a162454685ec963f1"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -27244,7 +27274,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -27316,7 +27346,8 @@
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
         "Own edit: only the archive-install guide's link target changed, from the repo-relative ../guides/release-channel-ports.md to the absolute repository blob URL for the same file and the same #prebuilt-archives-and-source-releases anchor, so the published Start Here page no longer links to an ungenerated target. The surrounding claims (STATION_INSTALL_PUBLIC_MANIFEST_URL, the signed platform-v2 prebuilt archive, bundled Node.js, and the published-manifest requirement) are untouched. Verified docs:links:check re-resolves the blob URL as a local link and validates the anchor in 423 Markdown files.",
         "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the getting-started captures and steps are unchanged, so the page holds.",
-        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
@@ -27479,7 +27510,7 @@
     {
       "path": "docs/user/workspace-checkpoints.md",
       "documentDigest": "283e1c7e932c678bfc114407ffe72c9398b498020cb5a125426c5f7a4562a35a",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced queued capture, snapshot scope, settle-only chat visibility, preview truncation, caller/workspace/target checks, uncertain effects, and the separate CLI authentication/preview gaps.",
@@ -27531,7 +27562,7 @@
         },
         {
           "path": "src-ui/src/components/chat/MessageBubble.tsx",
-          "digest": "6b3cef36e6c640992af76fd1062f5210cd24542dd6f7c0c8c63450681efda47b"
+          "digest": "1f9588944a283b3d42583c7423d0df765cf5b96d1f79144b26a4895fe9aede9d"
         }
       ],
       "checks": [
@@ -27544,7 +27575,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 adds recognizeCredential in runtime-routes.ts, which changes the status for a recognized but unadmitted credential from 401 to 403. The checkpoint capture, preview and CLI authentication-gap claims do not depend on that status. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "Re-read 'Restore workspace files from a chat checkpoint' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Restore workspace files from a chat checkpoint' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "Checked MessageBubble.tsx's delta (no typing dots while a tool approval is pending). The guide makes no claim about the waiting indicator. No prose change."
       ]
     },
     {
@@ -28198,7 +28230,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -28206,7 +28238,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "e05758675615bfd4d8b3655e80a9acde124bb8e969a756eb555c2d6d19d11b4d"
+          "digest": "30152aff8d4985eedbe95cb81bbde4e54ce5a03366e4cc3a162454685ec963f1"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -28286,7 +28318,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -28316,7 +28348,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Re-read 'Knowledge Library' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Knowledge Library' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
@@ -28827,7 +28860,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28879,7 +28912,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -29122,7 +29155,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Re-read 'Self-Configuring Agent Example' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Self-Configuring Agent Example' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change."
       ]
     },
     {
@@ -30637,7 +30671,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "7208cef979e6010437801a5d657dcde569fdd5bc",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -30689,7 +30723,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
         }
       ],
       "checks": [
@@ -30710,7 +30744,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Icon generation only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The raster channel icons and the favicon-dev swap under is-dev-build are unchanged; the CSS brand stays an amber/indigo/violet shade per channel.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against this branch's index.css and tokens.css deltas: tool-call row chevron alignment, outcome badges kept on one line, streaming-activity min-width, turn-activity-progress name ellipsis, the batch line's 6px gap, a constant top inset on the chat pane transcript for the floating status pill, and a new --ease-spring motion token. Searched this document for tool-row, chat pane, status, approval, motion and token claims; it makes none these contradict. No prose change."
       ]
     },
     {
