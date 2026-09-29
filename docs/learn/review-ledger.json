@@ -1582,7 +1582,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "414b5325a477b5aa1f1f51b7893cffcb0c57363e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1590,7 +1590,7 @@
       "sources": [
         {
           "path": "Dockerfile",
-          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+          "digest": "fb81786951843fe6abd125fb75373c4b05dfddab66ce7212c7d87c882db766bd"
         },
         {
           "path": "docker-compose.yml",
@@ -1674,7 +1674,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage in packages/cli/src/distribution.ts module-private. The change only removes an export: command admission and message behavior are unchanged. The README's CLI, distribution and installer claims do not depend on that export. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds a 'Recorded versus acknowledged decisions' subsection to docs/reference/cli.md under station delegate. The auto-merged cli.md reads coherently with the branch text. The README still correctly points to the CLI reference for target and credential setup. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence.",
-        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta."
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
+        "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite."
       ]
     },
     {
@@ -1691,7 +1692,7 @@
     {
       "path": "deploy/gcp-dev/README.md",
       "documentDigest": "b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "414b5325a477b5aa1f1f51b7893cffcb0c57363e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Single-owner GCP development recipe with a retained historical qualification record. Full 170-line baseline read. Bootstrap guard/swap helper, container enrollment boundary and GCP preview source checked; official GCP documentation checked read-only. The 2026-09-05 drill remains historical evidence, not fresh cloud qualification.",
@@ -1699,11 +1700,11 @@
       "sources": [
         {
           "path": ".dockerignore",
-          "digest": "ed530db5077644149da9a9124e49f2b3010aa84023444ad93edbad32d5dec71d"
+          "digest": "45146717dd6f673543c08c76d375ae61b4a1e452cd381572f57b65aeeeabd8f4"
         },
         {
           "path": "Dockerfile",
-          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+          "digest": "fb81786951843fe6abd125fb75373c4b05dfddab66ce7212c7d87c882db766bd"
         },
         {
           "path": "deploy/gcp-dev/bootstrap.sh",
@@ -1866,13 +1867,14 @@
         "Integration source review through d72f79b08: #2904 added the operator-only, loopback-gated `station environment access devices|scope|scopes` verbs by extracting openLocalOperatorChannel in environment.ts. It also added deviceHoldsScope and deviceHoldsFullAccess to the pairing and security services, and added full-access revocation reports to the device scope and revoke routes. The recipe's IAP tunnel, its distinction between browser-bootstrap, local-grant and operator credentials, and its dated 2026-09-05 drill record are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) un-exports contributorCommandMessage (distribution.ts) and cf43e14d0 (#2731) adds the recognizeCredential hook in runtime-routes.ts for a 403 on unadmitted credentials; prose accurate: the recipe makes no claim about either the export or the refusal status. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) passes STATION_SERVICE_LAUNCHER through lifecycle.ts start, adds the service-update status line to service.ts, and adds update backup/restore to station-home-archive.ts. 8b48e2b35 (#2914) drops listeningPidsByPort from station-dogfood-health and a redundant assertion from container-release.test. None of this touches the container/VM recipe, the offline-backup guidance or the verification checklist; prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "Re-read the single-operator GCP recipe against the .dockerignore and Dockerfile edits. Its container claims are about the runtime image, the boot/data disk, IAP/OS Login and the E2 machine reference, not the build context or COPY list, so no prose change is needed. The Dockerfile edit adds docs/ to the discarded build stage only; the runtime stage at line 63 onward pulls no docs path, so the image it deploys is unchanged."
       ]
     },
     {
       "path": "deploy/public-ingress/README.md",
       "documentDigest": "713a080bec7e77d77db623d83a52874bb698556e6ddc28bb75eda69b0e864d5b",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "414b5325a477b5aa1f1f51b7893cffcb0c57363e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Optional Caddy Compose ingress template and its protocol qualification fixture. Full 128-line baseline read. Compose/Caddy files and the synthetic smoke upstream traced; actual Compose model validated read-only. No Caddy/Station startup, public CA issuance, DNS change or smoke execution.",
@@ -1880,11 +1882,11 @@
       "sources": [
         {
           "path": ".dockerignore",
-          "digest": "ed530db5077644149da9a9124e49f2b3010aa84023444ad93edbad32d5dec71d"
+          "digest": "45146717dd6f673543c08c76d375ae61b4a1e452cd381572f57b65aeeeabd8f4"
         },
         {
           "path": "Dockerfile",
-          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+          "digest": "fb81786951843fe6abd125fb75373c4b05dfddab66ce7212c7d87c882db766bd"
         },
         {
           "path": "deploy/gcp-dev/bootstrap.sh",
@@ -2047,7 +2049,8 @@
         "Integration source review through d72f79b08: #2904 adds the host-only `environment access devices|scope|scopes` verbs on the existing loopback operator channel, deviceHoldsScope and deviceHoldsFullAccess, the per-request refusal-identity middleware, and full-access reset on device scope removal or revoke. None of this touches the Caddy ingress, TLS, proxy upstream, pairing-enrollment or terminal/voice listener claims. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) stops exporting contributorCommandMessage from packages/cli/src/distribution.ts, with no behavior change. cf43e14d0 (#2731) adds the recognizeCredential wiring in runtime-routes. The README makes claims only about the Caddy/Compose template, protocol qualification and passing through Station's own authorization and cookies, and neither change touches those. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the launcher's context env scrub in lifecycle.ts, the launcher install, `service update-home` and update status in service.ts, and a separate update-backup schema (station.home-update-backup/v1) in station-home-archive.ts. 8b48e2b35 (#2914) removed a redundant assertion in container-release.test.ts and the unused listeningPidsByPort export from station-dogfood-health.mjs. The README's Compose, volume and backup/rollback guidance does not depend on any of these. Prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "Re-read the optional Caddy Compose ingress template against the .dockerignore and Dockerfile edits. It documents the ingress protocol, its qualification fixture and Caddyfile directives, and makes no claim about the build context, the COPY list or image contents, so no prose change is needed. The Dockerfile edit stays inside the discarded build stage."
       ]
     },
     {
@@ -9385,7 +9388,7 @@
     },
     {
       "path": "docs/design/private-cloud-environment.md",
-      "sourceRevision": "98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80",
+      "sourceRevision": "414b5325a477b5aa1f1f51b7893cffcb0c57363e",
       "kind": "design",
       "state": "classified",
       "summary": "Working single-operator VM deployment design already identifies unvalidated provisioning and restore drills; no prose edit needed. Located runtime image and actual container smoke owners without treating them as executed cloud evidence.",
@@ -9398,7 +9401,7 @@
         },
         {
           "path": "Dockerfile",
-          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+          "digest": "fb81786951843fe6abd125fb75373c4b05dfddab66ce7212c7d87c882db766bd"
         },
         {
           "path": "scripts/container-smoke.sh",
@@ -9409,7 +9412,8 @@
         "Full document read: 114 original lines; all original body bytes preserved.",
         "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
         "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
-        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition.",
+        "Re-read the working single-operator VM deployment design against the Dockerfile edit. Its backup and restore claims concern VM filesystem and SQLite-consistency, not the container build context or image contents, so no prose change is needed. The runtime image is byte-identical: docs/ is copied only into the build stage, which is discarded."
       ]
     },
     {
@@ -12786,7 +12790,7 @@
     {
       "path": "docs/guides/deployment.md",
       "documentDigest": "1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "414b5325a477b5aa1f1f51b7893cffcb0c57363e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Operating paths for checkout/container deployments, hosted foundations, and the legacy macOS dogfood supervisor. Full 920-line baseline and parent working bytes read. Source checks cover Docker, CLI/proxy/auth, home archive/schema/migration, hosted preflight, channel homes, supervisor staging/timing/health and cleanup. Detailed installer rollback, tenant carriers and lifecycle journal failure matrices were not fully re-executed; runtime qualification is partial. Follow-up: Changed pre-provisioning paragraphs checked against real schema-gate/lifecycle/server/migration ordering. Windows issue-link addition preserves the already disclosed staging limitation.",
@@ -12794,11 +12798,11 @@
       "sources": [
         {
           "path": ".dockerignore",
-          "digest": "ed530db5077644149da9a9124e49f2b3010aa84023444ad93edbad32d5dec71d"
+          "digest": "45146717dd6f673543c08c76d375ae61b4a1e452cd381572f57b65aeeeabd8f4"
         },
         {
           "path": "Dockerfile",
-          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+          "digest": "fb81786951843fe6abd125fb75373c4b05dfddab66ce7212c7d87c882db766bd"
         },
         {
           "path": "deploy/gcp-dev/bootstrap.sh",
@@ -12975,7 +12979,8 @@
         "Integration source review through d72f79b08: #2904 moves the local access verbs in environment.ts onto a shared loopback-proved operator channel and adds `access devices|scope|scopes`. Bare pairing errors now keep their code and status. device-pairing-service and environment-security-service gain `deviceHoldsScope` and `deviceHoldsFullAccess`, and runtime-routes appends revocation reports to the scope and revoke answers. The guide's statements about access list/approve/deny, the loopback proof, the Paired devices revoke path and environment reset are still true; the new verbs extend them without contradicting anything. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) deletes the unused parseGitSource/extractPluginName from packages/cli/src/commands/helpers.ts and un-exports contributorCommandMessage in distribution.ts; cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401; prose accurate: the guide does not describe those helpers or the 401/403 split, the distribution-boundary link still holds, and the unauthenticated `authentication_required` curl check is unchanged. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds createStationHomeUpdateBackup/restoreStationHomeUpdateBackup to station-home-archive.ts, moves packaged-release parsing from lifecycle-code-root.ts to shared prebuilt-archive, adds a hidden service update-home action, service status `update` output and the launcher install. #2914 removes the listeningPidsByPort alias and one tautological container-release assertion. home backup/restore, published-CLI service status|start|stop control, and install needing a checkout or prebuilt archive are unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "Re-read the deployment guide's container and image claims against the .dockerignore and Dockerfile edits. The guide documents runtime deployment, the hosted preflight, the installer rollback and channel homes; it does not enumerate the build-context allowlist, the COPY list, or image contents, so no prose change is needed. The Dockerfile edit is confined to the build stage (line 46, before the runtime stage at line 63) and the .dockerignore edit only widens what is sent to the docker daemon, not what lands in the image."
       ]
     },
     {
@@ -26642,12 +26647,12 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "414b5325a477b5aa1f1f51b7893cffcb0c57363e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
       "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
-      "documentDigest": "20d9606f51e401e9af84ae88925327dd6a692bdd4cdd58c317e0d46f7f21c68e",
+      "documentDigest": "267eb15eb3c8a487f4fa8f4eb2f3f38e04337b08821be5ea1a4d34ea9541cfc1",
       "sources": [
         {
           "path": ".nvmrc",
@@ -26834,7 +26839,8 @@
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes parseTsxVersion module-private in packages/cli/src/commands/lifecycle-doctor.ts without changing its behavior; prose accurate: the `./station doctor` guidance is unchanged. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2881 makes a same-channel installer rerun for a launcher-run archive service stage the version and hand off to the launcher, which trials it and rolls back on failure. It also adds the service launcher env passthrough in lifecycle.ts. #2914 makes isPortableDraftShortcut in ChatInputArea non-exported. 'Run the installer again in the same channel to update safely' remains true. Archive upgrade and service details are deferred to release-channel-ports.md, which is not in this group. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
+        "Own edit: only the archive-install guide's link target changed, from the repo-relative ../guides/release-channel-ports.md to the absolute repository blob URL for the same file and the same #prebuilt-archives-and-source-releases anchor, so the published Start Here page no longer links to an ungenerated target. The surrounding claims (STATION_INSTALL_PUBLIC_MANIFEST_URL, the signed platform-v2 prebuilt archive, bundled Node.js, and the published-manifest requirement) are untouched. Verified docs:links:check re-resolves the blob URL as a local link and validates the anchor in 423 Markdown files."
       ]
     },
     {
