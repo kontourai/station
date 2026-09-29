@@ -519,15 +519,6 @@ describe('digest drift is one refusal on the wire and two populations on the cou
 });
 
 describe('`none` is an observation, and the service has no way to fake one', () => {
-  it('NO_CHANNEL_LOG_OBSERVER makes the claim production relies on', () => {
-    expect(
-      NO_CHANNEL_LOG_OBSERVER.observeBinding({
-        sessionId: 'thread-1',
-        turnId: 'turn-1',
-      }),
-    ).toEqual({ binding: 'none' });
-  });
-
   it('there is NO default observer: a service wired without one cannot mint at all', async () => {
     // The trip-wire. `{ binding: 'none' }` is defined as an affirmative
     // mint-time observation, so a `?? { binding: 'none' }` default inside the

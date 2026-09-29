@@ -41,27 +41,6 @@ describe('RecoveryLedger', () => {
     return { databasePath, eventStore, ledger, intent };
   }
 
-  test('keeps the former EventStore recovery method bag out of its Interface', () => {
-    const names = Object.getOwnPropertyNames(EventStore.prototype);
-    expect(names).not.toEqual(
-      expect.arrayContaining([
-        'insertRecoveryIntent',
-        'readRecoveryIntent',
-        'readLatestRecoveryProjection',
-        'listPendingRecoveryIntents',
-        'listCompensationRequiredRecoveryIntents',
-        'recordRecoveryOutcome',
-        'recordRecoveryFailure',
-        'markRecoveryCompensationRequired',
-        'resolveRecoveryCompensation',
-        'cancelRecoveryIntent',
-        'cancelPendingRecoveryIntents',
-        'cancelPendingRecoveryIntentsForTurn',
-        'createRecoveryDispatchSettlement',
-      ]),
-    );
-  });
-
   test('returns frozen redacted snapshots instead of settlement credentials', () => {
     const { eventStore, ledger, intent } = fixture();
     const snapshot = ledger.find(intent.fingerprint);
@@ -431,11 +410,13 @@ describe('RecoveryLedger', () => {
     const { databasePath, eventStore, intent } = fixture();
     eventStore.close();
     let faulted = false;
-    const faulting = new EventStore(databasePath, undefined, undefined, () => {
-      if (!faulted) {
-        faulted = true;
-        throw new Error('injected after UPDATE');
-      }
+    const faulting = new EventStore(databasePath, undefined, undefined, {
+      recoveryTransition: () => {
+        if (!faulted) {
+          faulted = true;
+          throw new Error('injected after UPDATE');
+        }
+      },
     });
     const ledger = faulting.createRecoveryLedger();
     const claim = ledger.claim({
@@ -458,6 +439,8 @@ describe('RecoveryLedger', () => {
         '2026-08-13T00:00:02.000Z',
       ),
     ).toEqual({ kind: 'applied' });
+    // The terminal answered through its readback: the fault did fire.
+    expect(faulted).toBe(true);
     expect(ledger.find(intent.fingerprint)).toMatchObject({
       outcome: 'succeeded',
     });

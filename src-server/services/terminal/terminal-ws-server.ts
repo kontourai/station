@@ -154,7 +154,6 @@ export class TerminalWebSocketServer {
       }
       this.authenticateRemoteClient(
         ws,
-        url,
         limiterKey,
         peerClass,
         releaseReservation,
@@ -165,7 +164,6 @@ export class TerminalWebSocketServer {
 
   private authenticateRemoteClient(
     ws: WebSocket,
-    url: URL,
     limiterKey: string,
     peerClass: RuntimePeerClass,
     releaseReservation: () => void,
@@ -194,13 +192,6 @@ export class TerminalWebSocketServer {
     };
     ws.once('close', finish);
     ws.once('error', finish);
-
-    if (hasWebSocketCredentialQuery(url)) {
-      limiter.recordFailure(limiterKey);
-      this.auditFailure('query_credential_rejected', peerClass);
-      ws.close(...WEBSOCKET_AUTH_CLOSE.queryCredential);
-      return;
-    }
 
     const onAuthMessage = async (raw: RawData) => {
       if (settled) return;

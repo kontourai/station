@@ -56,6 +56,101 @@ import {
   projectSessionLifecycle,
 } from '../session-lifecycle-service.js';
 
+/**
+ * Runs `read` against the store and returns every statement it prepared,
+ * with the values it bound, so a plan is taken of the production query
+ * rather than a hand-written copy of it.
+ */
+function capturePreparedStatements(
+  eventStore: EventStore,
+  read: () => unknown,
+): Array<{ sql: string; values: unknown[] }> {
+  const database = (eventStore as any).db;
+  const prepare = database.prepare.bind(database);
+  const captured: Array<{ sql: string; values: unknown[] }> = [];
+  const spy = vi.spyOn(database, 'prepare').mockImplementation((sql) => {
+    const statement = prepare(sql);
+    const record = { sql: String(sql), values: [] as unknown[] };
+    captured.push(record);
+    return new Proxy(statement, {
+      get(target, key) {
+        const value = Reflect.get(target, key, target);
+        if (typeof value !== 'function') return value;
+        return (...args: unknown[]) => {
+          if (key === 'all' || key === 'get' || key === 'iterate')
+            record.values = args;
+          return value.apply(target, args);
+        };
+      },
+    });
+  });
+  try {
+    read();
+  } finally {
+    spy.mockRestore();
+  }
+  return captured;
+}
+
+/** The query plan of one captured production statement, with its own bindings. */
+function capturedPlan(
+  eventStore: EventStore,
+  statement: { sql: string; values: unknown[] } | undefined,
+): string {
+  if (!statement) throw new Error('the read prepared no matching statement');
+  return (
+    (eventStore as any).db
+      .prepare(`EXPLAIN QUERY PLAN ${statement.sql}`)
+      .all(...statement.values) as Array<{ detail: string }>
+  )
+    .map((row) => row.detail)
+    .join(' | ');
+}
+
+/**
+ * A peer process that holds a write lock on `databasePath` for `holdMs`, then
+ * commits and reports when it let go. The time is read just before COMMIT, so
+ * it is a lower bound a waiting writer cannot beat even if the peer is
+ * preempted before reporting. A write that began before that moment and
+ * returned after it waited through the lock; one that began later proves
+ * nothing.
+ */
+async function holdPeerWriteLock(databasePath: string, holdMs: number) {
+  const holder = spawn(
+    process.execPath,
+    [
+      '-e',
+      `const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(process.argv[1]); db.exec('BEGIN IMMEDIATE'); process.stdout.write('locked\\n'); setTimeout(() => { const releasingAt = Date.now(); db.exec('COMMIT'); process.stdout.write('released ' + releasingAt + '\\n'); db.close(); }, ${holdMs});`,
+      databasePath,
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+  );
+  let output = '';
+  holder.stdout.setEncoding('utf8');
+  const exited = new Promise<void>((resolve, reject) => {
+    holder.once('error', reject);
+    holder.once('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error(`holder exited ${code}`)),
+    );
+  });
+  await new Promise<void>((resolve, reject) => {
+    holder.once('error', reject);
+    holder.stdout.on('data', (chunk: string) => {
+      output += chunk;
+      if (output.includes('locked\n')) resolve();
+    });
+  });
+  return {
+    /** Wall-clock milliseconds at which the peer committed. */
+    releasedAt: async () => {
+      await exited;
+      const released = /released (\d+)/.exec(output);
+      if (!released) throw new Error(`holder never released: ${output}`);
+      return Number(released[1]);
+    },
+  };
+}
+
 function recoveryLedger(eventStore: EventStore) {
   return eventStore.createRecoveryLedger();
 }
@@ -212,16 +307,29 @@ describe('EventStore concurrent-home boot', () => {
     }
   });
 
-  test('opens WAL so a second runtime is not locked out', () => {
+  test('opens WAL so a second runtime is not locked out, and keeps it across reopen', () => {
     const databasePath = join(dir, 'orchestration.sqlite');
-    const store = new EventStore(databasePath);
+    const journalMode = () => {
+      const probe = new DatabaseSync(databasePath);
+      try {
+        const mode = probe.prepare('PRAGMA journal_mode').get() as {
+          journal_mode?: string;
+        };
+        return String(mode.journal_mode).toLowerCase();
+      } finally {
+        probe.close();
+      }
+    };
+    new EventStore(databasePath).close?.();
+    expect(journalMode()).toBe('wal');
+    // Journal mode lives in the database header, which is the entire reason a
+    // best-effort pragma is sufficient: one uncontended open converts the file
+    // and every later open — contended or not — inherits WAL.
+    const reopened = new EventStore(databasePath);
     try {
-      const mode = new DatabaseSync(databasePath)
-        .prepare('PRAGMA journal_mode')
-        .get() as { journal_mode?: string };
-      expect(String(mode.journal_mode).toLowerCase()).toBe('wal');
+      expect(journalMode()).toBe('wal');
     } finally {
-      store.close?.();
+      reopened.close?.();
     }
   });
 
@@ -238,21 +346,8 @@ describe('EventStore concurrent-home boot', () => {
     // host can outlast a short hold, and then the peer has already committed
     // and the open never had to wait at all. That version of this test passed
     // with or without the busy treatment it exists to prove.
-    const holdMs = 1_000;
-    const holder = spawn(
-      process.execPath,
-      [
-        '-e',
-        `const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(process.argv[1]); db.exec('BEGIN IMMEDIATE'); process.stdout.write('locked\\n'); setTimeout(() => { db.exec('COMMIT'); db.close(); }, ${holdMs});`,
-        databasePath,
-      ],
-      { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
-    );
-    await new Promise<void>((resolve, reject) => {
-      holder.once('error', reject);
-      holder.stdout.once('data', () => resolve());
-    });
-    const lockedAt = Date.now();
+    const peer = await holdPeerWriteLock(databasePath, 1_000);
+    const startedAt = Date.now();
     const provider = new SqliteVecIndexProvider({ dbPath: databasePath });
     try {
       // search() opens the connection and executes the meta-table CREATE —
@@ -260,18 +355,16 @@ describe('EventStore concurrent-home boot', () => {
       await expect(provider.search([0.1, 0.2], { topK: 1 })).resolves.toEqual(
         [],
       );
+      const returnedAt = Date.now();
       // Resolving is not enough on its own: it also resolves if the peer had
-      // already let go. Returning no earlier than the hold is what says the
-      // write waited for the lock rather than walking in after it.
-      expect(Date.now() - lockedAt).toBeGreaterThanOrEqual(holdMs - 50);
+      // already let go. Beginning while the peer held the lock and returning
+      // only after it let go is what says the write waited for the lock.
+      const releasedAt = await peer.releasedAt();
+      expect(startedAt).toBeLessThan(releasedAt);
+      expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
     } finally {
       provider.close();
-      await new Promise<void>((resolve, reject) => {
-        holder.once('error', reject);
-        holder.once('exit', (code) =>
-          code === 0 ? resolve() : reject(new Error(`holder exited ${code}`)),
-        );
-      });
+      await peer.releasedAt();
     }
   });
 
@@ -281,26 +374,16 @@ describe('EventStore concurrent-home boot', () => {
   test('boot migration waits through a peer writer instead of dying on SQLITE_BUSY', async () => {
     const databasePath = getOrchestrationDatabasePath(dir);
     mkdirSync(join(dir, 'data'), { recursive: true });
-    const holder = spawn(
-      process.execPath,
-      [
-        '-e',
-        `const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(process.argv[1]); db.exec('BEGIN IMMEDIATE'); process.stdout.write('locked\\n'); setTimeout(() => { db.exec('COMMIT'); db.close(); }, 120);`,
-        databasePath,
-      ],
-      { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
-    );
-    await new Promise<void>((resolve, reject) => {
-      holder.once('error', reject);
-      holder.stdout.once('data', () => resolve());
-    });
+    // As with the knowledge-index open above, the migration must begin while
+    // the peer holds the lock and return only after it let go, or it walked
+    // in after the peer and never had to wait at all.
+    const peer = await holdPeerWriteLock(databasePath, 1_000);
+    const startedAt = Date.now();
     expect(() => runOrchestrationEventMigration(dir)).not.toThrow();
-    await new Promise<void>((resolve, reject) => {
-      holder.once('error', reject);
-      holder.once('exit', (code) =>
-        code === 0 ? resolve() : reject(new Error(`holder exited ${code}`)),
-      );
-    });
+    const returnedAt = Date.now();
+    const releasedAt = await peer.releasedAt();
+    expect(startedAt).toBeLessThan(releasedAt);
+    expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
     const probe = new DatabaseSync(databasePath);
     expect(
       probe
@@ -378,23 +461,6 @@ describe('EventStore concurrent-home boot', () => {
     } finally {
       peer.close();
       loser.close();
-    }
-  });
-
-  test('keeps WAL across reopen, so later boots inherit it', () => {
-    const databasePath = join(dir, 'orchestration.sqlite');
-    new EventStore(databasePath).close?.();
-    // Journal mode lives in the database header, which is the entire reason a
-    // best-effort pragma is sufficient: one uncontended open converts the file
-    // and every later open — contended or not — inherits WAL.
-    const reopened = new EventStore(databasePath);
-    try {
-      const mode = new DatabaseSync(databasePath)
-        .prepare('PRAGMA journal_mode')
-        .get() as { journal_mode?: string };
-      expect(String(mode.journal_mode).toLowerCase()).toBe('wal');
-    } finally {
-      reopened.close?.();
     }
   });
 });
@@ -3974,11 +4040,14 @@ describe('EventStore', () => {
 
     const readSessions = vi.spyOn(store, 'readSessions');
     const listEvents = vi.spyOn(store, 'listEvents');
-    const first = store.listConversationHistoryPage({
-      ownerUserId: 'owner-alpha',
-      tenantId: 'alpha',
-      agentSlug: 'claude',
-      limit: 2,
+    let first!: ReturnType<EventStore['listConversationHistoryPage']>;
+    const captured = capturePreparedStatements(store, () => {
+      first = store.listConversationHistoryPage({
+        ownerUserId: 'owner-alpha',
+        tenantId: 'alpha',
+        agentSlug: 'claude',
+        limit: 2,
+      });
     });
 
     expect(first.records.map((record) => record.threadId)).toEqual([
@@ -4006,35 +4075,15 @@ describe('EventStore', () => {
     expect(second.hasMore).toBe(false);
     expect(second.nextCursor).toBeUndefined();
 
-    const database = new DatabaseSync(join(dir, 'orchestration.sqlite'));
-    const plan = database
-      .prepare(
-        `EXPLAIN QUERY PLAN
-         SELECT thread_id FROM orchestration_conversation_history
-         WHERE tenant_id = ? AND owner_user_id = ? AND agent_slug = ?
-           AND agent_slug IS NOT NULL
-         ORDER BY updated_at DESC, thread_id DESC LIMIT ?`,
-      )
-      .all('alpha', 'owner-alpha', 'claude', 3) as Array<{ detail: string }>;
-    const ownerlessPlan = database
-      .prepare(
-        `EXPLAIN QUERY PLAN
-         SELECT thread_id FROM orchestration_conversation_history
-         WHERE owner_user_id IS NULL AND agent_slug = ?
-         ORDER BY updated_at DESC, thread_id DESC LIMIT ?`,
-      )
-      .all('claude', 3) as Array<{ detail: string }>;
-    database.close();
-    const detail = plan.map((row) => row.detail).join(' | ');
-    expect(detail).toContain(
-      'idx_conversation_history_bound_tenant_owner_agent_recency',
+    // The page's one statement seeks the caller's tenant and owner through an
+    // index rather than scanning every Session's history row; the window
+    // ranking then runs over that member set alone.
+    expect(captured).toHaveLength(1);
+    const plan = capturedPlan(store, captured[0]);
+    expect(plan).toMatch(
+      /SEARCH h USING INDEX \S+ \(tenant_id=\? AND owner_user_id=\?\)/,
     );
-    expect(detail).not.toContain('TEMP B-TREE');
-    const ownerlessDetail = ownerlessPlan.map((row) => row.detail).join(' | ');
-    expect(ownerlessDetail).toContain(
-      'idx_conversation_history_ownerless_agent_recency',
-    );
-    expect(ownerlessDetail).not.toContain('TEMP B-TREE');
+    expect(plan).not.toMatch(/SCAN h\b/);
   });
 
   /**
@@ -4926,12 +4975,18 @@ describe('EventStore', () => {
       Buffer.byteLength(JSON.stringify({ event, provenance })),
     );
     expect(descriptor?.serializedFrameBytes).toBeGreaterThan(64_000);
-    expect(prepare.mock.calls.map(([sql]) => String(sql)).join('\n')).toContain(
-      'LENGTH(CAST(e.payload AS BLOB))',
-    );
-    expect(
-      prepare.mock.calls.map(([sql]) => String(sql)).join('\n'),
-    ).not.toContain('SELECT id, provider, thread_id, turn_id, method, payload');
+    // Every statement the preflight prepares may touch the payload and the
+    // provenance envelope only as a byte length: with those measurements
+    // removed, neither column is referenced at all, under any alias or order.
+    const statements = prepare.mock.calls.map(([sql]) => String(sql));
+    expect(statements.join('\n')).toContain('LENGTH(CAST(e.payload AS BLOB))');
+    for (const sql of statements) {
+      const unmeasured = sql.replace(
+        /LENGTH\(\s*CAST\(\s*[\w.]+\s+AS\s+BLOB\s*\)\s*\)/gi,
+        '',
+      );
+      expect(unmeasured).not.toMatch(/\b(payload|envelope)\b/i);
+    }
   });
 
   test('uses one transaction, a has-more probe, and a capped turn fan-out', () => {
@@ -5744,7 +5799,10 @@ describe('EventStore', () => {
     database.close();
     store = new EventStore(databasePath);
 
-    const projection = store.listSessionProjectionEvents(threadId);
+    let projection!: ReturnType<EventStore['listSessionProjectionEvents']>;
+    const projectionReads = capturePreparedStatements(store, () => {
+      projection = store.listSessionProjectionEvents(threadId);
+    });
     expect(projection.map((event) => event.id)).toEqual(
       expect.arrayContaining([
         'flow-old',
@@ -5763,41 +5821,31 @@ describe('EventStore', () => {
     expect(store.latestEvent(threadId)?.id).toBe('latest-recency');
     expect(store.listUnresolvedRequestEvents(threadId)).toEqual([]);
 
-    const planDb = new DatabaseSync(databasePath);
-    const turnPlan = planDb
-      .prepare(
-        `EXPLAIN QUERY PLAN
-         SELECT id FROM orchestration_events
-         WHERE thread_id = ? AND turn_id = ?
-         ORDER BY sequence ASC`,
-      )
-      .all(threadId, 'turn-499') as Array<{ detail: string }>;
-    const requestPlan = planDb
-      .prepare(
-        `EXPLAIN QUERY PLAN
-         SELECT id FROM orchestration_events
-         WHERE thread_id = ? AND request_id = ?
-         ORDER BY sequence ASC`,
-      )
-      .all(threadId, 'request-499') as Array<{ detail: string }>;
-    const statePlan = planDb
-      .prepare(
-        `EXPLAIN QUERY PLAN
-         SELECT id FROM orchestration_events
-         WHERE thread_id = ? AND session_state = ?
-         ORDER BY sequence DESC LIMIT 1`,
-      )
-      .all(threadId, 'running') as Array<{ detail: string }>;
-    planDb.close();
-    expect(turnPlan.map((row) => row.detail).join(' | ')).toContain(
-      'idx_events_thread_turn_sequence',
+    // Plans of the statements these reads actually prepared: the turn-scoped
+    // terminal lookup, one request's replay, and one session state's latest
+    // fact each seek their own index however large the other classes grow.
+    const turnPlan = capturedPlan(
+      store,
+      projectionReads.find(({ sql }) => sql.includes('turn_id = ?')),
     );
-    expect(requestPlan.map((row) => row.detail).join(' | ')).toContain(
-      'idx_events_thread_request_sequence',
+    const requestPlan = capturedPlan(
+      store,
+      capturePreparedStatements(store, () =>
+        store.listEventsForRequest(threadId, 'request-499'),
+      )[0],
     );
-    expect(statePlan.map((row) => row.detail).join(' | ')).toContain(
-      'idx_events_thread_session_state_sequence',
-    );
+    const statePlans = capturePreparedStatements(store, () =>
+      store.latestEventForSessionState(threadId, 'running'),
+    ).map((statement) => capturedPlan(store, statement));
+    expect(turnPlan).toContain('idx_events_thread_turn_sequence');
+    expect(requestPlan).toContain('idx_events_thread_request_sequence');
+    expect(statePlans.length).toBeGreaterThan(0);
+    for (const plan of [turnPlan, requestPlan, ...statePlans]) {
+      expect(plan).not.toContain('TEMP B-TREE');
+    }
+    for (const plan of statePlans) {
+      expect(plan).toContain('idx_events_thread_method_session_state_sequence');
+    }
   });
 
   test('uses point/range queries for one request and recovery source event (station#1867)', () => {
@@ -5926,49 +5974,37 @@ describe('EventStore', () => {
       prompt: 'latest finite method',
     } as never);
 
-    expect(
-      store.latestEventByMethods(threadId, [
-        'session.state-changed',
-        'turn.started',
-      ])?.id,
-    ).toBe('turn-started-newest');
-    expect(store.latestEventForSessionState(threadId, 'running')?.id).toBe(
-      'running-old',
+    const lifecycle = capturePreparedStatements(store, () =>
+      expect(
+        store.latestEventByMethods(threadId, [
+          'session.state-changed',
+          'turn.started',
+        ])?.id,
+      ).toBe('turn-started-newest'),
+    );
+    const state = capturePreparedStatements(store, () =>
+      expect(store.latestEventForSessionState(threadId, 'running')?.id).toBe(
+        'running-old',
+      ),
     );
 
-    const database = new DatabaseSync(join(dir, 'orchestration.sqlite'));
-    const lifecyclePlan = database
-      .prepare(
-        `EXPLAIN QUERY PLAN
-         SELECT id FROM orchestration_events
-         WHERE thread_id = ? AND method = ?
-         ORDER BY sequence DESC LIMIT 1`,
-      )
-      .all(threadId, 'turn.started') as Array<{ detail: string }>;
-    const statePlan = database
-      .prepare(
-        `EXPLAIN QUERY PLAN
-         SELECT id FROM orchestration_events
-         WHERE thread_id = ? AND method = ? AND session_state = ?
-         ORDER BY sequence DESC LIMIT 1`,
-      )
-      .all(threadId, 'session.state-changed', 'running') as Array<{
-      detail: string;
-    }>;
-    database.close();
-
-    expect(lifecyclePlan.map((row) => row.detail).join(' | ')).toContain(
-      'idx_events_history_projection',
-    );
-    expect(lifecyclePlan.map((row) => row.detail).join(' | ')).not.toContain(
-      'TEMP B-TREE',
-    );
-    expect(statePlan.map((row) => row.detail).join(' | ')).toContain(
-      'idx_events_thread_method_session_state_sequence',
-    );
-    expect(statePlan.map((row) => row.detail).join(' | ')).not.toContain(
-      'TEMP B-TREE',
-    );
+    // One bounded query per requested method, each served by its index
+    // with no sort.
+    expect(lifecycle.map(({ values }) => values[1])).toEqual([
+      'session.state-changed',
+      'turn.started',
+    ]);
+    for (const statement of lifecycle) {
+      const plan = capturedPlan(store, statement);
+      expect(plan).toContain('idx_events_history_projection');
+      expect(plan).not.toContain('TEMP B-TREE');
+    }
+    expect(state.length).toBeGreaterThan(0);
+    for (const statement of state) {
+      const plan = capturedPlan(store, statement);
+      expect(plan).toContain('idx_events_thread_method_session_state_sequence');
+      expect(plan).not.toContain('TEMP B-TREE');
+    }
   });
 
   test('refuses a persisted malformed request identity while upgrading an old event table (station#1867)', () => {
@@ -6760,9 +6796,11 @@ describe('EventStore', () => {
     });
 
     test('an empty thread id list returns an empty map without querying', () => {
+      const prepare = vi.spyOn((store as any).db, 'prepare');
       expect(store.listSessionProjectionEventsForThreads([])).toEqual(
         new Map(),
       );
+      expect(prepare).not.toHaveBeenCalled();
     });
 
     test('a thread with zero events returns an empty array from both paths', () => {
@@ -6986,32 +7024,14 @@ describe('EventStore', () => {
       // partial owner-recency index, and must NOT sort (a temp b-tree here
       // is a sort of every matching row, payload column included, which is
       // what took 2.1 s and 850 MB on the live store).
-      const inspector = new DatabaseSync(join(dir, 'orchestration.sqlite'));
-      try {
-        const plan = (
-          inspector
-            .prepare(
-              `EXPLAIN QUERY PLAN
-               SELECT json_extract(payload, '$.metadata.userId') AS user_id
-               FROM orchestration_events
-               WHERE thread_id = ?
-                 AND json_valid(payload)
-                 AND json_extract(payload, '$.metadata.userId') IS NOT NULL
-                 AND json_type(payload, '$.metadata.userId') = 'text'
-                 AND method IN ('session.started', 'session.configured')
-               ORDER BY created_at DESC, sequence DESC
-               LIMIT 1`,
-            )
-            .all(threadId) as { detail: string }[]
-        )
-          .map((row) => row.detail)
-          .join('\n');
-
-        expect(plan).toContain('idx_events_thread_owner_recency');
-        expect(plan).not.toContain('TEMP B-TREE');
-      } finally {
-        inspector.close();
-      }
+      const captured = capturePreparedStatements(store, () =>
+        expect(store.findSessionOwnerUserId(threadId)).toBeUndefined(),
+      );
+      expect(captured).toHaveLength(1);
+      expect(captured[0]?.sql).toContain('LIMIT 1');
+      const plan = capturedPlan(store, captured[0]);
+      expect(plan).toContain('idx_events_thread_owner_recency');
+      expect(plan).not.toContain('TEMP B-TREE');
     });
 
     test('a payload that is not JSON cannot break the read or the index', () => {
@@ -7534,23 +7554,14 @@ describe('EventStore', () => {
     });
 
     test('review fix (MEDIUM): the per-thread replay query plan uses the composite (thread_id, global_sequence) index, no temp b-tree sort', () => {
-      // A separate read-only-in-practice connection onto the same file
-      // EventStore already migrated — EXPLAIN QUERY PLAN isn't part of the
-      // EventStore's own public surface.
-      const planDb = new DatabaseSync(join(dir, 'orchestration.sqlite'));
-      const plan = planDb
-        .prepare(
-          `EXPLAIN QUERY PLAN
-           SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
-           FROM orchestration_events
-           WHERE thread_id = ? AND global_sequence > ?
-           ORDER BY global_sequence ASC
-           LIMIT ?`,
-        )
-        .all('thread-a', 0, 10) as Array<{ detail: string }>;
-      planDb.close();
-
-      const detail = plan.map((row) => row.detail).join(' | ');
+      const captured = capturePreparedStatements(store, () =>
+        store.listEventsAfterGlobalSequence(0, {
+          threadId: 'thread-a',
+          limit: 10,
+        }),
+      );
+      expect(captured).toHaveLength(1);
+      const detail = capturedPlan(store, captured[0]);
       expect(detail).toContain('idx_events_thread_global_sequence');
       // Without the composite index, this query plans as a SEARCH on
       // idx_events_thread (sorted by `sequence`, not `global_sequence`)

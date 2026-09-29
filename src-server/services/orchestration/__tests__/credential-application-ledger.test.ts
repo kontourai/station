@@ -1,17 +1,22 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type {
+  CredentialProfileApplicationProjection,
+  CredentialProfileRegistryState,
+} from '@kontourai/station-contracts/connection-recovery';
 import { afterEach, describe, expect, test } from 'vitest';
+import type {
+  CredentialApplicationFactory,
+  CredentialApplicationHandle,
+} from '../credential-application-ledger.js';
 import { EventStore } from '../event-store.js';
+
+/** `true` only when two key unions match exactly, in both directions. */
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -618,31 +623,60 @@ describe('CredentialApplicationFactory', () => {
   });
 
   test('keeps opaque application authority out of the public recovery contract', () => {
-    const contract = readFileSync(
-      new URL(
-        '../../../../packages/contracts/src/connection-recovery.ts',
-        import.meta.url,
-      ),
-      'utf8',
-    );
-    expect(contract).not.toContain('CredentialProfilePendingApplication');
-    expect(contract).not.toContain('CredentialProfileApplicationReceipt');
-    const protocol = readFileSync(
-      new URL('../credential-application-ledger.ts', import.meta.url),
-      'utf8',
-    );
-    expect(protocol).not.toContain(
-      'export interface CredentialApplicationLedger',
-    );
-    const publicInterface = protocol.slice(
-      protocol.indexOf('export interface CredentialApplicationFactory'),
-      protocol.indexOf('interface Coordinator'),
-    );
-    expect(publicInterface).not.toContain('attemptId');
-    expect(publicInterface).not.toContain('begin(');
-    expect(publicInterface).not.toContain('resume(');
-    expect(publicInterface).not.toContain('recover(');
-    expect(publicInterface).not.toContain('reserve(input:');
-    expect(publicInterface).not.toContain('open(input:');
+    // Compile-time pins (typecheck:server-tests): the factory, its claim, and
+    // the public recovery contract expose no attempt identity or private key.
+    const surfaces: [
+      Exact<keyof CredentialApplicationFactory, 'start' | 'latest' | 'mutate'>,
+      Exact<
+        keyof CredentialApplicationHandle,
+        'application' | 'staged' | 'settle' | 'acknowledge'
+      >,
+      Exact<
+        keyof CredentialApplicationHandle['application'],
+        'connectionId' | 'candidateProfileRef' | 'previousProfileRef' | 'state'
+      >,
+      Exact<
+        keyof CredentialProfileApplicationProjection,
+        'capability' | 'activeProfileRef' | 'pendingProfileRef' | 'outcome'
+      >,
+      Exact<
+        keyof CredentialProfileRegistryState,
+        'profiles' | 'group' | 'policy' | 'activeProfileRef' | 'outcome'
+      >,
+    ] = [true, true, true, true, true];
+    expect(surfaces).toEqual([true, true, true, true, true]);
+
+    // Runtime: the composed factory and the claim it hands out carry nothing
+    // beyond their typed capability surface.
+    const store = fixture();
+    const factory = store.createCredentialApplicationFactory();
+    expect(Object.keys(factory).sort()).toEqual(['latest', 'mutate', 'start']);
+    const started = factory.start({
+      recoveryFingerprint: 'recovery-surface',
+      connectionId: 'codex',
+      candidateProfileRef: 'candidate',
+      previousProfileRef: 'previous',
+      now: '2026-08-13T00:00:00.000Z',
+    });
+    if (started.kind !== 'owner') throw new Error('expected owner');
+    expect(Object.keys(started.claim).sort()).toEqual([
+      'acknowledge',
+      'application',
+      'settle',
+      'staged',
+    ]);
+    expect(Object.keys(started.claim.application).sort()).toEqual([
+      'candidateProfileRef',
+      'connectionId',
+      'previousProfileRef',
+      'state',
+    ]);
+    expect(Object.keys(factory.latest('codex') ?? {}).sort()).toEqual([
+      'candidateProfileRef',
+      'connectionId',
+      'previousProfileRef',
+      'state',
+    ]);
+    store.close();
   });
 });

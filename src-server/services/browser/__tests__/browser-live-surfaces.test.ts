@@ -10,7 +10,11 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createLiveSurfaceRoutes } from '../../../routes/live-surface.js';
 import { LiveSurfaceRegistry } from '../../live-surface/registry.js';
 import { createBrowserProjectAuthorizer } from '../browser-access.js';
-import type { BrowserHost, CdpTransport } from '../browser-host.js';
+import {
+  type BrowserHost,
+  type CdpTransport,
+  createLocalBrowserHostResolver,
+} from '../browser-host.js';
 import {
   BrowserLiveSurfaces,
   browserSurfaceId,
@@ -138,11 +142,11 @@ function harness() {
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
     stationHome,
-    createHost: () => {
+    hostResolver: createLocalBrowserHostResolver(() => {
       const host = fakeHost(hosts.length + 1);
       hosts.push(host);
       return host;
-    },
+    }),
     newId: () =>
       `bs_00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
   });

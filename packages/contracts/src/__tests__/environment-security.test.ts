@@ -36,6 +36,17 @@ describe('environment security contracts', () => {
   test('owns the exact versioned public handshake path', () => {
     expect(PUBLIC_STATION_HANDSHAKE_PATH).toBe('/.well-known/station/v1');
   });
+
+  test('keeps the minimum client protocol a positive integer no higher than the current protocol', () => {
+    expect(Number.isSafeInteger(STATION_COMPAT_PROTOCOL_VERSION)).toBe(true);
+    expect(Number.isSafeInteger(STATION_COMPAT_MIN_CLIENT_PROTOCOL)).toBe(true);
+    expect(STATION_COMPAT_MIN_CLIENT_PROTOCOL).toBeGreaterThanOrEqual(1);
+    // A floor above the current contract would mean the host refuses the
+    // client this very repo ships.
+    expect(STATION_COMPAT_MIN_CLIENT_PROTOCOL).toBeLessThanOrEqual(
+      STATION_COMPAT_PROTOCOL_VERSION,
+    );
+  });
 });
 
 describe('handshake capability flags (station#1095, AC1: two-way fixture decode)', () => {

@@ -52,7 +52,6 @@ import {
   recordPluginDependencyOwnership,
   removePluginHostRecord,
   requiredPermissionsForManifest,
-  restorePluginGrantEntry,
   revokeAllGrants,
   revokeGrants,
   withPluginProviderGrantPublication,
@@ -460,7 +459,7 @@ describe('grants storage', () => {
     await revokeGrants(dir, 'p', ['never-granted']);
     expect(getPluginGrants(dir, 'p')).toEqual([]);
 
-    await grantPermissions(dir, 'q', ['a']);
+    await grantPermissions(dir, 'q', ['a', 'b']);
     await revokeAllGrants(dir, 'q');
     expect(getPluginGrants(dir, 'q')).toEqual([]);
   });
@@ -479,12 +478,6 @@ describe('grants storage', () => {
     expect(getPluginGrants(dir, 'p')).toEqual(
       expect.arrayContaining(['a', 'b']),
     );
-  });
-
-  test('revokeAllGrants removes all', async () => {
-    await grantPermissions(dir, 'p', ['a', 'b']);
-    await revokeAllGrants(dir, 'p');
-    expect(getPluginGrants(dir, 'p')).toEqual([]);
   });
 });
 
@@ -1466,14 +1459,7 @@ describe('owned permission mutation receipts', () => {
     expect(await scope.rollback()).toEqual({ state: 'unchanged' });
   });
 
-  test('observed snapshots cannot authorize restoration and committed scopes cannot roll back', async () => {
-    await grantPermissions(home, plugin, ['agents.invoke']);
-    const before = readPluginGrantRecord(home, plugin);
-    await revokeAllGrants(home, plugin);
-    await expect(restorePluginGrantEntry(home, plugin, before)).rejects.toThrow(
-      'owned mutation receipt',
-    );
-    expect(getPluginGrants(home, plugin)).toEqual([]);
+  test('committed scopes cannot roll back', async () => {
     const scope = createPluginGrantMutationScope(home, plugin);
     await scope.run(() => grantPermissions(home, plugin, ['navigation.dock']));
     scope.commit();

@@ -30,15 +30,12 @@ describe('engine-spawn-tmpdir (station#1908)', () => {
     return home;
   }
 
-  test('engineSpawnTmpDirPath is a fixed tmp/engine-spawn dir under the given home', () => {
-    const home = makeHome();
-    expect(engineSpawnTmpDirPath(home)).toBe(join(home, 'tmp', 'engine-spawn'));
-  });
-
-  test('ensureEngineSpawnTmpDir creates the directory and is idempotent', () => {
+  test('ensureEngineSpawnTmpDir creates the fixed dir the reaper scans, idempotently', () => {
     const home = makeHome();
     const dir = ensureEngineSpawnTmpDir(home);
     expect(dir).toBe(join(home, 'tmp', 'engine-spawn'));
+    // The reaper resolves the same directory the spawners create.
+    expect(engineSpawnTmpDirPath(home)).toBe(dir);
     expect(existsSync(dir)).toBe(true);
     expect(statSync(dir).isDirectory()).toBe(true);
 

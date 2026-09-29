@@ -167,7 +167,7 @@ describe('reserve — one owner, joins, conflicts', () => {
   test('the first reserve creates with exactly one owner secret', async () => {
     const outcome = await store.reserve(reserveInput());
     expect(outcome.kind).toBe('created');
-    if (outcome.kind !== 'created') return;
+    if (outcome.kind !== 'created') throw new Error('expected a created claim');
     expect(outcome.ownerToken.length).toBeGreaterThan(0);
     expect(outcome.initialClientTurnId.length).toBeGreaterThan(0);
     const record = await store.read(claimKey());
@@ -324,11 +324,13 @@ describe('malformed stores fail closed — never forget a claim', () => {
       'moved record under a colliding key',
       {
         version: 2,
-        // A valid tuple key for ('a:b','c') holding a record whose own
-        // identity is ('a','b:c') — the naive join of both is `a:b:c`.
-        [delegationAttemptClaimKey('a:b', 'c')]: {
-          ...validRecord('a', 'b:c'),
-          key: delegationAttemptClaimKey('a:b', 'c'),
+        records: {
+          // A valid tuple key for ('a:b','c') holding a record whose own
+          // identity is ('a','b:c') — the naive join of both is `a:b:c`.
+          [delegationAttemptClaimKey('a:b', 'c')]: {
+            ...validRecord('a', 'b:c'),
+            key: delegationAttemptClaimKey('a:b', 'c'),
+          },
         },
       },
     ],
@@ -459,7 +461,7 @@ describe('owner transitions — the persisted verifier checks every token', () =
   test('bind → session-started → accept is the durable-effect path; terminal states stick', async () => {
     const created = await store.reserve(reserveInput());
     expect(created.kind).toBe('created');
-    if (created.kind !== 'created') return;
+    if (created.kind !== 'created') throw new Error('expected a created claim');
     const token = created.ownerToken;
     // An empty token is rejected outright…
     expect(
@@ -503,7 +505,8 @@ describe('owner transitions — the persisted verifier checks every token', () =
   test('wrong, random, empty, and other-claim tokens are not-owner with NO mutation', async () => {
     const createdA = await store.reserve(reserveInput('dev-1', 'a'));
     const createdB = await store.reserve(reserveInput('dev-1', 'b'));
-    if (createdA.kind !== 'created' || createdB.kind !== 'created') return;
+    if (createdA.kind !== 'created' || createdB.kind !== 'created')
+      throw new Error('expected a created claim');
     const before = await store.read(claimKey('dev-1', 'a'));
     for (const bad of [
       'wrong-token',
@@ -534,7 +537,7 @@ describe('owner transitions — the persisted verifier checks every token', () =
 
   test('ownership verifies across concurrent store instances sharing the file', async () => {
     const created = await store.reserve(reserveInput());
-    if (created.kind !== 'created') return;
+    if (created.kind !== 'created') throw new Error('expected a created claim');
     const sibling = new FileDelegationAttemptClaimStore(dir);
     // The sibling instance never saw the secret — but the verifier is
     // durable, so the true token applies there and a wrong one does not.
@@ -556,7 +559,7 @@ describe('owner transitions — the persisted verifier checks every token', () =
 
   test('a clean pre-effect refusal is terminal and keeps the tombstone', async () => {
     const created = await store.reserve(reserveInput());
-    if (created.kind !== 'created') return;
+    if (created.kind !== 'created') throw new Error('expected a created claim');
     expect(await store.markRefused(claimKey(), created.ownerToken)).toEqual({
       kind: 'applied',
     });
@@ -571,7 +574,7 @@ describe('owner transitions — the persisted verifier checks every token', () =
 
   test('post-start refusal is stale: a started session cannot be refused away', async () => {
     const created = await store.reserve(reserveInput());
-    if (created.kind !== 'created') return;
+    if (created.kind !== 'created') throw new Error('expected a created claim');
     await store.bindAdmitted(claimKey(), created.ownerToken, {
       ...ADMITTED_FACTS,
     });
@@ -589,7 +592,7 @@ describe('owner transitions — the persisted verifier checks every token', () =
 
   test('an indeterminate invocation stays revisable-but-never-resendable', async () => {
     const created = await store.reserve(reserveInput());
-    if (created.kind !== 'created') return;
+    if (created.kind !== 'created') throw new Error('expected a created claim');
     expect(await store.markUnresolved(claimKey(), created.ownerToken)).toEqual({
       kind: 'applied',
     });
@@ -621,7 +624,7 @@ describe('owner transitions — the persisted verifier checks every token', () =
 describe('closed lookup projection — no raw intent ever leaves', () => {
   test('reserved/admitted/session-started project to preparing WITH the reserved task reference', async () => {
     const created = await store.reserve(reserveInput());
-    if (created.kind !== 'created') return;
+    if (created.kind !== 'created') throw new Error('expected a created claim');
     expect(projectDelegationAttemptClaim(undefined, 'attempt-1')).toEqual({
       attemptId: 'attempt-1',
       state: 'none',
@@ -665,7 +668,7 @@ describe('closed lookup projection — no raw intent ever leaves', () => {
 
   test('unresolved/refused keep the reserved reference for reconciliation', async () => {
     const refused = await store.reserve(reserveInput('dev-1', 'r'));
-    if (refused.kind !== 'created') return;
+    if (refused.kind !== 'created') throw new Error('expected a created claim');
     await store.markRefused(claimKey('dev-1', 'r'), refused.ownerToken);
     expect(
       projectDelegationAttemptClaim(
@@ -674,7 +677,7 @@ describe('closed lookup projection — no raw intent ever leaves', () => {
       ),
     ).toEqual({ attemptId: 'r', state: 'refused', taskId: 'task:reserved-1' });
     const pending = await store.reserve(reserveInput('dev-1', 'u'));
-    if (pending.kind !== 'created') return;
+    if (pending.kind !== 'created') throw new Error('expected a created claim');
     await store.markUnresolved(claimKey('dev-1', 'u'), pending.ownerToken);
     expect(
       projectDelegationAttemptClaim(
@@ -690,7 +693,7 @@ describe('closed lookup projection — no raw intent ever leaves', () => {
 
   test('the projection carries no prompt, path, digest, verifier, or turn identity', async () => {
     const created = await store.reserve(reserveInput());
-    if (created.kind !== 'created') return;
+    if (created.kind !== 'created') throw new Error('expected a created claim');
     await store.bindAdmitted(claimKey(), created.ownerToken, {
       ...ADMITTED_FACTS,
     });
@@ -719,7 +722,8 @@ describe('closed lookup projection — no raw intent ever leaves', () => {
         ...reserveInput(device, attempt),
         taskId: `task:${device}-${attempt}`,
       });
-      if (created.kind !== 'created') return;
+      if (created.kind !== 'created')
+        throw new Error('expected a created claim');
       await store.bindAdmitted(claimKey(device, attempt), created.ownerToken, {
         ...ADMITTED_FACTS,
       });
@@ -772,11 +776,10 @@ describe('intent digest — stable, RAW-only', () => {
     expect(a).toBe(digest());
   });
 
-  test('resolved facts change nothing because they are never inputs', () => {
-    // The digest function accepts ONLY prompt/target/parentTaskId — there
-    // is no parameter for a resolved workspace or incarnation, so a
-    // post-resolution fact cannot silently join the initial digest. The
-    // admitted bind carries those facts under the same claim instead.
+  test('parentTaskId is part of the raw intent digest', () => {
+    // The parameter type admits only prompt/target/parentTaskId; resolved
+    // facts ride the admitted bind under the same claim instead. The digest
+    // hashes whatever it is given, so the type is what keeps them out.
     expect(digest()).toMatch(/^[0-9a-f]{64}$/);
     const withParent = delegationAttemptIntentDigest({
       prompt: INTENT.prompt,

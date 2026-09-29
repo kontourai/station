@@ -62,25 +62,36 @@ describe('DiffCommentService', () => {
     expect(service.list(storePath)).toHaveLength(2);
   });
 
-  it('sorts comments by creation time', async () => {
-    const first = await service.create(storePath, {
-      projectId: 'demo',
-      filePath: 'a.ts',
-      side: 'additions',
-      lineNumber: 1,
-      body: 'first',
-    });
-    // Force a later timestamp on the second comment so ordering is deterministic.
+  it('sorts comments by creation time, not by store order', async () => {
+    // The store appends, so the LATER-stamped comment is written first: store
+    // order and creation order disagree, and only list()'s sort can reconcile
+    // them.
+    const base = Date.parse('2026-05-01T12:00:00.000Z');
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(Date.parse(first.createdAt) + 1000));
-    await service.create(storePath, {
-      projectId: 'demo',
-      filePath: 'a.ts',
-      side: 'additions',
-      lineNumber: 2,
-      body: 'second',
-    });
-    vi.useRealTimers();
+    try {
+      vi.setSystemTime(new Date(base + 1000));
+      await service.create(storePath, {
+        projectId: 'demo',
+        filePath: 'a.ts',
+        side: 'additions',
+        lineNumber: 2,
+        body: 'second',
+      });
+      vi.setSystemTime(new Date(base));
+      await service.create(storePath, {
+        projectId: 'demo',
+        filePath: 'a.ts',
+        side: 'additions',
+        lineNumber: 1,
+        body: 'first',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    const stored = JSON.parse(readFileSync(storePath, 'utf8')) as {
+      body: string;
+    }[];
+    expect(stored.map((c) => c.body)).toEqual(['second', 'first']);
     expect(service.list(storePath).map((c) => c.body)).toEqual([
       'first',
       'second',

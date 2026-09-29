@@ -179,7 +179,7 @@ A task can also be dispatched: assign an agent or a skill to it and send it into
 A scheduled job can use a cron expression, a fixed interval (`every`), or a
 one-time timestamp (`at`); manual runs are also supported. The built-in
 scheduler invokes an Agent with unattended-deny approval policy and records
-its scheduler outcome. Other scheduler providers have their own capabilities.
+its scheduler outcome.
 See the [scheduler API](api.md#scheduler) for exact inputs and outcomes.
 
 Scheduler receipts describe the observed execution outcome. They do not attach
