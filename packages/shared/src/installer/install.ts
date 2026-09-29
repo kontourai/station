@@ -424,8 +424,18 @@ type Context = {
   tmp: string;
 };
 
-async function stageArchive(context: Context): Promise<number> {
-  const { env, io, tmp } = context;
+type StageRequest = {
+  requested: string;
+  ring: string;
+  manifestUrl: string;
+  allowTest: boolean;
+  testKeyUrl: string;
+  testTarget: string;
+  version: string;
+};
+
+/** The caller's environment, validated as install.sh validates it. */
+function readStageRequest(env: InstallerEnv): StageRequest {
   const requested = env.STATION_CHANNEL || 'stable';
   if (requested === 'preview')
     fail(
@@ -477,8 +487,30 @@ async function stageArchive(context: Context): Promise<number> {
         `STATION_VERSION ${version} is a ${versionRing} release; it cannot be installed as STATION_CHANNEL=${requested}`,
       );
   }
-  const paths = resolvePaths(env, requested, ring);
+  return {
+    requested,
+    ring,
+    manifestUrl,
+    allowTest,
+    testKeyUrl,
+    testTarget,
+    version,
+  };
+}
 
+type VerifiedRelease = {
+  payload: ReleaseManifestPayload;
+  artifact: ReleaseManifestPayload['artifacts'][number];
+};
+
+/** Downloads and verifies the signed manifest, and selects this host's archive. */
+async function fetchVerifiedRelease(
+  request: StageRequest,
+  io: InstallerIo,
+  tmp: string,
+): Promise<VerifiedRelease> {
+  const { ring, manifestUrl, allowTest, testKeyUrl, testTarget, version } =
+    request;
   // Trust comes from the pinned keys plus the sha256 the signed payload
   // carries; see install.sh for what a signature does and does not prove.
   const manifestFile = join(tmp, 'station-ecosystem-manifest.json');
@@ -550,7 +582,19 @@ async function stageArchive(context: Context): Promise<number> {
     fail(
       `${artifact.name} is not a zip archive; this installer extracts zip only`,
     );
+  return { payload, artifact };
+}
 
+/**
+ * Downloads the archive within its signed size, then checks the exact size
+ * and the sha256; returns the local path and its digest.
+ */
+async function downloadVerifiedArchive(
+  artifact: VerifiedRelease['artifact'],
+  allowTest: boolean,
+  io: InstallerIo,
+  tmp: string,
+): Promise<{ archive: string; actualChecksum: string }> {
   // The signed size bounds the download itself; the exact size and the
   // sha256 are checked once it is complete.
   const archive = join(tmp, artifact.name);
@@ -579,6 +623,21 @@ async function stageArchive(context: Context): Promise<number> {
   const actualChecksum = sha256File(archive);
   if (actualChecksum !== artifact.sha256)
     fail('release checksum did not match');
+  return { archive, actualChecksum };
+}
+
+async function stageArchive(context: Context): Promise<number> {
+  const { env, io, tmp } = context;
+  const request = readStageRequest(env);
+  const { requested } = request;
+  const paths = resolvePaths(env, requested, request.ring);
+  const { payload, artifact } = await fetchVerifiedRelease(request, io, tmp);
+  const { archive, actualChecksum } = await downloadVerifiedArchive(
+    artifact,
+    request.allowTest,
+    io,
+    tmp,
+  );
 
   const releaseDir = join(paths.versions, payload.version);
   return withZipOrRefuse(archive, (fd, entries) => {
