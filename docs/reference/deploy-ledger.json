@@ -1,5 +1,43 @@
 [
   {
+    "timestampUtc": "2026-09-29T23:54:41Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2463.3",
+    "sha": "fa78d02a509c2a30a4347130f54de67cd6f30ba1",
+    "artifactBuiltAt": "2026-09-29T22:55:57.445Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36637714147",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36637714147)"
+    ],
+    "changelog": {
+      "previousSha": "0690c93997c7abf1c0e410be6166e5f615cefd4b",
+      "groups": {
+        "feat": [
+          "[#2920](https://github.com/kontourai/station/pull/2920) feat(station-control): one remote-Station forwarding seam, bounded and peer-text-free (#2377 C2b)"
+        ],
+        "fix": [
+          "[#2599](https://github.com/kontourai/station/pull/2599) fix(deps): land the runtime/UI and GitHub Actions bumps with the changes their guards need",
+          "[#2975](https://github.com/kontourai/station/pull/2975) fix(update): follow the https redirects GitHub serves the release manifest through",
+          "[#2954](https://github.com/kontourai/station/pull/2954) fix(cli): keep recorded ports when station upgrade re-runs install.sh"
+        ],
+        "ci": [],
+        "docs": [
+          "[#2973](https://github.com/kontourai/station/pull/2973) docs(adr): ADR 0020 distribution — two trains, channels as pointers, installer-first (#2958)",
+          "[#2968](https://github.com/kontourai/station/pull/2968) docs(adr): record packaged-build evidence for ADR 0015 NOT_VERIFIED items (#2957)"
+        ],
+        "other": [
+          "[#2955](https://github.com/kontourai/station/pull/2955) chore(veritas): record a repository-relative target_root in the init plan"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-09-29T23:54:39Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2463.3",
