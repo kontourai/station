@@ -1,6 +1,5 @@
 import {
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -8,10 +7,10 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { load } from 'js-yaml';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { releaseVariants } from '../lib/release-variants.mjs';
 import { producerArtifactSources } from '../release-admit-producer-assets.mjs';
 import {
@@ -147,15 +146,10 @@ function requiredProducerAssets(tag: string, channel: 'preview' | 'stable') {
   ].sort();
 }
 
-const workspaces: string[] = [];
-afterEach(() => {
-  for (const dir of workspaces.splice(0))
-    rmSync(dir, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 function workspace(layout: Layout) {
-  const dir = mkdtempSync(join(tmpdir(), 'station-admit-producer-'));
-  workspaces.push(dir);
+  const dir = makeTempDir('station-admit-producer-');
   const work = join(dir, 'work');
   const runnerTemp = join(dir, 'runner-temp');
   const artifacts = join(runnerTemp, 'station-release-producer-artifacts');
