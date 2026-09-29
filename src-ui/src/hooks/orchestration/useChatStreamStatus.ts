@@ -15,13 +15,13 @@ import {
  * from the outage's start (`disruptedSince`), so moving from reconnecting to
  * catching up never restarts it.
  */
-export const STREAM_STATUS_SHOW_AFTER_MS = 2_500;
+const STREAM_STATUS_SHOW_AFTER_MS = 2_500;
 /**
  * Once shown, the status stays up this long after the stream is live again,
  * as a brief "restored" confirmation, and a new drop inside that window is
  * shown at once instead of vanishing and reappearing.
  */
-export const STREAM_STATUS_HOLD_MS = 1_200;
+const STREAM_STATUS_HOLD_MS = 1_200;
 
 export type ChatStreamStatus = {
   label: string;
