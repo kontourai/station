@@ -9,7 +9,7 @@
 
   "limits": "Bounded source and hermetic evidence only. No native compilation, app/device launch, signing, provisioning, OS/network policy change, store credentials or provider delivery. Full document reading does not certify all platform behavior.",
 
-  "document": {"digest":"a318455a18fdb96350fa2d0b1af309d9bfdee2de5c029345440ebf97e92dfebb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
   "sources": [
     {"path":".github/workflows/android-test.yml","digest":"bab88e4527a8886a847d7494a743b6d7522defd271e0505763a87db1cf81f104","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -140,7 +140,7 @@
 
     {"path":"config/portable-server-node-runtime.json","digest":"740077d29cbbeb2a40f2fec363d06aacf111f2d2d29f50e71886dcb0a1306438","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
     {"path":"package.json#/scripts/build:ios:simulator","digest":"3255b2f2a3e1f765a3d6e35cf3ae515387a878e81f0235b5da5b9ce7fb6ac754","revision":"f8a1bcaa554b0ebe0e08e7df78d5e3e6c2c6c1df"},
 

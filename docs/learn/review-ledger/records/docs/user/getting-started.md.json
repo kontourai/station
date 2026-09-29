@@ -30,7 +30,7 @@
 
     {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"e0a3594c498a1ff682523e3f8a61cc3f28dda295ffec677fdb59b5351936fcc0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
     {"path":"src-server/knowledge-store/knowledge-source-observation-policy.ts","digest":"d4cb2a7bae52db410ea472b7a936c944503253b59037f7f1bf55caa28e16cbff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -92,7 +92,7 @@
 
     {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/guides/release-channel-ports.md","digest":"a318455a18fdb96350fa2d0b1af309d9bfdee2de5c029345440ebf97e92dfebb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {"path":"docs/guides/release-channel-ports.md","digest":"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"}
   ],
 
   "checks": [

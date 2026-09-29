@@ -38,7 +38,7 @@
 
     {"path":"packages/cli/src/commands/lifecycle-code-root.ts","digest":"f6b5b71d277613daa02c3a46d45082e7f5fd460f8fc794e111483ba4167ad28f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
     {"path":"packages/cli/src/commands/service-windows.ts","digest":"e9900e431944c46a0f46b6329c2218942d7281dc2f2bef2760770837298c2f71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

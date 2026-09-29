@@ -9,7 +9,7 @@
 
   "limits": "Source-reviewed means current documented claims, not all exported commands or every implementation branch. Existing source/SDK/API reviews support referenced owner semantics without rerunning full SDK scope.257 executed fixture tests/16files and an independent real synthetic HTTP operate/SDK comparison do not establish real provider enforcement, hosted/network/account/device/Windows/PTY journeys, production service operations, or destructive user-home recovery. No real home backup/reset/restore, cloud provision, transfer to a remote target, live model/securityprobe, GitHub write or release was performed. Shell examples with placeholders require operator prerequisites;3 JSON/TS fences only have syntax validation. The raw operate stream lacks auth; home reset lacks the backup/restore maintenance lease/home-registry check; triage terminal streams differ from redacted disk artifacts. These are documented current limits, not repaired code.",
 
-  "document": {"digest":"1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "document": {"digest":"f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
   "sources": [
     {"path":".github/workflows/publish-release.yml","digest":"52286a0d9c756da6a30578f1e20da58dc04addd85fea7a3681944405a5ad49f5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -68,7 +68,7 @@
 
     {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
     {"path":"packages/cli/src/commands/model-options.ts","digest":"e68be321336c9a6cccdd2e6fb30ce12921e8007106ec94e548f81218ba17120a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
