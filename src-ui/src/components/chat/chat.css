@@ -1167,9 +1167,24 @@
    made its flex basis 0, so it contributed nothing to the composer's natural
    height and received only leftover space: a three-line draft rendered in
    ~66px with its third line clipped, while the transcript above kept its
-   room. With a real basis the transcript yields first. */
+   room. With a real basis the transcript yields first. When the dock itself
+   is too short for the whole composer (an iPhone SE's half-height dock), the
+   draft is what gives way — down to its min-height, scrolling — never the
+   controls row: `.chat-input` clips, and a clipped Send is unreachable. The
+   zero minimums let that shrink reach the textarea through its containers. */
 .chat-input .chat-input__textarea-wrapper > textarea {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+}
+
+.chat-input .chat-input__capsule,
+.chat-input .chat-input__textarea-wrapper {
+  min-height: 0;
+}
+
+/* Only the draft gives way: the chip strip scrolls sideways, so as a flex
+   item it would otherwise shrink vertically under the draft. */
+.chat-input .composer-attachments {
+  flex-shrink: 0;
 }
 
 /* Composer validation and attach-time notes sit in the fieldset's normal
