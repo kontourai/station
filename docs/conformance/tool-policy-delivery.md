@@ -175,14 +175,26 @@ tool grant and no agent `autoApprove` pattern answers them, even `*`
 - A `decisionReason` that is exactly `dangerouslyDisableSandbox`,
   `requiresUserInteraction`, or the MCP organization ceiling `Your
   organization requires approval for this tool`. These are literals in the
-  engine. Nothing else in the reason text is matched.
+  engine. Nothing else in the reason text is matched. They are specific to
+  the CLI version they were read from (2.1.261): if a later CLI rewords one,
+  the rule stops matching and that ask goes back to being treated as an
+  ordinary call. A wording change disables the rule; it never widens it.
+  The durable signal is the structured `decision_reason_type`, which part 2
+  reads.
 - The ask flags `suppressAlwaysAllowRule`, `defaultToNo` and
   `requiresUserInteraction`. The CLI sends them, but Agent SDK 0.3.261 drops
   them; 0.3.284 forwards them, and the adapter reads them when present. A
   request flagged `suppressAlwaysAllowRule` also offers no session option.
 
-The adapter copies `decisionReason` and any flag that is set onto
-`request.opened`, so the surfaces compute the same grant.
+The adapter sanitises `decisionReason` once (ANSI escape sequences, then
+control, format and separator characters, bounded to 1000 characters) and
+both matches and publishes that value. It copies it and any flag that is set
+onto `request.opened`, so the surfaces compute the same grant. Sanitising
+leaves the literals unchanged. The engine's `description` is published
+sanitised the same way. The network title's host is checked against the
+ASCII host syntax before any sanitising, so a host carrying an invisible or
+control character is shown as "an unrecognised host", never as the host
+left after the character is removed.
 
 What this does not cover: a Bash or PowerShell safety check (its reason is
 prose whose wording is not a stable contract) and a plain `permissions.ask`

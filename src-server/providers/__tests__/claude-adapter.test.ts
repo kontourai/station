@@ -100,6 +100,7 @@ import {
   readBundledClaudeCodeVersion,
   resolveSpawnableClaudeExecutable,
 } from '../adapters/claude-adapter.js';
+import { claudeRequestDisplayText } from '../adapters/claude-adapter-events.js';
 import { loadClaudeTaskCapture } from './claude-task-captures.js';
 
 function createMockQuery(
@@ -3052,6 +3053,72 @@ describe('ClaudeAdapter', () => {
         );
         await long.answer('decline');
         await adapter.stopSession('thread-network-title');
+      });
+
+      test.each([
+        ['a zero-width space', 'git​hub.com'],
+        ['a bidi override', '‮github.com'],
+        ['a soft hyphen', 'github.com­'],
+        ['a NUL', 'github.com\u0000.evil.net'],
+      ])(
+        'a host carrying %s is never shown as a cleaned-up host',
+        async (_case, host) => {
+          const { adapter, ask } = await grantHarness('thread-network-hidden');
+          const hidden = await ask(...networkAsk(host));
+          if (hidden.kind !== 'prompted') throw new Error('expected a prompt');
+          expect(hidden.event.title).toBe(
+            'Allow network access to an unrecognised host',
+          );
+          await hidden.answer('decline');
+          await adapter.stopSession('thread-network-hidden');
+        },
+      );
+
+      test('engine description and reason text are published sanitised; the reason literals are unchanged', async () => {
+        for (const literal of [
+          'dangerouslyDisableSandbox',
+          'requiresUserInteraction',
+          'Your organization requires approval for this tool',
+        ])
+          expect(claudeRequestDisplayText(literal)).toBe(literal);
+
+        const { adapter, ask } = await grantHarness('thread-reason-text');
+        const ceiling = await ask(...orgCeiling);
+        if (ceiling.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(ceiling.event.payload.decisionReason).toBe(
+          'Your organization requires approval for this tool',
+        );
+        await ceiling.answer('decline');
+
+        const [, , network] = networkAsk('api.example.com');
+        const escaped = await ask(
+          'SandboxNetworkAccess',
+          { host: 'api.example.com' },
+          {
+            ...network,
+            description: 'Allow network connection\u001b[31m to\nevil.example‮?',
+          },
+        );
+        if (escaped.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(escaped.event.description).toBe(
+          'Allow network connection to evil.example?',
+        );
+        await escaped.answer('decline');
+
+        const prose = await ask(
+          'Bash',
+          { command: 'cat .env' },
+          {
+            decisionReason:
+              '\u001b[1mCommand reads\u001b[0m a sensitive\u0007 file\u001b]8;;x\u0007',
+          },
+        );
+        if (prose.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(prose.event.payload.decisionReason).toBe(
+          'Command reads a sensitive file',
+        );
+        await prose.answer('decline');
+        await adapter.stopSession('thread-reason-text');
       });
 
       test('a sandbox override prompts under a Bash session grant, which still answers a plain Bash call (positive control)', async () => {

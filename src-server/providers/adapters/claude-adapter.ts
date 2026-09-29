@@ -113,6 +113,7 @@ import {
   type ClaudeActiveTask,
   type ClaudeMessageState,
   claudeAskFlags,
+  claudeRequestDisplayText,
   claudeSandboxNetworkTitle,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
@@ -2751,6 +2752,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // #2932: the ask flags a later Agent SDK forwards (0.3.284); the
         // pinned 0.3.261 drops them, so they are read only when present.
         const askFlags = claudeAskFlags(options);
+        // #2932: the reason is sanitised once, and that one value is both
+        // matched here and published, so the surfaces compute the same
+        // grant. Sanitising leaves the plain-text literals unchanged.
+        const decisionReason = claudeRequestDisplayText(options.decisionReason);
         const request: ToolRequestGrantInput = {
           toolName,
           suggestions: options.suggestions,
@@ -2758,7 +2763,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           matchedAskRule: options.matchedAskRule,
           permissionMode: record.currentPermissionMode,
           toolInput,
-          decisionReason: options.decisionReason,
+          decisionReason,
           ...askFlags,
         };
         // Fix (external autoApprove parity): match Station's own
@@ -2831,7 +2836,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             options.title ??
             claudeSandboxNetworkTitle(toolName, toolInput) ??
             `Allow ${toolName}`,
-          description: options.description,
+          description: claudeRequestDisplayText(options.description),
           payload: {
             toolName,
             // #2316: the SDK's id for this exact tool_use block — the same id
@@ -2849,10 +2854,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               ? { matchedAskRule: options.matchedAskRule }
               : {}),
             // #2932: the escalation signals the grant reads besides the
-            // input; the raw reason text, never rendered by the surfaces.
-            ...(options.decisionReason !== undefined
-              ? { decisionReason: options.decisionReason }
-              : {}),
+            // input; the sanitised reason text the adapter matched.
+            ...(decisionReason !== undefined ? { decisionReason } : {}),
             ...askFlags,
             ...(record.currentPermissionMode
               ? { permissionMode: record.currentPermissionMode }

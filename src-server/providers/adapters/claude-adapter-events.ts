@@ -1545,17 +1545,20 @@ const NETWORK_TITLE_HOST_SYNTAX =
  * #2932: the title of a sandbox network ask, which the engine sends with no
  * title of its own: "Allow network access to <host>", so every surface names
  * the host being allowed. The host is engine-supplied text: it is shown only
- * when it is a plain ASCII host (cut from the left past 120 code points),
- * and otherwise as "an unrecognised host". Undefined for any other tool.
+ * when the RAW value is a plain ASCII host (cut from the left past 120 code
+ * points), and otherwise as "an unrecognised host". The syntax check runs
+ * before any sanitising, so an invisible or control character in the host
+ * (zero-width, bidi, soft hyphen, NUL) cannot be stripped away to show a
+ * different host from the one the engine remembers. Undefined for any other
+ * tool.
  */
 export function claudeSandboxNetworkTitle(
   toolName: string,
   toolInput: Record<string, unknown>,
 ): string | undefined {
   if (toolName !== CLAUDE_SANDBOX_NETWORK_TOOL) return undefined;
-  const raw = typeof toolInput.host === 'string' ? toolInput.host : '';
-  const host = sanitizeUntrustedDisplayText(raw, Number.POSITIVE_INFINITY);
-  if (!host) return 'Allow network access to an unnamed host';
+  const host = typeof toolInput.host === 'string' ? toolInput.host : '';
+  if (!host.trim()) return 'Allow network access to an unnamed host';
   if (!NETWORK_TITLE_HOST_SYNTAX.test(host))
     return 'Allow network access to an unrecognised host';
   const shown =
@@ -1563,6 +1566,31 @@ export function claudeSandboxNetworkTitle(
       ? host
       : `\u2026${host.slice(host.length - (MAX_NETWORK_TITLE_HOST_LENGTH - 1))}`;
   return `Allow network access to ${shown}`;
+}
+
+/** Bound on engine-supplied request text (`description`, `decisionReason`). */
+const MAX_CLAUDE_REQUEST_TEXT_LENGTH = 1000;
+/** ANSI CSI and OSC escape sequences, removed whole before sanitising. */
+const ANSI_ESCAPE =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching terminal escapes is the point.
+  /\u001B(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001B]*(?:\u0007|\u001B\\)?)/g;
+
+/**
+ * #2932: engine-supplied request text made one bounded, visible line. The
+ * CLI documents that `decision_reason` may carry ANSI escapes, so whole
+ * escape sequences are removed first (sanitising alone would drop the ESC
+ * and leave `[0m`), then control, format and separator characters. Plain
+ * text, such as the escalation-reason literals, is returned unchanged.
+ * Undefined when the value is not a string or nothing visible remains.
+ */
+export function claudeRequestDisplayText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return (
+    sanitizeUntrustedDisplayText(
+      value.replace(ANSI_ESCAPE, ''),
+      MAX_CLAUDE_REQUEST_TEXT_LENGTH,
+    ) || undefined
+  );
 }
 
 /**
