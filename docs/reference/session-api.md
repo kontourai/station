@@ -87,10 +87,12 @@ binding, verifies the caller and current Environment, resolves the current Agent
 and only then sends the turn. Optional `model.override` and `model.options` apply
 only when that engine supports them; omission retains the current model choice.
 
-On either route, a send whose attachments the bound engine cannot take (an ACP
-engine whose handshake did not advertise image input, or a non-image file) is
-refused before any engine effect with `code: "attachment_input_unsupported"`.
-The same request is refused again, so it is not a retry candidate.
+On either route, when the bound engine is an ACP engine, a send whose
+attachments it cannot take (its handshake did not advertise image input, or a
+non-image file) is refused before any engine effect with
+`code: "attachment_input_unsupported"`. The same request is refused again, so it
+is not a retry candidate. Codex and Muse refuse a non-image file with a plain
+error that carries no code.
 
 A completed turn does not discard the conversation. If the next turn needs a new
 execution Session, it remains linked beneath the same Conversation. Station-native

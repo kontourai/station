@@ -916,6 +916,7 @@ describe('resolveComposerImageSupport (station#3344)', () => {
           ...acpConnection,
           observedImagePrompt: true,
           modelLabel: 'big-pickle',
+          modelSupportVaries: true,
         }),
       ).toEqual({
         attachable: true,
@@ -927,6 +928,15 @@ describe('resolveComposerImageSupport (station#3344)', () => {
           ...acpConnection,
           observedImagePrompt: true,
           modelSupport: 'yes',
+          modelSupportVaries: true,
+        }),
+      ).toEqual({ attachable: true });
+      // An engine serving one provider's models: its "yes" is not noise-worthy.
+      expect(
+        resolveComposerImageSupport(ENGINE_CAPABILITY_MATRICES.acp, {
+          ...acpConnection,
+          observedImagePrompt: true,
+          modelLabel: 'kiro-model',
         }),
       ).toEqual({ attachable: true });
     });

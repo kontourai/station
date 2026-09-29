@@ -520,6 +520,13 @@ export interface ComposerImageSupportInputs {
   modelSupport?: ModelImageSupport;
   /** The selected model, named in a model-level refusal. */
   modelLabel?: string;
+  /**
+   * The connected engine routes to models from more than one provider, so an
+   * engine-wide image "yes" says nothing about the selected model (OpenCode
+   * swaps an image for an error text when its model lacks image input). Only
+   * then does an unknown per-model answer earn an attach-time caveat.
+   */
+  modelSupportVaries?: boolean;
 }
 
 /**
@@ -587,7 +594,7 @@ export function resolveComposerImageSupport(
         caveat: `${engine} has not reported whether it accepts images yet. Station checks when you send.`,
       };
     }
-    if (inputs.modelSupport !== 'yes') {
+    if (inputs.modelSupportVaries && inputs.modelSupport !== 'yes') {
       return {
         attachable: true,
         caveat: `${engine} accepts images, but Station can't confirm ${inputs.modelLabel ?? 'the selected model'} can read them.`,

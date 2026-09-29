@@ -34,6 +34,23 @@ import {
 } from '../../utils/modelCapabilities';
 
 type ModelOption = { id: string; name: string };
+
+/**
+ * Whether an engine's catalog spans models from more than one provider
+ * (`provider/model` ids with distinct prefixes, as OpenCode reports them).
+ * Such an engine's image capability is per model, not per engine.
+ */
+function routesToSeveralModelProviders(
+  models: ReadonlyArray<{ id: string }>,
+): boolean {
+  const prefixes = new Set(
+    models.flatMap((model) => {
+      const slash = model.id.indexOf('/');
+      return slash > 0 ? [model.id.slice(0, slash)] : [];
+    }),
+  );
+  return prefixes.size > 1;
+}
 const EMPTY_CONNECTIONS: never[] = [];
 const EMPTY_ORCHESTRATION_SESSIONS: never[] = [];
 
@@ -459,6 +476,9 @@ export function useChatDockViewModel({
           }
         : {}),
       modelSupport: selectedModelImageSupport,
+      modelSupportVaries: routesToSeveralModelProviders(
+        runtimeConnection ? runtimeCatalogVisibleModels(runtimeConnection) : [],
+      ),
       ...(typeof currentModelId === 'string'
         ? { modelLabel: currentModelId }
         : {}),
