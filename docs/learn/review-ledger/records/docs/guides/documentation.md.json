@@ -9,14 +9,14 @@
 
   "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
 
-  "document": {"digest":"d42aca889c91168cdf664e063fbf118237933d042f6ec1a147f3779be6ef9178","revision":"75ef817fd8b4a0ad20fe2f453007ae759255c437"},
+  "document": {"digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
 
   "sources": [
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46","revision":"0d0a38055b9253d9c0d40f5d4315b929cb41c3f7"},
+    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"888c42dffff4aae57a7a6f6f397c8ba1ecca96ee"},
 
-    {"path":".veritas/attestations/HEAD","digest":"509a9ed1d454af138d096f874c8fe21ce9e76cb34982654b06a62778d622bb41","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".veritas/attestations/HEAD","digest":"4c516b0852a3baebb0131bc23e8520194c4f1450bc5b5a3ba8fd5379fe31d0cc","revision":"444d82c707c82d14f62e3328cc0be5a43f3830b5"},
 
     {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
@@ -34,7 +34,7 @@
 
     {"path":"scripts/lib/review-binding.mjs","digest":"09c45446e0d7070b8310fd86f888b37dbe873f53854f48e8bf63ed18481fa692","revision":"6c3604888394821808a5617ddd044c6e61d86fc2"},
 
-    {"path":"scripts/migrate-review-ledger.mjs","digest":"17254859ee90994b6d914a70591c3452ba88cfeb522716c4b319aee59901d2c1","revision":"221b5bfc0f1e72b6b346e52cf3378431ec8b652e"}
+    {"path":"scripts/migrate-review-ledger.mjs","digest":"abd6a52260b7998711698aceea00188a7be671b67e64ee628fc8148a948692cc","revision":"0fbe5956089a1d03ec26c40bee76c09ff159d0d8"}
   ],
 
   "checks": [

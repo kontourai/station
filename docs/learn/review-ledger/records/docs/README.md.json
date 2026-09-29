@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"docs/guides/documentation.md","digest":"d42aca889c91168cdf664e063fbf118237933d042f6ec1a147f3779be6ef9178","revision":"75ef817fd8b4a0ad20fe2f453007ae759255c437"},
+    {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
 
     {"path":"docs/learn/README.md","digest":"0ac8f8ac857022280619dd19947686c17b2bda0f1d6a954b1591b0c65fe81404","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
 
