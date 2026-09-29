@@ -14895,7 +14895,7 @@
     {
       "path": "docs/guides/local-collaboration-lab.md",
       "documentDigest": "23cebd66c9b548a70e1f3199e1212c52d89af935d8fd2da9c3c511d79658d748",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "10865a5ad289d1a7c5b815262f4df15763a368f7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented stage selection/exit/retention, TLS and signing trust, persistence/caller currentness, application framing, account/protocol versus UI profiles, cross-machine SSH fixture and native-v2 diagnostic boundaries. Historical receipts stay dated. Corrected the signing-command ownership statement and matching CLI help scope.",
@@ -14951,7 +14951,7 @@
         },
         {
           "path": "scripts/browser-transport-lab.ts",
-          "digest": "bcb681ee30437f1c49cdb64a99d6a3e19807829fd26df32f44eb33f30d2ff197"
+          "digest": "1dca04b7e16d1a9974f5c3534eaf9e22e2d0e1b234da58770d40a7d87389fbe4"
         },
         {
           "path": "scripts/connection-key.ts",
@@ -15235,7 +15235,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 sends 403 insufficient_scope only when a Station credential is present and recognized but not admitted. Three 401 claims are outside that change. Account guests with no Device credential have no credential to recognize, so they still get 401. An account-bound Device without account proof gets 401 account_authentication_required from the alias path inside the admitted branch. The broker withdrawal 401 comes from a separate owner. Historical receipts stay dated. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "nativeDiagnosticEchoBridge.ts now delegates to the shared createNativeRelaySignalingBridge with the same three diagnostic commands and native_diagnostic_* error codes; the shared factory additionally requires exact open-receipt and answer keys, which match the host's serde structs. The lab guide's native-v2 diagnostic claims (Chromium/Node controller, no Tauri command invocation, no protected application channel) remain accurate; no prose change. Checked: nativeDiagnosticEchoBridge and nativeApplicationSignalingBridge focused tests 12/12 on the merged tree. Limits: the lab itself was not run.",
-        "Re-read 'Free local collaboration lab' against C2b: runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Free local collaboration lab' against C2b: runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "Cites scripts/browser-transport-lab.ts. The change replaces a hard-coded nodeDatachannel report literal with the version the root manifest pins; it changes no check, fixture or profile. The page's 'node-datachannel 0.33.3' is stated as an observed version from a past local run ('observed test versions, not a cross-platform support promise'), which the change does not alter, so the sentence stays true. No other claim on the page depends on the report field. Checked by reading the changed function and the sentence, not the whole page."
       ]
     },
     {
