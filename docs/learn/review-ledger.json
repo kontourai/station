@@ -1584,7 +1584,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "6a0d3e154170e88514a9ad71e1b7af587073aeb4",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1616,7 +1616,7 @@
         },
         {
           "path": "docs/reference/cli.md",
-          "digest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca"
+          "digest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817"
         },
         {
           "path": "install.sh",
@@ -1678,7 +1678,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed."
+        "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed.",
+        "#2966 delta: CLI reference gained credential-profile commands and runtime app-home resolution moved to a resolver; README makes no connections-profile or app-home claims. No change."
       ]
     },
     {
@@ -1695,7 +1696,7 @@
     {
       "path": "deploy/gcp-dev/README.md",
       "documentDigest": "b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Single-owner GCP development recipe with a retained historical qualification record. Full 170-line baseline read. Bootstrap guard/swap helper, container enrollment boundary and GCP preview source checked; official GCP documentation checked read-only. The 2026-09-05 drill remains historical evidence, not fresh cloud qualification.",
@@ -1827,7 +1828,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -1873,13 +1874,14 @@
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The README's separate terminal/voice listener and station-control delivery statements do not depend on the removed path, so the prose remains accurate. Source review only.",
         "Re-read the single-operator GCP recipe against the .dockerignore and Dockerfile edits. Its container claims are about the runtime image, the boot/data disk, IAP/OS Login and the E2 machine reference, not the build context or COPY list, so no prose change is needed. The Dockerfile edit adds docs/ to the discarded build stage only; the runtime stage at line 63 onward pulls no docs path, so the image it deploys is unchanged. | Re-read the GCP single-operator recipe against the follow-up .dockerignore/Dockerfile change. The build stage now also copies biome.json, .gitignore and config/; the runtime stage still copies /app/config from build, so the runtime image now carries all of config/'s public JSON (previously two files) and still no docs/, biome.json or .gitignore (checked with docker run ls /app). The recipe's claims concern image enrollment by digest or archive, UID/GID 1000, disk, IAP/OS Login and measured sizing on an older revision; none enumerate image contents, so no prose change is needed. | Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern).",
-        "Re-read 'Private GCP development environment' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Private GCP development environment' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
       "path": "deploy/public-ingress/README.md",
       "documentDigest": "713a080bec7e77d77db623d83a52874bb698556e6ddc28bb75eda69b0e864d5b",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Optional Caddy Compose ingress template and its protocol qualification fixture. Full 128-line baseline read. Compose/Caddy files and the synthetic smoke upstream traced; actual Compose model validated read-only. No Caddy/Station startup, public CA issuance, DNS change or smoke execution.",
@@ -2011,7 +2013,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -2057,7 +2059,8 @@
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The profile's ingress, CA and rate-limit statements are unaffected, so the prose remains accurate. Source review only.",
         "Re-read the optional Caddy Compose ingress template against the .dockerignore and Dockerfile edits. It documents the ingress protocol, its qualification fixture and Caddyfile directives, and makes no claim about the build context, the COPY list or image contents, so no prose change is needed. The Dockerfile edit stays inside the discarded build stage. | Re-read the Caddy ingress template against the follow-up .dockerignore/Dockerfile change (build stage adds biome.json, .gitignore and config/; runtime gains the rest of config/'s public JSON). The template requires a reviewed digest-pinned Station image and documents only the ingress protocol, fixture and Caddyfile, with no claim about build context or image contents, so no prose change is needed. | Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern).",
-        "Re-read 'Public HTTPS for a single-owner Station' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Public HTTPS for a single-owner Station' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -2770,7 +2773,7 @@
     },
     {
       "path": "docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "design",
       "state": "classified",
       "summary": "The existing owner-decision supersession remains intact. A small current-route note explains that the one-shot migration helper requires the repository ./station launcher; the standalone CLI refuses without its injected server migration dependency. Lower flag/alias sections remain dated design history.",
@@ -2783,7 +2786,7 @@
         },
         {
           "path": "packages/cli/src/help.ts",
-          "digest": "3164b377334a123ab051a7fc449ce05305e44e6180155707a5391365c0c102a2"
+          "digest": "5ca1e255931a822b2bd15f06d138c10b8246f8a8eb076d12fdfa119e197d9b4c"
         },
         {
           "path": "src-server/routes/schemas/schema-definitions/content.ts",
@@ -2802,7 +2805,8 @@
         "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
         "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
         "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
-        "Integration source review through d72f79b08: #2904's cli.ts change only routes describeCliError through explainFullAccessRefusal first. The migration-helper route note (repository ./station launcher; the standalone CLI refuses without the server migration dependency) is unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904's cli.ts change only routes describeCliError through explainFullAccessRefusal first. The migration-helper route note (repository ./station launcher; the standalone CLI refuses without the server migration dependency) is unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "#2966 delta: help.ts changed only the connections usage/detail lines; ADR concerns playbook/skills help and is unaffected. No change."
       ]
     },
     {
@@ -3525,7 +3529,7 @@
     {
       "path": "docs/architecture.md",
       "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
@@ -3621,7 +3625,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/conversation/runtime-event-log.ts",
@@ -3713,13 +3717,14 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by execution-target-execution.ts (canonicalHandoffEffectDigest unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Re-read 'Station Architecture' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Station Architecture' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -3771,7 +3776,7 @@
         },
         {
           "path": "docs/reference/cli.md",
-          "digest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca"
+          "digest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817"
         },
         {
           "path": "docs/reference/config.md",
@@ -3897,13 +3902,14 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); orchestration-decomposition-map.md (branch prose edit (T7 wiring-test note)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "Re-read 'Abstraction review' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Abstraction review' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta: checked for CLI connections, credential-profile and runtime app-home claims; none (proxy mentions are ingress). No change."
       ]
     },
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4483,7 +4489,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/conversation/native-execution-workspace.ts",
@@ -4643,7 +4649,7 @@
         },
         {
           "path": "src-server/services/connections/connection-service.ts",
-          "digest": "e22391e56913365aeaf9318e7435fe6444ca24223492bdf45a5e5d208079406a"
+          "digest": "d452e410c257a57b6a74e09d8b8c72870285c0fea77f0f44768a7814ae7d50eb"
         },
         {
           "path": "src-server/services/connections/runtime-auth-health-monitor.ts",
@@ -5652,7 +5658,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; registry.ts only deleted the caller-less registerBrandingProvider (getBrandingProvider default unchanged); chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Rechecked StationControlDispatchScope (scope decided before contacting another Station, which C2b's route refusals reinforce) and the SDK/http module rows; no claim names the removed caller-delegation route or the tool-side peer path. After merging main 91472e665, re-read main's edit here (the scheduler paragraph drops addProvider and the legacy-provider receipt wording); it names no station-control forwarding, caller-delegation or SDK body-read behaviour, so the above still holds."
+        "Rechecked StationControlDispatchScope (scope decided before contacting another Station, which C2b's route refusals reinforce) and the SDK/http module rows; no claim names the removed caller-delegation route or the tool-side peer path. After merging main 91472e665, re-read main's edit here (the scheduler paragraph drops addProvider and the legacy-provider receipt wording); it names no station-control forwarding, caller-delegation or SDK body-read behaviour, so the above still holds.",
+        "#2966 delta: checked RecoveryLedger/CredentialRecoveryModule and ConnectionService sections; candidate selection criteria are not described there (connection-service stageAutomaticCredentialProfileTransition now prefers a same-overlay candidate), and no app-home spawn-env claims exist. No prose change."
       ]
     },
     {
@@ -5683,7 +5690,7 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical.",
@@ -5716,7 +5723,7 @@
         },
         {
           "path": "src-server/providers/__tests__/claude-adapter.test.ts",
-          "digest": "b34b2c9f1367a54577331ed96ad07fed64463274dfa8ae21a135ce21667f4f06"
+          "digest": "b6b1dd10a5c2d135feccfbdd210e57502e275f91827c3c5e4ff994a1d8523618"
         },
         {
           "path": "src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts",
@@ -5728,7 +5735,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "1751a7c0f970ab35f4fd4a4812cdc0c0b134668d1cbbb149962f6b1d27d7c9c4"
         },
         {
           "path": "src-server/providers/adapters/claude-approval-mode.ts",
@@ -5748,7 +5755,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/orchestration/request-presentation.ts",
@@ -5775,7 +5782,8 @@
         "Integration source review through e0314c727: claude-adapter.ts dropped the unused stdio `mintStationControlCallerToken` fallback and its test, and package.json/pnpm-lock removed only @kontourai/bearing and @kontourai/forage (Agent SDK still 0.3.261). The explicit mcpServers/strictMcpConfig, PreToolUse and delivery claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata and stamps acknowledgement on request.resolved in the claude and acp adapters, and adds handleRequestDeliveryEvent plus the toast copy 'this request is no longer open.' in approvalHandlers.ts (tests updated). None of this touches the tool-request preview readers, the pre-tool seams or the Ask-mode permission path the document describes. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Re-read 'Pre-tool blocking and grant delivery boundary' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Pre-tool blocking and grant delivery boundary' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta: claude-adapter change is limited to resolveAppHomeEnv's rethrow condition and option doc; PreToolUse/canUseTool delivery claims untouched. No change."
       ]
     },
     {
@@ -5824,7 +5832,7 @@
     {
       "path": "docs/contexts/evidence-governance/CONTEXT.md",
       "documentDigest": "976207569e04724170b807f2585f4b93359a37107399fd0f81072217384b153c",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Definitions reconciled with actual storage, scheduling, notification, telemetry, review and governance interfaces; receipts and declarations distinguished from evaluated proof.",
@@ -5876,7 +5884,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/conversation/runtime-event-log.ts",
@@ -5939,7 +5947,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the service update-home action, a launcher install step and a service-update status line to service.ts. None of that bears on the evidence-governance glossary terms, which do not describe service commands; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
-        "Re-read 'Evidence Governance Context' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Evidence Governance Context' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -6018,7 +6027,7 @@
     {
       "path": "docs/contexts/operations/CONTEXT.md",
       "documentDigest": "ecec943113be3307ec644a418883c4ea8a172cd156a57ba0bb58c8b21f3cd73b",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Definitions reconciled with actual storage, scheduling, notification, telemetry, review and governance interfaces; receipts and declarations distinguished from evaluated proof.",
@@ -6070,7 +6079,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/conversation/runtime-event-log.ts",
@@ -6133,7 +6142,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds launcher install, a hidden update-home action and status `update` rendering. This context names no CLI service or upgrade behavior (its owner table covers server services); prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
-        "Re-read 'Operations Context' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Operations Context' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -7141,7 +7151,7 @@
     {
       "path": "docs/design/cli-triage.md",
       "documentDigest": "b064c8f2e26b8250bf675fac1277b9674b87ce0483d62bed32072950b536887d",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed every command-design claim against CLI dispatch, source-doctor injection, authenticated diagnostics selection, artifact redaction and actual child-launch implementation. Corrected model-service sharing and terminal-output limits.",
@@ -7149,7 +7159,7 @@
       "sources": [
         {
           "path": "docs/reference/cli.md",
-          "digest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca"
+          "digest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817"
         },
         {
           "path": "packages/cli/src/__tests__/triage.test.ts",
@@ -7188,7 +7198,8 @@
         "Integration source review through d72f79b08: #2904 changes cli.ts only in `describeCliError`, which now tries `explainFullAccessRefusal` before `explainRequestFailure`. docs/reference/cli.md gains the access devices/scope/scopes reference. None of this touches triage dispatch, source-doctor injection, authenticated diagnostics selection, artifact redaction or child-launch flags. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 changes only packages/cli/src/__tests__/triage.test.ts. The invalid-remote-diagnostics rejection now runs unconditionally instead of only when this machine observed remote as unavailable. No triage product behavior changed. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the delegate decision-delivery subsection to docs/reference/cli.md, and the auto-merged cli.md is coherent. The triage design (bundle collection, agent launch flags, artifact policy) does not touch delegation decisions. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) changed only the service and upgrade sections of docs/reference/cli.md (fixed launcher, supervised update, Check for server updates). The triage command's reference text and this design's claims are untouched. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) changed only the service and upgrade sections of docs/reference/cli.md (fixed launcher, supervised update, Check for server updates). The triage command's reference text and this design's claims are untouched. Prose accurate. Source review is separate from executed test evidence.",
+        "#2966 delta: cli.md/surfaces.ts gained connections profile-env; triage design has no connections-command claims. No change."
       ]
     },
     {
@@ -7412,8 +7423,8 @@
     },
     {
       "path": "docs/design/connections-onboarding.md",
-      "documentDigest": "dc33fe48b286ac9111bfb09c095a1c85ac62665eb89ec9e77a8637d28c3126ed",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "documentDigest": "6e0fcf7e140e011f55842e3975b7a1edb13df45bd8ea8c73a4fc8eaaba0fac07",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7429,7 +7440,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "1751a7c0f970ab35f4fd4a4812cdc0c0b134668d1cbbb149962f6b1d27d7c9c4"
         },
         {
           "path": "src-server/providers/adapters/claude-skills-materialization.ts",
@@ -7441,7 +7452,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
+          "digest": "91ae05cb1bc78283c1c8c71ca817aab3a54fd3463cc39a77d2a6becb0f04661c"
         },
         {
           "path": "src-server/providers/app-home/app-home-profiles.ts",
@@ -7449,7 +7460,7 @@
         },
         {
           "path": "src-server/providers/app-home/credential-profile-registry.ts",
-          "digest": "e3293a071e21174d69a03a1fbd16b0085f7e8ead35b2484e8e045b2bebe85fdc"
+          "digest": "bad8b935cbd17a6de300244d1911ab413525bd2bdd3638b5c0f6a6a0e0a733b9"
         },
         {
           "path": "src-server/providers/auth/claude-auth.ts",
@@ -7469,11 +7480,11 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "50a4c6b484e185b1fee200d9ac4ff9394e42dbcdbaa5bb16ae04a1f59aaea764"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/acp/acp-process.ts",
@@ -7481,7 +7492,7 @@
         },
         {
           "path": "src-server/services/connections/connection-recovery-policy.ts",
-          "digest": "a44fd5712188a1b3780c66a55ec214794c832d70b972e3f8348c07f755fb593e"
+          "digest": "5f4391d4584a9edc34f9876d492500ec6bea6d10e32dcb283c9d771de0127634"
         },
         {
           "path": "src-server/services/orchestration/credential-application-ledger.ts",
@@ -7522,6 +7533,10 @@
         {
           "path": "src-ui/src/views/provider-settings/providerCatalog.tsx",
           "digest": "a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758"
+        },
+        {
+          "path": "packages/contracts/src/connection-recovery.ts",
+          "digest": "d35938c2191430abf9312e0a697621ad003d2e37cc1e7ff95bf8f3388925970e"
         }
       ],
       "checks": [
@@ -7537,7 +7552,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 changed Claude/Codex adapter approval acknowledgement and Codex transport reply/acknowledgement handling only. spawnCodexProcess, env layering and app-home wiring are untouched; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "Re-read 'Design: Connections onboarding & capability passthrough' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Design: Connections onboarding & capability passthrough' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "Updated §1.2: persisted record may carry a non-secret env overlay; selected-profile failure (explicit ref or active profile, incl. invalid persisted overlay) fails closed; automatic selection refuses environment_mismatch. Re-checked §1.1 spawn-env table and adoption/discovery exclusions against claude-adapter/codex-adapter: unchanged and still accurate."
       ]
     },
     {
@@ -7704,7 +7720,7 @@
     },
     {
       "path": "docs/design/hosted-execution-isolation.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "design",
       "state": "classified",
       "summary": "Proposed isolation boundary already labeled as such; no prose edit needed. Checked current runtime/persistence ownership and admitted plugin-module dynamic import to keep application admission separate from an arbitrary-code sandbox.",
@@ -7717,7 +7733,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/plugins/plugin-public-server.ts",
@@ -7731,7 +7747,8 @@
         "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-public-server.ts (unused disposePluginPublicServerModule deleted); claims unaffected.",
-        "Re-read 'Hosted execution and plugin isolation' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Hosted execution and plugin isolation' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -9146,7 +9163,7 @@
     {
       "path": "docs/design/plugin-installation-lifecycle.md",
       "documentDigest": "e70ae35ea8391f86d8cb26351b3a6cad2e110e042502d0c941910da615069be2",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete lifecycle design against local service/adapter, actual installer, admission custody, grants and route callers: expected revisions, staged code/data selection, unknown commit and compensation, retained generation recovery, withdrawal versus reclamation, reset, bounded journal state and separate legacy behavior. Clarified selected-runtime CLI dependency and package-owned Git discovery.",
@@ -9174,7 +9191,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/plugins/__tests__/plugin-installation-restart.test.ts",
@@ -9242,7 +9259,8 @@
         "Integration source review through ed05e6f6c: #2864 records proposal-staged local folders in plugin-source-staging.json (PLUGIN_SOURCE_STAGING_FILE, read by plugin-install-routes.ts), so previews and reinstalls keep stripping Git metadata after the proposal resolves. Added that to the source-check paragraph. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); claims unaffected.",
-        "Re-read 'Plugin installation lifecycle' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Plugin installation lifecycle' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -9445,7 +9463,7 @@
     },
     {
       "path": "docs/design/principals.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "design",
       "state": "classified",
       "summary": "Mixed historical decision record. A banner distinguishes retained rollout reasoning from gated account and membership implementation; source existence is not enablement or two-human proof.",
@@ -9458,7 +9476,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/projects/project-membership-runtime.ts",
@@ -9471,7 +9489,8 @@
         "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
         "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Re-read 'Design: Principals — what \"people\" means in Station, and when it changes' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Design: Principals — what \"people\" means in Station, and when it changes' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -9506,7 +9525,7 @@
     },
     {
       "path": "docs/design/project-membership.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "design",
       "state": "classified",
       "summary": "Mixed specification and implementation updates. The current membership service, public route composition and runtime are identified; initial missing-API assertions are explicitly historical.",
@@ -9523,7 +9542,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/projects/project-membership-service.ts",
@@ -9536,7 +9555,8 @@
         "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
         "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Re-read 'Project membership and device enrollment' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Project membership and device enrollment' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -9589,7 +9609,7 @@
     {
       "path": "docs/design/registry-trust-policy.md",
       "documentDigest": "d1bc122bde13d3233aa0b193b7e3f2ee248e07c35b5a87ed2bcea54b9f2cfe11",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete applied-policy design through schema and ConfigLoader persistence, Ed25519 policy identity, applied SQLite compare-and-set, runtime initialization/rebuild publication, preview/consent observation, registry claims, dependencies and retained recovery. Corrected private-key PEM save behavior and distinguished envelope syntax from valid cryptographic key material.",
@@ -9613,7 +9633,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/plugins/__tests__/registry-trust-policy.test.ts",
@@ -9648,7 +9668,8 @@
         "Integration source review through e0314c727: plugin-install-transaction.ts now stages proposed local installs without git metadata (#2840). The canonical station-plugin-tree/v2 digest still skips only root .git, and the new digestWithout observation is additive. registry-supply-chain.ts only marks RegistryLastKnownGoodStore as not yet active. The digest and retained-recovery prose is accurate. Source review is separate from executed test evidence; no tests were rerun.",
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
-        "Re-read 'Applied registry trust policy' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Applied registry trust policy' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -9693,7 +9714,7 @@
     {
       "path": "docs/design/session-tape-replay.md",
       "documentDigest": "4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9709,7 +9730,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
+          "digest": "91ae05cb1bc78283c1c8c71ca817aab3a54fd3463cc39a77d2a6becb0f04661c"
         },
         {
           "path": "src-ui/src/components/chat/ChatSettingsPanel.tsx",
@@ -9799,7 +9820,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Mentions approval only as a replayed event/disabled action class; no approval-card layout or colour claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The one other changed source is codex-adapter.ts, whose #2921 change since this record is a comment on the tool-level session grant; the page makes no claim about Codex session grants."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The one other changed source is codex-adapter.ts, whose #2921 change since this record is a comment on the tool-level session grant; the page makes no claim about Codex session grants.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -10167,7 +10189,7 @@
     {
       "path": "docs/design/survey-flow-review.md",
       "documentDigest": "85cc721ee00fca17ff7a5a6b19e83155f59ac5f256cf95123adcd30b638002aa",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete review-composition document against Project store envelope/binding, unique opaque-reference lookup, route schemas/statuses, cross-Project partial failures and public Flow Agents delegation. Separated Station checks from Survey/Flow-owned lifecycle validation and actual cross-harness continuation.",
@@ -10195,7 +10217,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/flow/__tests__/survey-flow-review-service.test.ts",
@@ -10215,13 +10237,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: flow-runs.routes.test.ts only renamed one POST /init test; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only flow-runs.routes.test.ts, renaming one POST /init test title (verified with git diff d0ca944c5 062fad816); the page makes no claim about that test; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Re-read 'Survey-backed Flow review' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Survey-backed Flow review' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
       "path": "docs/design/task-dispatcher.md",
       "documentDigest": "f9bd229c601cd56e85be31ece9d299bda3e57394f27c539380cc49e8d09492ba",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed dispatcher, composition and runtime caller review; corrected adapter inputs, removed stale adapter count, preserved cancellation/uncertain-effect limits.",
@@ -10229,7 +10252,7 @@
       "sources": [
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/routes/runtime-route-support.ts",
@@ -10258,7 +10281,8 @@
         "Final integrated dispatcher/composition, docs MCP and real reader selection: 53 tests passed across four files.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by task-dispatcher.test.ts (exact refusal assertions); claims unaffected.",
-        "Re-read 'Task Dispatcher' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Task Dispatcher' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -10617,7 +10641,7 @@
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "7d865d177cd57a733bba5caad0e3c575dcb98ae752733dc26194bba6af92ba3f",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10677,7 +10701,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "1751a7c0f970ab35f4fd4a4812cdc0c0b134668d1cbbb149962f6b1d27d7c9c4"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -10685,7 +10709,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
+          "digest": "91ae05cb1bc78283c1c8c71ca817aab3a54fd3463cc39a77d2a6becb0f04661c"
         },
         {
           "path": "src-server/providers/adapters/codex-approval-mode.ts",
@@ -10729,7 +10753,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "50a4c6b484e185b1fee200d9ac4ff9394e42dbcdbaa5bb16ae04a1f59aaea764"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -10777,7 +10801,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -10801,11 +10825,11 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "80e4ce2713521a60ffb7c87b5fa027399eeecf1407e63453f33dc7a55f18430b"
+          "digest": "f3cb529b5f04200b5dcc3782f9ca7823491d7e3a1a097ac6d12186cce1f2688f"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
-          "digest": "f9cce55ccfe8c872ac19a1ae00c37fec39e4c5d6bd43412e23a1987737723d5b"
+          "digest": "b9077e653882a633877f751e732ba91795e0d1dd0a7450d35b63ada04e02c593"
         },
         {
           "path": "src-server/services/connections/device-code-login.ts",
@@ -10946,7 +10970,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); attention-projection.ts (comment only); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "#2862: rewrote Theming & Colors; the only other change to this record is the added source station-tones.ts. Checked against installed @kontourai/ui 1.12.0: tokens.css defines --k-positive/--k-caution/--k-negative/--k-active/--k-neutral and --k-positive-soft/--k-caution-soft/--k-negative-soft/--k-active-soft (no neutral soft fill), and no --k-status-contrast, --k-trust-*, --k-action or --k-focus; Badge and StatusBadge take a tone and render their label; station-tones.ts is Station's domain-to-tone mapping; index.css restyles .tone-positive/caution/negative/active (positive-status-contrast.test.ts checks AA). DESIGN.md is linked upstream because 1.12.0 does not ship it. The rest of the guide is unchanged.",
-        "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines."
+        "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines.",
+        "#2966 delta: checked for connection env/app-home/credential-profile claims; none present (agent credentialProfileRef semantics unchanged). No change."
       ]
     },
     {
@@ -11858,8 +11883,8 @@
     },
     {
       "path": "docs/guides/connections.md",
-      "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "documentDigest": "762f7999696a5ca6a1214c9c22439f4e82897569bd545b72bc26ac3259e0652c",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11987,7 +12012,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "1751a7c0f970ab35f4fd4a4812cdc0c0b134668d1cbbb149962f6b1d27d7c9c4"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -11995,7 +12020,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
+          "digest": "91ae05cb1bc78283c1c8c71ca817aab3a54fd3463cc39a77d2a6becb0f04661c"
         },
         {
           "path": "src-server/providers/adapters/codex-approval-mode.ts",
@@ -12027,7 +12052,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "50a4c6b484e185b1fee200d9ac4ff9394e42dbcdbaa5bb16ae04a1f59aaea764"
         },
         {
           "path": "src-server/routes/connections/self-hosted-broker.ts",
@@ -12095,7 +12120,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -12139,11 +12164,11 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "80e4ce2713521a60ffb7c87b5fa027399eeecf1407e63453f33dc7a55f18430b"
+          "digest": "f3cb529b5f04200b5dcc3782f9ca7823491d7e3a1a097ac6d12186cce1f2688f"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
-          "digest": "f9cce55ccfe8c872ac19a1ae00c37fec39e4c5d6bd43412e23a1987737723d5b"
+          "digest": "b9077e653882a633877f751e732ba91795e0d1dd0a7450d35b63ada04e02c593"
         },
         {
           "path": "src-server/services/connections/device-code-login.ts",
@@ -12332,6 +12357,10 @@
         {
           "path": "tests/connections-crud.spec.ts",
           "digest": "b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5"
+        },
+        {
+          "path": "src-server/providers/app-home/credential-profile-env.ts",
+          "digest": "592eeb3cbdb81bab980bf2ce4228830920f84e2938864986f7bdf6089a5b95b8"
         }
       ],
       "checks": [
@@ -12374,7 +12403,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval here is key/device approval; no tool-call card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Re-read 'Connections Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; pairing-route-scopes.ts drops the /station-control/caller/delegation entry; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Connections Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; pairing-route-scopes.ts drops the /station-control/caller/delegation entry; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
+        "Added the credential-profile env overlay section and checked each claim against connection-env.ts (validateCredentialProfileEnv: names, 64 entries, 32,768 code units, NUL, credential-shaped non-empty refusal, TMPDIR/CLAUDE_CONFIG_DIR/CODEX_HOME/internal names), credential-profile-env.ts (overlay under home key; fail closed), claude-adapter/codex-adapter merges (ambient < connection env < overlay < home key < TMPDIR; codex TMPDIR in spawnCodexProcess), exclusions (listModelCatalog, adoption/source affinity, readiness, credential-enrolment), connection-recovery-policy environment_mismatch, and the app-home.ts PUT route. Existing proxy-section claims unchanged."
       ]
     },
     {
@@ -12925,7 +12955,7 @@
     {
       "path": "docs/guides/deployment.md",
       "documentDigest": "1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Operating paths for checkout/container deployments, hosted foundations, and the legacy macOS dogfood supervisor. Full 920-line baseline and parent working bytes read. Source checks cover Docker, CLI/proxy/auth, home archive/schema/migration, hosted preflight, channel homes, supervisor staging/timing/health and cleanup. Detailed installer rollback, tenant carriers and lifecycle journal failure matrices were not fully re-executed; runtime qualification is partial. Follow-up: Changed pre-provisioning paragraphs checked against real schema-gate/lifecycle/server/migration ordering. Windows issue-link addition preserves the already disclosed staging limitation.",
@@ -13069,7 +13099,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -13117,7 +13147,8 @@
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The hosted tenant carrier claim (token-bound Codex HTTP/SSE session, exact built-in child environment, trusted async context) remains accurate. Source review only.",
         "Re-read the deployment guide's container and image claims against the .dockerignore and Dockerfile edits. The guide documents runtime deployment, the hosted preflight, the installer rollback and channel homes; it does not enumerate the build-context allowlist, the COPY list, or image contents, so no prose change is needed. The Dockerfile edit is confined to the build stage (line 46, before the runtime stage at line 63) and the .dockerignore edit only widens what is sent to the docker daemon, not what lands in the image. | Re-read the local source build paragraph and command block against the follow-up .dockerignore/Dockerfile change. The claim that the Docker context excludes .git, credentials, nested node_modules and dist still holds: .gitignore is admitted as a Biome input but no pattern re-admits .git (container-release.test.ts now rejects !.git, !.git/, !.git/**, !.git* per line; fault-injected), and node scripts/check-container-build-context.mjs passed. The documented docker build with explicit provenance build-args was executed on this tree and succeeded (it failed on the prior head), and scripts/container-smoke.sh passed on arm64 Docker Desktop. The runtime image now also carries the rest of config/'s public JSON; the guide's image-content claims (Git, OpenSSH client, certificate trust, terminal support, UID/GID 1000) are unchanged, so no prose change is needed. | Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern).",
-        "Re-read 'Deployment Guide' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Deployment Guide' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -14044,7 +14075,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14088,7 +14119,7 @@
         },
         {
           "path": "src-server/services/connections/connection-service.ts",
-          "digest": "e22391e56913365aeaf9318e7435fe6444ca24223492bdf45a5e5d208079406a"
+          "digest": "d452e410c257a57b6a74e09d8b8c72870285c0fea77f0f44768a7814ae7d50eb"
         },
         {
           "path": "tests/agents-copy-existing.spec.ts",
@@ -14217,7 +14248,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) deleted tests/plugin-system.spec.ts and tests/plugin-dependency-lifecycle.spec.ts and removed them from tests/e2e-manifest.mjs. The commit gives plugin-pane-sdk-context, minimal-workspace-example and bundled-plugin-registry-lifecycle ownership of installed-plugin pane rendering. The same commits added tests/authenticated-request-canary.spec.ts (smoke-live), refactored run-e2e-suite.mjs evidence retention into settleStartedE2ERun, dropped plugin-update's update-banner test and monitoring's redaction assertion, and changed the agents-editor-gates/readiness-board rationale. None of these other changes alter the matrix's claims. Corrected the Plugins row: removed plugin-system, added the three owning specs, and changed 'installed layout loading' to 'installed plugin panes rendering'. The ledger may want to add tests/plugin-pane-sdk-context.spec.ts, tests/minimal-workspace-example.spec.ts and tests/bundled-plugin-registry-lifecycle.spec.ts as sources. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): tests/e2e-manifest.mjs adds tests/branding-theme-boot.spec.ts to the product bucket (parallel-safe, surface Shell, tier full); PR_BROWSER_SMOKE_CONTRACT and suite runner behavior are unchanged. The matrix names no Shell/theming row and claims no exhaustive coverage. Prose accurate. Source review is separate from executed test evidence.",
-        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose."
+        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
+        "#2966 delta: connection-service changes (profile env setter, automatic selection guard) add no browser journeys; matrix unaffected. No change."
       ]
     },
     {
@@ -14562,7 +14594,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14598,11 +14630,11 @@
         },
         {
           "path": "docs/reference/api.md",
-          "digest": "3b5d2e09a30b6c2e39c51535dffe2e291c06d18b80f4c67223639d99c462ab54"
+          "digest": "12a7a3bb4a74cf251f751b13494cc9b4efd97b53bfb9a91f445e3f5a0f6632c2"
         },
         {
           "path": "docs/reference/cli.md",
-          "digest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca"
+          "digest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817"
         },
         {
           "path": "docs/reference/contracts.md",
@@ -14630,7 +14662,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         }
       ],
       "checks": [
@@ -14656,7 +14688,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed docs/guides/documentation.md, covered by its notes above; this branch changed docs/guides/plugins.md, docs/reference/api.md, docs/reference/sdk.md, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by api.md (legacy-provider receipt sentence removed); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Re-read 'Integrating Station into your company or project' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Integrating Station into your company or project' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta: api.md/cli.md gained the profile env route/command; this guide's profile mentions are deployment profiles, not credential profiles. No change."
       ]
     },
     {
@@ -16840,7 +16873,7 @@
     {
       "path": "docs/guides/plugins.md",
       "documentDigest": "2430fc55758bda39ede194cd3a818763ae4890fad69c5ff2b27daa8f4fdf33c5",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the complete guide against manifest/scaffold, public CLI, build and runtime externals, catalog/provider loading, SDK calls, grants, dependency installation, managed lifecycle, registry policy, MCP frame host, server-module request hooks and operational-event callers. Corrected inactive-MCP and inactive-trust claims, stored Agent IDs versus qualified references, tool-call return shape, dev dependency attempt/readiness, local-catalog/build prerequisites and historical bundle metrics.",
@@ -16928,7 +16961,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/mcp/mcp-apps-metadata.ts",
@@ -17024,7 +17057,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): The branding snippet comment now points getTheme() at the white-label overrides in examples/custom-branding; provider-interfaces.ts widens getTheme() to BrandingTheme (flat or per-mode string maps). The comment matches the interface and example. Prose accurate. Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/domain/config-loader-app.ts, covered by its notes above; this branch changed the document, src-server/providers/provider-interfaces.ts, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by provider-interfaces.ts (ISchedulerProvider.runJob now returns only a receipt (legacy string result type removed)); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); plugin-public-server.ts (unused disposePluginPublicServerModule deleted); claims unaffected.",
-        "Re-read 'Plugin Development' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's one-line edit (getTheme comment points at examples/custom-branding); no claim about the Discord forwarder."
+        "Re-read 'Plugin Development' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's one-line edit (getTheme comment points at examples/custom-branding); no claim about the Discord forwarder.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -18355,7 +18389,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "618c04635531af10ce95cda65be2bd40e5b361f98b0fde1a8ae999b125bfb6a0",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18411,7 +18445,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "1751a7c0f970ab35f4fd4a4812cdc0c0b134668d1cbbb149962f6b1d27d7c9c4"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -18419,7 +18453,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
+          "digest": "91ae05cb1bc78283c1c8c71ca817aab3a54fd3463cc39a77d2a6becb0f04661c"
         },
         {
           "path": "src-server/providers/adapters/codex-approval-mode.ts",
@@ -18451,7 +18485,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "50a4c6b484e185b1fee200d9ac4ff9394e42dbcdbaa5bb16ae04a1f59aaea764"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -18487,7 +18521,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -18511,11 +18545,11 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "80e4ce2713521a60ffb7c87b5fa027399eeecf1407e63453f33dc7a55f18430b"
+          "digest": "f3cb529b5f04200b5dcc3782f9ca7823491d7e3a1a097ac6d12186cce1f2688f"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
-          "digest": "f9cce55ccfe8c872ac19a1ae00c37fec39e4c5d6bd43412e23a1987737723d5b"
+          "digest": "b9077e653882a633877f751e732ba91795e0d1dd0a7450d35b63ada04e02c593"
         },
         {
           "path": "src-server/services/connections/device-code-login.ts",
@@ -18650,7 +18684,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Corrected: forwarding to a saved Environment now says the tool never contacts the other Station, it names the Environment to this Station's route, and remote task listings share the bound-operator restriction (C2b added it on GET /delegations)."
+        "Corrected: forwarding to a saved Environment now says the tool never contacts the other Station, it names the Environment to this Station's route, and remote task listings share the bound-operator restriction (C2b added it on GET /delegations).",
+        "#2966 delta: no connection env, app-home or credential-profile claims. No change."
       ]
     },
     {
@@ -18904,7 +18939,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18940,11 +18975,11 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "1751a7c0f970ab35f4fd4a4812cdc0c0b134668d1cbbb149962f6b1d27d7c9c4"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
+          "digest": "91ae05cb1bc78283c1c8c71ca817aab3a54fd3463cc39a77d2a6becb0f04661c"
         },
         {
           "path": "src-server/routes/__tests__/starter-work.routes.test.ts",
@@ -19152,7 +19187,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval flow only; no inline approval-card styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Re-read 'How Starter Work connects first steps to real work' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'How Starter Work connects first steps to real work' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta: adapter changes are credential-profile env resolution only; starter work claims unaffected. No change."
       ]
     },
     {
@@ -21616,7 +21652,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21640,7 +21676,7 @@
         },
         {
           "path": "src-server/services/connections/connection-service.ts",
-          "digest": "e22391e56913365aeaf9318e7435fe6444ca24223492bdf45a5e5d208079406a"
+          "digest": "d452e410c257a57b6a74e09d8b8c72870285c0fea77f0f44768a7814ae7d50eb"
         },
         {
           "path": "src-server/services/connections/connection-smoke-evidence-store.ts",
@@ -21716,7 +21752,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No UI styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the captures this page cites and their evidence text are unchanged, so its claims hold."
+        "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the captures this page cites and their evidence text are unchanged, so its claims hold.",
+        "#2966 delta: connection-service changes are the profile env setter and automatic candidate selection; smoke confidence claims unaffected. No change."
       ]
     },
     {
@@ -21747,12 +21784,12 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
       "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
-      "documentDigest": "3b5d2e09a30b6c2e39c51535dffe2e291c06d18b80f4c67223639d99c462ab54",
+      "documentDigest": "12a7a3bb4a74cf251f751b13494cc9b4efd97b53bfb9a91f445e3f5a0f6632c2",
       "sources": [
         {
           "path": "packages/cli/src/commands/environment.ts",
@@ -21764,7 +21801,7 @@
         },
         {
           "path": "packages/cli/src/commands/surfaces.ts",
-          "digest": "5813b5447084c7e0be3069d8b012d70cea0577b26a5b07e660df7c97dc740204"
+          "digest": "330f32f368d624ef78ba02d126724cc6cdf571542586652f49d66e0b9f7b837b"
         },
         {
           "path": "packages/connect/src/react/DevicePairingPanel.tsx",
@@ -22124,7 +22161,7 @@
         },
         {
           "path": "src-server/routes/schemas/schema-definitions/runtime.ts",
-          "digest": "ec02780cdeda147a6d6e28b9e95fc31c0a84e353983a5c4ef5db51d02e133d42"
+          "digest": "9d68b3fed7d16e2a9aab009bc63230baaab28ba4b56c3587f743925109a32ab2"
         },
         {
           "path": "src-server/routes/schemas/schema-definitions/scheduler.ts",
@@ -22200,7 +22237,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/conversation/conversation-manager.ts",
@@ -22228,7 +22265,7 @@
         },
         {
           "path": "src-server/services/connections/connection-service.ts",
-          "digest": "e22391e56913365aeaf9318e7435fe6444ca24223492bdf45a5e5d208079406a"
+          "digest": "d452e410c257a57b6a74e09d8b8c72870285c0fea77f0f44768a7814ae7d50eb"
         },
         {
           "path": "src-server/services/connections/launchable-model-inventory.ts",
@@ -22457,7 +22494,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/chat/chat.ts, src-server/routes/orchestration/orchestration.ts, src-server/routes/system/install-provenance.ts, src-server/routes/system/system-update-routes.ts, covered by its notes above; this branch changed the document, src-ui/src/lib/branding-theme.ts (added), covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Rechecked the continuation-caller paragraph (it still rebuilds the target from the binding and forwards the model choice, now via this Station's route for a saved Environment) and the pairing-scope and deadline statements; none lists the removed credential or caller-delegation routes. After merging main 91472e665, re-read main's edits (the /api/branding theme override surface, and dropping the legacy scheduler provider sentence); neither touches the continuation-caller, pairing-scope or deadline statements checked above."
+        "Rechecked the continuation-caller paragraph (it still rebuilds the target from the binding and forwards the model choice, now via this Station's route for a saved Environment) and the pairing-scope and deadline statements; none lists the removed credential or caller-delegation routes. After merging main 91472e665, re-read main's edits (the /api/branding theme override surface, and dropping the legacy scheduler provider sentence); neither touches the continuation-caller, pairing-scope or deadline statements checked above.",
+        "Added the PUT credential-recovery profiles/:ref/env section; checked 400 via credentialProfileEnvRequestSchema + validateCredentialProfileEnv (violation text names variables only), 404 for unknown profile/unsupported connection, 409 conflict path, response projection with profiles[].env, and access:manage via the credential-recovery prefix entry in pairing-route-scopes.ts. Other sections unaffected by surfaces.ts/connection-service delta."
       ]
     },
     {
@@ -22488,8 +22526,8 @@
     },
     {
       "path": "docs/reference/cli.md",
-      "documentDigest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "documentDigest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22545,7 +22583,7 @@
         },
         {
           "path": "packages/cli/src/__tests__/surface-http.test.ts",
-          "digest": "25c5cba9118508f5de5c3e124094381579219914c8f966410c91442f9951b5f7"
+          "digest": "f4560843bcb869c4a5d6b9d074ef89c2753b102c1091b9cad3ddaae11f8cd9ae"
         },
         {
           "path": "packages/cli/src/__tests__/triage.test.ts",
@@ -22657,7 +22695,7 @@
         },
         {
           "path": "packages/cli/src/commands/surfaces.ts",
-          "digest": "5813b5447084c7e0be3069d8b012d70cea0577b26a5b07e660df7c97dc740204"
+          "digest": "330f32f368d624ef78ba02d126724cc6cdf571542586652f49d66e0b9f7b837b"
         },
         {
           "path": "packages/cli/src/commands/triage.ts",
@@ -22854,6 +22892,10 @@
         {
           "path": "scripts/lib/portable-server-archive.mjs",
           "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
+        },
+        {
+          "path": "packages/cli/src/help.ts",
+          "digest": "5ca1e255931a822b2bd15f06d138c10b8246f8a8eb076d12fdfa119e197d9b4c"
         }
       ],
       "checks": [
@@ -22878,12 +22920,13 @@
         "Integration source review through 84d56b9a8: e1af43c2c auto-merged a new 'Recorded versus acknowledged decisions' subsection after the delegate examples. It fits the branch's delegate text (respond/status/events). It also matches source: the six delivery values in station-control-delegation.ts; CODEX_APPROVAL_ACK_WINDOW_MS = 30_000; the codes engine-decision-unacknowledged and engine-decision-not-sent; the CLI line formats in packages/cli delegate.ts; and acknowledgement 'none' in the acp and claude adapters. 7cd4892e5 refuses a decision on a closed Codex request ('not open'), which matches the closed-by-engine row. The approvals section's request.opened/request.resolved description still holds. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) main's own edit to the service section (fixed launcher at <install root>/runtime/station-launcher.mjs, 165s TimeoutStopSec, launcher-run self-update with trial/rollback/needs-operator, install.sh handoff, Check for server updates) auto-merged cleanly into the branch's text. It is not duplicated and does not contradict the branch's tier table (packaged service status|start|stop). Main left the `upgrade` section saying the installer always stops the service, switches current and restarts it; that is wrong for a running launcher-run service now that install.sh hands off. Corrected the upgrade section: the installer only stages and asks the service to switch, the launcher trials and keeps the previous version on failure, and the old stop/switch/restart applies otherwise. Source review is separate from executed test evidence.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers."
+        "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers.",
+        "Listed the connections credential-recovery commands (recovery, profiles, profile-upsert, profile-env, profile-delete/enroll/unenroll, recovery-policy, profile-import, profile-apply) against surfaces.ts dispatch and help.ts usage; checked profile-env PUT body and that profiles/profile-env print env while recovery does not (credentialRecoveryOutput includeEnv)."
       ]
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23024,7 +23067,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/conversation/dispatch-model-policy.ts",
@@ -23160,7 +23203,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); strands-tool-loader.ts now imports the shared tool-load-failure classifier instead of its private copy of the same redaction decision; mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Re-read 'config reference' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route; pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'config reference' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route; pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -23385,7 +23429,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -23546,7 +23590,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/conversation/conversation-stats-view.ts",
@@ -23626,7 +23670,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Re-read '@kontourai/station-contracts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new PullRequestBranchMergeability paragraph; it makes no claim about SDK body-read deadlines, orchestration delegation refusals or the forwarder."
+        "Re-read '@kontourai/station-contracts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new PullRequestBranchMergeability paragraph; it makes no claim about SDK body-read deadlines, orchestration delegation refusals or the forwarder.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -23730,7 +23775,7 @@
     },
     {
       "path": "docs/reference/env-vars.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed every current table and setup claim against configuration resolvers and their runtime/CLI/frontend callers. Corrected root/home derivation, development instance paths, control-client base/port precedence, exact browser origin admission, hosted registry file requirements, AWS region precedence, inert DEBUG_STREAMING behavior, production Vite override, OTLP versus disclosed product usage telemetry, and incomplete IAM example. Added operator scope and feature-specific navigation instead of claiming an exhaustive environment inventory. Corrected matching .env.example comments without changing values.",
@@ -23811,7 +23856,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/routes/runtime-routes.ts",
@@ -23865,7 +23910,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. VITE_API_BASE resolution is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). STATION_API_BASE/STATION_PORT resolution in station-control-shared.ts is unchanged; STATION_CONTROL_CALLER_TOKEN was never documented here and is not a supported variable. Prose remains accurate. Source review only.",
-        "Added STATION_REMOTE_REQUEST_TIMEOUT_MS (default 30000, 1..600000, validated at startup, headers and body, not SSH connect). The other server rows do not depend on the forwarder wiring C2b added to runtime-routes and station-runtime. | Restored src-server/services/remote-stations/remote-station-forwarder.ts as a recorded source: it was cited by this branch's review before the merge with main and was dropped when main's ledger file was taken. No prose changed; the earlier review of this page's forwarding claims stands."
+        "Added STATION_REMOTE_REQUEST_TIMEOUT_MS (default 30000, 1..600000, validated at startup, headers and body, not SSH connect). The other server rows do not depend on the forwarder wiring C2b added to runtime-routes and station-runtime. | Restored src-server/services/remote-stations/remote-station-forwarder.ts as a recorded source: it was cited by this branch's review before the merge with main and was dropped when main's ledger file was taken. No prose changed; the earlier review of this page's forwarding claims stands.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -24081,7 +24127,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -24097,7 +24143,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/diagnostics/task-room-acceptance-control.ts",
@@ -24175,7 +24221,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Re-read 'Project/Task room collaboration acceptance' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Project/Task room collaboration acceptance' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -25187,7 +25234,7 @@
     {
       "path": "docs/reference/session-api.md",
       "documentDigest": "9682fc55f0f8d89811a1c467cf86b9872abfdd37a3483734bd18a90df98c680e",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection.",
@@ -25203,11 +25250,11 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "1751a7c0f970ab35f4fd4a4812cdc0c0b134668d1cbbb149962f6b1d27d7c9c4"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
+          "digest": "91ae05cb1bc78283c1c8c71ca817aab3a54fd3463cc39a77d2a6becb0f04661c"
         },
         {
           "path": "src-server/providers/sessions/claude-transcript-session-source.ts",
@@ -25320,7 +25367,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by attached-session-adoption.ts (comment only); attention-projection.ts (comment only); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Re-read 'Session API: the programmatic chat surface' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Session API: the programmatic chat surface' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta: checked CODEX_HOME source-home claims (source affinity still overrides the profile home and connection env in codex-adapter startReservedSession; adoption never applies the profile env). Unchanged."
       ]
     },
     {
@@ -25910,7 +25958,7 @@
     {
       "path": "docs/reference/usage-telemetry.md",
       "documentDigest": "34b601ece3b7647bf54b64ad183e7d78f57e819eb0f4b4946fd7ad164f453e55",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Actual activation, precedence, caller order, persistence repair, queue and shutdown semantics traced; generated inventory preserved exactly. Captured premature station_started description as separate recommendation.",
@@ -25922,7 +25970,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
@@ -25953,7 +26001,8 @@
         "Integration source review through d72f79b08: #2904's orchestration-service changes cover approval-posture confinement, the grantor and the revocation reset, with no telemetry emission, activation, precedence, queue or shutdown changes. The documented caller order and generated inventory still hold. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: the page itself changed only its test-evidence link; claims corrected: dead link to the deleted usage-telemetry-disclosure.routes.test.ts now points to runtime-routes-usage-telemetry-late-binding.test.ts, which owns the disclosure route envelope and call. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "Re-read 'Usage telemetry' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Usage telemetry' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -27404,7 +27453,7 @@
     {
       "path": "examples/builder-delivery-viewer/README.md",
       "documentDigest": "9088109235e5da8959933a643ca29acd2c273e26ba3a36927acad5d9f59b1df5",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through actual GET registrations, bounded descriptor reads, schema/public validator/report derivation, browser query/render and exact Flow run join; host server-module permission and lifecycle plus registry installation entry traced. Corrected workspace delivery companion path, artifact-only byte limits, unsorted discovery cap and filename-only seal meaning. Cache/transport and raw trusted server-code boundaries retained.",
@@ -27452,7 +27501,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/plugins/__tests__/plugin-public-server.test.ts",
@@ -27483,7 +27532,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: plugin-install-transaction.ts added the `excludeGitMetadata` staging option for proposed sources (#2840), and the lockfile dropped bearing/forage. The README's registry installation, permission and descriptor claims do not depend on either. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-public-server.test.ts (test-only edit); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); plugin-public-server.ts (unused disposePluginPublicServerModule deleted); claims unaffected.",
-        "Re-read 'Builder Delivery Viewer' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Builder Delivery Viewer' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -27835,7 +27885,7 @@
     {
       "path": "examples/fieldwork-review/README.md",
       "documentDigest": "10a3d19e9905edc792e68a545a59b73f3452db279d478d08489e89bf881387aa",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through launch/open/list/close/output routes, path and owned-storage checks, corruption preservation, lazy and short-lived published Fieldwork facades, browser frame and query/cleanup callers, and actual host acquire/quiesce/dispose/update/reload/shutdown wiring. Corrected browser-versus-owner data boundary, reviewed-output read/discard behavior, boolean error fallback, close-before-persist order, capacity checks and timers. No stronger global concurrency reservation or process sandbox claimed.",
@@ -27891,7 +27941,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/plugins/__tests__/plugin-public-server.test.ts",
@@ -27922,7 +27972,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: the lockfile only removed the root bearing/forage importer entries, and the install transaction added proposal-scoped .git exclusion. The example's Plugins-page install, host permission review and route claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-public-server.test.ts (test-only edit); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); plugin-public-server.ts (unused disposePluginPublicServerModule deleted); claims unaffected.",
-        "Re-read 'Fieldwork Review' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Fieldwork Review' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -28645,7 +28696,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28701,7 +28752,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "1751a7c0f970ab35f4fd4a4812cdc0c0b134668d1cbbb149962f6b1d27d7c9c4"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -28709,7 +28760,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
+          "digest": "91ae05cb1bc78283c1c8c71ca817aab3a54fd3463cc39a77d2a6becb0f04661c"
         },
         {
           "path": "src-server/providers/adapters/codex-approval-mode.ts",
@@ -28741,7 +28792,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "50a4c6b484e185b1fee200d9ac4ff9394e42dbcdbaa5bb16ae04a1f59aaea764"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -28777,7 +28828,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -28801,11 +28852,11 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "80e4ce2713521a60ffb7c87b5fa027399eeecf1407e63453f33dc7a55f18430b"
+          "digest": "f3cb529b5f04200b5dcc3782f9ca7823491d7e3a1a097ac6d12186cce1f2688f"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
-          "digest": "f9cce55ccfe8c872ac19a1ae00c37fec39e4c5d6bd43412e23a1987737723d5b"
+          "digest": "b9077e653882a633877f751e732ba91795e0d1dd0a7450d35b63ada04e02c593"
         },
         {
           "path": "src-server/services/connections/device-code-login.ts",
@@ -28940,7 +28991,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Re-read 'Self-Configuring Agent Example' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Self-Configuring Agent Example' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta: no connection env, app-home or credential-profile claims. No change."
       ]
     },
     {
@@ -29078,7 +29130,7 @@
     {
       "path": "examples/survey-review-workbench/README.md",
       "documentDigest": "d8551d4b9cfca89a35f9827dffff6b9c80bcff5af8f02e45e733b07a8b8b7efa",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through actual server registrations and browser mount/persistence/projection callbacks, build/manifest and host trusted server admission. Corrected lazy dependency claim, optional event-count mismatch check versus replacement writes/concurrent save transaction, partial resolved-item projection and nonexistent-workspace fallback. Documented pending-save projection and component-state context-switch limits. Actual disposable route probe demonstrates omitted count can replace prior history and wrong count returns409.",
@@ -29122,7 +29174,7 @@
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
-          "digest": "7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e"
+          "digest": "c98bd0f7a92ea936a76fb0e4a1cef011914dc4bdcbfcef88a26567d18bdf50aa"
         },
         {
           "path": "src-server/services/plugins/__tests__/plugin-public-server.test.ts",
@@ -29153,7 +29205,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: plugin-install-transaction.ts adds dependency/proposed-install staging options, which do not change the README's operator preview-then-consent install path, and pnpm-lock removed only bearing/forage; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-public-server.test.ts (test-only edit); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); plugin-public-server.ts (unused disposePluginPublicServerModule deleted); claims unaffected.",
-        "Re-read 'Survey Review Workbench' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Survey Review Workbench' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change."
       ]
     },
     {
@@ -29378,7 +29431,7 @@
     {
       "path": "packages/cli/README.md",
       "documentDigest": "844966cbd66882d8e5ea0cf80fc00caed4f10183e6600ec8f77fcd3d9b268cc5",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete package README against distribution/CLI reference and actual setup, target selection and triage callers. Corrected hosted availability implication, model-service sharing, terminal-output redaction limits and Operate stream authentication.",
@@ -29386,7 +29439,7 @@
       "sources": [
         {
           "path": "docs/reference/cli.md",
-          "digest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca"
+          "digest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817"
         },
         {
           "path": "packages/cli/bundle-externals.mjs",
@@ -29468,7 +29521,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 makes contributorCommandMessage in packages/cli/src/distribution.ts private. Its behavior is unchanged, and the README's claims that contributor commands are checkout-only and about distribution do not name it. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added the 'Recorded versus acknowledged decisions' section to cli.md. The README's links to cli.md and its claims about timeouts, streams and published-CLI boundaries are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) extended the service and upgrade sections of docs/reference/cli.md (fixed launcher, stage-and-handoff upgrade, client-started update). The merged reference is coherent. The README's claims still hold: packaged service status|start|stop, and a prebuilt archive's own lifecycle CLI installing a service and running upgrade. Prose accurate. Source review is separate from executed test evidence.",
-        "Re-read '@kontourai/station-cli' against C2b: environment.ts changes only a comment naming the forwarder. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read '@kontourai/station-cli' against C2b: environment.ts changes only a comment naming the forwarder. The document makes no claim about those behaviours, so its statements still hold.",
+        "#2966 delta: new connections profile-env command documented in docs/reference/cli.md; this README does not enumerate connections actions (its profiles.json text is saved-Station profiles, unrelated). No change."
       ]
     },
     {
