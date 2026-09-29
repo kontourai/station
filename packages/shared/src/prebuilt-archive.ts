@@ -246,6 +246,41 @@ export function readArchiveInstallState(
 }
 
 /**
+ * The launch facts the CLI's source bootstrap (scripts/source-bootstrap.ts)
+ * writes into the environment of every Station CLI process, including the one
+ * running `station upgrade` and the service's `service run`. They describe
+ * that process, filled with the channel's defaults when the caller named
+ * nothing, so they are not a request for the installed runtime. install.sh
+ * reads STATION_SERVER_PORT and STATION_UI_PORT as explicit ports that beat
+ * the recorded ones (#2675), and the rest would reach the processes it runs.
+ * STATION_CHANNEL, STATION_ROOT and STATION_HOME are bootstrap facts too, but
+ * every installer invocation sets them from the install state.
+ */
+const BOOTSTRAP_LAUNCH_ENV_KEYS: readonly string[] = [
+  'STATION_SERVER_PORT',
+  'STATION_PORT',
+  'STATION_UI_PORT',
+  'STATION_CONSENT_PORT',
+  'STATION_INSTANCE_ID',
+];
+
+/**
+ * `env` without the bootstrap's launch facts, for an install.sh a Station CLI
+ * process runs. A deliberate port change goes through the installer's own
+ * STATION_INSTALL_SERVER_PORT / STATION_INSTALL_UI_PORT, which the bootstrap
+ * never sets and which pass through.
+ */
+export function installerInheritedEnv(
+  env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([key]) => !BOOTSTRAP_LAUNCH_ENV_KEYS.includes(key),
+    ),
+  );
+}
+
+/**
  * Station's release order, the one install.sh's downgrade check and the
  * service launcher (packaging/portable-server/bin/station-launcher.mjs
  * `compareVersions`) apply: X.Y.Z, or X.Y.Z-<ring>.N within one ring, and a

@@ -4593,6 +4593,15 @@ describe('upgrade', () => {
           spawnSync: staleSchedulingSpawnSync(unitPath),
         },
       });
+      // What the CLI bootstrap writes into every CLI process: this
+      // process's launch facts, never a request for the installed runtime.
+      // The installer's own port variable is the caller's, and passes.
+      vi.stubEnv('STATION_SERVER_PORT', '38141');
+      vi.stubEnv('STATION_PORT', '38141');
+      vi.stubEnv('STATION_UI_PORT', '38000');
+      vi.stubEnv('STATION_CONSENT_PORT', '38144');
+      vi.stubEnv('STATION_INSTANCE_ID', 'nightly');
+      vi.stubEnv('STATION_INSTALL_SERVER_PORT', '43141');
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       try {
         await lifecycle.upgrade();
@@ -4606,9 +4615,20 @@ describe('upgrade', () => {
               STATION_CHANNEL: runtimeChannel,
               STATION_HOME: stationHome,
               STATION_INSTALL_ROOT: installRoot,
+              STATION_INSTALL_SERVER_PORT: '43141',
             }),
           }),
         );
+        const installerEnv = execFileSync.mock.calls[0]?.[2]?.env ?? {};
+        for (const key of [
+          'STATION_SERVER_PORT',
+          'STATION_PORT',
+          'STATION_UI_PORT',
+          'STATION_CONSENT_PORT',
+          'STATION_INSTANCE_ID',
+        ]) {
+          expect(installerEnv, key).not.toHaveProperty(key);
+        }
         expect(log.mock.calls.flat().join('\n')).toContain(
           'Service scheduling is stale for packaged-guidance',
         );
