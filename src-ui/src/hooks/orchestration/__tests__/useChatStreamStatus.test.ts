@@ -21,7 +21,7 @@ describe('useChatStreamStatus', () => {
     // Inside the grace the status stays hidden.
     expect(result.current).toBeUndefined();
     act(() => {
-      vi.advanceTimersByTime(1500);
+      vi.advanceTimersByTime(2500);
     });
 
     // The header presence dot may still say Connected while this stream
@@ -56,7 +56,7 @@ describe('useChatStreamStatus — no flashing on brief outages', () => {
     }
   }
 
-  test('a blip that recovers inside the grace never shows anything', () => {
+  test('a drop that comes back within one reconnect cycle never shows anything', () => {
     vi.useFakeTimers();
     const apiBase = 'https://stream-status-blip.test';
     setStreamConnectionState(apiBase, 'caught-up');
@@ -65,7 +65,9 @@ describe('useChatStreamStatus — no flashing on brief outages', () => {
     act(() => {
       setStreamConnectionState(apiBase, 'interrupted');
     });
-    sample(() => result.current?.label, 600, seen);
+    // Measured: a 600ms network drop keeps the stream down ~2s (1s retry,
+    // reconnect, catch-up).
+    sample(() => result.current?.label, 1600, seen);
     act(() => {
       setStreamConnectionState(apiBase, 'receiving');
     });
@@ -91,7 +93,7 @@ describe('useChatStreamStatus — no flashing on brief outages', () => {
     act(() => {
       setStreamConnectionState(apiBase, 'receiving');
     });
-    sample(() => result.current?.label, 1500, seen);
+    sample(() => result.current?.label, 2500, seen);
     act(() => {
       setStreamConnectionState(apiBase, 'caught-up');
     });
@@ -102,8 +104,8 @@ describe('useChatStreamStatus — no flashing on brief outages', () => {
       seen.length -
       1 -
       [...seen].reverse().findIndex((label) => label !== undefined);
-    // Shown 1.5s after the outage began (slice 15), not 1s after each phase.
-    expect(first).toBe(14);
+    // Shown 2.5s after the outage began (slice 25), not 1s after each phase.
+    expect(first).toBe(24);
     // Never off while shown: no gap between the phases.
     expect(seen.slice(first, last + 1).includes(undefined)).toBe(false);
     expect(new Set(seen.filter(Boolean))).toEqual(
@@ -122,7 +124,7 @@ describe('useChatStreamStatus — no flashing on brief outages', () => {
       setStreamConnectionState(apiBase, 'interrupted');
     });
     act(() => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(3000);
     });
     act(() => {
       setStreamConnectionState(apiBase, 'caught-up');

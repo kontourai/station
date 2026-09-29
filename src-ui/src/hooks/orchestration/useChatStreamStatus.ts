@@ -6,13 +6,16 @@ import {
 } from './streamConnectionState';
 
 /**
- * How long an outage must last before it is shown. Phone streams drop and
- * resume in well under this while backgrounded or switching networks, and a
- * status that appears for a blip is noise. Timed from the outage's start
- * (`disruptedSince`), so moving from reconnecting to catching up never
- * restarts it.
+ * How long an outage must last before it is shown. A dropped stream takes a
+ * reconnect cycle to come back even when the network blip itself is short —
+ * measured on the fake-engine render check, a 600ms drop kept the stream down
+ * about 2s (the SDK's first 1s retry, the reconnect, the catch-up). This
+ * absorbs one such cycle, so a phone backgrounding or switching networks does
+ * not flash a status; a real outage still shows within a few seconds. Timed
+ * from the outage's start (`disruptedSince`), so moving from reconnecting to
+ * catching up never restarts it.
  */
-export const STREAM_STATUS_SHOW_AFTER_MS = 1_500;
+export const STREAM_STATUS_SHOW_AFTER_MS = 2_500;
 /**
  * Once shown, the status stays up this long after the stream is live again,
  * as a brief "restored" confirmation, and a new drop inside that window is

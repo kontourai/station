@@ -247,7 +247,7 @@ describe('ChatDockBody floating status pill', () => {
       setStreamConnectionState(apiBase, 'interrupted');
     });
     act(() => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(3000);
     });
     expect(pill()?.getAttribute('data-chat-status-pill')).toBe('reconnecting');
     expect(document.querySelector('.chat-stream-status')).toBeNull();
