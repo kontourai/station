@@ -114,6 +114,31 @@ describe('ChatStatusPill', () => {
     expect(label()).toBe('Working');
   });
 
+  test('the settle ends on time even when the state changes again during it', () => {
+    vi.useFakeTimers();
+    const approval = deriveChatStatus({ ...base, approvalCount: 1 });
+    const working = deriveChatStatus({
+      ...base,
+      turnLive: true,
+      activity: openTurn,
+    });
+    const label = () =>
+      document.querySelector('.chat-status-pill__label')?.textContent;
+    const view = render(<ChatStatusPill status={approval} />);
+    // The approval resolves as the turn ends…
+    view.rerender(<ChatStatusPill status={undefined} />);
+    expect(label()).toBe('Resumed');
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    // …and a new turn starts while "Resumed" is still up.
+    view.rerender(<ChatStatusPill status={working} />);
+    act(() => {
+      vi.advanceTimersByTime(CHAT_STATUS_CELEBRATE_MS);
+    });
+    expect(label()).toBe('Working');
+  });
+
   test('the ticking clock re-renders only itself, never its host', () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.parse('2026-09-29T00:04:10Z'));

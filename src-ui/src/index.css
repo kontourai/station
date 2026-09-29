@@ -6002,6 +6002,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   position: relative;
 }
 
+/* The chat pane's floating status pill (components/status) sits over the
+   transcript's top-right corner. A constant top inset keeps it off the first
+   message when the transcript is scrolled to the top; it never changes when
+   the pill comes and goes, so nothing shifts. */
+.chat-dock__content-area .chat-messages {
+  padding-top: calc(var(--chat-message-gutter) + 36px);
+}
+
 .conversation-history {
   width: min(300px, 80vw);
   flex-shrink: 0;

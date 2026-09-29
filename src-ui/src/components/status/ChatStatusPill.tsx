@@ -125,19 +125,31 @@ export function ChatStatusPill({
   // shows whatever comes next — the approval did not just vanish.
   const previousKind = useRef<ChatStatus['kind'] | undefined>(undefined);
   const [celebrating, setCelebrating] = useState(false);
+  // Owned by the celebration itself, not by the status that started it: the
+  // next change of state (the turn ending, a new one starting) must not
+  // cancel the timer that ends it, or the pill would stay "Resumed".
+  const celebrationTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(
+    () => () => {
+      if (celebrationTimer.current) clearTimeout(celebrationTimer.current);
+    },
+    [],
+  );
   useEffect(() => {
     const was = previousKind.current;
     previousKind.current = status?.kind;
-    if (was === 'approval' && status?.kind !== 'approval') {
-      if (status?.kind === 'blocked') return;
-      setCelebrating(true);
-      const timer = setTimeout(
-        () => setCelebrating(false),
-        CHAT_STATUS_CELEBRATE_MS,
-      );
-      return () => clearTimeout(timer);
+    if (status?.kind === 'approval' || status?.kind === 'blocked') {
+      if (celebrationTimer.current) clearTimeout(celebrationTimer.current);
+      setCelebrating(false);
+      return;
     }
-    if (status?.kind === 'approval') setCelebrating(false);
+    if (was !== 'approval') return;
+    setCelebrating(true);
+    if (celebrationTimer.current) clearTimeout(celebrationTimer.current);
+    celebrationTimer.current = setTimeout(
+      () => setCelebrating(false),
+      CHAT_STATUS_CELEBRATE_MS,
+    );
   }, [status?.kind]);
 
   const shown: ChatStatus | undefined = celebrating
