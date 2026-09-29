@@ -1527,7 +1527,7 @@ export function claudeAskFlags(options: object): {
 }
 
 /** Claude Code's sandbox network-access ask; its input is `{host}`. */
-export const CLAUDE_SANDBOX_NETWORK_TOOL = 'SandboxNetworkAccess';
+const CLAUDE_SANDBOX_NETWORK_TOOL = 'SandboxNetworkAccess';
 /**
  * Room for the host in a network title. A longer host keeps its end, where
  * the registrable domain is, behind a leading "…" (#2911's Codex bound).

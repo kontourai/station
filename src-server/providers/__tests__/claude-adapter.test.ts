@@ -3124,7 +3124,9 @@ describe('ClaudeAdapter', () => {
         await expect(
           ask('Bash', { command: 'git status' }),
         ).resolves.toMatchObject({ kind: 'allowed' });
-        for (const request of [
+        const requests: ReadonlyArray<
+          readonly [string, Record<string, unknown>, Record<string, unknown>]
+        > = [
           networkAsk('api.example.com'),
           sandboxOverride,
           orgCeiling,
@@ -3132,9 +3134,11 @@ describe('ClaudeAdapter', () => {
             'Bash',
             { command: 'open .' },
             { decisionReason: 'requiresUserInteraction' },
-          ] as const,
-        ]) {
-          const outcome = await ask(...request);
+          ],
+        ];
+        for (const request of requests) {
+          const [toolName, toolInput, extra] = request;
+          const outcome = await ask(toolName, toolInput, extra);
           expect(outcome.kind, request[0]).toBe('prompted');
           if (outcome.kind === 'prompted') await outcome.answer('decline');
         }
