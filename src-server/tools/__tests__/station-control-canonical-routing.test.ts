@@ -1,6 +1,7 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import {
   continueDelegatedTask,
   continueExecutionTargetMessage,
@@ -11,6 +12,33 @@ import {
 const CURRENT_API = 'http://canonical-controller.test';
 const REMOTE_API = 'https://canonical-peer.test';
 const REMOTE_ENVIRONMENT = environmentId('environment-remote');
+
+/**
+ * #2377 slice C2b: the route side of a cross-Station call. The forward runs
+ * through the one remote seam; the peer's credential is in its store.
+ */
+const remoteStations = createRemoteStationForwarder({
+  ssh: {
+    list: () => [],
+    connect: async () => {
+      throw new Error('no SSH profile');
+    },
+  },
+  peers: {
+    get: (environmentId: string) =>
+      environmentId === 'environment-remote'
+        ? {
+            environmentId,
+            apiBase: REMOTE_API,
+            scope: 'orchestration:operate',
+            credential: 'remote-bearer',
+            label: 'Remote Station',
+            createdAt: 0,
+            updatedAt: 0,
+          }
+        : null,
+  },
+});
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -30,24 +58,6 @@ describe('Station Control canonical cross-Environment execution routing', () => 
       const url = String(input);
       if (url === `${CURRENT_API}/.well-known/station/v1`) {
         return json({ environmentId: 'environment-current' });
-      }
-      if (url === `${CURRENT_API}/api/environments/ssh`) {
-        return json({ success: true, data: [] });
-      }
-      if (
-        url ===
-        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-      ) {
-        return json({
-          success: true,
-          data: {
-            environmentId: 'environment-remote',
-            apiBase: REMOTE_API,
-            scope: 'orchestration:operate',
-            credential: 'remote-bearer',
-            label: 'Remote Station',
-          },
-        });
       }
       if (url === `${REMOTE_API}/api/orchestration/chat`) {
         expect(new Headers(init?.headers).get('authorization')).toBe(
@@ -126,13 +136,18 @@ describe('Station Control canonical cross-Environment execution routing', () => 
   });
 
   test('foreground execution rewrites the saved Environment only at the remote canonical boundary', async () => {
-    const receipt = await executeExecutionTargetMessage({
-      message: 'Probe the host',
-      target: {
-        environment: { kind: 'saved', id: REMOTE_ENVIRONMENT },
-        agent: agentId('codex'),
+    const receipt = await executeExecutionTargetMessage(
+      {
+        message: 'Probe the host',
+        target: {
+          environment: { kind: 'saved', id: REMOTE_ENVIRONMENT },
+          agent: agentId('codex'),
+        },
       },
-    });
+      undefined,
+      undefined,
+      remoteStations,
+    );
 
     const remote = fetchMock.mock.calls.find(
       ([url]) => String(url) === `${REMOTE_API}/api/orchestration/chat`,
@@ -150,11 +165,15 @@ describe('Station Control canonical cross-Environment execution routing', () => 
   });
 
   test('foreground continuation repeats only Environment routing and leaves the remote binding authoritative', async () => {
-    const receipt = await continueExecutionTargetMessage({
-      conversationId: 'conversation:remote',
-      environment: { kind: 'saved', id: REMOTE_ENVIRONMENT },
-      message: 'Continue the probe',
-    });
+    const receipt = await continueExecutionTargetMessage(
+      {
+        conversationId: 'conversation:remote',
+        environment: { kind: 'saved', id: REMOTE_ENVIRONMENT },
+        message: 'Continue the probe',
+      },
+      undefined,
+      remoteStations,
+    );
 
     const remote = fetchMock.mock.calls.find(
       ([url]) =>
@@ -168,18 +187,26 @@ describe('Station Control canonical cross-Environment execution routing', () => 
   });
 
   test('delegated start and continuation use only remote canonical delegation endpoints', async () => {
-    await delegateTask({
-      prompt: 'Run focused tests',
-      target: {
-        environment: { kind: 'saved', id: REMOTE_ENVIRONMENT },
-        agent: agentId('codex'),
+    await delegateTask(
+      {
+        prompt: 'Run focused tests',
+        target: {
+          environment: { kind: 'saved', id: REMOTE_ENVIRONMENT },
+          agent: agentId('codex'),
+        },
       },
-    });
-    await continueDelegatedTask({
-      taskId: 'task:remote',
-      environmentId: 'environment-remote',
-      message: 'Now run typecheck',
-    });
+      undefined,
+      remoteStations,
+    );
+    await continueDelegatedTask(
+      {
+        taskId: 'task:remote',
+        environmentId: 'environment-remote',
+        message: 'Now run typecheck',
+      },
+      undefined,
+      remoteStations,
+    );
 
     const start = fetchMock.mock.calls.find(
       ([url]) => String(url) === `${REMOTE_API}/api/orchestration/delegations`,

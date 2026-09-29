@@ -2,6 +2,7 @@ import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy'
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
+import type { RemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import { executeExecutionTargetMessage } from '../../tools/station-control-delegation.js';
 import type { createInboundWebhookRoutes } from './inbound-webhooks.js';
 
@@ -20,6 +21,8 @@ type TurnStarter = Parameters<
 export function createWebhookTurnStarter(deps: {
   readAuthorityFor: (userId: string) => SessionReadAuthority;
   orchestrationService: OrchestrationService;
+  /** #2377 slice C2b: a webhook bound to a saved Environment forwards here. */
+  remoteStations?: RemoteStationForwarder;
 }): TurnStarter {
   return (input) =>
     executeExecutionTargetMessage(
@@ -32,5 +35,7 @@ export function createWebhookTurnStarter(deps: {
         readAuthority: deps.readAuthorityFor(LOCAL_OPERATOR_PRINCIPAL_ID),
       },
       deps.orchestrationService,
+      undefined,
+      deps.remoteStations,
     );
 }
