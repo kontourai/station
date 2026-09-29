@@ -262,21 +262,21 @@ function isCredentialShapedError(error: unknown): boolean {
 }
 
 /**
- * The status a `/chat` failure may carry to a client. A credential-shaped
- * error keeps its pre-existing 401 precedence, flagged `statusInferred`
- * because no HTTP response supplied it; any other error reports the model
- * provider's own status (ai-sdk's `APICallError.statusCode`, read
- * structurally by `providerHttpErrorStatus`) when it is a 4xx/5xx integer.
+ * The status a `/chat` failure may carry to a client: the model provider's
+ * own status (ai-sdk's `APICallError.statusCode`, read structurally by
+ * `providerHttpErrorStatus`) when it is a 4xx/5xx integer. Only when no such
+ * status exists does a credential-shaped message stand in as a 401, flagged
+ * `statusInferred` because no HTTP response supplied it.
  */
 function outwardFailureStatus(error: unknown): {
   statusCode?: number;
   statusInferred?: true;
 } {
-  if (isCredentialShapedError(error)) {
-    return { statusCode: 401, statusInferred: true };
-  }
   const statusCode = modelProviderHttpStatus(providerHttpErrorStatus(error));
-  return statusCode === undefined ? {} : { statusCode };
+  if (statusCode !== undefined) return { statusCode };
+  return isCredentialShapedError(error)
+    ? { statusCode: 401, statusInferred: true }
+    : {};
 }
 
 /**

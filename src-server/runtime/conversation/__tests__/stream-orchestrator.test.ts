@@ -206,7 +206,7 @@ describe('writeSSEError', () => {
     expect(writes[0]).not.toContain('provider.example.test');
   });
 
-  test('keeps the credential-shaped 401 and drops a status outside 4xx/5xx', async () => {
+  test('infers a credential 401 only without a provider status, and drops a status outside 4xx/5xx', async () => {
     const writes: string[] = [];
     const streamWriter = {
       write: vi.fn(async (value: string) => writes.push(value)),
@@ -218,20 +218,26 @@ describe('writeSSEError', () => {
       Object.assign(new Error('redirected'), { statusCode: 302 }),
     );
     await writeSSEError(streamWriter, new Error('plain failure'));
-    // A credential-shaped message keeps its 401 even when the error carries
-    // another provider status — the pre-existing precedence.
+    // A real provider status wins over a credential-shaped message; the
+    // inference applies only when no status exists.
+    const { APICallError } = await import('@ai-sdk/provider');
     await writeSSEError(
       streamWriter,
-      Object.assign(new Error('bad credential'), { statusCode: 403 }),
+      new APICallError({
+        message: 'upstream credential store exploded',
+        url: 'https://provider.example.test/v1',
+        requestBodyValues: {},
+        statusCode: 500,
+      }),
     );
 
     expect(
       writes.map((w) => JSON.parse(w.replace(/^data: /, '')).statusCode),
-    ).toEqual([401, undefined, undefined, 401]);
-    // Only the inferred 401s say they were inferred.
+    ).toEqual([401, undefined, undefined, 500]);
+    // Only the inferred 401 says it was inferred.
     expect(
       writes.map((w) => JSON.parse(w.replace(/^data: /, '')).statusInferred),
-    ).toEqual([true, undefined, undefined, true]);
+    ).toEqual([true, undefined, undefined, undefined]);
   });
 });
 
