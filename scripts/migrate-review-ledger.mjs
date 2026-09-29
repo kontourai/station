@@ -147,7 +147,23 @@ function foldEntry(base, ours, theirs, current, fields, notesKey) {
   for (const [file, theirBinding] of t)
     if (!o.has(file) && !b.has(file)) sources.push(theirBinding);
   data.sources = sources;
-  report.notes = theirs[notesKey].slice(base[notesKey].length);
+  // The branch may also have edited earlier notes in place, such as a
+  // redaction. Carry each edit where ours still has the base text; anything
+  // else would silently drop or overwrite a note, so report it instead.
+  const [baseNotes, ourNotes, theirNotes] = [base, data, theirs].map(
+    (entry) => entry[notesKey] ?? [],
+  );
+  if (theirNotes.length < baseNotes.length) report.edited = true;
+  else {
+    const carried = [...ourNotes];
+    baseNotes.forEach((note, index) => {
+      if (theirNotes[index] === note) return;
+      if (carried[index] === note) carried[index] = theirNotes[index];
+      else if (carried[index] !== theirNotes[index]) report.edited = true;
+    });
+    data[notesKey] = carried;
+  }
+  report.notes = theirNotes.slice(baseNotes.length);
   return { data, ...report };
 }
 
@@ -283,6 +299,7 @@ function migrateReviewLedger({
   };
   const notes = [];
   const stale = [];
+  const edited = [];
   if (!hasLayout) {
     files.set(
       REVIEW_LEDGER_INDEX,
@@ -328,6 +345,7 @@ function migrateReviewLedger({
         'checks',
       );
       if (folded.stale) stale.push(file);
+      if (folded.edited) edited.push(file);
       for (const note of folded.notes)
         notes.push({
           path: file,
@@ -354,6 +372,7 @@ function migrateReviewLedger({
         'reviewNotes',
       );
       if (folded.stale) stale.push(capture.path);
+      if (folded.edited) edited.push(capture.path);
       for (const note of folded.notes)
         notes.push({
           path: capture.path,
@@ -395,6 +414,7 @@ function migrateReviewLedger({
     removed: [...files.keys()].filter((file) => files.get(file) === undefined),
     notes: notes.length,
     stale,
+    edited,
   };
 }
 
@@ -417,6 +437,10 @@ export function main(argv = process.argv.slice(2)) {
   if (result.resolvedManifest)
     console.log(
       `Resolved the ${LEARNING_MEDIA_MANIFEST} conflict: kept the old-layout side's review fields, moved them into the ledger, and kept the other side's remaining edits.`,
+    );
+  if (result.edited.length)
+    console.log(
+      `Both sides edited or removed earlier notes of these; ours were kept, so compare them with the branch's old file and apply its edits by hand: ${result.edited.join(', ')}`,
     );
   if (result.stale.length)
     console.log(

@@ -1263,6 +1263,44 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     ).toEqual(foldedState);
   });
 
+  it('carries an in-place edit to an earlier check, and reports one both sides edited', () => {
+    const f = fixture();
+    const { legacyLedger, legacyMedia } = legacyLayout(f.root);
+    git(f.root, ['switch', '-qc', 'legacy-base', 'main']);
+    rmSync(join(f.root, REVIEW_LEDGER_DIR), { recursive: true });
+    f.write(LEGACY_REVIEW_LEDGER, `${JSON.stringify(legacyLedger, null, 2)}\n`);
+    f.write(MEDIA, `${JSON.stringify(legacyMedia, null, 2)}\n`);
+    const base = commit(f.root, 'legacy base');
+    // Their branch redacts the first check of A and of B in place.
+    git(f.root, ['switch', '-qc', 'theirs']);
+    const theirLedger = structuredClone(legacyLedger);
+    for (const entry of theirLedger.records)
+      if (['docs/a.md', 'docs/b.md'].includes(entry.path))
+        entry.checks[0] = 'Redacted evidence.';
+    f.write(LEGACY_REVIEW_LEDGER, `${JSON.stringify(theirLedger, null, 2)}\n`);
+    commit(f.root, 'redact checks in the old file');
+    // Ours migrates and edits A's first check differently.
+    git(f.root, ['switch', '-qc', 'ours', base]);
+    git(f.root, ['rm', '-rq', LEGACY_REVIEW_LEDGER, MEDIA]);
+    git(f.root, ['checkout', 'main', '--', REVIEW_LEDGER_DIR, MEDIA]);
+    commit(f.root, 'migrate layout');
+    editRecord(f.root, 'docs/a.md', (data) => {
+      data.checks[0] = 'Our edit.';
+    });
+    commit(f.root, 'edit a check');
+    expect(merge(f.root, 'theirs').status).toBe(1);
+    const folded = run(f.root, 'migrate-review-ledger.mjs', ['--base', base]);
+    expect(folded.status, folded.stderr).toBe(0);
+    expect(folded.stdout).toMatch(
+      /Both sides edited or removed earlier notes of these;.*: docs\/a\.md$/m,
+    );
+    commit(f.root, 'merge theirs');
+    expect(compiled(f.root, 'docs/b.md').checks[0]).toBe('Redacted evidence.');
+    expect(compiled(f.root, 'docs/a.md').checks[0]).toBe('Our edit.');
+    expect(compiled(f.root, 'docs/b.md').notes ?? []).toEqual([]);
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
   it('folds a branch that re-reviewed a capture in media.json, resolving that conflict too', () => {
     const f = fixture();
     const { legacyLedger, legacyMedia } = legacyLayout(f.root);
