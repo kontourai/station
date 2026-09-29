@@ -34,7 +34,7 @@
 
     {"path":"scripts/lib/review-binding.mjs","digest":"09c45446e0d7070b8310fd86f888b37dbe873f53854f48e8bf63ed18481fa692","revision":"6c3604888394821808a5617ddd044c6e61d86fc2"},
 
-    {"path":"scripts/migrate-review-ledger.mjs","digest":"abd6a52260b7998711698aceea00188a7be671b67e64ee628fc8148a948692cc","revision":"0fbe5956089a1d03ec26c40bee76c09ff159d0d8"}
+    {"path":"scripts/migrate-review-ledger.mjs","digest":"e158a6a3f49093de548303aca4baf4b26906feabc883ea7fee25bf33c09f47d9","revision":"fb889a3ac805ab41a427ffd37ce25e3578e61a1d"}
   ],
 
   "checks": [
