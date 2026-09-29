@@ -134,9 +134,11 @@ a native application route or carry protected application traffic.
 
 The [application signaling commands](../design/native-capabilities.md#desktop-application-signaling-commands)
 share the diagnostic host service: they admit an existing routing grant and
-return public binding metadata or bounded SDP/proof responses. The application
-names have no renderer caller yet, and returning an opaque Station proof does
-not verify it or open an application DataChannel. Broker signaling remains
+return public binding metadata or bounded SDP/proof responses. The renderer's
+[application signaling adapter](../../src-ui/src/platform/native/nativeApplicationSignalingBridge.ts)
+wraps those names for one exact saved-profile revision, but nothing in the
+renderer composes it into a connection yet. Returning an opaque Station proof
+does not verify it or open an application DataChannel. Broker signaling remains
 separate from Device/account authorization and application transport.
 
 The separate [desktop account proof-key foundation](../design/native-capabilities.md#desktop-account-proof-key-foundation)

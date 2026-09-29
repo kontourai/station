@@ -8334,8 +8334,8 @@
     },
     {
       "path": "docs/design/native-capabilities.md",
-      "documentDigest": "3a02d05bd97995747fe2b0fca97a3917b11909cc0baa2f8a7695df920a8a2e90",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "documentDigest": "98c83399ec14d6d59fb414ceeb805d33e3af952853fcdc0e1bfdb377c4c4f451",
+      "sourceRevision": "29421a64d5ab7e0b1ca095a8b5e0afe665e19539",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current capability, permission, platform-adapter and host-caller claims. Corrected extra typed host subscriptions, dev pairing schemes, distinct closed open-browser route, second-launch background exception and updater ownership. Added Desktop native-grant maintenance boundary while preserving disabled native application transport and dated external platform survey.",
@@ -8424,6 +8424,14 @@
         {
           "path": "src-desktop/src/native_relay_key_approval.rs",
           "digest": "7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16"
+        },
+        {
+          "path": "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
+          "digest": "1d795d9736c057647572a7f02a1a916355e072cbe072c1234c5ed433d3b7c00c"
+        },
+        {
+          "path": "src-ui/src/platform/native/nativeRelaySignalingBridge.ts",
+          "digest": "e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914"
         }
       ],
       "checks": [
@@ -8433,7 +8441,8 @@
         "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
         "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution. Application binding/open/read share the existing diagnostic host service: profile revision, approved trust and keyring grant are rechecked around I/O. Outputs are public binding/expiry / answer + opaque proof, not a DataChannel, proof verification, account sign-in or application traffic. Read the changed document in context; its purpose and prior evidence limits remain.",
-        "Integration source review through e0314c727: lib.rs removed the dormant notification_watch_start/stop commands and their state, Cargo.toml reworded the rustls comment and a TLS-backend test was added, and ApiBaseContext dropped a comment. The document never listed those commands and its capability, permission and signaling claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through e0314c727: lib.rs removed the dormant notification_watch_start/stop commands and their state, Cargo.toml reworded the rustls comment and a TLS-backend test was added, and ApiBaseContext dropped a comment. The document never listed those commands and its capability, permission and signaling claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Desktop application signaling commands: replaced 'No renderer adapter ... currently invokes these names' because this branch adds createNativeApplicationSignalingBridge, which invokes station_native_relay_application_binding/open/read for one exact saved-profile revision and validates binding, open receipt and answer shapes (exact keys match the host's deny_unknown_fields serde structs in native_relay_redemption.rs). No ordinary native application caller composes it (grep: only its test). Command-side limits (no DataChannel, proof verification, route selection, sign-in or enrollment) unchanged. Checked: focused bridge tests 12/12 and typecheck:ui on the merged tree. Limits: no executed Tauri IPC or packaged-platform receipt."
       ]
     },
     {
@@ -14813,7 +14822,7 @@
     {
       "path": "docs/guides/local-collaboration-lab.md",
       "documentDigest": "23cebd66c9b548a70e1f3199e1212c52d89af935d8fd2da9c3c511d79658d748",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "29421a64d5ab7e0b1ca095a8b5e0afe665e19539",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented stage selection/exit/retention, TLS and signing trust, persistence/caller currentness, application framing, account/protocol versus UI profiles, cross-machine SSH fixture and native-v2 diagnostic boundaries. Historical receipts stay dated. Corrected the signing-command ownership statement and matching CLI help scope.",
@@ -15073,7 +15082,7 @@
         },
         {
           "path": "src-ui/src/platform/native/nativeDiagnosticEchoBridge.ts",
-          "digest": "aa8bd65c8291ebcb012abfc48d05e0ba924ac3cce52f62bd7730fa0182d9c774"
+          "digest": "1707339c3fe03e51ae2ce88a6f2133528ed20af0a987887bad204c1bbb8ba535"
         },
         {
           "path": "src-ui/src/views/account/AccountEntryView.tsx",
@@ -15122,6 +15131,10 @@
         {
           "path": "scripts/lib/local-collaboration-udp-relay.mjs",
           "digest": "3b8afc8d9b439b8b709ba318bdc26227916cb60c220dd7a53c3711966ac7845d"
+        },
+        {
+          "path": "src-ui/src/platform/native/nativeRelaySignalingBridge.ts",
+          "digest": "e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914"
         }
       ],
       "checks": [
@@ -15147,7 +15160,8 @@
         "Integration source review through e0314c727: SelfHostedBrokerNativeClient gained a comment saying only tests and the opt-in native relay echo lab use it, which matches the guide's native-v2 diagnostic limits. The package.json bearing/forage removal and lib.rs notification_watch removal do not touch its claims. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 adds three things to runtime-routes: refusal-identity middleware, the resetFullAccessGrantedBy option, and the full-access reset in the pairing device DELETE and scope responses. The lab's stage, TLS/signing, trust-store, fixture and signing-command ownership claims are unchanged. Device revocation still revokes as the guide describes. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 sends 403 insufficient_scope only when a Station credential is present and recognized but not admitted. Three 401 claims are outside that change. Account guests with no Device credential have no credential to recognize, so they still get 401. An account-bound Device without account proof gets 401 account_authentication_required from the alias path inside the admitted branch. The broker withdrawal 401 comes from a separate owner. Historical receipts stay dated. Prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "nativeDiagnosticEchoBridge.ts now delegates to the shared createNativeRelaySignalingBridge with the same three diagnostic commands and native_diagnostic_* error codes; the shared factory additionally requires exact open-receipt and answer keys, which match the host's serde structs. The lab guide's native-v2 diagnostic claims (Chromium/Node controller, no Tauri command invocation, no protected application channel) remain accurate; no prose change. Checked: nativeDiagnosticEchoBridge and nativeApplicationSignalingBridge focused tests 12/12 on the merged tree. Limits: the lab itself was not run."
       ]
     },
     {
@@ -18567,8 +18581,8 @@
     },
     {
       "path": "docs/guides/self-hosted-broker.md",
-      "documentDigest": "aa31ec9e0516c69ff3475d1f014a4b5e350ab20cf9326745a5a8a330e549f791",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "documentDigest": "4e8da08fcfcf0f9dc703fc93569237ceccb062e1cf5a51456a61a59ca2e77157",
+      "sourceRevision": "29421a64d5ab7e0b1ca095a8b5e0afe665e19539",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented broker schema/grant/proof/offer/renewal, connector lifecycle and private configuration claims through routes, service transactions, native signer/host command table and browser consumer. Corrected distinct browser/native header contracts and redemption exceptions, renewal window and conflict receipt wording. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; ordinary Desktop route activation remains unwired; the explicit native library/server application lane is now documented.",
@@ -18736,7 +18750,7 @@
         },
         {
           "path": "src-ui/src/platform/native/nativeDiagnosticEchoBridge.ts",
-          "digest": "aa8bd65c8291ebcb012abfc48d05e0ba924ac3cce52f62bd7730fa0182d9c774"
+          "digest": "1707339c3fe03e51ae2ce88a6f2133528ed20af0a987887bad204c1bbb8ba535"
         },
         {
           "path": "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
@@ -18777,6 +18791,14 @@
         {
           "path": "src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime-native.test.ts",
           "digest": "6784c9f57b329a5094f402f66f0bcd11ca06907cdbefe8987e4ce2e3d627df2d"
+        },
+        {
+          "path": "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
+          "digest": "1d795d9736c057647572a7f02a1a916355e072cbe072c1234c5ed433d3b7c00c"
+        },
+        {
+          "path": "src-ui/src/platform/native/nativeRelaySignalingBridge.ts",
+          "digest": "e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914"
         }
       ],
       "checks": [
@@ -18801,7 +18823,8 @@
         "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution. Application binding/open/read share the existing diagnostic host service: profile revision, approved trust and keyring grant are rechecked around I/O. Outputs are public binding/expiry / answer + opaque proof, not a DataChannel, proof verification, account sign-in or application traffic. Read the changed document in context; its purpose and prior evidence limits remain.",
         "Required merge-queue recovery through 421517851: Corrected the obsolete production-native-adapter refusal: nativeClient explicitly enables one exact surface, separate browser/native offer polling and verified-request provenance. Retained separate grant/Device/provider/Project authority and unwired ordinary Desktop activation.. Changed inputs reviewed: docs/guides/self-hosted-broker.md, src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts, src-server/runtime/bootstrap/self-hosted-broker-runtime.ts, src-server/runtime/bootstrap/self-hosted-connector-config.ts, src-server/services/connections/native-v2-pion-application-adapter.ts, src-server/services/connections/virtual-application.ts, src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime-native.test.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Integration source review through e0314c727: lib.rs removed the dormant notification_watch module and its commands and added a rustls TLS test for the native HTTP agent. SelfHostedBrokerNativeClient gained a comment saying only tests and the native relay echo lab use it, linking this guide's 'Native routing grant foundation (v2)' heading, which exists. ApiBaseContext lost only a notification comment. The guide's native grant, command-table, supervisor and lab claims remain accurate. Source review is separate from executed test evidence."
+        "Integration source review through e0314c727: lib.rs removed the dormant notification_watch module and its commands and added a rustls TLS test for the native HTTP agent. SelfHostedBrokerNativeClient gained a comment saying only tests and the native relay echo lab use it, linking this guide's 'Native routing grant foundation (v2)' heading, which exists. ApiBaseContext lost only a notification comment. The guide's native grant, command-table, supervisor and lab claims remain accurate. Source review is separate from executed test evidence.",
+        "Merge of main (#2886 rewrite) into the native application UI bridge branch: resolved the native-adapter conflict to main's wording after re-reading the merged owners. The production Pion runtime passes nativeOfferPolling = (native adapter configured) (self-hosted-broker-pion-runtime.ts) and the lifecycle calls pollNative only under that flag (self-hosted-broker-runtime.ts), so 'additionally calls pollNative() for that opt-in surface' is accurate where the branch's 'own explicit opt-in' overstated a separate switch. Corrected 'application names have no renderer caller': this branch adds createNativeApplicationSignalingBridge, which wraps the three application commands for one saved-profile revision; grep finds no non-test caller composing it. Checked: focused bridge tests 12/12 and typecheck:ui on the merged tree. Limits: no executed Tauri IPC, packaged app or live broker."
       ]
     },
     {
