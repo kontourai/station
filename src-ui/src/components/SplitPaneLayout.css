@@ -791,6 +791,11 @@
  * it sits in is 44px tall, so the box never reaches a neighbouring row. None
  * of today's consumers draws an ::after or positions those controls; one that
  * starts to must reconcile it with this rule.
+ *
+ * Two limits, measured in the running Activity list: a control that clips its
+ * own overflow (the project pill's ellipsis) clips this box too, and two
+ * controls stacked in one 44px row cannot each own 44px. The fix for both is
+ * one trailing control per row, not a larger box.
  */
 @media (pointer: coarse) {
   .split-pane__item {
