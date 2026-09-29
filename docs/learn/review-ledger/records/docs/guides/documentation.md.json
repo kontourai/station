@@ -14,7 +14,7 @@
   "sources": [
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"8bb92981958cf7280fe4fc3a01f76d9784cd3d7d"},
+    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46","revision":"0d0a38055b9253d9c0d40f5d4315b929cb41c3f7"},
 
     {"path":".veritas/attestations/HEAD","digest":"509a9ed1d454af138d096f874c8fe21ce9e76cb34982654b06a62778d622bb41","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
