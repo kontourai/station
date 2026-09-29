@@ -104,11 +104,13 @@ on, the publish job:
 
 A separate `host-pointer` job then moves the pointer. It runs once publish
 reports the release public, even if a later publish step such as the deploy
-ledger failed, and its own failure never skips the ledger or release
-availability. Re-running the failed job retries only the pointer. It holds no
+ledger failed (but not after the owner cancels the run), and its own failure
+never skips the ledger or release availability. Re-running the failed job retries only the pointer. It holds no
 secret: it downloads the signed manifest and its payload from the public
-versioned release and verifies them with the pinned key table before any
-pointer write. It then re-downloads the versioned archives and manifest
+versioned release, requires the payload to name this run's version, tag and
+source SHA, and verifies them with the pinned key table before any pointer
+write. The pointer plan also refuses a signed manifest for any other
+version. It then re-downloads the versioned archives and manifest
 anonymously, compares them with the payload, and plans the pointer again:
 
 - **Newer version:** it saves the served manifest, replaces it, and
