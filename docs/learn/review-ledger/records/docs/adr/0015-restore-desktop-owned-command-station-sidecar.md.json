@@ -5,11 +5,11 @@
 
   "state": "classified",
 
-  "summary": "Read in full and left unchanged. Current source resolves the packaged command-station entry, uses the registry bridge, reports a service owner without setting api_base or auto-attaching, keeps service actions tsx/manifest-bound, and retains15-second/20-second watchdog constants. The ADR already explicitly separates NOT_VERIFIED packaged and teardown evidence.",
+  "summary": "Decision text unchanged. A dated #2957 addendum records packaged-build runs of nightly 0.1.11-nightly.2463.2 against the NOT_VERIFIED list: signed and notarized macOS items executed, unsigned Windows NSIS partly executed, MSI/Linux/AppImage and real reboot NOT_VERIFIED. It also records findings: Windows readiness and watchdog timings, stale sidecar entries after abrupt death, and shared roots without saved metadata refusing first launch.",
 
-  "limits": "No signed package, Tauri AppHandle path, real desktop startup/teardown, physical host, service install/handoff, tray delivery, Windows task/process proof or resource-resolution test was run. Historic review counts and behavioral receipts are retained, not re-proven.",
+  "limits": "Addendum claims rest on the author's unpublished run logs, re-checked by an independent verifier on macOS (artifact identity, signing, source constants, one clean-home launch). Single runs: no Finder/Dock or Explorer launch proof, no real reboot, no Windows service, tray, or observed UI, and no MSI, Linux, or AppImage artifact. The Windows installer was unsigned. Historic review counts and behavioral receipts are retained, not re-proven.",
 
-  "document": {"digest":"d088c73563837f29d5e1c39e122785b0f45afccb5323396df40f0d1524f0b9c0","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+  "document": {"digest":"ae630ad46482a84ef322e83bf470c9936219e5ba452eeff3a7e45ecc047d43d4","revision":"e9e828f46c92819a2e8d56397494839d09a115e4"},
 
   "sources": [
     {"path":"docs/design/instance-registry.md","digest":"6478fdadd409526952d53a3ca9604ea0c9741a0411025c2faed3fdf02d5242bf","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
