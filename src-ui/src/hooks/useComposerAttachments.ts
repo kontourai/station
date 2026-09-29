@@ -621,7 +621,9 @@ export function useComposerAttachments(options: {
       ? options.capabilities.imageCaveat
       : undefined;
   const sendBlockedReason = imagesRefused
-    ? `${options.capabilities.imageRefusal ?? 'This engine cannot see images.'} Remove the images to send.`
+    ? // The composer puts "Remove attachments" beside this line, so the
+      // sentence states the reason only — short enough for one phone line.
+      (options.capabilities.imageRefusal ?? 'This engine cannot see images.')
     : !hasStages
       ? undefined
       : options.stages.some((stage) => stage.state === 'accepted')

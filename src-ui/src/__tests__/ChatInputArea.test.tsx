@@ -125,8 +125,7 @@ describe('ChatInputArea', () => {
   // for an attachment-only block must be on the line that states it.
   test('a send blocked only by its attachments offers their removal on the validation line', () => {
     const props = renderChatInputArea({
-      sendBlockedReason:
-        'Grok Build reported that it cannot accept images. Remove the images to send.',
+      sendBlockedReason: 'Grok Build reported that it cannot accept images.',
       removalUnblocksSend: true,
     });
     fireEvent.click(screen.getByRole('button', { name: 'Remove attachments' }));

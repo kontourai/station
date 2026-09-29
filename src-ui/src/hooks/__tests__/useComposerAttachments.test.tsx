@@ -87,7 +87,7 @@ describe('useComposerAttachments', () => {
       imageRefusal: 'Grok Build reported that it cannot accept images.',
     });
     expect(refused.sendBlockedReason).toBe(
-      'Grok Build reported that it cannot accept images. Remove the images to send.',
+      'Grok Build reported that it cannot accept images.',
     );
     expect(refused.attachmentNotice).toBeUndefined();
 
