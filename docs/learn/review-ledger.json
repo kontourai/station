@@ -6124,7 +6124,7 @@
     {
       "path": "docs/contexts/workspace-surfaces/CONTEXT.md",
       "documentDigest": "11a615f37cdd68bcdfb351232884c851a4fd7356057eaad39547973009593473",
-      "sourceRevision": "9990a8d89fa0e6bd8f51c24ef2099f7fb75dd4e0",
+      "sourceRevision": "b64264374e10a647d09d04abafdb429813f32a4e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full context vocabulary and relationships; added actual composition routing, ambient/mode/region semantics, Task declaration vs real owner view, UI availability merge and persistence/rollback boundaries, authorized Session-directory previews and separately composed coding panes.",
@@ -6196,7 +6196,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/FilePreviewPane.tsx",
-          "digest": "7f25b83faf43362035d66ea61cf9a93751ac583eca6a098a31a84299f3d11ce5"
+          "digest": "ec7838f816e1163ea764e02716a6b445334b92dfdc31c23d7ca394d6fcd4dbfe"
         },
         {
           "path": "src-ui/src/workspace-panes/InertRenderedMarkdown.tsx",
@@ -6243,7 +6243,8 @@
         "775 focused tests across 44 files passed; local source/caller and controlled UI/runtime evidence.",
         "Integration source review through e0314c727: the document's own delta repoints the module-map link from #collaborativeeditorpane to #projecttaskroom and records that the unmounted editor controller was deleted. The anchor resolves to '## ProjectTaskRoom' and src-shared/collaborative-editor-pane.ts is gone, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) made FilePreviewPane helpers module-private and made AMBIENT_CHAT_DOCK_DOCUMENT_ID private. It also removed createAmbientChatDockPaneDocument and dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry. There is no behavior change, the linked files still exist, and the doc names none of the removed exports. Prose accurate. Source review is separate from executed test evidence.",
-        "Added the File Preview's grammar highlighting (shared highlight worker, rendered as text, stated render cap and colour refusals) and its Changes view (file-preview/changes: preview path and Session rules, #2363 read refusal, oversized refused). Checked against FilePreviewPane.tsx, workspace-pane-previews.ts, workspace-file-changes-service.ts and the preview service's changesTarget."
+        "Added the File Preview's grammar highlighting (shared highlight worker, rendered as text, stated render cap and colour refusals) and its Changes view (file-preview/changes: preview path and Session rules, #2363 read refusal, oversized refused). Checked against FilePreviewPane.tsx, workspace-pane-previews.ts, workspace-file-changes-service.ts and the preview service's changesTarget.",
+        "Reviewed the FilePreviewPane.tsx delta (class names renamed to workspace-file-preview__* to stop colliding with the chat attachment preview); the pane behaviour this context states is unchanged."
       ]
     },
     {
@@ -18119,7 +18120,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "9990a8d89fa0e6bd8f51c24ef2099f7fb75dd4e0",
+      "sourceRevision": "b64264374e10a647d09d04abafdb429813f32a4e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18127,7 +18128,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "64c6bef1d05c7d79656bef456c596e33d0423925c2f2fff06229d9c21111ce72"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -18279,7 +18280,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Shared mobile [class*=__actions] rule unchanged and still matches .tool-call__actions; the new case runs above the breakpoint where that rule does not apply, consistent with the guide. No claim changed.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Shared mobile __actions rule unchanged; #2917 right-dock desktop case still consistent. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "Reviewed against this change's index.css delta: it only adds three syntax rungs (--syntax-function/-tag/-variable) in both theme blocks for the File Preview; no claim in this document concerns them."
+        "Reviewed against this change's index.css delta: it only adds three syntax rungs (--syntax-function/-tag/-variable) in both theme blocks for the File Preview; no claim in this document concerns them.",
+        "Reviewed the responsive-action-surfaces.txt delta: it adds one covered entry for the workspace File Preview pane (wrapping rows, 44px floor at every width); this document's inventory and floor rules are unchanged and consistent with it."
       ]
     },
     {
@@ -19722,7 +19724,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "6b1815a15e332e6f0799348d7c2c7c2d7c29fee226f4fb91ca081590207ca08c",
-      "sourceRevision": "9990a8d89fa0e6bd8f51c24ef2099f7fb75dd4e0",
+      "sourceRevision": "b64264374e10a647d09d04abafdb429813f32a4e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19730,7 +19732,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "64c6bef1d05c7d79656bef456c596e33d0423925c2f2fff06229d9c21111ce72"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -19898,7 +19900,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Guidance to verify disabled state in light and dark was followed (rendered and measured 4.33:1 light, 4.38:1 dark); uses existing tokens. No claim changed.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). The guide's new claim that --accent-primary/--text-on-accent read the action role holds, and the #2917 Allow Once button consumes exactly that pair (hover: --accent-hover-fill -> --accent-darker -> the action role), so channel and white-label action roles reach it. No prose change.",
         "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium.",
-        "Reviewed against this change's index.css delta: it only adds three syntax rungs (--syntax-function/-tag/-variable) in both theme blocks for the File Preview; no claim in this document concerns them."
+        "Reviewed against this change's index.css delta: it only adds three syntax rungs (--syntax-function/-tag/-variable) in both theme blocks for the File Preview; no claim in this document concerns them.",
+        "Reviewed the responsive-action-surfaces.txt delta: it adds one covered entry for the workspace File Preview pane (wrapping rows, 44px floor at every width); this document's inventory and floor rules are unchanged and consistent with it."
       ]
     },
     {
@@ -20902,7 +20905,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "9990a8d89fa0e6bd8f51c24ef2099f7fb75dd4e0",
+      "sourceRevision": "b64264374e10a647d09d04abafdb429813f32a4e",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -20910,7 +20913,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "64c6bef1d05c7d79656bef456c596e33d0423925c2f2fff06229d9c21111ce72"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -21063,13 +21066,14 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Backend approval ownership only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "Reviewed against this change's index.css delta: it only adds three syntax rungs (--syntax-function/-tag/-variable) in both theme blocks for the File Preview; no claim in this document concerns them."
+        "Reviewed against this change's index.css delta: it only adds three syntax rungs (--syntax-function/-tag/-variable) in both theme blocks for the File Preview; no claim in this document concerns them.",
+        "Reviewed the responsive-action-surfaces.txt delta: it adds one covered entry for the workspace File Preview pane (wrapping rows, 44px floor at every width); this document's inventory and floor rules are unchanged and consistent with it."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "9990a8d89fa0e6bd8f51c24ef2099f7fb75dd4e0",
+      "sourceRevision": "b64264374e10a647d09d04abafdb429813f32a4e",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21077,7 +21081,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "64c6bef1d05c7d79656bef456c596e33d0423925c2f2fff06229d9c21111ce72"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -21233,7 +21237,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-button styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "Reviewed against this change's index.css delta: it only adds three syntax rungs (--syntax-function/-tag/-variable) in both theme blocks for the File Preview; no claim in this document concerns them."
+        "Reviewed against this change's index.css delta: it only adds three syntax rungs (--syntax-function/-tag/-variable) in both theme blocks for the File Preview; no claim in this document concerns them.",
+        "Reviewed the responsive-action-surfaces.txt delta: it adds one covered entry for the workspace File Preview pane (wrapping rows, 44px floor at every width); this document's inventory and floor rules are unchanged and consistent with it."
       ]
     },
     {
