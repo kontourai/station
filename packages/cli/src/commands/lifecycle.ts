@@ -57,6 +57,7 @@ import {
   ownedDependencyInstallerUnavailable,
 } from '@kontourai/station-shared/owned-dependency-installer';
 import { STATION_RELEASE_RINGS } from '@kontourai/station-shared/ports';
+import { installerInheritedEnv } from '@kontourai/station-shared/prebuilt-archive';
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
@@ -5121,7 +5122,9 @@ function delegatePackagedUpgradeIfPresent(
   execFileSync('sh', ['./install.sh', 'install'], {
     cwd: CWD,
     env: {
-      ...process.env,
+      // Not the bootstrap's channel-default ports: install.sh would take them
+      // as explicit and refuse a service running on the recorded ones.
+      ...installerInheritedEnv(process.env),
       STATION_CHANNEL: state.channel,
       STATION_ROOT: state.stationRoot,
       STATION_HOME: state.stationHome,
