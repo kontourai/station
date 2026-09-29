@@ -218,10 +218,16 @@ describe('writeSSEError', () => {
       Object.assign(new Error('redirected'), { statusCode: 302 }),
     );
     await writeSSEError(streamWriter, new Error('plain failure'));
+    // A credential-shaped message keeps its 401 even when the error carries
+    // another provider status — the pre-existing precedence.
+    await writeSSEError(
+      streamWriter,
+      Object.assign(new Error('bad credential'), { statusCode: 403 }),
+    );
 
     expect(
       writes.map((w) => JSON.parse(w.replace(/^data: /, '')).statusCode),
-    ).toEqual([401, undefined, undefined]);
+    ).toEqual([401, undefined, undefined, 401]);
   });
 });
 

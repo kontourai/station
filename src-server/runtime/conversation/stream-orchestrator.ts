@@ -246,6 +246,17 @@ export async function writeSSEDone(streamWriter: any): Promise<void> {
   await streamWriter.write('data: [DONE]\n\n');
 }
 
+/** The provider's HTTP status when it is a 4xx/5xx integer, else undefined. */
+function providerErrorStatusCode(error: unknown): number | undefined {
+  const status = providerHttpErrorStatus(error);
+  return status !== undefined &&
+    Number.isInteger(status) &&
+    status >= 400 &&
+    status <= 599
+    ? status
+    : undefined;
+}
+
 /**
  * Write SSE error.
  *
@@ -267,16 +278,9 @@ export async function writeSSEError(
     (error.message.includes('credential') ||
       error.message.includes('accessKeyId') ||
       error.message.includes('secretAccessKey'));
-  const providerStatus = providerHttpErrorStatus(error);
-  const statusCode =
-    providerStatus !== undefined &&
-    Number.isInteger(providerStatus) &&
-    providerStatus >= 400 &&
-    providerStatus <= 599
-      ? providerStatus
-      : isCredentialError
-        ? 401
-        : undefined;
+  // The credential-shaped 401 keeps its pre-existing precedence; only an
+  // error that is not credential-shaped reports the provider's own status.
+  const statusCode = isCredentialError ? 401 : providerErrorStatusCode(error);
   await streamWriter.write(
     `data: ${JSON.stringify({
       type: 'error',

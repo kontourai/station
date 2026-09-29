@@ -512,7 +512,6 @@ function claimPendingIdlessToolCall(
   return pending.splice(index, 1)[0];
 }
 
-/** Translate Station's existing chat SSE chunks into the canonical task stream. */
 /** A 4xx/5xx integer from the inner stream's error frame, else undefined. */
 function providerErrorHttpStatus(value: unknown): number | undefined {
   return typeof value === 'number' &&
@@ -557,6 +556,7 @@ function stationAgentTurnFailureMessage(
   return `The model provider refused the request ${suffix}`;
 }
 
+/** Translate Station's existing chat SSE chunks into the canonical task stream. */
 export function mapStationAgentStreamEvent(options: {
   event: Record<string, unknown>;
   threadId: string;
