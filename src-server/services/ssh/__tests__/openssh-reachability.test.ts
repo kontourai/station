@@ -309,7 +309,7 @@ describe('SSH_PROBE_MAX_SECONDS', () => {
     }
   });
 
-  test('each leg matches the timeout its own runner actually applies', () => {
+  test('the config-resolve leg reports exactly the timeout ssh -G is bounded by', () => {
     // `ssh -G` is bounded by the config module's exported constant — the
     // header cannot drift from the timeout without this failing.
     expect(SSH_CONFIG_RESOLVE_MAX_SECONDS * 1_000).toBe(

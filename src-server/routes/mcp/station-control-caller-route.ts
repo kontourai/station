@@ -2,8 +2,11 @@
  * Station #90 lane D (station #122): the REST projection of a station-control
  * tool's verified caller, mounted under `/api/orchestration`.
  *
- * Its consumer is a stdio station-control child: that process holds its
- * per-session credential but not Station's token registry, so it asks here.
+ * It has no production client. Its original consumer, a stdio
+ * station-control child holding a per-session credential, no longer exists
+ * (stdio children are caller-less); in-process tools resolve their caller
+ * directly. The `/caller/delegation` leaf below is still used by
+ * `station-control-delegation.ts`.
  *
  * Internal-only: any caller the runtime boundary did not accept as Station's
  * own internal principal gets a 404, whatever scope its credential carries,

@@ -89,11 +89,6 @@ type ResolveSessionAgent = (
  * `resolveSessionAgentForStart` in orchestration-service.ts.
  */
 export function sessionAgentStartUnavailableReason(input: {
-  /**
-   * Kept for call-site stability and so the startability contract suite can
-   * prove provider-independence; deliberately never read.
-   */
-  provider: string | undefined;
   agentSlug: unknown;
   hasResolvedAgent: boolean;
   unresolvedReason?: string;

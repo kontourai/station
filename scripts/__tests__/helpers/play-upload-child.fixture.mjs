@@ -1,12 +1,16 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 
 const mode =
   process.argv[2] ?? process.env.PLAY_UPLOAD_FIXTURE_MODE ?? 'normal';
 const statePath = process.argv[3] ?? process.env.PLAY_UPLOAD_FIXTURE_STATE;
 const readyPath = process.env.PLAY_UPLOAD_FIXTURE_READY;
 
-if (readyPath) writeFileSync(readyPath, String(process.pid));
+// Write then rename: the test waits for the file to exist and reads it at once.
+if (readyPath) {
+  writeFileSync(`${readyPath}.tmp`, String(process.pid));
+  renameSync(`${readyPath}.tmp`, readyPath);
+}
 process.stdout.write(`child-pid=${process.pid}\n`);
 
 if (mode === 'normal') process.exit(0);

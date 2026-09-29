@@ -239,7 +239,7 @@ describe('FlowPolicySidecar (unit pins)', () => {
     } as unknown as CanonicalRuntimeEvent;
   }
 
-  it('spools a successful command completion with its output and exit code 0', () => {
+  it('spools a successful command completion with its output and no synthesized exit code', () => {
     const deps = makeDeps({
       latestEventPayloadByMethod: vi.fn(() => flowAttached()),
     });
@@ -273,7 +273,7 @@ describe('FlowPolicySidecar (unit pins)', () => {
     );
   });
 
-  it('spools an errored completion preferring `error` over `output`, exit code 1', () => {
+  it('spools an errored completion preferring `error` over `output`, no synthesized exit code', () => {
     const deps = makeDeps({
       latestEventPayloadByMethod: vi.fn(() => flowAttached()),
     });

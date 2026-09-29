@@ -4,7 +4,6 @@ import type { CdpTransport } from '../browser-host.js';
 import {
   ChromiumScreencastDispatchTimeoutError,
   ChromiumScreencastProducer,
-  jpegDimensions,
   screencastDeviceScaleFactor,
 } from '../chromium-screencast-producer.js';
 
@@ -116,14 +115,7 @@ function producer(
   };
 }
 
-describe('jpeg size and device scale factor', () => {
-  test('reads the SOF size past an APP segment', () => {
-    expect(jpegDimensions(jpeg(640, 400))).toEqual({ width: 640, height: 400 });
-    expect(jpegDimensions(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toBe(
-      undefined,
-    );
-  });
-
+describe('device scale factor', () => {
   test('image px per CSS px, bounded to the wire range', () => {
     expect(screencastDeviceScaleFactor(640, 1280)).toBe(0.5);
     expect(screencastDeviceScaleFactor(2560, 1280)).toBe(2);

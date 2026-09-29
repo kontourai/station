@@ -93,7 +93,8 @@ freshness promises.
 
 For data changed elsewhere, follow its actual invalidation, event, polling or
 explicit refresh owner. Station's cache-first defaults do not imply an automatic
-refresh on focus/remount. `keepPreviousData` is opt-in: callers must distinguish
+refresh on focus/remount; a hook opts one read back in with
+`refetchOnWindowFocus`. `keepPreviousData` is opt-in: callers must distinguish
 placeholder content from the answer for the new key. Preserve loading, empty,
 unavailable and error as different states.
 

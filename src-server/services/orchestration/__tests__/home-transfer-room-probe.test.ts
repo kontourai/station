@@ -63,18 +63,42 @@ test('the whole-operation deadline covers a stalled body', async () => {
   await refused;
 });
 test('invalid origins and failures never expose remote credentials or body details', async () => {
+  const rejection = async (pending: Promise<unknown>) => {
+    const error = await pending.then(
+      () => {
+        throw new Error('expected a rejection');
+      },
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(Error);
+    return (error as Error).message;
+  };
   const fetcher = vi.fn(async () => {
     throw new Error(peer.credential);
   });
-  await expect(
-    probeHomeTransferRoom(
-      { ...peer, apiBase: 'https://remote.example.test/path' },
-      input,
-      fetcher,
+  expect(
+    await rejection(
+      probeHomeTransferRoom(
+        { ...peer, apiBase: 'https://remote.example.test/path' },
+        input,
+        fetcher,
+      ),
     ),
-  ).rejects.toThrow('origin');
+  ).toBe('Invalid remote Station origin');
   expect(fetcher).not.toHaveBeenCalled();
-  await expect(probeHomeTransferRoom(peer, input, fetcher)).rejects.toThrow(
+  // A transport failure carrying the credential, and a refusal whose body
+  // carries remote detail, both reduce to the one fixed message.
+  expect(await rejection(probeHomeTransferRoom(peer, input, fetcher))).toBe(
     'Remote room identity unavailable',
   );
+  expect(
+    await rejection(
+      probeHomeTransferRoom(
+        peer,
+        input,
+        async () =>
+          new Response(`remote detail ${peer.credential}`, { status: 500 }),
+      ),
+    ),
+  ).toBe('Remote room identity unavailable');
 });

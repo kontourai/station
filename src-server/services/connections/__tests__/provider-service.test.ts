@@ -3,11 +3,14 @@ import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 
 // A capture is process-wide, and every use in this file asserts BEFORE its own
 // `stop()`. Without this, one failing assertion leaks the sink — and any raised
 // debug level — into every test after it.
 afterEach(stopLoggerCaptures);
+const makeTempDir = trackTempDirs();
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   providerOps: { add: vi.fn() },
@@ -45,25 +48,25 @@ function createMockStorageAdapter() {
 }
 
 describe('ProviderService', () => {
-  test('listProviderConnections delegates', () => {
-    const adapter = createMockStorageAdapter();
+  test('saves, updates, lists and deletes connections through real file storage', async () => {
     const svc = new ProviderService(
-      adapter as any,
-      async () =>
-        ({ defaultLLMProvider: 'bedrock', defaultModel: 'claude-3' }) as any,
+      new FileStorageAdapter(makeTempDir('station-provider-service-')),
+      async () => ({}) as any,
     );
-    svc.listProviderConnections();
-    expect(adapter.listProviderConnections).toHaveBeenCalled();
-  });
+    const ollama = {
+      id: 'ollama-1',
+      type: 'ollama',
+      name: 'Ollama',
+      enabled: true,
+      capabilities: ['llm'],
+      config: { baseUrl: 'http://127.0.0.1:11434' },
+    } as any;
 
-  test('saveProviderConnection persists', async () => {
-    const adapter = createMockStorageAdapter();
-    const svc = new ProviderService(adapter as any, async () => ({}) as any);
-    await svc.saveProviderConnection({ id: 'p1', type: 'bedrock' } as any);
-    expect(adapter.saveProviderConnection).toHaveBeenCalledWith({
-      id: 'p1',
-      type: 'bedrock',
-    });
+    await svc.saveProviderConnection(ollama);
+    expect(svc.listProviderConnections()).toEqual([ollama]);
+
+    await svc.deleteProviderConnection('ollama-1');
+    expect(svc.listProviderConnections()).toEqual([]);
   });
 
   test('publishes a launchability revision only after a provider mutation commits', async () => {
@@ -181,13 +184,6 @@ describe('ProviderService', () => {
         .some((line) => line.msg === 'Launchability revision listener failed.'),
     ).toBe(true);
     captured.stop();
-  });
-
-  test('deleteProviderConnection removes', () => {
-    const adapter = createMockStorageAdapter();
-    const svc = new ProviderService(adapter as any, async () => ({}) as any);
-    svc.deleteProviderConnection('p1');
-    expect(adapter.deleteProviderConnection).toHaveBeenCalledWith('p1');
   });
 
   test('resolveProvider uses conversation-level override', async () => {
@@ -607,31 +603,29 @@ describe('ProviderService', () => {
       expect(duplicate).toBeUndefined();
     });
 
-    test('an update (PUT-equivalent save of an already-persisted connection) is never blocked by the check', () => {
-      const adapter = createMockStorageAdapter();
-      adapter.saveProviderConnection({
+    test('an update (PUT-equivalent save of an already-persisted connection) is never blocked by the check', async () => {
+      const svc = new ProviderService(
+        new FileStorageAdapter(makeTempDir('station-provider-service-')),
+        async () => ({}) as any,
+      );
+      const existing = {
         id: 'ollama-1',
         type: 'ollama',
         name: 'Ollama',
         enabled: true,
         capabilities: ['llm'],
         config: { baseUrl: 'http://127.0.0.1:11434' },
-      });
-      const svc = new ProviderService(adapter as any, async () => ({}) as any);
+      } as any;
+      await svc.saveProviderConnection(existing);
 
       // The PUT route never calls findDuplicateConnection at all — this test
       // documents that saveProviderConnection itself has no dedup gate, so
       // renaming/re-saving an existing row always succeeds.
-      expect(() =>
-        svc.saveProviderConnection({
-          id: 'ollama-1',
-          type: 'ollama',
-          name: 'Ollama (renamed)',
-          enabled: true,
-          capabilities: ['llm'],
-          config: { baseUrl: 'http://127.0.0.1:11434' },
-        } as any),
-      ).not.toThrow();
+      const renamed = { ...existing, name: 'Ollama (renamed)' };
+      await expect(
+        svc.saveProviderConnection(renamed),
+      ).resolves.toBeUndefined();
+      expect(svc.listProviderConnections()).toEqual([renamed]);
     });
   });
 
@@ -646,12 +640,6 @@ describe('ProviderService', () => {
     test('title-cases each hyphen/underscore-separated segment', () => {
       expect(providerTypeLabel('openai-compat')).toBe('Openai Compat');
       expect(providerTypeLabel('some_type')).toBe('Some Type');
-    });
-
-    test('is generic across a future non-Ollama host-identified type', () => {
-      // Simulates the plausible future Bedrock addition the code comment
-      // names — the label must not say "Ollama" for it.
-      expect(providerTypeLabel('bedrock')).toBe('Bedrock');
     });
   });
 });

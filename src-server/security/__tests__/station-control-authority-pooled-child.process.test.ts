@@ -3,8 +3,8 @@
  * station-control child (the internal token in its env, no per-session
  * caller credential) against this process's production boundary and guard.
  *
- * The child runs the stdio entry's own credential install
- * (`installStationControlStdioCallerCredential`) and then the same `api()`
+ * The child runs the stdio entry's own install
+ * (`installStationControlStdioEntry`) and then the same `api()`
  * every stdio tool uses. It never minted the server attestation — that lives
  * only in this (server) process's memory — so it can reach reads and nothing
  * else, and it cannot send the attestation even when it tries to enter a
@@ -19,6 +19,10 @@ import { Hono } from 'hono';
 import { afterAll, beforeAll, expect, test, vi } from 'vitest';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import { resolveStationControlCallerForRequest } from '../../runtime/mcp/station-control-caller.js';
+import {
+  __resetStationControlMcpTokensForTests,
+  mintStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { getInternalApiToken } from '../../utils/internal-api-token.js';
@@ -32,9 +36,9 @@ import {
 const run = promisify(execFile);
 const root = resolve(import.meta.dirname, '../../..');
 const probe = `
-import {api,installStationControlStdioCallerCredential} from './src-server/tools/station-control-shared.ts';
+import {api,installStationControlStdioEntry} from './src-server/tools/station-control-shared.ts';
 import {runAsStationServer} from './src-server/security/station-server-scope.ts';
-installStationControlStdioCallerCredential();
+installStationControlStdioEntry();
 const read=await api('/agents');
 const write=await api('/config/app',{method:'PUT',body:JSON.stringify({theme:'dark'})});
 const scopedWrite=await runAsStationServer(()=>api('/config/app',{method:'PUT',body:'{}'}));
@@ -97,6 +101,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((done) => server.close(() => done()));
   __resetStationServerSelfAttestationForTests();
+  __resetStationControlMcpTokensForTests();
 });
 
 test('a real pooled stdio child reaches reads only, and never carries the server attestation', async () => {
@@ -110,7 +115,12 @@ test('a real pooled stdio child reaches reads only, and never carries the server
         // The internal token Station hands its built-in child; no caller.
         STATION_INTERNAL_API_TOKEN: getInternalApiToken(),
         STATION_API_BASE: baseUrl,
-        STATION_CONTROL_CALLER_TOKEN: '',
+        // A LIVE credential under the retired stdio caller-token key: the
+        // child must not adopt or forward it, so it stays caller-less.
+        STATION_CONTROL_CALLER_TOKEN: mintStationControlMcpToken(
+          'session-a',
+          'url-token',
+        ).token,
       },
       timeout: 30_000,
       maxBuffer: 16_384,

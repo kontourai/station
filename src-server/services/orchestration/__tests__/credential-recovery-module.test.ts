@@ -1069,20 +1069,22 @@ describe('CredentialRecoveryModule', () => {
 
   test('releases its prepared claim before staging when the caller is already aborted', async () => {
     const { eventStore, intent } = fixture();
+    const stage = vi.fn(async () => ({
+      candidateProfileRef: 'opaque',
+      capability: 'restart_resume' as const,
+    }));
     const rollback = vi.fn(async () => ({ kind: 'rolled-back' as const }));
+    const restartResume = vi.fn(async () => ({ turnId: 'unexpected' }));
     const controller = new AbortController();
     controller.abort();
     const module = createCredentialRecoveryModuleForTest({
       eventStore,
       adapter: {
-        stage: vi.fn(async () => ({
-          candidateProfileRef: 'opaque',
-          capability: 'restart_resume' as const,
-        })),
+        stage,
         commit: vi.fn(async () => ({ kind: 'adopted' as const })),
         rollback,
       },
-      restartResume: vi.fn(async () => ({ turnId: 'unexpected' })),
+      restartResume,
       restoreSession: vi.fn(async () => undefined),
       now: () => new Date('2026-08-12T00:00:00.000Z'),
     });
@@ -1097,50 +1099,9 @@ describe('CredentialRecoveryModule', () => {
         },
       }),
     ).resolves.toEqual({ kind: 'rolled-back' });
+    expect(stage).not.toHaveBeenCalled();
     expect(rollback).not.toHaveBeenCalled();
-    expect(recoveryLedger(eventStore).find(intent.fingerprint)).toMatchObject({
-      outcome: 'armed',
-    });
-    eventStore.close();
-  });
-
-  test('does not stage or compensate an already-aborted profile recovery', async () => {
-    const { eventStore, intent } = fixture();
-    const rollback = vi.fn(async () => {
-      throw new Error('rollback unavailable');
-    });
-    const controller = new AbortController();
-    controller.abort();
-    const module = createCredentialRecoveryModuleForTest({
-      eventStore,
-      adapter: {
-        stage: vi.fn(async () => ({
-          candidateProfileRef: 'opaque',
-          capability: 'restart_resume' as const,
-        })),
-        commit: vi.fn(async () => ({ kind: 'adopted' as const })),
-        rollback,
-        rollbackPending: vi.fn(async () => {
-          throw new Error('reconciliation unavailable');
-        }),
-      },
-      restartResume: vi.fn(async () => ({ turnId: 'unexpected' })),
-      restoreSession: vi.fn(async () => undefined),
-      now: () => new Date('2026-08-12T00:00:00.000Z'),
-    });
-
-    await expect(
-      module.recover({
-        intent,
-        replay: {
-          threadId: 'thread',
-          input: 'authoritative',
-          recoveryCorrelationId: 'id',
-          signal: controller.signal,
-        },
-      }),
-    ).resolves.toEqual({ kind: 'rolled-back' });
-    expect(rollback).not.toHaveBeenCalled();
+    expect(restartResume).not.toHaveBeenCalled();
     expect(recoveryLedger(eventStore).find(intent.fingerprint)).toMatchObject({
       outcome: 'armed',
       attempts: 0,
@@ -1148,52 +1109,58 @@ describe('CredentialRecoveryModule', () => {
     eventStore.close();
   });
 
-  test('does not enter profile staging after an already-aborted recovery', async () => {
-    const { eventStore, intent } = fixture();
-    const controller = new AbortController();
-    controller.abort();
-    const module = createCredentialRecoveryModuleForTest({
-      eventStore,
-      adapter: {
-        stage: vi.fn(async () => {
-          eventStore.createRecoveryLedger().claim({
-            fingerprint: intent.fingerprint,
-            kind: 'profile',
-            now: '2026-08-12T00:00:01.000Z',
-          });
-          return {
-            candidateProfileRef: 'opaque',
-            capability: 'restart_resume' as const,
-          };
-        }),
-        commit: vi.fn(async () => ({ kind: 'adopted' as const })),
-        rollback: vi.fn(async () => {
-          throw new Error('losing cleanup unavailable');
-        }),
-        rollbackPending: vi.fn(async () => undefined),
+  test.each([
+    {
+      rollback: async () => ({ kind: 'rolled-back' as const }),
+      outcome: 'rolled-back',
+    },
+    {
+      rollback: async (): Promise<{ kind: 'rolled-back' }> => {
+        throw new Error('rollback unavailable');
       },
-      restartResume: vi.fn(async () => ({ turnId: 'unexpected' })),
-      restoreSession: vi.fn(async () => undefined),
-      now: () => new Date('2026-08-12T00:00:00.000Z'),
-    });
-
-    await expect(
-      module.recover({
-        intent,
-        replay: {
-          threadId: 'thread',
-          input: 'authoritative',
-          recoveryCorrelationId: 'id',
-          signal: controller.signal,
+      outcome: 'indeterminate',
+    },
+  ])(
+    'abandons a staged profile without restarting when the caller aborts during staging ($outcome)',
+    async ({ rollback: rollbackOutcome, outcome }) => {
+      const { eventStore, intent } = fixture();
+      const controller = new AbortController();
+      const rollback = vi.fn(rollbackOutcome);
+      const restartResume = vi.fn(async () => ({ turnId: 'unexpected' }));
+      const module = createCredentialRecoveryModuleForTest({
+        eventStore,
+        adapter: {
+          stage: vi.fn(async () => {
+            controller.abort();
+            return {
+              candidateProfileRef: 'opaque',
+              capability: 'restart_resume' as const,
+            };
+          }),
+          commit: vi.fn(async () => ({ kind: 'adopted' as const })),
+          rollback,
         },
-      }),
-    ).resolves.toEqual({ kind: 'rolled-back' });
-    expect(recoveryLedger(eventStore).find(intent.fingerprint)).toMatchObject({
-      outcome: 'armed',
-      attempts: 0,
-    });
-    eventStore.close();
-  });
+        restartResume,
+        restoreSession: vi.fn(async () => undefined),
+        now: () => new Date('2026-08-12T00:00:00.000Z'),
+      });
+
+      await expect(
+        module.recover({
+          intent,
+          replay: {
+            threadId: 'thread',
+            input: 'authoritative',
+            recoveryCorrelationId: 'id',
+            signal: controller.signal,
+          },
+        }),
+      ).resolves.toEqual({ kind: outcome });
+      expect(rollback).toHaveBeenCalledOnce();
+      expect(restartResume).not.toHaveBeenCalled();
+      eventStore.close();
+    },
+  );
 
   test('keeps an indeterminate stage durable instead of releasing it to ordinary replay', async () => {
     const { eventStore, intent } = fixture();

@@ -2,10 +2,7 @@ import { parseSessionInventoryProjection } from '@kontourai/station-contracts/se
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
 import { composeAuthorizedSessionAnswerBasis } from '../../projects/task-basis-module.js';
-import {
-  createSessionInventoryModule,
-  withTaskKeptRows,
-} from '../session-inventory-module.js';
+import { createSessionInventoryModule } from '../session-inventory-module.js';
 import type { SessionWorkItemModule } from '../session-work-item-module.js';
 
 const authority = sessionReadAuthorityFromRequest(
@@ -74,7 +71,7 @@ function workItem(overrides: Record<string, unknown> = {}) {
   };
 }
 describe('SessionInventoryModule', () => {
-  test('projects one deduplicated exact-session work item with only trusted facts', async () => {
+  test('maps the work-item owner projection for the exact session with only trusted facts', async () => {
     const observation = workItem();
     const module = createSessionInventoryModule({
       sessionOutputs: {
@@ -404,37 +401,38 @@ describe('SessionInventoryModule', () => {
       canReadSession: () => true,
       readWholeSessionEvents: () => ({
         events: [
+          // Bodies the store never selects, and methods it never returns:
+          // the fold must still enumerate only its typed descriptor fields.
           {
             id: 'input',
-            payload: {
-              method: 'turn.started',
-              turnId: 'turn-a',
-              prompt: 'never returned',
-              attachments: [],
-            },
+            sequence: 1,
+            method: 'turn.started',
+            turnId: 'turn-a',
+            prompt: 'never returned',
+            attachments: [],
           },
           {
             id: 'tool',
-            payload: {
-              method: 'tool.completed',
-              turnId: 'turn-a',
-              toolCallId: 'call-a',
-              toolName: 'shell',
-              status: 'success',
-              output: 'never returned',
-            },
+            sequence: 2,
+            method: 'tool.completed',
+            turnId: 'turn-a',
+            toolCallId: 'call-a',
+            name: 'shell',
+            terminalStatus: 'succeeded',
+            output: 'never returned',
           },
           {
             id: 'progress',
-            payload: {
-              method: 'tool.progress',
-              toolCallId: 'call-a',
-              message: 'never returned',
-            },
+            sequence: 3,
+            method: 'tool.progress',
+            toolCallId: 'call-a',
+            message: 'never returned',
           },
           {
             id: 'delta',
-            payload: { method: 'content.text-delta', delta: 'never returned' },
+            sequence: 4,
+            method: 'content.text-delta',
+            delta: 'never returned',
           },
         ] as never,
         highWater: 4,
@@ -515,23 +513,21 @@ describe('SessionInventoryModule', () => {
         events: [
           {
             id: 'tool-done',
-            payload: {
-              method: 'tool.completed',
-              turnId: 'turn-a',
-              toolCallId: 'call-done',
-              toolName: 'shell',
-              status: 'success',
-            },
+            sequence: 1,
+            method: 'tool.completed',
+            turnId: 'turn-a',
+            toolCallId: 'call-done',
+            name: 'shell',
+            terminalStatus: 'succeeded',
           },
           {
             id: 'tool-open',
-            payload: {
-              method: 'tool.completed',
-              turnId: 'turn-a',
-              toolCallId: 'call-open',
-              toolName: 'shell',
-              status: 'unresolved',
-            },
+            sequence: 2,
+            method: 'tool.completed',
+            turnId: 'turn-a',
+            toolCallId: 'call-open',
+            name: 'shell',
+            terminalStatus: 'unresolved',
           },
         ] as never,
         highWater: 2,
@@ -570,13 +566,12 @@ describe('SessionInventoryModule', () => {
       readWholeSessionEvents: (_sessionId, frozenHighWater) => ({
         events: inputIds
           .slice(0, frozenHighWater ?? inputIds.length)
-          .map((id) => ({
+          .map((id, index) => ({
             id,
-            payload: {
-              method: 'turn.started',
-              turnId: 'turn-a',
-              attachments: [],
-            },
+            sequence: index + 1,
+            method: 'turn.started',
+            turnId: 'turn-a',
+            attachments: [],
           })) as never,
         highWater: frozenHighWater ?? inputIds.length,
       }),
@@ -626,7 +621,7 @@ describe('SessionInventoryModule', () => {
       }),
     ).resolves.toEqual({ status: 'not-found' });
   });
-  test('kept replacement admits only exact stored provenance rows and keeps a bounded preview', async () => {
+  test('a kept-in-task read publishes Task route kept rows as a bounded preview', async () => {
     const module = createSessionInventoryModule({
       sessionOutputs: {
         list: vi.fn().mockResolvedValue({
@@ -636,52 +631,53 @@ describe('SessionInventoryModule', () => {
       } as never,
       canReadSession: () => true,
     });
-    const base = await module.read({
-      scope: { kind: 'kept-in-task', sessionId: 'session-a', taskId: 'task-a' },
-      authority,
-      current: () => true,
+    const keptRow = (
+      kind: 'task-kept-answer' | 'task-kept-input' | 'task-kept-result',
+      key: string,
+      referenceId: string,
+    ) => ({
+      kind,
+      key,
+      owner: { owner: 'task', id: 'v1' },
+      relations: ['kept-in-task' as const],
+      taskId: 'task-a',
+      provenanceSessionId: 'session-a',
+      referenceId,
     });
-    expect(base.status).toBe('found');
-    if (base.status !== 'found') throw new Error('expected projection');
-    const projected = withTaskKeptRows(base.projection, [
-      {
-        kind: 'task-kept-answer',
-        key: 'a',
-        owner: { owner: 'task', id: 'v1' },
-        relations: ['kept-in-task'],
-        taskId: 'task-a',
-        provenanceSessionId: 'session-a',
-        referenceId: 'turn:session-a/a',
-      },
-      {
-        kind: 'task-kept-input',
-        key: 'b',
-        owner: { owner: 'task', id: 'v1' },
-        relations: ['kept-in-task'],
-        taskId: 'task-a',
-        provenanceSessionId: 'session-a',
-        referenceId: 'input:session-a/b',
-      },
-      {
-        kind: 'task-kept-result',
-        key: 'c',
-        owner: { owner: 'task', id: 'v1' },
-        relations: ['kept-in-task'],
-        taskId: 'task-a',
-        provenanceSessionId: 'session-a',
-        referenceId: 'result:session-a/c',
-      },
-    ]);
-    expect(projected.groups.find((group) => group.id === 'kept')).toMatchObject(
-      {
-        state: 'available',
-        count: { kind: 'at-least', value: 3 },
-        items: [
-          expect.objectContaining({ provenanceSessionId: 'session-a' }),
-          expect.objectContaining({ provenanceSessionId: 'session-a' }),
-        ],
-      },
-    );
+    const rows = [
+      keptRow('task-kept-answer', 'a', 'turn:session-a/a'),
+      keptRow('task-kept-input', 'b', 'input:session-a/b'),
+      keptRow('task-kept-result', 'c', 'result:session-a/c'),
+    ];
+    const kept = async (keptRows: typeof rows) => {
+      const result = await module.read({
+        scope: {
+          kind: 'kept-in-task',
+          sessionId: 'session-a',
+          taskId: 'task-a',
+        },
+        keptRows: keptRows as never,
+        authority,
+        current: () => true,
+      });
+      if (result.status !== 'found') throw new Error('expected projection');
+      return result.projection.groups.find((group) => group.id === 'kept');
+    };
+    // Within the preview bound the count is exact...
+    expect(await kept(rows.slice(0, 2))).toMatchObject({
+      owner: { owner: 'station.task-graph' },
+      state: 'available',
+      count: { kind: 'exact', value: 2 },
+      items: [{ key: 'a' }, { key: 'b' }],
+      gaps: [{ kind: 'not-captured' }],
+    });
+    // ...and past it the preview keeps two rows under an at-least count.
+    const bounded = await kept(rows);
+    expect(bounded).toMatchObject({
+      state: 'available',
+      count: { kind: 'at-least', value: 3 },
+    });
+    expect(bounded?.items.map((item) => item.key)).toEqual(['a', 'b']);
   });
 
   test('rejects a same-length historical descriptor mutation behind an inventory cursor', async () => {

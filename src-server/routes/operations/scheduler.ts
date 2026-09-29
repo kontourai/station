@@ -10,10 +10,7 @@ import {
 import { Hono } from 'hono';
 import { SchedulerJobConflictError } from '../../services/scheduling/builtin-scheduler.js';
 import { SchedulerStorageUnavailableError } from '../../services/scheduling/scheduler-ledger.js';
-import type {
-  SchedulerManualRunResult,
-  SchedulerService,
-} from '../../services/scheduling/scheduler-service.js';
+import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { SchedulerScheduleInvalidError } from '../../services/scheduling/scheduler-service.js';
 import { schedulerJobRuns } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
@@ -246,14 +243,7 @@ export function createSchedulerRoutes(
     const target = param(c, 'target');
     try {
       observeManualRunRequest();
-      const result: SchedulerManualRunResult =
-        await schedulerService.runJob(target);
-      if ('output' in result) {
-        // An internally composed legacy provider can confirm its own output,
-        // but did not supply an exact run identity. Preserve the established
-        // success payload without fabricating an observable receipt.
-        return c.json({ success: true, data: { output: result.output } });
-      }
+      const result = await schedulerService.runJob(target);
       // Provider/storage diagnostics belong to the protected run record, not
       // this public envelope. Keep the old output field stable and add only a
       // projected, non-authorizing receipt.

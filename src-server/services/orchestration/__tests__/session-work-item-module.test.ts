@@ -79,6 +79,7 @@ describe('SessionWorkItemModule', () => {
         current: () => true,
       }),
     ).toMatchObject({ status: 'found' });
+    // The child reads its OWN observations, not the predecessor's: none.
     expect(
       module.read({
         sessionId: 'session-child',
@@ -86,7 +87,14 @@ describe('SessionWorkItemModule', () => {
         authority: personal,
         current: () => true,
       }),
-    ).toEqual({ status: 'found', projection: expect.any(Object) });
+    ).toMatchObject({
+      status: 'found',
+      projection: { observations: [], items: [] },
+    });
+    expect(list).toHaveBeenLastCalledWith({
+      sessionId: 'session-child',
+      conversationId: 'conversation-a',
+    });
     expect(
       module.read({
         sessionId: 'session-a',
@@ -180,16 +188,25 @@ describe('SessionWorkItemModule', () => {
     ).toEqual({ status: 'corrupt' });
   });
 
-  test('fails closed when initial principal, ACL, or lineage callbacks throw', () => {
+  test.each([
+    ['initial principal', 'current'],
+    ['ACL', 'canReadSession'],
+    ['lineage', 'conversationForSession'],
+  ] as const)('fails closed when the %s callback throws', (_label, faulty) => {
+    const fault = (name: typeof faulty) => {
+      if (name === faulty) throw new Error(`${name} unavailable`);
+    };
     const module = createSessionWorkItemModule({
       eventStore: {
-        conversationForSession: () => {
-          throw new Error('lineage unavailable');
+        conversationForSession: (sessionId: string) => {
+          fault('conversationForSession');
+          return { sessionId, conversationId: 'conversation-a', ordinal: 0 };
         },
         listSessionWorkItemObservations: () => [observation()],
       } as never,
       canReadSession: () => {
-        throw new Error('principal drift');
+        fault('canReadSession');
+        return true;
       },
     });
     expect(
@@ -197,7 +214,10 @@ describe('SessionWorkItemModule', () => {
         sessionId: 'session-a',
         conversationId: 'conversation-a',
         authority: personal,
-        current: () => true,
+        current: () => {
+          fault('current');
+          return true;
+        },
       }),
     ).toEqual({ status: 'unavailable' });
   });

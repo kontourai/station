@@ -3669,9 +3669,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
   }
 }
 
-export function toScheduledJob(
-  stored: StoredSchedulerJob,
-): ScheduledJob | null {
+function toScheduledJob(stored: StoredSchedulerJob): ScheduledJob | null {
   const schedule = stored.schedule
     ? stored.schedule
     : stored.cron

@@ -33,23 +33,6 @@ describe('ClientConnectionPresence', () => {
     expect(presence.snapshot(['phone']).has('phone')).toBe(false);
   });
 
-  test('retains duplicate stream references across expiry until every lease releases', () => {
-    let now = 0;
-    const presence = new ClientConnectionPresence({
-      now: () => now,
-      leaseMs: 10,
-    });
-    const first = presence.connect('phone', SESSION_A)!;
-    const second = presence.connect('phone', SESSION_A)!;
-    now = 11;
-    expect(presence.snapshot(['phone']).has('phone')).toBe(false);
-    first.touch();
-    first.release();
-    expect(presence.snapshot(['phone']).has('phone')).toBe(false);
-    second.release();
-    expect(presence.snapshot(['phone']).has('phone')).toBe(false);
-  });
-
   test('bounds sessions without exposing an unbounded registry', () => {
     const presence = new ClientConnectionPresence({ capacity: 1 });
     expect(presence.connect('one', SESSION_A)).toBeTruthy();

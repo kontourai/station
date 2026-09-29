@@ -325,15 +325,17 @@ export class DeltaCoalescer {
     }
   }
 
-  /** Threads currently holding buffered text. Diagnostics only. */
+  /** Threads currently holding buffered text. Read only by the unit suite. */
   pendingThreadCount(): number {
     return this.pending.size;
   }
 
   /**
-   * Threads holding a first-paint marker. Diagnostics only — but unlike
-   * `pending`, this map is not emptied by flushing, so it is the one whose
-   * growth is worth being able to assert on.
+   * Threads holding a first-paint marker. Read only by the unit suite, and
+   * kept as its resource guard: unlike `pending`, this map is not emptied by
+   * flushing, and a behavioural probe (the next delta paints at once) cannot
+   * tell a deleted marker from one retained in an idle form. The dead-thread
+   * leak tests assert on this count.
    */
   trackedThreadCount(): number {
     return this.streamStarts.size;

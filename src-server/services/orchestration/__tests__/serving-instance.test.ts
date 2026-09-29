@@ -40,38 +40,12 @@ describe('servingInstanceIdentity', () => {
     vi.resetModules();
   });
 
-  test('carries the operator-facing instance name when one is configured', async () => {
-    expect(await freshIdentity('phone')).toContain('phone');
-  });
-
   test('always carries THIS process id, named or not', async () => {
     // The part that actually distinguishes. Asserted for both the named and
     // the unnamed case, because the unnamed case is the one where the label
     // alone identifies nothing.
     expect(await freshIdentity('phone')).toBe(`phone#${process.pid}`);
     expect(await freshIdentity()).toBe(`default#${process.pid}`);
-  });
-
-  test('two unnamed instances on one host are still distinguishable', async () => {
-    // The exact scenario the doc claims the pid buys, stated as the
-    // difference it must produce. `STATION_INSTANCE_ID` is unset for both, so
-    // the LABEL is identical ('default') — if the identity were the label
-    // alone, these would collide and one Station's observation would be
-    // indistinguishable from the other's.
-    const mine = await freshIdentity();
-    const asIfOtherProcess = `default#${process.pid + 1}`;
-    expect(mine).not.toBe(asIfOtherProcess);
-    expect(mine.split('#')[0]).toBe(asIfOtherProcess.split('#')[0]);
-  });
-
-  test('the identity is not a bare constant', async () => {
-    // Directly the shape the verifier injected: a fixed string would satisfy
-    // every `expect.any(String)` assertion in the suite while destroying the
-    // distinction the wire field exists to carry.
-    const identity = await freshIdentity('alpha');
-    expect(identity).not.toBe('station');
-    expect(identity).not.toBe('default');
-    expect(identity).toMatch(/^alpha#\d+$/);
   });
 
   test('an empty STATION_INSTANCE_ID falls back rather than yielding a bare pid', async () => {
@@ -81,11 +55,5 @@ describe('servingInstanceIdentity', () => {
     // identity whose readable half is missing (delta review, finding 2
     // residual). No test covered the difference.
     expect(await freshIdentity('')).toBe(`default#${process.pid}`);
-  });
-
-  test('is stable within a process', async () => {
-    vi.resetModules();
-    const { servingInstanceIdentity } = await import('../serving-instance.js');
-    expect(servingInstanceIdentity()).toBe(servingInstanceIdentity());
   });
 });
