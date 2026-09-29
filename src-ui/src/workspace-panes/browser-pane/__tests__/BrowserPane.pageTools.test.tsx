@@ -140,6 +140,25 @@ function renderPane(routes: Record<string, Route>) {
   return fake;
 }
 
+/** Choose an item from the ⋯ menu once the session has enabled it. */
+async function chooseFromMenu(name: string) {
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'More browser actions' }),
+  );
+  let item = await screen.findByRole('menuitem', { name });
+  if ((item as HTMLButtonElement).disabled) {
+    // Opened before the session loaded: reopen once it has.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More browser actions' }),
+    );
+    item = await screen.findByRole('menuitem', { name });
+  }
+  expect((item as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(item);
+}
+
 /** Click a tool once the session has loaded and enabled it. */
 async function clickWhenEnabled(name: string) {
   const button = (await screen.findByRole('button', {
@@ -260,11 +279,17 @@ describe('the control line and the hand-back', () => {
       [SUMMARY]: ok(sessionView({ activity: { agentDriven: true } })),
     });
     expect(await screen.findByText('You are in control')).toBeTruthy();
-    const handBack = await screen.findByRole('button', {
-      name: 'Hand back to agent',
-    });
+    // No separate Take control: a click on the page takes it.
     expect(screen.queryByRole('button', { name: 'Take control' })).toBeNull();
-    fireEvent.click(handBack);
+    // The chip says "You" and opens the hand-back.
+    const chip = await screen.findByRole('button', {
+      name: 'You are in control. Control options',
+    });
+    expect(chip.textContent).toBe('You');
+    fireEvent.click(chip);
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Hand back to agent' }),
+    );
     expect(state.releaseControl).toHaveBeenCalledTimes(1);
   });
 
@@ -282,14 +307,19 @@ describe('the control line and the hand-back', () => {
         }),
       ),
     });
-    const release = (await screen.findByRole('button', {
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'You are in control. Control options',
+      }),
+    );
+    const release = (await screen.findByRole('menuitem', {
       name: 'Release control',
     })) as HTMLButtonElement;
     expect(release.disabled).toBe(true);
     expect(release.title).toMatch(/dialog first/);
   });
 
-  test('an agent that drove moments ago still reads as driving with no lease held, and Take control is offered', async () => {
+  test('an agent that drove moments ago still reads as driving with no lease held, with the take-over hint over the page', async () => {
     const state = control({ tone: 'none' });
     controlHolder.state = state;
     renderPane({
@@ -305,9 +335,15 @@ describe('the control line and the hand-back', () => {
       ),
     });
     expect(await screen.findByText('An agent is driving')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Take control' }));
-    expect(state.claimControl).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: /Hand back/ })).toBeNull();
+    // One word on the chip, and the page says how to take over.
+    expect(
+      screen.getByText('Click anywhere to take over from the agent'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Take control' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Control options/ }),
+    ).toBeNull();
+    expect(state.claimControl).not.toHaveBeenCalled();
   });
 });
 
@@ -397,7 +433,7 @@ describe('screenshots', () => {
           headers: { 'content-type': 'image/png' },
         }),
     });
-    await clickWhenEnabled('Screenshot');
+    await chooseFromMenu('Screenshot');
     const save = (await screen.findByRole('link', {
       name: 'Save image',
     })) as HTMLAnchorElement;
@@ -424,9 +460,119 @@ describe('screenshots', () => {
         body: { success: false, code: 'page-busy' },
       }),
     });
-    await clickWhenEnabled('Screenshot');
+    await chooseFromMenu('Screenshot');
     expect(
       await screen.findByText('The page did not respond in time.'),
     ).toBeTruthy();
   });
+});
+
+describe('the toolbar', () => {
+  test('Close session lives in the ⋯ menu, last and on its own, and closes the session', async () => {
+    controlHolder.state = control();
+    let closed = false;
+    const fake = renderPane({
+      [SUMMARY]: () => ({
+        body: {
+          success: true,
+          data: sessionView(closed ? { state: 'closed' } : {}),
+        },
+      }),
+      [`DELETE /api/browser/sessions/${SESSION}`]: () => {
+        closed = true;
+        return {
+          body: { success: true, data: sessionView({ state: 'closed' }) },
+        };
+      },
+    });
+    await screen.findByTestId('live-canvas');
+    // Not a toolbar button.
+    expect(screen.queryByRole('button', { name: 'Close session' })).toBeNull();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More browser actions' }),
+    );
+    const menu = await screen.findByRole('menu', {
+      name: 'More browser actions',
+    });
+    // The order a person reads: Screenshot, Viewport, Sessions, Agent access,
+    // Local servers; then a separator; then Close session, last.
+    const items = within(menu).getAllByRole('menuitem');
+    expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
+      'Screenshot',
+      'Viewport: Desktop',
+      'Sessions',
+      'Agent access',
+      'Local servers',
+      'Close session',
+    ]);
+    const close = items.at(-1)!;
+    expect(close.previousElementSibling?.tagName).toBe('HR');
+    fireEvent.click(close);
+    await waitFor(() =>
+      expect(
+        fake.calls.some(
+          (call) =>
+            call.method === 'DELETE' &&
+            call.path === `/api/browser/sessions/${SESSION}`,
+        ),
+      ).toBe(true),
+    );
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('the Console button counts errors logged since it was last opened, and opening it clears the count', async () => {
+    controlHolder.state = control();
+    let reads = 0;
+    renderPane({
+      [SUMMARY]: ok(sessionView()),
+      [`GET /api/browser/sessions/${SESSION}/console`]: () => {
+        reads += 1;
+        return {
+          body: {
+            success: true,
+            data: {
+              entries: [
+                {
+                  seq: 1,
+                  at: 1,
+                  level: 'error',
+                  source: 'console',
+                  text: 'old',
+                },
+              ],
+              dropped: 0,
+              latestSeq: 1,
+              capturing: true,
+            },
+          },
+        };
+      },
+      [`GET /api/browser/sessions/${SESSION}/console?after=1`]: ok({
+        entries: [
+          { seq: 2, at: 2, level: 'error', source: 'exception', text: 'boom' },
+          { seq: 3, at: 3, level: 'info', source: 'console', text: 'fine' },
+          { seq: 4, at: 4, level: 'error', source: 'browser', text: '404' },
+        ],
+        dropped: 0,
+        latestSeq: 4,
+        capturing: true,
+      }),
+      [`GET /api/browser/sessions/${SESSION}/console?after=4`]: ok({
+        entries: [],
+        dropped: 0,
+        latestSeq: 4,
+        capturing: true,
+      }),
+    });
+    // The error already there when the pane looked is not new; the two
+    // errors after it are.
+    const badged = await screen.findByRole(
+      'button',
+      { name: 'Console, 2 unseen errors' },
+      { timeout: 8_000 },
+    );
+    expect(reads).toBe(1);
+    fireEvent.click(badged);
+    expect(await screen.findByRole('button', { name: 'Console' })).toBeTruthy();
+  }, 15_000);
 });

@@ -3,7 +3,11 @@ import type {
   BrowserConsoleLevelView,
   BrowserConsoleView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type UseQueryResult,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ArrowDownGlyph } from '../../components/icons/Glyph';
@@ -17,9 +21,9 @@ import {
  * The page's console (#90): what it logged, its uncaught exceptions and the
  * browser's own messages about it, read from the server's bounded capture.
  *
- * Polled only while the drawer is open, and incrementally (`after` the
- * newest entry already held), so an open drawer costs one small read a
- * second. The client keeps the same bound as the server; what the server
+ * Read incrementally (`after` the newest entry already held): once a second
+ * with the drawer open, every three seconds closed, so the toolbar can badge
+ * new errors. The client keeps the same bound as the server; what the server
  * evicted is said as a count, never silently missing. Everything shown is
  * page text: rendered as text, never as markup.
  */
@@ -68,35 +72,77 @@ export function mergeConsoleRead(
   };
 }
 
-export function BrowserConsoleDrawer({
+/** How often the console is read while its drawer is closed (for the badge). */
+const CLOSED_POLL_MS = 3_000;
+
+export interface BrowserConsoleState {
+  read: UseQueryResult<BrowserConsoleView>;
+  /** Errors captured since the drawer was last open (for the toolbar badge). */
+  unreadErrors: number;
+}
+
+/**
+ * The page's console as the pane holds it: read incrementally while the
+ * session is live — every second with the drawer open, every three seconds
+ * closed so the toolbar can badge new errors — and counted unread until the
+ * drawer is opened.
+ */
+export function useBrowserConsole({
   apiBase,
   api,
   browserSessionId,
   live,
+  open,
 }: {
   apiBase: string;
   api: BrowserPaneApi;
   browserSessionId: string;
   live: boolean;
-}) {
+  open: boolean;
+}): BrowserConsoleState {
   const queryClient = useQueryClient();
   const key = browserPaneKeys.console(apiBase, browserSessionId);
-  const consoleRead = useQuery({
+  const read = useQuery({
     queryKey: key,
     queryFn: async ({ signal }) => {
       const held = queryClient.getQueryData<BrowserConsoleView>(key);
       const after = held?.latestSeq;
-      const read = await api.console(browserSessionId, after, signal);
-      if (after !== undefined && read.latestSeq < after) {
+      const next = await api.console(browserSessionId, after, signal);
+      if (after !== undefined && next.latestSeq < after) {
         // A new browser generation: read it whole.
         return api.console(browserSessionId, undefined, signal);
       }
-      return mergeConsoleRead(held, read, after);
+      return mergeConsoleRead(held, next, after);
     },
     enabled: live,
     retry: false,
-    refetchInterval: live ? POLL_MS : false,
+    refetchInterval: live ? (open ? POLL_MS : CLOSED_POLL_MS) : false,
   });
+  /** Entries at or below this seq have been seen in the open drawer. */
+  const [seenThrough, setSeenThrough] = useState<number | null>(null);
+  const latest = read.data?.latestSeq;
+  useEffect(() => {
+    if (latest === undefined) return;
+    // The first read is the baseline: what the page logged before this pane
+    // looked is not "new". While the drawer is open, everything is seen.
+    setSeenThrough((current) => (current === null || open ? latest : current));
+  }, [latest, open]);
+  const unreadErrors =
+    seenThrough === null
+      ? 0
+      : (read.data?.entries ?? []).filter(
+          (entry) => entry.level === 'error' && entry.seq > seenThrough,
+        ).length;
+  return { read, unreadErrors };
+}
+
+export function BrowserConsoleDrawer({
+  read: consoleRead,
+  live,
+}: {
+  read: UseQueryResult<BrowserConsoleView>;
+  live: boolean;
+}) {
   const [level, setLevel] = useState<LevelFilter>('all');
   /** Entries at or below this seq were cleared from view (not from the page). */
   const [clearedThrough, setClearedThrough] = useState(0);

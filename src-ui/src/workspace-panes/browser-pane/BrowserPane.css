@@ -201,75 +201,313 @@
   position: relative;
 }
 
-/* --- Control line, page tools, narrow fold (#90) ------------------------ */
+/* --- Toolbar (#90): quiet chrome, one row --------------------------------
+   Omnibox, driver chip, Console, ⋯. Layout and sizing only: every button is
+   the shared Button (`variant="icon"`), every menu the shared menu surface.
+   On a coarse pointer or a phone-width window every target is 44px and the
+   row never wraps: the path gives way first, then the host truncates. */
 
-/* The pane's own width decides the fold, not the window's: a Browser pane
-   docked beside a wide chat is as narrow as a phone. */
 .browser-pane {
-  container-name: browser-pane;
-  container-type: inline-size;
+  --browser-pane-control: 30px;
 }
 
-.browser-pane__driving,
-.browser-pane__tools,
-.browser-pane__secondary {
+@media (pointer: coarse), (max-width: 768px) {
+  .browser-pane {
+    --browser-pane-control: 44px;
+  }
+}
+
+.browser-pane__toolbar {
   align-items: center;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2, 8px);
-}
-
-.browser-pane__driving {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
   min-width: 0;
 }
 
-/* On a wide pane the secondary controls are the bar's second row. */
-.browser-pane__secondary {
-  flex: 1 1 100%;
+.browser-pane .browser-pane__icon {
+  flex: 0 0 auto;
+  height: var(--browser-pane-control);
+  position: relative;
+  width: var(--browser-pane-control);
 }
 
-.browser-pane__more {
-  display: none;
+/* The omnibox: lock, host, path, then back / forward / reload inside it. */
+.browser-pane__omni {
+  align-items: center;
+  background: var(--bg-input, var(--k-bg));
+  border-radius: 999px;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 4px;
+  min-height: 34px;
+  min-width: 0;
+  padding: 0 2px 0 var(--k-space-3);
 }
 
-.browser-pane__driver {
-  font-size: 0.8125rem;
-  margin: 0;
+.browser-pane__omni:focus-within {
+  box-shadow: 0 0 0 1px var(--accent-primary, var(--k-brand));
 }
 
-.browser-pane__driver[data-tone="agent"] {
-  color: var(--accent-warning, var(--text-primary));
+.browser-pane__omni-lock {
+  color: var(--text-secondary, var(--k-text-muted));
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.browser-pane__omni-field {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+}
+
+.browser-pane__omni-input {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary, var(--k-text));
+  font: inherit;
+  font-size: var(--k-text-sm);
+  height: var(--browser-pane-control);
+  outline: none;
+  padding: 0 4px;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+/* Not editing: the field's text is drawn as host + path instead. */
+.browser-pane__omni:not(.browser-pane__omni--editing)
+.browser-pane__omni-input {
+  color: transparent;
+}
+
+.browser-pane__omni-display {
+  align-items: center;
+  display: flex;
+  font-size: var(--k-text-sm);
+  inset: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 4px;
+  pointer-events: none;
+  position: absolute;
+  white-space: nowrap;
+}
+
+.browser-pane__omni-host {
+  flex: 0 1 auto;
   font-weight: 600;
+  min-width: 2ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.browser-pane__driver[data-tone="you"] {
+/* The path gives way first: it shrinks to nothing before the host does. */
+.browser-pane__omni-path {
+  color: var(--text-secondary, var(--k-text-muted));
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Back and forward appear on hover or focus of the bar; on a coarse pointer
+   there is no hover, so they are always there. */
+.browser-pane__omni-reveal {
+  opacity: 0;
+  transition: opacity var(--k-dur, 150ms) var(--k-ease, ease);
+}
+
+.browser-pane__toolbar:hover .browser-pane__omni-reveal,
+.browser-pane__toolbar:focus-within .browser-pane__omni-reveal {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .browser-pane__omni-reveal {
+    opacity: 1;
+  }
+}
+
+/* The driver chip: a soft tint, a dot and one word. */
+.browser-pane__chip-wrap {
+  flex: 0 0 auto;
+  position: relative;
+}
+
+.browser-pane__chip {
+  align-items: center;
+  background: color-mix(in oklab, var(--k-text-muted) 12%, transparent);
+  border: 0;
+  border-radius: 999px;
+  color: var(--k-text-muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: var(--k-text-xs);
   font-weight: 600;
+  gap: 7px;
+  height: 24px;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 
-@container browser-pane (max-width: 559px) {
-  .browser-pane__more {
-    align-items: center;
-    display: inline-flex;
-    justify-content: center;
-  }
+.browser-pane__chip--button {
+  cursor: pointer;
+}
 
-  /* Keep Go on the address row at phone widths. */
-  .browser-pane__address {
-    flex-basis: 6rem;
-  }
+.browser-pane__chip[data-tone="agent"] {
+  background: color-mix(in oklab, var(--k-active) 12%, transparent);
+  color: var(--k-active);
+}
 
-  .browser-pane__secondary {
-    display: none;
-  }
+.browser-pane__chip[data-tone="you"] {
+  background: color-mix(in oklab, var(--k-positive) 12%, transparent);
+  color: var(--k-positive);
+}
 
-  .browser-pane__secondary--open {
-    display: flex;
-    flex: 1 1 100%;
-  }
+.browser-pane__chip-dot {
+  background: currentColor;
+  border-radius: 50%;
+  height: 7px;
+  width: 7px;
+}
 
-  .browser-pane__driving {
-    flex-basis: 100%;
+/* An agent drove recently: the dot breathes. */
+.browser-pane__chip[data-tone="agent"] .browser-pane__chip-dot {
+  animation: browser-pane-breathe 2s ease-in-out infinite;
+}
+
+@keyframes browser-pane-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-pane__chip[data-tone="agent"] .browser-pane__chip-dot {
+    animation: none;
+  }
+}
+
+@media (pointer: coarse), (max-width: 768px) {
+  /* The chip that opens a menu is a 44px target; the tint stays 24px. */
+  .browser-pane__chip--button {
+    background-clip: content-box;
+    height: 44px;
+    padding: 10px;
+  }
+}
+
+.browser-pane__chip-menu {
+  min-width: 12rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: var(--layer-popover, var(--k-z-popover));
+}
+
+/* Unseen errors: a small red count on the Console button. */
+.browser-pane__badge-count {
+  align-items: center;
+  background: var(--k-negative);
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px var(--bg-secondary, var(--k-panel));
+  color: #fff;
+  display: grid;
+  font-size: 9.5px;
+  font-weight: 700;
+  height: 15px;
+  line-height: 1;
+  min-width: 15px;
+  justify-content: center;
+  padding: 0 3px;
+  position: absolute;
+  right: -4px;
+  top: -4px;
+}
+
+/* An agent is driving: hovering the page says how to take over. */
+.browser-pane__takeover-hint {
+  backdrop-filter: blur(6px);
+  background: rgb(10 14 20 / 0.78);
+  border-radius: 999px;
+  bottom: var(--k-space-3);
+  color: #fff;
+  font-size: var(--k-text-xs);
+  left: 50%;
+  opacity: 0;
+  padding: 6px 12px;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%);
+  transition: opacity var(--k-dur, 150ms) var(--k-ease, ease);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.browser-pane__stage:hover .browser-pane__takeover-hint {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .browser-pane__takeover-hint {
+    opacity: 1;
+  }
+}
+
+/* The ⋯ menu: the shared .menu-surface look, bounded with its own scroll. */
+.browser-pane__menu {
+  min-width: 14rem;
+  overflow-y: auto;
+  z-index: var(--layer-popover, var(--k-z-popover));
+}
+
+.browser-pane__menu-backdrop,
+.browser-pane__menu-backdrop:hover,
+.browser-pane__menu-backdrop:focus,
+.browser-pane__menu-backdrop:focus-visible {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  inset: 0;
+  padding: 0;
+  position: fixed;
+  z-index: calc(var(--layer-popover, var(--k-z-popover)) - 1);
+}
+
+.browser-pane__menu-separator {
+  border: 0;
+  border-top: 1px solid var(--border-primary, var(--k-line));
+  margin: 4px;
+}
+
+.browser-pane__menu-label {
+  flex: 1 1 auto;
+}
+
+.browser-pane__menu-hint {
+  color: var(--text-secondary, var(--k-text-muted));
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xs);
+  margin-left: var(--k-space-3);
+}
+
+.browser-pane__menu-row--danger,
+.browser-pane__menu-row--danger:hover,
+.browser-pane__menu-row--danger:focus-visible {
+  color: var(--k-negative);
+}
+
+@media (pointer: coarse), (max-width: 768px) {
+  .browser-pane__menu-row {
+    min-height: 44px;
   }
 }
 
@@ -296,15 +534,19 @@
   font-size: 0.75rem;
   list-style: none;
   margin: 0;
-  max-height: 12rem;
+  /* Its own scroll, a sensible default, and the reader can drag it taller. */
+  height: 10rem;
+  max-height: 60vh;
+  min-height: 4rem;
   overflow: auto;
   padding: 0;
+  resize: vertical;
 }
 
 /* With the console open, the live view gives up the drawer's height rather
    than being pushed below the fold. */
 .browser-pane:has(.browser-pane__console) .live-surface__canvas {
-  max-height: calc(100dvh - 12rem - 16rem);
+  max-height: calc(100dvh - 8rem - 14rem);
 }
 
 .browser-pane__console-entry {
@@ -411,4 +653,17 @@
    flex (in the dialog's column that basis would be a height). */
 .browser-pane__page-dialog .browser-pane__address {
   flex: 0 0 auto;
+}
+
+/* The console's own controls follow the toolbar's size (compact on a fine
+   pointer, 44px on coarse or phone-width). */
+.browser-pane__console .browser-pane__select,
+.browser-pane__console .browser-pane__control {
+  font-size: var(--k-text-sm);
+  min-height: var(--browser-pane-control);
+  min-width: var(--browser-pane-control);
+}
+
+.browser-pane__console-bar h3 {
+  font-size: var(--k-text-sm);
 }
