@@ -146,7 +146,9 @@ a connection `capabilities` string. A steer fold appends a user row and
 (`projectRuntimeEventsToMessages`) keeps the turn open at a steer but emits
 what the engine produced before it as its own assistant row, so the steer
 renders where it happened rather than above the whole turn. The turn's
-provenance and answer eligibility stay on its final row. Attachments have no steer channel, so
+provenance and answer eligibility stay on its final row, and so does the
+turn's ownership: a start-less or late event for the turn lands on the row
+after the steer, never on the one before it. Attachments have no steer channel, so
 they still queue. Durable outbound replay stays durable (`skipInMemoryQueueOnBusy`)
 and is never collapsed into either path.
 
