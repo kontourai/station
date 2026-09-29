@@ -791,6 +791,16 @@ export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
 export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 
 /**
+ * A send refused before any engine effect because the bound engine cannot
+ * take the attached input (an ACP engine whose `initialize` handshake did not
+ * advertise `promptCapabilities.image`, or a file the engine only accepts as
+ * an image). Deterministic, NOT retryable: the same send with the same
+ * attachments is refused the same way, so clients must not offer a blind
+ * retry — the user has to remove the attachments or pick another engine.
+ */
+export const ATTACHMENT_INPUT_UNSUPPORTED_CODE = 'attachment_input_unsupported';
+
+/**
  * Whether Station owns an orchestration session or only follows it.
  *
  * Older persisted sessions omit this field and are treated as station-owned

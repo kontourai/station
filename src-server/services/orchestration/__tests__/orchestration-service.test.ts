@@ -58,6 +58,7 @@ import type {
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import {
+  AttachmentInputUnsupportedError,
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
   SendTurnRefusedError,
@@ -14918,6 +14919,41 @@ describe('OrchestrationService', () => {
     });
     expect(followUp).toMatchObject({ threadId: 'thread-refused-turn' });
     expect(claude.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
+  test('an attachment refusal forwards its non-retryable code through the dispatch wrapper', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-attachment-refused',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new AttachmentInputUnsupportedError(
+        'This engine did not advertise image attachment support.',
+      ),
+    );
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-attachment-refused', input: 'inspect' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    // The literal, not the constant: the client's translation keys on it.
+    expect(dispatchError.code).toBe('attachment_input_unsupported');
+    // Deterministic: the same attachments are refused again, so the wrapper
+    // must not mark it retryable the way it marks a transient refusal.
+    expect(dispatchError.retryable).toBe(false);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
   });
 
   test("#2300: Muse's slot-releasing refusal keeps its retryable code through the dispatch wrapper", async () => {

@@ -16,6 +16,11 @@ interface ComposerAttachmentCapabilities {
   images: boolean;
   files: boolean;
   imageRefusal?: string;
+  imageCaveat?: string;
+}
+
+function isImageMime(mimeType: string | undefined): boolean {
+  return typeof mimeType === 'string' && mimeType.startsWith('image/');
 }
 
 type StageTask = {
@@ -47,7 +52,7 @@ function applyUpdate(
   return snapshots.map((snapshot) => {
     if (snapshot.clientAttachmentId !== update.clientAttachmentId)
       return snapshot;
-    const { error: _error, ...withoutError } = snapshot;
+    const { error: _error, expired: _expired, ...withoutError } = snapshot;
     return {
       ...withoutError,
       state: update.state,
@@ -61,10 +66,14 @@ function applyUpdate(
   });
 }
 
+const STAGE_EXPIRED_MESSAGE =
+  'Attachment stage expired. Retry or choose the file again.';
+
 function unavailable(
   stage: ComposerAttachmentStageSnapshot,
   hasBytes: boolean,
   message: string,
+  expired = false,
 ): ComposerAttachmentStageSnapshot {
   const { reference: _reference, delivery: _delivery, ...rest } = stage;
   return {
@@ -73,6 +82,7 @@ function unavailable(
     progress: 0,
     needsFile: !hasBytes,
     error: message,
+    ...(expired ? { expired: true } : {}),
   };
 }
 
@@ -524,7 +534,8 @@ export function useComposerAttachments(options: {
                   ? unavailable(
                       stage,
                       owned.filesById.current.has(stage.clientAttachmentId),
-                      'Attachment stage expired. Retry or choose the file again.',
+                      STAGE_EXPIRED_MESSAGE,
+                      true,
                     )
                   : stage,
               ),
@@ -565,7 +576,8 @@ export function useComposerAttachments(options: {
               ? unavailable(
                   stage,
                   owned.filesById.current.has(stage.clientAttachmentId),
-                  'Attachment stage expired. Retry or choose the file again.',
+                  STAGE_EXPIRED_MESSAGE,
+                  true,
                 )
               : stage,
           ),
@@ -586,17 +598,34 @@ export function useComposerAttachments(options: {
   const hasInFlightStage = options.stages.some(
     (stage) => stage.state === 'queued' || stage.state === 'uploading',
   );
-  const sendBlockedReason = !hasStages
-    ? undefined
-    : options.stages.some((stage) => stage.state === 'accepted')
-      ? 'An attachment was accepted with its prior message. Wait for that turn before sending again.'
-      : hasRetryableStage
-        ? 'Retry or remove every attachment marked for retry before sending.'
-        : hasUnavailableStage
-          ? 'Choose the file again or remove it before sending.'
-          : hasInFlightStage
-            ? 'Wait until every selected file finishes staging before sending.'
-            : undefined;
+  // Images attached before the engine's answer was known (or before the
+  // model changed) cannot be sent once it says no: the server refuses the
+  // whole send. Say so here, before Send, instead of after a round trip.
+  const hasImage =
+    options.attachments.some((attachment) => isImageMime(attachment.type)) ||
+    options.stages.some((stage) => isImageMime(stage.mimeType));
+  const imagesRefused = hasImage && !options.capabilities.images;
+  const attachmentNotice =
+    hasImage && options.capabilities.images
+      ? options.capabilities.imageCaveat
+      : undefined;
+  const sendBlockedReason = imagesRefused
+    ? `${options.capabilities.imageRefusal ?? 'This engine cannot see images.'} Remove the images to send.`
+    : !hasStages
+      ? undefined
+      : options.stages.some((stage) => stage.state === 'accepted')
+        ? 'An attachment was accepted with its prior message. Wait for that turn before sending again.'
+        : hasRetryableStage
+          ? options.stages.some(
+              (stage) => stage.state === 'retryable' && stage.expired,
+            )
+            ? 'An upload expired before it was sent. Upload it again or remove it.'
+            : 'An upload did not finish. Retry it or remove it before sending.'
+          : hasUnavailableStage
+            ? 'Choose the file again or remove it before sending.'
+            : hasInFlightStage
+              ? 'Wait until every selected file finishes staging before sending.'
+              : undefined;
 
   return {
     error,
@@ -608,5 +637,6 @@ export function useComposerAttachments(options: {
     cancel,
     remove,
     sendBlockedReason,
+    attachmentNotice,
   };
 }

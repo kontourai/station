@@ -876,13 +876,26 @@
   flex: 0 0 auto;
   gap: var(--space-1);
   align-items: center;
-  max-width: 220px;
+  max-width: min(260px, 80vw);
   padding: 2px 2px 2px var(--space-1);
   color: var(--text-secondary);
   font-size: var(--text-xs);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
   border-radius: 6px;
+}
+
+.composer-attachments__chip--blocked {
+  border-color: var(--error-text);
+}
+
+/* Name over status, so a long status line never wraps the chip into a
+   four-line column around the thumbnail. */
+.composer-attachments__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .composer-mentions {
@@ -984,8 +997,9 @@
 }
 
 .composer-attachments__thumb {
-  flex: 0 0 auto;
+  flex: 0 0 28px;
   width: 28px;
+  min-width: 28px;
   height: 28px;
   object-fit: cover;
   border-radius: 4px;
@@ -1042,8 +1056,15 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.75rem;
+  overflow: hidden;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer-attachments__chip--blocked .composer-attachments__stage {
+  color: var(--error-text);
 }
 
 .composer-attachments__stage progress {
@@ -1051,7 +1072,8 @@
   block-size: 0.4rem;
 }
 
-.composer-attachments__stage button {
+.composer-attachments__action {
+  flex: 0 0 auto;
   border: 0;
   border-radius: 0.25rem;
   background: transparent;
@@ -1061,6 +1083,7 @@
   color: var(--accent-primary);
   cursor: pointer;
   font: inherit;
+  white-space: nowrap;
   padding: 0.1rem 0.2rem;
 }
 
@@ -1090,6 +1113,10 @@
   .composer-attachments__remove {
     width: 44px;
     height: 44px;
+  }
+  .composer-attachments__action {
+    min-height: 44px;
+    padding-inline: var(--space-2);
   }
 }
 
@@ -1127,18 +1154,24 @@
   }
 }
 
-.chat-input__attachment-error {
-  position: absolute;
-  right: var(--space-2);
-  bottom: var(--space-1);
-  left: var(--space-2);
-  overflow: hidden;
-  color: var(--error-text);
+/* Composer validation and attach-time notes sit in the fieldset's normal
+   flow, BELOW the draft. They were absolutely positioned against the
+   wrapper's bottom edge, which is where the textarea's last line is, so the
+   message printed on top of the user's own text. */
+.chat-input__attachment-error,
+.chat-input__attachment-notice {
+  padding: 0 var(--space-2);
   font-size: var(--text-xs);
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+
+.chat-input__attachment-error {
+  color: var(--error-text);
+}
+
+.chat-input__attachment-notice {
+  color: var(--text-secondary);
 }
 
 /* The composer's primary action: one circular, accent-filled target pinned to

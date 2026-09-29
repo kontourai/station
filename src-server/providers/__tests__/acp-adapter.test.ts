@@ -2597,6 +2597,9 @@ describe('AcpAdapter', () => {
       message: expect.stringContaining(
         'did not advertise image attachment support',
       ),
+      // The literal, not the constant: clients translate on this string, and
+      // it is what tells them a retry with the same attachments cannot help.
+      code: 'attachment_input_unsupported',
     });
     expect(processes[0].promptContents).toEqual([]);
     await adapter.stopAll();

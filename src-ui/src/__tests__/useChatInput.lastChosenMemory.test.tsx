@@ -172,6 +172,7 @@ describe('useChatInput last-chosen model memory', () => {
     availableModels = [fastModel],
     catalogSource: RuntimeCatalogSource = provider === 'acp' ? 'live' : 'none',
     conversationId: string | undefined = undefined,
+    conversationAwaitingFirstTurn = false,
   ) {
     activeChatsStore.updateChat(SESSION_ID, {
       provider,
@@ -190,6 +191,7 @@ describe('useChatInput last-chosen model memory', () => {
           sessionId: SESSION_ID,
           agentSlug: (mockAgent as AgentData | null)?.slug ?? null,
           conversationId,
+          conversationAwaitingFirstTurn,
           availableModels,
           bindingStatus: {
             catalogSource,
@@ -243,6 +245,25 @@ describe('useChatInput last-chosen model memory', () => {
     expect(result.current.modelSelectionReason).toBe(
       'This engine can choose a model for a new chat, but cannot change it in an existing conversation.',
     );
+  });
+
+  // A conversation whose only send was refused (or that never sent) has no
+  // engine history: the server starts the next send on a successor session
+  // with the chosen model (`conversation-lineage.ts` `needsModelRestart`),
+  // so refusing the picker there stranded a user whose first send failed
+  // because of the model/engine they now want to change.
+  test('ACP keeps model selection open on a conversation that never ran a turn', () => {
+    mockAgent = externalAgent;
+    const { result } = renderWithProvider(
+      'acp',
+      [fastModel],
+      'live',
+      'existing-conversation',
+      true,
+    );
+
+    expect(result.current.canModelSelect).toBe(true);
+    expect(result.current.modelSelectionReason).toBeUndefined();
   });
 
   test('an ACP connection with no observed model catalog keeps the picker disabled (#2848)', () => {

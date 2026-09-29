@@ -228,6 +228,8 @@ interface ChatInputAreaProps {
   onClearInput: () => void;
   selectAttachmentFiles?: (files: File[]) => Promise<void>;
   attachmentError?: string | null;
+  /** Non-blocking attach-time note (e.g. image support not yet confirmed). */
+  attachmentNotice?: string;
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   sendBlockedReason?: string;
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
@@ -338,6 +340,7 @@ export function ChatInputArea({
   onClearInput,
   selectAttachmentFiles = async () => {},
   attachmentError = null,
+  attachmentNotice,
   attachmentStages = [],
   sendBlockedReason,
   onRetryAttachmentStage,
@@ -713,6 +716,7 @@ export function ChatInputArea({
                 onRetry={onRetryAttachmentStage}
                 onCancel={onCancelAttachmentStage}
                 onReplaceFile={onReplaceAttachmentFile}
+                imagesRefused={!modelSupportsAttachments}
               />
             </React.Suspense>
           )}
@@ -1052,6 +1056,11 @@ export function ChatInputArea({
               {sendBlockedReason}
             </div>
           )}
+          {attachmentNotice && !sendBlockedReason && !attachmentError && (
+            <div className="chat-input__attachment-notice" role="status">
+              {attachmentNotice}
+            </div>
+          )}
           {voiceState === 'error' && voiceError && (
             <div className="chat-input__attachment-error" role="alert">
               {voiceError}
@@ -1223,6 +1232,9 @@ export function ChatInputArea({
               }
               className={`send-button chat-input__send-btn ${
                 !isOverLimit &&
+                // A blocked Send is disabled; it must not keep the active
+                // accent that reads as "ready".
+                !sendBlockedReason &&
                 (
                   workspaceRefused ||
                     input.trim() ||

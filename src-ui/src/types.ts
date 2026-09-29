@@ -127,6 +127,12 @@ export interface ComposerAttachmentStageSnapshot {
   delivery?: 'legacy-inline' | 'staged';
   /** A reload has retained the stage reference but cannot retain File bytes. */
   needsFile?: boolean;
+  /**
+   * The completed upload outlived its server stage TTL, so it must be
+   * uploaded again before it can be sent. Distinguishes "time ran out" from
+   * a failed upload so the chip can say which one happened.
+   */
+  expired?: boolean;
   error?: string;
   /** Retained provenance is safe across reload; source bytes are never retained. */
   transformation?: TransformationReceipt;

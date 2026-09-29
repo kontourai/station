@@ -253,8 +253,13 @@ export function ACPChatPanel({
       images: composerImageSupport.attachable,
       files: false,
       imageRefusal: composerImageSupport.refusal,
+      imageCaveat: composerImageSupport.caveat,
     }),
-    [composerImageSupport.attachable, composerImageSupport.refusal],
+    [
+      composerImageSupport.attachable,
+      composerImageSupport.caveat,
+      composerImageSupport.refusal,
+    ],
   );
   const chatInput = useChatInput({
     apiBase,
@@ -374,6 +379,7 @@ export function ACPChatPanel({
         selectAttachmentFiles={chatInput.selectAttachmentFiles}
         attachmentError={chatInput.attachmentError}
         attachmentStages={chatInput.attachmentStages}
+        attachmentNotice={chatInput.attachmentNotice}
         sendBlockedReason={chatInput.sendBlockedReason}
         onRetryAttachmentStage={chatInput.retryAttachmentStage}
         onCancelAttachmentStage={chatInput.cancelAttachmentStage}

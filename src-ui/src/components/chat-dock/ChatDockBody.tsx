@@ -1,6 +1,7 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import {
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
@@ -64,8 +65,10 @@ import {
   ownerAttributionFromStation,
 } from '../../utils/ownerAttribution';
 import {
+  sessionFailureNote,
   sessionFailureText,
   transcriptCarriesFailureText,
+  transcriptShowsFailureSurface,
 } from '../../utils/sessionFailure';
 import { steerRefusalMessage } from '../../utils/steerTurn';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
@@ -486,10 +489,16 @@ export function ChatDockBody({
    */
   const bannerFailureText =
     failureText !== null &&
-    transcriptCarriesFailureText(renderedSession.messages, [
+    (transcriptCarriesFailureText(renderedSession.messages, [
       failureText,
       translateChatError({ message: failureText }).body,
-    ])
+    ]) ||
+      // A session whose sends never took has no turns; any visible failure
+      // card in its transcript is that refusal, in its own words.
+      (activeOrchestrationSession !== null &&
+        activeOrchestrationSession !== undefined &&
+        isFirstSendFailure(activeOrchestrationSession) &&
+        transcriptShowsFailureSurface(renderedSession.messages)))
       ? null
       : failureText;
   const historyFailure =
@@ -1222,7 +1231,7 @@ export function ChatDockBody({
         failureText={bannerFailureText}
         className="chat-dock__session-failure"
         testId="chat-dock-session-failure"
-        note="You can send a message to try to continue this session."
+        note={sessionFailureNote(activeOrchestrationSession)}
       />
       {agent?.available === false &&
         activeSession.modelSource !== 'session override' && (
@@ -1568,6 +1577,7 @@ export function ChatDockBody({
             selectAttachmentFiles={chatInput.selectAttachmentFiles}
             attachmentError={chatInput.attachmentError}
             attachmentStages={chatInput.attachmentStages}
+            attachmentNotice={chatInput.attachmentNotice}
             sendBlockedReason={
               recoveryOpen && !unverifiedOpen
                 ? 'This conversation is available read-only. Retry resolution or start a new chat.'

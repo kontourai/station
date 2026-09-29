@@ -46,6 +46,62 @@ describe('useComposerAttachments', () => {
 
   afterEach(() => vi.useRealTimers());
 
+  test('an image staged before the engine refused images blocks Send with the refusal', () => {
+    const image: FileAttachment = {
+      id: 'shot',
+      name: 'shot.png',
+      type: 'image/png',
+      size: 5,
+      data: 'data:image/png;base64,aGVsbG8=',
+    };
+    const stage: ComposerAttachmentStageSnapshot = {
+      clientAttachmentId: 'shot',
+      name: 'shot.png',
+      mimeType: 'image/png',
+      size: 5,
+      state: 'complete',
+      progress: 1,
+      delivery: 'staged',
+    };
+    const render = (capabilities: {
+      images: boolean;
+      files: boolean;
+      imageRefusal?: string;
+      imageCaveat?: string;
+    }) =>
+      renderHook(() =>
+        useComposerAttachments({
+          apiBase: 'http://station.test',
+          ownerKey: 'grok',
+          attachments: [image],
+          stages: [stage],
+          capabilities,
+          onAddAttachments: vi.fn(),
+          onStagesChange: vi.fn(),
+        }),
+      ).result.current;
+
+    const refused = render({
+      images: false,
+      files: false,
+      imageRefusal: 'Grok Build reported that it cannot accept images.',
+    });
+    expect(refused.sendBlockedReason).toBe(
+      'Grok Build reported that it cannot accept images. Remove the images to send.',
+    );
+    expect(refused.attachmentNotice).toBeUndefined();
+
+    const unconfirmed = render({
+      images: true,
+      files: false,
+      imageCaveat: 'Grok Build has not reported whether it accepts images yet.',
+    });
+    expect(unconfirmed.sendBlockedReason).toBeUndefined();
+    expect(unconfirmed.attachmentNotice).toBe(
+      'Grok Build has not reported whether it accepts images yet.',
+    );
+  });
+
   test('late upload progress stays with its original chat after the selected composer changes', async () => {
     const records: Record<string, ComposerAttachmentStageSnapshot[]> = {
       a: [],
@@ -501,7 +557,7 @@ describe('useComposerAttachments', () => {
     rerender({ hookStages: stages });
 
     expect(result.current.sendBlockedReason).toBe(
-      'Retry or remove every attachment marked for retry before sending.',
+      'An upload did not finish. Retry it or remove it before sending.',
     );
     expect(stageComposerAttachments).not.toHaveBeenCalled();
     expect(file.data).toBe('data:text/plain;base64,aGVsbG8=');

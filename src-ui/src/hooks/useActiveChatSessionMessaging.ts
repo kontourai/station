@@ -2,7 +2,10 @@ import type {
   InterruptTurnResult,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
-import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+} from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
@@ -139,6 +142,33 @@ function rejectedSendRollback(
       : {}),
     ...(rollbackMessages ? { messages: rollbackMessages } : {}),
   };
+}
+
+/**
+ * The refused send's one useful composer change: take the attachments back
+ * off so the text can go. Their server stages are released best-effort — an
+ * unreleased stage simply lapses at its TTL, which is the same outcome.
+ */
+async function removeRefusedAttachments(
+  apiBase: string,
+  sessionId: string,
+): Promise<void> {
+  const stages =
+    activeChatsStore.getSnapshot()[sessionId]?.attachmentStages ?? [];
+  activeChatsStore.updateChat(sessionId, {
+    attachments: [],
+    attachmentStages: [],
+  });
+  const stageIds = stages.flatMap((stage) =>
+    stage.stageId ? [stage.stageId] : [],
+  );
+  if (stageIds.length === 0) return;
+  const { cancelAttachmentStage } = await import(
+    '@kontourai/station-sdk/client'
+  );
+  await Promise.allSettled(
+    stageIds.map((stageId) => cancelAttachmentStage(apiBase, stageId)),
+  );
 }
 
 /**
@@ -799,25 +829,34 @@ export function useSendMessage(
           // A start the server could not confirm either way may have
           // created the session (Codex then refuses a resend: "thread …
           // already has an active writer"), so it gets no blind Retry.
+          // A deterministic refusal (`retryable: false`) gets no Retry: the
+          // same send is refused again. An attachment refusal instead offers
+          // the one composer change that makes the text sendable.
           action:
-            terminalSession ||
-            foregroundIndeterminate ||
-            dispatchClaim ||
-            err.code === SESSION_START_INDETERMINATE_CODE
-              ? undefined
-              : {
-                  label: 'Retry',
-                  handler: () =>
-                    sendMessage(
-                      sessionId,
-                      agentSlug,
-                      latestState?.conversationId ?? conversationId,
-                      content,
-                      attachments,
-                      ambientContext,
-                      resolvedTurnId,
-                    ),
-                },
+            err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE && !dispatchClaim
+              ? {
+                  label: 'Remove attachments',
+                  handler: () => removeRefusedAttachments(apiBase, sessionId),
+                }
+              : terminalSession ||
+                  foregroundIndeterminate ||
+                  dispatchClaim ||
+                  err.code === SESSION_START_INDETERMINATE_CODE ||
+                  (translated as ChatErrorTranslation).retryable === false
+                ? undefined
+                : {
+                    label: 'Retry',
+                    handler: () =>
+                      sendMessage(
+                        sessionId,
+                        agentSlug,
+                        latestState?.conversationId ?? conversationId,
+                        content,
+                        attachments,
+                        ambientContext,
+                        resolvedTurnId,
+                      ),
+                  },
         });
         if (foregroundIndeterminate) {
           invalidate(['orchestration-sessions']);

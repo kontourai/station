@@ -7,6 +7,7 @@ import {
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
   type OrchestrationSessionSummary,
+  useEngineConnectionsQuery,
   useModelPickerCatalogQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
@@ -433,6 +434,16 @@ export function useChatDockViewModel({
     activeSessionForHook?.executionMode === EXECUTION_MODE.STATION
       ? ENGINE_CAPABILITY_MATRICES.station
       : resolveEngineCapabilityMatrix(agentConnectionId, runtimeConnection);
+  // The live handshake answer lives on the connection's capability
+  // inventory, which the credential-free picker projection above does not
+  // carry — reading it off `runtimeConnection` always found nothing, so a
+  // Grok Build chat (handshake: `promptCapabilities.image: false`) attached
+  // images and only learned otherwise on send. The engine inventory query is
+  // the same read the send path already subscribes to.
+  const { data: engineConnections } = useEngineConnectionsQuery();
+  const observedImagePrompt = engineConnections?.find(
+    (connection) => connection.id === agentConnectionId,
+  )?.capabilityInventory?.sessionSurfaces?.promptImage;
   const composerImageSupport = resolveComposerImageSupport(
     engineCapabilityMatrix,
     {
@@ -442,13 +453,8 @@ export function useChatDockViewModel({
             connectionLabel: runtimeConnection.name,
             // Present only for an engine whose cell demands an observation
             // (ACP); `undefined` stays unobserved, never a refusal.
-            ...(typeof runtimeConnection.capabilityInventory?.sessionSurfaces
-              ?.promptImage === 'boolean'
-              ? {
-                  observedImagePrompt:
-                    runtimeConnection.capabilityInventory.sessionSurfaces
-                      .promptImage,
-                }
+            ...(typeof observedImagePrompt === 'boolean'
+              ? { observedImagePrompt }
               : {}),
           }
         : {}),
@@ -460,6 +466,7 @@ export function useChatDockViewModel({
   );
   const modelSupportsAttachments = composerImageSupport.attachable;
   const imageAttachmentRefusal = composerImageSupport.refusal;
+  const imageAttachmentCaveat = composerImageSupport.caveat;
   const fileAttachmentsSupported =
     runtimeConnection?.capabilities.includes('file-input') ?? false;
   const unreadCount = countOpenChatAttention(sessions);
@@ -479,6 +486,7 @@ export function useChatDockViewModel({
     executionSummary,
     gitStatus,
     fileAttachmentsSupported,
+    imageAttachmentCaveat,
     imageAttachmentRefusal,
     modelSupportsAttachments,
     modelProviderLabel,

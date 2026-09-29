@@ -121,6 +121,12 @@ interface UseChatInputOptions {
   sessionId: string | null;
   agentSlug: string | null;
   conversationId?: string;
+  /**
+   * The server says this conversation has never run a turn: a Draft, or a
+   * session whose only sends were refused or failed (`isFirstSendFailure`).
+   * Such a conversation has no engine history a model switch could strand.
+   */
+  conversationAwaitingFirstTurn?: boolean;
   availableModels: SelectableModel[];
   modelsStale?: boolean;
   bindingStatus?: BindingStatus;
@@ -158,6 +164,8 @@ interface UseChatInputOptions {
     images: boolean;
     files: boolean;
     imageRefusal?: string;
+    /** Attach-time note when image support is not confirmed. */
+    imageCaveat?: string;
   };
   /** Exact workspace authority used to resolve persisted file mentions. */
   workingDirectory?: string | null;
@@ -174,6 +182,7 @@ export function useChatInput({
   sessionId,
   agentSlug,
   conversationId,
+  conversationAwaitingFirstTurn = false,
   availableModels,
   modelsStale = false,
   bindingStatus,
@@ -377,10 +386,16 @@ export function useChatInput({
       ? { engineId: 'station' }
       : (runtimeConnection ?? { type: activeChatState?.provider }),
   ).modelSelection;
+  // ACP applies a model only at session start. The server honours a changed
+  // model on the next send by starting a successor session with it
+  // (`conversation-lineage.ts` `needsModelRestart`), which is free for a
+  // conversation that never ran a turn — nothing to carry over — so only a
+  // conversation with engine history keeps the picker closed.
   const continuationOverrideUnsupported =
     Boolean(conversationId) &&
     activeChatState?.provider === 'acp' &&
-    !ACP_MODEL_OVERRIDE_PER_TURN;
+    !ACP_MODEL_OVERRIDE_PER_TURN &&
+    !conversationAwaitingFirstTurn;
   const modelSelectionReason = continuationOverrideUnsupported
     ? 'This engine can choose a model for a new chat, but cannot change it in an existing conversation.'
     : engineModelSelection.state === 'unsupported'
@@ -652,6 +667,7 @@ export function useChatInput({
     cancel: cancelAttachmentStage,
     remove: removeAttachmentStage,
     sendBlockedReason,
+    attachmentNotice,
   } = useComposerAttachments({
     apiBase,
     requestScope: mentionRequestScope,
@@ -1092,6 +1108,7 @@ export function useChatInput({
       attachmentError,
       attachmentStages,
       sendBlockedReason,
+      attachmentNotice,
       currentModel,
       canModelSelect,
       modelSelectionReason,
@@ -1136,6 +1153,7 @@ export function useChatInput({
       attachmentError,
       attachmentStages,
       sendBlockedReason,
+      attachmentNotice,
       currentModel,
       canModelSelect,
       modelSelectionReason,

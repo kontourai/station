@@ -72,6 +72,7 @@ import {
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
+  AttachmentInputUnsupportedError,
   type CanonicalRuntimeEvent,
   type ProviderAdapterShape,
   type ProviderSendTurnInput,
@@ -1463,17 +1464,20 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (error) {
       throw new SendTurnRefusedError(errorMessage(error));
     }
+    // Both attachment refusals carry a structured code: the same send is
+    // refused again on retry, so the client must not present it as a
+    // transient failure.
     try {
       rejectFileAttachments('This engine', decodedAttachments);
     } catch (error) {
-      throw new SendTurnRefusedError(errorMessage(error));
+      throw new AttachmentInputUnsupportedError(errorMessage(error));
     }
     if (
       decodedAttachments.length > 0 &&
       record.process.initResult?.agentCapabilities?.promptCapabilities
         ?.image !== true
     ) {
-      throw new SendTurnRefusedError(
+      throw new AttachmentInputUnsupportedError(
         'This engine did not advertise image attachment support.',
       );
     }
