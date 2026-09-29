@@ -32,6 +32,7 @@ import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
+import { conversationTitle } from './session-query-module.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 
 const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
@@ -815,9 +816,6 @@ export class ConversationLineage {
     if (!detail || !assignedAgentSlug) return null;
     const agentSlug = assignedAgentSlug;
     const messages = this.deps.readSessionMessages(threadId, authority);
-    const firstUserText = messages
-      .find((message) => message.role === 'user')
-      ?.parts.find((part) => part.type === 'text')?.text;
     const durableConversationId =
       this.deps.eventStore?.conversationForSession(threadId)?.conversationId ??
       detail.session.conversationId ??
@@ -837,7 +835,7 @@ export class ConversationLineage {
       ...(detail.session.projectSlug
         ? { projectSlug: detail.session.projectSlug }
         : {}),
-      title: firstUserText?.trim().slice(0, 80) || `${agentSlug} chat`,
+      title: conversationTitle(messages),
       ...((detail.session.reportedModel ??
       detail.session.effectiveModel ??
       detail.session.model)

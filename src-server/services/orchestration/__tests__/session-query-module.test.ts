@@ -481,6 +481,59 @@ describe('SessionQueryModule', () => {
     });
   });
 
+  test('titles a conversation by its first user text, else as an untitled chat — never by the engine id', async () => {
+    const conversationFor = async (events: unknown[]) => {
+      const module = createSessionQueryModule({
+        findSession: vi.fn(async () => ({ id: 'thread-t' })),
+        projectConversation: vi.fn(() => ({
+          assignedAgentSlug: 'opencode',
+          createdAt: '2026-08-12T00:00:00.000Z',
+          updatedAt: '2026-08-12T00:01:00.000Z',
+        })),
+        canReadSession: vi.fn(() => true),
+        listEvents: vi.fn(() => events as CanonicalRuntimeEvent[]),
+      });
+      const outcome = await module.read(
+        { type: 'conversation', threadId: 'thread-t' },
+        sessionReadAuthorityFromRequest('owner', undefined, undefined),
+      );
+      if (outcome.status !== 'found') throw new Error(outcome.status);
+      return outcome;
+    };
+
+    // A first turn with no words (attachment-only, or blank) does not leave
+    // the conversation untitled when a later turn says something.
+    const later = await conversationFor([
+      {
+        method: 'turn.started',
+        threadId: 'thread-t',
+        turnId: 't1',
+        prompt: '   ',
+      },
+      {
+        method: 'turn.completed',
+        threadId: 'thread-t',
+        turnId: 't1',
+        outputText: 'Looked.',
+      },
+      {
+        method: 'turn.started',
+        threadId: 'thread-t',
+        turnId: 't2',
+        prompt: '  Deploy the docs  ',
+      },
+    ]);
+    expect(
+      later.messages.filter((message) => message.role === 'user'),
+      'premise: both turns project a user message',
+    ).toHaveLength(2);
+    expect(later.conversation.title).toBe('Deploy the docs');
+
+    const untitled = await conversationFor([]);
+    expect(untitled.conversation.title).toBe('New chat');
+    expect(untitled.conversation.title).not.toContain('opencode');
+  });
+
   test('makes an existing denied conversation indistinguishable from absent without replaying or projecting it', async () => {
     const listEvents = vi.fn();
     const projectConversation = vi.fn();
