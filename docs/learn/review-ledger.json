@@ -9908,7 +9908,7 @@
     {
       "path": "docs/design/shell-skeletons.md",
       "documentDigest": "994c25f6cbacf02076b0ff5aa1db16f9fb708aa5faaa5af69e2bd91ac79db379",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "kind": "policy",
       "state": "classified",
       "summary": "Header/skeleton policy with historical port measurements; current owners linked, wrapper descriptions scoped historically, and distinct frame-null/ratchet-exception inventories corrected.",
@@ -9924,7 +9924,7 @@
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "6563e12d7bf8180dabeba03c6f9cc808521264ea5ad0bbd3ec5a71c7d66a685f"
+          "digest": "4b6735998769eee8f92552e1740729905b8c0ffd16318539cd0b76aa2ff751ac"
         },
         {
           "path": "src-ui/src/views/ConnectionsHub.tsx",
@@ -9942,7 +9942,8 @@
       "checks": [
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Original port table, numbers, statuses, and evidence retained byte-identically; surrounding interpretation explicitly historical.",
-        "Reviewed integration deltas: Corrected evidence to actual AppViewContent tests; those tests do not prove whole-App navigation or transition-guard behavior. src-ui/src/views/ProjectSettingsView.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found."
+        "Reviewed integration deltas: Corrected evidence to actual AppViewContent tests; those tests do not prove whole-App navigation or transition-guard behavior. src-ui/src/views/ProjectSettingsView.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found.",
+        "activity-a11y: SplitPaneLayout adds aria-current/aria-labelledby/aria-describedby on rows, a roving tabindex with Up/Down/Home/End/Right/Left, group-toggle aria-labels and coarse-pointer 44px targets; props, header/title ownership, framed/unframed behaviour and skeleton shapes described here are unchanged (API backward compatible). No prose change."
       ]
     },
     {
@@ -11798,7 +11799,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11806,11 +11807,11 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
+          "digest": "0772eb72c1094487b084af09505c95345eb93b4699ccda55e4f257d1f69f9258"
         },
         {
           "path": "docs/learn/media/connections-models.png",
-          "digest": "708bc37f892ae2da8d8129dbc25002c831f08f9026404b1a7debf942b03282c9"
+          "digest": "c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c"
         },
         {
           "path": "docs/learn/media/connections-tour.webm",
@@ -12146,11 +12147,11 @@
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
-          "digest": "4f894553a4fe3eaeb4824e4c23dfbe2206dd3df67260bf6a89795b2fe27216ac"
+          "digest": "11b1b3d742d317b58e5675c41819faf8680f7d5d6ca3ec2a3fa675bb52bb275e"
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "6563e12d7bf8180dabeba03c6f9cc808521264ea5ad0bbd3ec5a71c7d66a685f"
+          "digest": "4b6735998769eee8f92552e1740729905b8c0ffd16318539cd0b76aa2ff751ac"
         },
         {
           "path": "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx",
@@ -12312,7 +12313,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval here is key/device approval; no tool-call card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "activity-a11y: SplitPaneLayout row semantics/keyboard/selected tint/coarse hit areas only. The guide's Models/Engines/Tools steps name tabs, rows and buttons by visible label (select a row, Add model connection); none depends on the selected-row colour, the row's accessible name including its subtitle, or Tab order within the list. No prose change."
       ]
     },
     {
@@ -13978,7 +13980,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14134,7 +14136,7 @@
         },
         {
           "path": "tests/skills.spec.ts",
-          "digest": "3ca2809b52e5a6f3d462b4d6ae5b3ae97a4996e6c4dc61a088155f0bfde2713b"
+          "digest": "d73507be0f45a2eb3d52bca94b9505641cc2004e6661e46c76c4650b1f074736"
         },
         {
           "path": "tests/task-first-home.spec.ts",
@@ -14151,7 +14153,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) deleted tests/plugin-system.spec.ts and tests/plugin-dependency-lifecycle.spec.ts and removed them from tests/e2e-manifest.mjs. The commit gives plugin-pane-sdk-context, minimal-workspace-example and bundled-plugin-registry-lifecycle ownership of installed-plugin pane rendering. The same commits added tests/authenticated-request-canary.spec.ts (smoke-live), refactored run-e2e-suite.mjs evidence retention into settleStartedE2ERun, dropped plugin-update's update-banner test and monitoring's redaction assertion, and changed the agents-editor-gates/readiness-board rationale. None of these other changes alter the matrix's claims. Corrected the Plugins row: removed plugin-system, added the three owning specs, and changed 'installed layout loading' to 'installed plugin panes rendering'. The ledger may want to add tests/plugin-pane-sdk-context.spec.ts, tests/minimal-workspace-example.spec.ts and tests/bundled-plugin-registry-lifecycle.spec.ts as sources. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): tests/e2e-manifest.mjs adds tests/branding-theme-boot.spec.ts to the product bucket (parallel-safe, surface Shell, tier full); PR_BROWSER_SMOKE_CONTRACT and suite runner behavior are unchanged. The matrix names no Shell/theming row and claims no exhaustive coverage. Prose accurate. Source review is separate from executed test evidence.",
-        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose."
+        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
+        "activity-a11y: tests/skills.spec.ts now locates the registry skill row by its name alone (rows are named by name; subtitle is the description). The Skills row's coverage claim (create/edit/source labeling, read-only explanation) is unchanged. No prose change."
       ]
     },
     {
@@ -14644,7 +14647,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14652,7 +14655,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
+          "digest": "0772eb72c1094487b084af09505c95345eb93b4699ccda55e4f257d1f69f9258"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14807,7 +14810,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No tool-call card or button-state claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "activity-a11y: the media.json delta only replaces the connections-models.png entry (new digest and capturedRevision from a re-capture; its old reviewNotes dropped and a new one recorded). This document neither embeds nor describes that capture; its own capture entries in media.json are byte-identical. No prose change."
       ]
     },
     {
@@ -18807,7 +18811,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18815,7 +18819,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
+          "digest": "0772eb72c1094487b084af09505c95345eb93b4699ccda55e4f257d1f69f9258"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -19054,7 +19058,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval flow only; no inline approval-card styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "activity-a11y: the media.json delta only replaces the connections-models.png entry (new digest and capturedRevision from a re-capture; its old reviewNotes dropped and a new one recorded). This document neither embeds nor describes that capture; its own capture entries in media.json are byte-identical. No prose change."
       ]
     },
     {
@@ -20623,7 +20628,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20631,11 +20636,11 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
+          "digest": "0772eb72c1094487b084af09505c95345eb93b4699ccda55e4f257d1f69f9258"
         },
         {
           "path": "docs/learn/media/connections-models.png",
-          "digest": "708bc37f892ae2da8d8129dbc25002c831f08f9026404b1a7debf942b03282c9"
+          "digest": "c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c"
         },
         {
           "path": "docs/learn/media/connections-tour.webm",
@@ -20727,11 +20732,11 @@
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
-          "digest": "4f894553a4fe3eaeb4824e4c23dfbe2206dd3df67260bf6a89795b2fe27216ac"
+          "digest": "11b1b3d742d317b58e5675c41819faf8680f7d5d6ca3ec2a3fa675bb52bb275e"
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "6563e12d7bf8180dabeba03c6f9cc808521264ea5ad0bbd3ec5a71c7d66a685f"
+          "digest": "4b6735998769eee8f92552e1740729905b8c0ffd16318539cd0b76aa2ff751ac"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -20847,7 +20852,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval scene is Notifications inspection, not the inline card; no claim touched.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. The #2843 hover-contrast note concerns the release selection style, which this change does not touch."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. The #2843 hover-contrast note concerns the release selection style, which this change does not touch.",
+        "activity-a11y: SplitPaneLayout changes the selected-row treatment, row accessible names/descriptions, roving arrow-key focus and coarse-pointer hit areas. The walkthrough's Connections scene text ('The Models page with an example local connection selected') stays accurate against the re-captured connections-models.png; no prose describes the selected-row colour or list keyboard model."
       ]
     },
     {
@@ -21510,7 +21516,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21518,11 +21524,11 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
+          "digest": "0772eb72c1094487b084af09505c95345eb93b4699ccda55e4f257d1f69f9258"
         },
         {
           "path": "docs/learn/media/connections-models.png",
-          "digest": "708bc37f892ae2da8d8129dbc25002c831f08f9026404b1a7debf942b03282c9"
+          "digest": "c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c"
         },
         {
           "path": "scripts/station-agent-smoke.mjs",
@@ -21546,11 +21552,11 @@
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
-          "digest": "4f894553a4fe3eaeb4824e4c23dfbe2206dd3df67260bf6a89795b2fe27216ac"
+          "digest": "11b1b3d742d317b58e5675c41819faf8680f7d5d6ca3ec2a3fa675bb52bb275e"
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "6563e12d7bf8180dabeba03c6f9cc808521264ea5ad0bbd3ec5a71c7d66a685f"
+          "digest": "4b6735998769eee8f92552e1740729905b8c0ffd16318539cd0b76aa2ff751ac"
         },
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -21609,7 +21615,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No UI styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "activity-a11y: the recorded SplitPaneLayout dependency is presentation/keyboard only; this reference's admission, precedence, isolation and redaction claims do not describe list rows. No prose change."
       ]
     },
     {
@@ -23964,7 +23971,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -23972,7 +23979,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
+          "digest": "0772eb72c1094487b084af09505c95345eb93b4699ccda55e4f257d1f69f9258"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -24057,7 +24064,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "activity-a11y: the media.json delta only replaces the connections-models.png entry (new digest and capturedRevision from a re-capture; its old reviewNotes dropped and a new one recorded). This document neither embeds nor describes that capture; its own capture entries in media.json are byte-identical. No prose change."
       ]
     },
     {
@@ -26814,7 +26822,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26831,7 +26839,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
+          "digest": "0772eb72c1094487b084af09505c95345eb93b4699ccda55e4f257d1f69f9258"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -27012,7 +27020,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval buttons (Approve once/Deny) are a different surface; no claim touched.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
+        "activity-a11y: the media.json delta only replaces the connections-models.png entry (new digest and capturedRevision from a re-capture; its old reviewNotes dropped and a new one recorded). This document neither embeds nor describes that capture; its own capture entries in media.json are byte-identical. No prose change."
       ]
     },
     {
@@ -27884,7 +27893,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -27892,7 +27901,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
+          "digest": "0772eb72c1094487b084af09505c95345eb93b4699ccda55e4f257d1f69f9258"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -28001,7 +28010,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "activity-a11y: the media.json delta only replaces the connections-models.png entry (new digest and capturedRevision from a re-capture; its old reviewNotes dropped and a new one recorded). This document neither embeds nor describes that capture; its own capture entries in media.json are byte-identical. No prose change."
       ]
     },
     {

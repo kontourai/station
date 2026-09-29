@@ -126,15 +126,15 @@
       "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
       "capturedRevision": "bb07a2df88272a983e6e1c94dd27ca2480faef51",
-      "reviewedRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "reviewedRevision": "be09f6c428fc96567dc085df736a46b12d3eab81",
       "sources": [
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
-          "digest": "4f894553a4fe3eaeb4824e4c23dfbe2206dd3df67260bf6a89795b2fe27216ac"
+          "digest": "11b1b3d742d317b58e5675c41819faf8680f7d5d6ca3ec2a3fa675bb52bb275e"
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "6563e12d7bf8180dabeba03c6f9cc808521264ea5ad0bbd3ec5a71c7d66a685f"
+          "digest": "4b6735998769eee8f92552e1740729905b8c0ffd16318539cd0b76aa2ff751ac"
         },
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -181,6 +181,9 @@
         "docs/guides/connections.md",
         "docs/learn/walkthroughs.md",
         "docs/reference/agent-smoke-confidence.md"
+      ],
+      "reviewNotes": [
+        "Re-captured (activity-a11y) from build bb07a2df8 at 1440x1000, dark, release channel: Connections > Models with the one sample connection selected, showing the new tinted selected row (accent tint + inset bar, ordinary text). Sample data is route-transformed from a real isolated instance: connection name/base URL/default model/Ready status, project name 'Station field guide' and display name 'Station User'. No private data; engine/tool counts reflect the isolated instance. Viewed the image."
       ]
     },
     {
