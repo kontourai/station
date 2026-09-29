@@ -180,6 +180,18 @@ describe('classifyToolCallRun', () => {
     ).toBe('Running 2 searches…');
   });
 
+  test('a command known only by its title still gives way to the command after its env assignments', () => {
+    const group = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'STATION_DOCS_FRESHNESS=scoped MODE="a b" npm run docs:check',
+        toolKind: 'execute',
+        args: undefined,
+      }),
+    ]);
+    expect(group.summary).toBe('Ran npm run docs:check');
+  });
+
   test('a finished batch with a cancelled call is an inventory, not an instruction', () => {
     const group = classifyFirstRun([
       toolCall({ toolCallId: 'a', toolName: 'Bash', args: { command: 'a' } }),
