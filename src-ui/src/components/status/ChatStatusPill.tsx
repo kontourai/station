@@ -7,8 +7,8 @@ import {
 
 /** How long a one-shot confirmation ("Resumed") stays before the pill moves on. */
 export const CHAT_STATUS_CELEBRATE_MS = 1_100;
-/** The float-out; the pill unmounts after it. */
-const LEAVE_MS = 180;
+/** The float-out (`--motion-fast`); the pill unmounts after it. */
+const LEAVE_MS = 150;
 
 function reducedMotion(): boolean {
   return (

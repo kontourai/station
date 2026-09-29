@@ -110,6 +110,13 @@ their own animation, and streamed answer text has a caret. Approval and transpor
 recovery have explicit states. A timer measures observed waiting, never an
 estimate of completion.
 
+A replay renders these as inline rows, because that is what its scenarios pin.
+A live chat pane presents the same facts in one floating status pill
+([`ChatStatusPill`](../../src-ui/src/components/status/ChatStatusPill.tsx)):
+approval first, then the live-update connection, then what the turn is doing,
+with the same turn clock. A live-update outage is shown only after it outlasts
+one reconnect cycle (2.5s), so a phone blip does not flash a status.
+
 The separate [reasoning disclosure](../../src-ui/src/components/chat/ReasoningSection.tsx)
 uses a compact summary row. Expanding it shows the text beneath an indented
 rule, while its word count and the reader's open/closed choice remain available.

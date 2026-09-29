@@ -6,7 +6,6 @@
    is hidden, and the global reduced-motion contract (tokens.css) collapses
    each animation to one near-instant frame. */
 .live-status-glyph {
-  --live-status-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   position: relative;
   display: inline-grid;
   width: 16px;
@@ -52,19 +51,21 @@
 
 .live-status-glyph[data-kind="working"][data-animate="true"]
   .live-status-glyph__orbit {
-  animation: live-status-orbit 2.4s linear infinite;
+  animation: live-status-orbit var(--motion-status-breathe) var(--ease-linear)
+    infinite;
 }
 
 .live-status-glyph[data-kind="reconnecting"][data-animate="true"]
   .live-status-glyph__turn {
   display: inline-grid;
-  animation: live-status-orbit 1.4s var(--ease-standard) infinite;
+  animation: live-status-orbit var(--motion-status-pulse) var(--ease-standard)
+    infinite;
 }
 
 /* One-shot: the glyph lands with a small overshoot when it first appears. */
 .live-status-glyph[data-animate="true"] .live-status-glyph__settle {
   display: inline-grid;
-  animation: live-status-settle 360ms var(--live-status-spring) both;
+  animation: live-status-settle var(--motion-slow) var(--ease-spring) both;
 }
 
 .live-status-glyph__dot {
@@ -120,7 +121,6 @@
 }
 
 .chat-status-pill {
-  --live-status-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   display: inline-flex;
   max-width: 100%;
   min-height: 32px;
@@ -138,7 +138,7 @@
   pointer-events: auto;
   text-align: left;
   transform-origin: right center;
-  animation: chat-status-pill-in 300ms var(--live-status-spring) both;
+  animation: chat-status-pill-in var(--motion-slow) var(--ease-spring) both;
 }
 
 button.chat-status-pill {
@@ -190,7 +190,7 @@ button.chat-status-pill {
   min-width: 0;
   align-items: center;
   gap: 7px;
-  animation: chat-status-pill-morph 260ms var(--live-status-spring) both;
+  animation: chat-status-pill-morph var(--motion-base) var(--ease-spring) both;
 }
 
 .chat-status-pill__label {
@@ -221,7 +221,7 @@ button.chat-status-pill {
 }
 
 .chat-status-pill[data-leaving="true"] {
-  animation: chat-status-pill-out 180ms var(--ease-in) both;
+  animation: chat-status-pill-out var(--motion-fast) var(--ease-in) both;
   pointer-events: none;
 }
 
@@ -232,7 +232,7 @@ button.chat-status-pill {
   inset: -3px;
   border: 2px solid currentColor;
   border-radius: 50%;
-  animation: chat-status-pill-burst 460ms var(--ease-out) both;
+  animation: chat-status-pill-burst var(--motion-slow) var(--ease-out) both;
 }
 
 .chat-status-pill__details {
@@ -247,7 +247,7 @@ button.chat-status-pill {
   line-height: 1.4;
   pointer-events: auto;
   transform-origin: top right;
-  animation: chat-status-pill-in 220ms var(--live-status-spring) both;
+  animation: chat-status-pill-in var(--motion-base) var(--ease-spring) both;
 }
 
 .chat-status-pill__details p {
