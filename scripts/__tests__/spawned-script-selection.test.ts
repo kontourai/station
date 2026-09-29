@@ -201,7 +201,9 @@ describe('fan-out budget (#2922 review)', () => {
       'scripts/lib/module-entry.mjs',
       'scripts/lib/icns.mjs',
     ]);
-    expect(mixed.selection.lanes.map((lane) => lane.id)).toEqual(['test-full']);
+    expect(
+      mixed.selection.lanes.map((lane: { id: string }) => lane.id),
+    ).toEqual(['test-full']);
     expect(mixed.selection.relatedPaths).toEqual([
       'scripts/lib/icns.mjs',
       'scripts/lib/module-entry.mjs',
@@ -216,9 +218,9 @@ describe('fan-out budget (#2922 review)', () => {
       'scripts/lib/icns.mjs',
       'no-owner/unmapped.txt',
     ]);
-    expect(escalated.selection.lanes.map((lane) => lane.id)).toContain(
-      'ci-fast',
-    );
+    expect(
+      escalated.selection.lanes.map((lane: { id: string }) => lane.id),
+    ).toContain('ci-fast');
     expect(escalated.executionSelection.relatedPaths).toEqual([]);
     // So does test-full for another reason, even alongside the deferral: a
     // related path that no longer exists escalates to the same lane.
@@ -227,9 +229,9 @@ describe('fan-out budget (#2922 review)', () => {
       'scripts/lib/icns.mjs',
       'scripts/lib/no-such-module.mjs',
     ]);
-    expect(unavailable.selection.lanes.map((lane) => lane.id)).toEqual([
-      'test-full',
-    ]);
+    expect(
+      unavailable.selection.lanes.map((lane: { id: string }) => lane.id),
+    ).toEqual(['test-full']);
     expect(unavailable.executionSelection.relatedPaths).toEqual([]);
   });
 
