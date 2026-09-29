@@ -1173,6 +1173,46 @@ describe('projectRuntimeEventsToMessages', () => {
       expect(new Set(messages.map((message) => message.id)).size).toBe(4);
     });
 
+    it('after a steer, start-less and late activity for the turn lands on the post-steer row', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'r1', prompt: 'go' }),
+        ev({ method: 'content.text-delta', itemId: 'i1', delta: 'before' }),
+        ev({
+          method: 'turn.started',
+          turnId: 'r1',
+          prompt: 'steer',
+          inputKind: 'steer',
+        }),
+        ev({
+          method: 'tool.completed',
+          turnId: 'r1',
+          toolCallId: 'gap-call',
+          status: 'success',
+          output: 'x',
+        }),
+        ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+        ev({
+          method: 'tool.completed',
+          turnId: 'r1',
+          toolCallId: 'late-call',
+          status: 'success',
+          output: 'y',
+        }),
+      ]);
+      const callIds = (index: number) =>
+        messages[index]?.parts
+          .filter((part) => part.type === 'tool-invocation')
+          .map((part) => part.toolCallId);
+      expect(messages.map((message) => message.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+      ]);
+      expect(callIds(1)).toEqual([]);
+      expect(callIds(3)).toEqual(['gap-call', 'late-call']);
+    });
+
     it('a tool the steer interrupted settles on the row that shows the call', () => {
       const messages = projectRuntimeEventsToMessages([
         ev({ method: 'turn.started', turnId: 'r1', prompt: 'run the gates' }),

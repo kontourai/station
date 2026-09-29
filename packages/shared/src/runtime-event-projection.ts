@@ -361,7 +361,14 @@ export function projectRuntimeEventsToMessages(
     // otherwise redirect a late result away from the row that shows the call.
     const emittedKey =
       role === 'assistant' ? turnKey(turnSessionId, turnIdentity) : undefined;
-    if (emittedKey && !assistantMessageIndexByTurn.has(emittedKey)) {
+    // A pre-steer segment never owns the turn: the turn is still open, so
+    // its later start-less completions belong to the live buffer, and after
+    // the terminal the row that owns the turn is the one emitted last.
+    if (
+      emittedKey &&
+      !beforeSteer &&
+      !assistantMessageIndexByTurn.has(emittedKey)
+    ) {
       assistantMessageIndexByTurn.set(emittedKey, messages.length - 1);
     }
   };
