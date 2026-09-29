@@ -9,7 +9,7 @@
 
   "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution.",
 
-  "document": {"digest":"95efeeef707ab2d72e422c1abc7ca33ad2a39e7b7c6b752fc513b61ca2547ce8","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
+  "document": {"digest":"6b1815a15e332e6f0799348d7c2c7c2d7c29fee226f4fb91ca081590207ca08c","revision":"f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079"},
 
   "sources": [
     {"path":"docs/ui/responsive-action-surfaces.txt","digest":"48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -62,7 +62,7 @@
 
     {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
+    {"path":"src-ui/src/index.css","digest":"876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9","revision":"f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079"},
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
@@ -84,7 +84,7 @@
 
     {"path":"src-ui/src/components/BrandingThemeBridge.tsx","digest":"50426a6e110f2f98a3ded606e7435e0ba4c5bbb038a9bcec9e71655324e17a6a","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
-    {"path":"src-ui/src/__tests__/branding-role-cascade.test.ts","digest":"443eaf3c460897497a1b26dd493d676e87cb631f537d688420241b69728ab551","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"}
+    {"path":"src-ui/src/__tests__/branding-role-cascade.test.ts","digest":"c5697e13e4385a5345f161abc890996275b6cb096f9b07835a4587803563fc38","revision":"f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079"}
   ],
 
   "checks": [

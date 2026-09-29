@@ -163,13 +163,28 @@ test('a reader follows a concept into its exact module, searches, and returns th
   expect(
     await page.getByRole('article').getByRole('heading').allTextContents(),
   ).toEqual(['SessionCommandModule']);
+  // The panel must render the module map's recorded review state. A merge-queue
+  // candidate can legitimately carry a stale record another PR's change caused
+  // (freshness is advisory there, #2923), so derive the expected label from
+  // that state instead of assuming the record is fresh.
+  const moduleMapState = atlas.documents.find(
+    (doc) => doc.path === 'docs/architecture/module-map.md',
+  )?.reviewRecord?.state;
+  const statusByState: Record<string, readonly string[]> = {
+    'source-reviewed': [
+      'Reviewed against code',
+      'live outcomes need their own evidence',
+    ],
+    'needs-review': ['Review out of date', 'changed after this review'],
+  };
+  const expectedStatus = statusByState[String(moduleMapState)];
+  expect(
+    expectedStatus,
+    `module map review state ${moduleMapState}`,
+  ).toBeDefined();
   await browserExpect(page.locator('.review-status')).toBeVisible();
-  await browserExpect(page.locator('.review-status')).toContainText(
-    'Reviewed against code',
-  );
-  await browserExpect(page.locator('.review-status')).toContainText(
-    'live outcomes need their own evidence',
-  );
+  for (const text of expectedStatus ?? [])
+    await browserExpect(page.locator('.review-status')).toContainText(text);
   await page.locator('summary').filter({ hasText: 'Sources & review' }).click();
   await browserExpect(page.locator('.source-details')).toContainText(
     'Review scope.',
