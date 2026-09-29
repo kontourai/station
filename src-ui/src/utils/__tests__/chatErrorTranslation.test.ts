@@ -424,6 +424,31 @@ describe('translateChatError', () => {
       expect(result.hint).toMatch(/credentials/i);
     });
 
+    it.each([
+      [
+        'The model provider rejected the credentials (HTTP 403).',
+        /credentials/i,
+      ],
+      ['The model provider returned an error (HTTP 500).', /send it again/i],
+      ['The model provider rejected the credentials.', /credentials/i],
+    ])(
+      'reads an UNCODED reloaded marker %j exactly like the coded event',
+      (message, hint) => {
+        const result = translateChatError({ message });
+
+        expect(result.title).toBe('This turn did not complete');
+        expect(result.body).toBe(message);
+        expect(result.hint).toMatch(hint);
+        expect(result).toEqual(translateChatError({ message, code }));
+      },
+    );
+
+    it('keeps other uncoded text on its existing branches', () => {
+      expect(
+        translateChatError({ message: 'The model provider said hi.' }).title,
+      ).toBe('Error');
+    });
+
     it('accepts the unnumbered inferred-credentials reason', () => {
       const result = translateChatError({
         message: 'The model provider rejected the credentials.',

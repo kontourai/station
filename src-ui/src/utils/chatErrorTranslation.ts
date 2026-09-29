@@ -451,18 +451,25 @@ export function translateChatError(
     };
   }
 
+  // The same status-derived sentence also arrives UNCODED: the failed-turn
+  // marker a direct /chat turn persists (`[CHAT_ERROR] <sentence>`) carries
+  // no code after a reload. Exact match only, so it reads the same either way.
+  const classifiedReason =
+    code === STATION_AGENT_TURN_FAILED_CODE || code === undefined
+      ? STATION_AGENT_CLASSIFIED_REASON.exec(text.trim())
+      : null;
+  if (classifiedReason) {
+    return {
+      title: 'This turn did not complete',
+      body: classifiedReason[0],
+      hint:
+        classifiedReason[1] === 'rejected the credentials'
+          ? "Check the model connection's credentials, then send your message again."
+          : 'Your message was kept — send it again to retry.',
+    };
+  }
+
   if (code === STATION_AGENT_TURN_FAILED_CODE) {
-    const reason = STATION_AGENT_CLASSIFIED_REASON.exec(text.trim());
-    if (reason) {
-      return {
-        title: 'This turn did not complete',
-        body: reason[0],
-        hint:
-          reason[1] === 'rejected the credentials'
-            ? "Check the model connection's credentials, then send your message again."
-            : 'Your message was kept — send it again to retry.',
-      };
-    }
     return {
       title: 'This turn did not complete',
       body: 'The Station agent could not finish this turn.',

@@ -492,4 +492,30 @@ describe('ChatDockBody station-agent failure marker', () => {
     ).toBeTruthy();
     expect(screen.queryByText(/could not finish this turn/i)).toBeNull();
   });
+
+  test('reads a reloaded UNCODED marker with the same classified copy', async () => {
+    const reason = 'The model provider rejected the credentials (HTTP 403).';
+    renderDock(
+      buildSession({
+        messages: [
+          { role: 'user', content: 'hello', timestamp: 1 } as any,
+          {
+            role: 'user',
+            content: `[SYSTEM_EVENT] [CHAT_ERROR] ${reason}`,
+            timestamp: 2,
+          } as any,
+        ],
+      }),
+      vi.fn(),
+    );
+
+    expect(
+      await screen.findByText(
+        reason,
+        { exact: false },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/invalid or have expired/i)).toBeNull();
+  });
 });
