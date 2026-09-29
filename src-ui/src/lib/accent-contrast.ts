@@ -140,13 +140,20 @@ export function applyAccentColor(
   root: HTMLElement,
   accent: string | null | undefined,
 ): void {
-  if (!accent) {
+  // The value comes from device storage, an import, or cross-tab sync, so it
+  // is validated here rather than trusted: anything but a `#rgb`/`#rrggbb`
+  // colour clears the override instead of reaching setProperty.
+  const valid = accent ? HEX.test(accent.trim()) : false;
+  if (accent && !valid) {
+    console.warn('[accent-color] ignored an accent that is not a hex colour');
+  }
+  if (!accent || !valid) {
     root.style.removeProperty('--accent-primary');
     root.style.removeProperty('--text-on-accent');
     root.style.removeProperty('--accent-hover-fill');
     return;
   }
-  root.style.setProperty('--accent-primary', accent);
+  root.style.setProperty('--accent-primary', accent.trim());
   const contrast = accentContrastColor(accent);
   const hover = accentHoverFill(accent);
   if (contrast) root.style.setProperty('--text-on-accent', contrast);
