@@ -2313,7 +2313,10 @@ installed (the version `<install root>/current` names), `upgrade` validates the
 install state, provenance, ownership marker and active link, then re-runs that
 version's installer with the recorded release manifest. Public-manifest
 installs record the URL in schema-4 state; an explicit
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. A Station user service
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. The installer keeps the ports
+the install recorded: the CLI's own `STATION_SERVER_PORT`/`STATION_UI_PORT`
+(its channel's defaults unless set) are not passed on, and a deliberate change
+goes through `STATION_INSTALL_SERVER_PORT`/`STATION_INSTALL_UI_PORT`. A Station user service
 installed from that archive does not block it. When that service runs through
 the fixed service launcher and is running, the installer only stages the new
 version and asks the service to switch; the launcher trials it and keeps the
