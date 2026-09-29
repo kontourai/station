@@ -6,7 +6,6 @@ import { EventBus } from '../../orchestration/event-bus.js';
 import {
   announceSchedulerJobFailure,
   executeSchedulerJobAttempt,
-  resetAnnouncedSchedulerFailuresForTests,
 } from '../builtin-scheduler-execution.js';
 import type { SchedulerDispatchReceipt } from '../scheduler-ledger.js';
 
@@ -42,10 +41,11 @@ function receipt(
 }
 
 describe('executeSchedulerJobAttempt', () => {
-  // Announcements dedupe by run id for the life of the process; a test corpus
-  // is one process and reuses ids that production never would.
+  // The owning scheduler's in-process announcement set; fresh per test, as
+  // it is per scheduler instance in production.
+  let announcedRunIds: Set<string>;
   beforeEach(() => {
-    resetAnnouncedSchedulerFailuresForTests();
+    announcedRunIds = new Set();
   });
 
   afterEach(() => {
@@ -73,6 +73,7 @@ describe('executeSchedulerJobAttempt', () => {
         invoke: vi.fn().mockResolvedValue({ kind: 'completed', output: 'ok' }),
       },
       notificationService: null,
+      announcedRunIds,
       broadcast,
     });
 
@@ -111,6 +112,7 @@ describe('executeSchedulerJobAttempt', () => {
       }),
       turnAdapter: { invoke },
       notificationService: null,
+      announcedRunIds,
       broadcast,
       // Deliberately supplied as an excess legacy property: execution must
       // neither sample nor branch on this diagnostic.
@@ -170,6 +172,7 @@ describe('executeSchedulerJobAttempt', () => {
           .mockResolvedValue({ kind: 'indeterminate', error: 'boom' }),
       },
       notificationService: notificationService as any,
+      announcedRunIds,
       broadcast,
     });
 
@@ -207,6 +210,7 @@ describe('executeSchedulerJobAttempt', () => {
           .mockResolvedValue({ kind: 'completed', output: 'done' }),
       },
       notificationService: null,
+      announcedRunIds,
       broadcast: vi.fn(() => {
         throw new Error('observer must not run before settlement');
       }),
@@ -243,6 +247,7 @@ describe('executeSchedulerJobAttempt', () => {
           .mockResolvedValue({ kind: 'completed', output: 'done' }),
       },
       notificationService: null,
+      announcedRunIds,
       broadcast: vi.fn(() => {
         throw new Error('SSE down');
       }),
@@ -283,6 +288,7 @@ describe('executeSchedulerJobAttempt', () => {
       }),
       turnAdapter: { invoke: vi.fn().mockImplementation(() => late) },
       notificationService: null,
+      announcedRunIds,
       broadcast: vi.fn(),
       timeoutMs: 0,
     });
@@ -326,6 +332,7 @@ describe('executeSchedulerJobAttempt', () => {
         }),
       },
       notificationService: null,
+      announcedRunIds,
       broadcast: vi.fn(),
       signal: shutdown.signal,
     });
@@ -364,6 +371,7 @@ describe('executeSchedulerJobAttempt', () => {
         }),
       },
       notificationService: null,
+      announcedRunIds,
       broadcast: vi.fn(),
     });
     expect(result.outcome).toBe('not-invoked');
@@ -405,6 +413,7 @@ describe('executeSchedulerJobAttempt', () => {
         dispatch: (_name: string, effect: () => unknown) => effect(),
         schedule,
       } as never,
+      announcedRunIds,
       broadcast,
     });
 
@@ -449,6 +458,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'twice-discovered',
       id: '0f0f0f0f-0000-4000-8000-000000000042-1',
       error: 'Engine never invoked: adapter unavailable before invocation',
+      announcedRunIds,
       broadcast,
       notificationService,
     };
@@ -524,6 +534,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'outbox-governed',
       id: 'already-told-1',
       error: 'the user has seen this one',
+      announcedRunIds,
       broadcast: h.broadcast,
       notificationService: h.notificationService,
       outbox: h.outbox,
@@ -536,6 +547,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'outbox-governed',
       id: 'still-owed-1',
       error: 'nobody has been told about this one',
+      announcedRunIds,
       broadcast: h.broadcast,
       notificationService: h.notificationService,
       outbox: h.outbox,
@@ -561,6 +573,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'refused-dispatch',
       id: 'refused-1',
       error: 'the queue was closed',
+      announcedRunIds,
       broadcast: h.broadcast,
       notificationService: h.notificationService,
       outbox: h.outbox,
@@ -587,6 +600,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'rejected-write',
       id: 'rejected-1',
       error: 'disk said no',
+      announcedRunIds,
       broadcast: h.broadcast,
       notificationService: h.notificationService,
       outbox: h.outbox,
@@ -615,6 +629,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'ordering',
       id: 'in-flight-1',
       error: 'still writing',
+      announcedRunIds,
       broadcast: h.broadcast,
       notificationService: h.notificationService,
       outbox: h.outbox,
@@ -642,6 +657,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'contended',
       id: 'leased-1',
       error: 'somebody else is telling the user',
+      announcedRunIds,
       broadcast: h.broadcast,
       notificationService: h.notificationService,
       outbox: h.outbox,
@@ -699,6 +715,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'flaky',
       id: 'run-a-1',
       error: 'first failure',
+      announcedRunIds,
       broadcast,
       notificationService,
       outbox: spy.outbox,
@@ -711,6 +728,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'flaky',
       id: 'run-b-1',
       error: 'second failure',
+      announcedRunIds,
       broadcast,
       notificationService,
       outbox: spy.outbox,
@@ -751,6 +769,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'leased',
       id: 'run-c-1',
       error: 'failure under action',
+      announcedRunIds,
       broadcast,
       notificationService,
       outbox: spy.outbox,
@@ -763,6 +782,7 @@ describe('executeSchedulerJobAttempt', () => {
       job: 'leased',
       id: 'run-d-1',
       error: 'failure after the lease',
+      announcedRunIds,
       broadcast,
       notificationService,
       outbox: spy.outbox,
@@ -784,6 +804,7 @@ describe('executeSchedulerJobAttempt', () => {
     const base = {
       job: 'distinct-runs',
       error: 'Engine never invoked: adapter unavailable before invocation',
+      announcedRunIds,
       broadcast,
       notificationService: null,
     };
@@ -826,6 +847,7 @@ describe('executeSchedulerJobAttempt', () => {
         dispatch: (_name: string, effect: () => unknown) => effect(),
         schedule,
       } as never,
+      announcedRunIds,
       broadcast,
     });
 

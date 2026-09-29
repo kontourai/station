@@ -843,7 +843,7 @@ module.exports = () => ({
 module.exports = () => ({
   async getAppName() { return 'My App'; },
   async getLogo() { return { src: '/logo.png', alt: 'My App' }; },
-  async getTheme() { return null; }, // or CSS custom property overrides
+  async getTheme() { return null; }, // or white-label overrides; see examples/custom-branding
   async getWelcomeMessage() { return 'Welcome to My App'; },
 });
 ```

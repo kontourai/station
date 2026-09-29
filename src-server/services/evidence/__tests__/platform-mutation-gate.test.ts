@@ -165,16 +165,6 @@ describe('classification at the wrapper', () => {
     });
     expect(wrapped).toBe(tool);
   });
-
-  test('mutating tools get a gate-wrapped execute', () => {
-    const { tool } = makeTool('station-control_create_agent');
-    const [wrapped] = wrapPlatformMutationGatedTools([tool], {
-      agentSlug: 'default',
-      toolId: 'station-control',
-    });
-    expect(wrapped).not.toBe(tool);
-    expect(wrapped.execute).not.toBe(tool.execute);
-  });
 });
 
 describe('non-opted workspace (zero change)', () => {

@@ -1,21 +1,13 @@
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  isOverdue,
-  missedCount,
-  nextOccurrences,
-  type Schedule,
-} from '@kontourai/ephemeris';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const tempDir =
   process.env.STATION_HOME ||
   join(tmpdir(), `scheduler-eval-test-${process.pid}`);
 
-const { createSchedulerLedger, toScheduledJob } = await import(
-  '../scheduler-ledger.js'
-);
+const { createSchedulerLedger } = await import('../scheduler-ledger.js');
 let ledger: ReturnType<typeof createSchedulerLedger>;
 
 function read<T>(
@@ -34,6 +26,19 @@ function seed(job: Parameters<typeof ledger.create>[0]) {
   expect(ledger.create(job)).toEqual({ kind: 'created' });
 }
 
+/** The recurring claims the ledger hands out at `now`, by job name. */
+function claimsAt(now: number) {
+  return read(ledger.claimDue(now)).map((receipt) => ({
+    name: receipt.job.name,
+    missedCount: receipt.missedCount,
+  }));
+}
+
+function nextRunOf(name: string, now: number) {
+  return read(ledger.listViews(now)).find((view) => view.name === name)
+    ?.nextRun;
+}
+
 type SchedulerChat = (agentSlug: string, prompt: string) => Promise<string>;
 
 async function schedulerFor(chatFn: ReturnType<typeof vi.fn<SchedulerChat>>) {
@@ -49,86 +54,24 @@ async function schedulerFor(chatFn: ReturnType<typeof vi.fn<SchedulerChat>>) {
   });
 }
 
-// ── toScheduledJob: legacy-cron migration ──
-
-describe('toScheduledJob — back-compat migration', () => {
-  test('legacy job with only `cron` synthesizes a UTC cron schedule', () => {
-    const scheduled = toScheduledJob({
-      name: 'legacy',
-      cron: '0 9 * * *',
-      prompt: 'p',
-      enabled: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-    });
-    expect(scheduled).not.toBeNull();
-    expect(scheduled!.schedule).toEqual({ kind: 'cron', expr: '0 9 * * *' });
-    expect(scheduled!.createdMs).toBe(Date.parse('2026-01-01T00:00:00.000Z'));
-    expect(scheduled!.enabled).toBe(true);
-    expect(scheduled!.lastRunMs).toBeUndefined();
-  });
-
-  test('job with `schedule` uses it directly (preferred over cron)', () => {
-    const schedule = {
-      kind: 'cron' as const,
-      expr: '0 9 * * *',
-      timezone: 'America/Denver',
-    };
-    const scheduled = toScheduledJob({
-      name: 'tz-job',
-      cron: '0 23 * * *',
-      schedule,
-      prompt: 'p',
-      enabled: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-    });
-    expect(scheduled).not.toBeNull();
-    expect(scheduled!.schedule).toBe(schedule);
-  });
-
-  test('returns null when neither schedule nor cron is present', () => {
-    expect(
-      toScheduledJob({
-        name: 'inert',
-        prompt: 'p',
-        enabled: true,
-        createdAt: '2026-01-01T00:00:00.000Z',
-      }),
-    ).toBeNull();
-  });
-
-  test('disabled job carries enabled=false into the eval input', () => {
-    const scheduled = toScheduledJob({
-      name: 'off',
-      cron: '0 9 * * *',
-      prompt: 'p',
-      enabled: false,
-      createdAt: '2026-01-01T00:00:00.000Z',
-    });
-    expect(scheduled!.enabled).toBe(false);
-  });
-});
-
 // ── Catch-up: host-down then boot ──
 
 describe('catch-up after host-down', () => {
-  test('isOverdue is true and missedCount reports the gap', () => {
-    // Job created 7 days ago, last ran 7 days ago, daily cron.
-    const createdMs = Date.parse('2026-03-01T09:00:00.000Z');
-    const lastRunMs = Date.parse('2026-03-01T09:00:00.000Z');
-    // Host boots 7 days later — 7 daily fires were missed.
-    const nowMs = Date.parse('2026-03-08T08:00:00.000Z');
-    const scheduled = {
-      schedule: { kind: 'cron' as const, expr: '0 9 * * *' },
-      createdMs,
-      lastRunMs,
+  test('a claim after host-down is one fire whose receipt counts the gap', () => {
+    // Daily 09:00 UTC, last ran Mar 1 09:00; the host boots Mar 8 08:00.
+    seed({
+      name: 'host-down',
+      schedule: { kind: 'cron', expr: '0 9 * * *' },
+      prompt: 'p',
       enabled: true,
-    };
-    expect(isOverdue(scheduled, nowMs)).toBe(true);
-    // 0 9 UTC each day: Mar 2, 3, 4, 5, 6, 7, 8 = 7 occurrences in
-    // (Mar 1 09:00, Mar 8 08:00). The last (Mar 8 09:00) hasn't happened
-    // yet at 08:00, so strictly-interior count is 6.
-    const missed = missedCount(scheduled.schedule, lastRunMs, nowMs);
-    expect(missed).toBe(6);
+      createdAt: '2026-03-01T09:00:00.000Z',
+      lastRunMs: Date.parse('2026-03-01T09:00:00.000Z'),
+    });
+    // Occurrences Mar 2..7 fall strictly inside (Mar 1 09:00, Mar 8 08:00);
+    // Mar 8 09:00 has not happened yet, so six were missed.
+    expect(claimsAt(Date.parse('2026-03-08T08:00:00.000Z'))).toEqual([
+      { name: 'host-down', missedCount: 6 },
+    ]);
   });
 
   test('fire-once-not-N: tick() fires once after host-down', async () => {
@@ -189,18 +132,16 @@ describe('catch-up after host-down', () => {
     await scheduler.stop();
   });
 
-  test('on-time fire reports missedCount 0', () => {
-    // lastRunMs = exactly one interval ago (every 60s). The next fire is
-    // on-time → missedCount 0.
-    const scheduled = {
-      schedule: { kind: 'every' as const, everyMs: 60_000 },
-      createdMs: 0,
-      lastRunMs: 1_000,
+  test('an on-time fire reports missedCount 0', () => {
+    seed({
+      name: 'on-time',
+      schedule: { kind: 'every', everyMs: 60_000 },
+      prompt: 'p',
       enabled: true,
-    };
-    const nowMs = 61_000;
-    expect(isOverdue(scheduled, nowMs)).toBe(true);
-    expect(missedCount(scheduled.schedule, 1_000, 61_000)).toBe(0);
+      createdAt: new Date(0).toISOString(),
+      lastRunMs: 1_000,
+    });
+    expect(claimsAt(61_000)).toEqual([{ name: 'on-time', missedCount: 0 }]);
   });
 });
 
@@ -264,84 +205,70 @@ describe('at one-shot self-disable', () => {
 
 // ── DST: Denver 9am across the spring-forward boundary ──
 
-describe('DST — Denver 9am cron across spring-forward', () => {
-  test('projects to 09:00 America/Denver wall-clock on both sides of Mar 8 2026', () => {
-    // US DST spring-forward in 2026 is Mar 8 (2:00 → 3:00 local).
-    // 2026-03-07T16:00:00Z = 09:00 MST (UTC-7) in Denver.
-    // 2026-03-08: Denver springs forward; 09:00 MDT = 15:00 UTC (UTC-6).
-    // 2026-03-09: 09:00 MDT = 15:00 UTC.
-    const denver9am: Schedule = {
-      kind: 'cron',
-      expr: '0 9 * * *',
-      timezone: 'America/Denver',
-    };
-    // Start from Mar 7 00:00 UTC (before the Mar 7 09:00 MST fire).
-    const fromMs = Date.parse('2026-03-07T00:00:00.000Z');
-    const next3 = nextOccurrences(denver9am, 3, fromMs);
-    expect(next3).toHaveLength(3);
-    // Mar 7 09:00 MST = 16:00 UTC
-    expect(next3[0]).toBe(Date.parse('2026-03-07T16:00:00.000Z'));
-    // Mar 8 09:00 MDT = 15:00 UTC (after spring-forward)
-    expect(next3[1]).toBe(Date.parse('2026-03-08T15:00:00.000Z'));
-    // Mar 9 09:00 MDT = 15:00 UTC
-    expect(next3[2]).toBe(Date.parse('2026-03-09T15:00:00.000Z'));
-  });
-
-  test('UTC cron would NOT shift — proving the DST engine is local-wall', () => {
-    // The same 0 9 * * * in UTC fires at 09:00 UTC every day regardless of
-    // DST — a quick sanity check that the timezone path is what carries the
-    // shift. Both fire at the same UTC instant pre-DST; they diverge after.
-    const utc9am: Schedule = { kind: 'cron', expr: '0 9 * * *' };
-    const fromMs = Date.parse('2026-03-07T00:00:00.000Z');
-    const next3 = nextOccurrences(utc9am, 3, fromMs);
-    expect(next3[0]).toBe(Date.parse('2026-03-07T09:00:00.000Z'));
-    expect(next3[1]).toBe(Date.parse('2026-03-08T09:00:00.000Z'));
-    expect(next3[2]).toBe(Date.parse('2026-03-09T09:00:00.000Z'));
+describe('DST — Denver 9am across spring-forward', () => {
+  test('nextRun holds 09:00 Denver wall-clock on both sides of Mar 8 2026, while a legacy UTC cron does not shift', () => {
+    seed({
+      name: 'denver',
+      schedule: { kind: 'cron', expr: '0 9 * * *', timezone: 'America/Denver' },
+      prompt: 'p',
+      enabled: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    seed({
+      name: 'legacy-utc',
+      cron: '0 9 * * *',
+      prompt: 'p',
+      enabled: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    // Mar 7 09:00 MST (UTC-7) is 16:00 UTC; after the spring-forward,
+    // Mar 8 09:00 MDT (UTC-6) is 15:00 UTC.
+    expect(nextRunOf('denver', Date.parse('2026-03-07T00:00:00.000Z'))).toBe(
+      '2026-03-07T16:00:00.000Z',
+    );
+    expect(nextRunOf('denver', Date.parse('2026-03-07T16:00:01.000Z'))).toBe(
+      '2026-03-08T15:00:00.000Z',
+    );
+    expect(
+      nextRunOf('legacy-utc', Date.parse('2026-03-07T16:00:01.000Z')),
+    ).toBe('2026-03-08T09:00:00.000Z');
   });
 });
 
-// ── `every` anchored to lastRunMs ──
+// ── `every` anchored to lastRunMs, or to createdAt before the first run ──
 
-describe('every schedule anchored to lastRunMs', () => {
-  test('nextOccurrence after a fire is anchored to lastRunMs, not the epoch', () => {
-    const every: Schedule = { kind: 'every', everyMs: 60_000 };
+describe('every schedule anchoring', () => {
+  test('a run job is anchored to lastRunMs, not createdAt, and counts interior misses from it', () => {
     const lastRunMs = 1_000_000;
-    const nowMs = lastRunMs + 30_000;
-    // Not yet overdue — less than everyMs since lastRun.
-    expect(
-      isOverdue(
-        { schedule: every, createdMs: 0, lastRunMs, enabled: true },
-        nowMs,
-      ),
-    ).toBe(false);
-    // Becomes overdue at lastRun + everyMs.
-    expect(
-      isOverdue(
-        { schedule: every, createdMs: 0, lastRunMs, enabled: true },
-        lastRunMs + 60_001,
-      ),
-    ).toBe(true);
-    // nextOccurrence is anchored to fromMs, but the catch-up origin is
-    // lastRunMs — so after a 5-minute gap, missedCount is 4 (the strictly
-    // interior fires).
-    expect(missedCount(every, lastRunMs, lastRunMs + 5 * 60_000)).toBe(4);
+    seed({
+      name: 'anchored',
+      schedule: { kind: 'every', everyMs: 60_000 },
+      prompt: 'p',
+      enabled: true,
+      // Anchored to createdAt, the job would be long overdue.
+      createdAt: new Date(0).toISOString(),
+      lastRunMs,
+    });
+    expect(claimsAt(lastRunMs + 30_000)).toEqual([]);
+    // At +5 minutes, four occurrences fell strictly inside the gap.
+    expect(claimsAt(lastRunMs + 5 * 60_000)).toEqual([
+      { name: 'anchored', missedCount: 4 },
+    ]);
   });
 
-  test('never-run every job becomes overdue after its first interval', () => {
-    const every: Schedule = { kind: 'every', everyMs: 60_000 };
-    const createdMs = 1_000_000;
-    expect(
-      isOverdue(
-        { schedule: every, createdMs, enabled: true },
-        createdMs + 59_999,
-      ),
-    ).toBe(false);
-    expect(
-      isOverdue(
-        { schedule: every, createdMs, enabled: true },
-        createdMs + 60_001,
-      ),
-    ).toBe(true);
+  test('a never-run job is anchored to createdAt: not due before its first interval, due after it', () => {
+    const createdMs = Date.parse('2026-03-01T00:00:00.000Z');
+    seed({
+      name: 'never-run',
+      schedule: { kind: 'every', everyMs: 60_000 },
+      prompt: 'p',
+      enabled: true,
+      createdAt: new Date(createdMs).toISOString(),
+    });
+    expect(claimsAt(createdMs + 59_999)).toEqual([]);
+    expect(claimsAt(createdMs + 60_001).map(({ name }) => name)).toEqual([
+      'never-run',
+    ]);
   });
 });
 
@@ -381,6 +308,33 @@ describe('getStoredJobView nextRun', () => {
     });
     const view = read(ledger.listViews())[0];
     expect(view.nextRun).toBeUndefined();
+  });
+
+  test('nextRun reads a legacy cron-only job as a UTC cron', () => {
+    seed({
+      name: 'legacy-cron',
+      cron: '30 6 * * *',
+      prompt: 'p',
+      enabled: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(
+      nextRunOf('legacy-cron', Date.parse('2026-03-07T00:00:00.000Z')),
+    ).toBe('2026-03-07T06:30:00.000Z');
+  });
+
+  test('nextRun follows `schedule` over a conflicting legacy cron', () => {
+    seed({
+      name: 'both',
+      cron: '0 23 * * *',
+      schedule: { kind: 'cron', expr: '0 9 * * *', timezone: 'America/Denver' },
+      prompt: 'p',
+      enabled: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(nextRunOf('both', Date.parse('2026-03-07T00:00:00.000Z'))).toBe(
+      '2026-03-07T16:00:00.000Z',
+    );
   });
 
   test('nextRun is undefined for a job with no schedule or cron', () => {

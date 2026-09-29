@@ -9,7 +9,6 @@ import {
   buildPluginRequestContext,
   createScopedPluginRequest,
   disposeAllPluginPublicServerModules,
-  disposePluginPublicServerModule,
   loadPluginPublicServerModule,
   quiesceAllPluginPublicServerModules,
   quiescePluginPublicServerModule,
@@ -139,8 +138,12 @@ describe('plugin-public-server helpers', () => {
     );
     expect(second).toBe(first);
 
-    await disposePluginPublicServerModule(pluginsDir, 'demo-plugin');
+    const quiescence = await quiescePluginPublicServerModule(
+      pluginsDir,
+      'demo-plugin',
+    );
     expect(existsSync(disposedFile)).toBe(true);
+    quiescence.release();
   });
 
   test('loads the public operational event observer from the server module', async () => {

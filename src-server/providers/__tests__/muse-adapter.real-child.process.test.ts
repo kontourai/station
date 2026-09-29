@@ -68,9 +68,12 @@ process.stdout.write(JSON.stringify({ payload: { kind: 'run_terminal', terminal:
 setTimeout(() => process.exit(0), 200);\n`;
 
 const TREE_FIXTURE = `import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { renameSync, writeFileSync } from 'node:fs';
 const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });
-writeFileSync(process.argv[2], String(grandchild.pid ?? -1));
+// Write then rename: the test polls for the file to exist, and a plain write
+// can be observed after it creates the file but before it fills it.
+writeFileSync(process.argv[2] + '.tmp', String(grandchild.pid ?? -1));
+renameSync(process.argv[2] + '.tmp', process.argv[2]);
 setInterval(() => {}, 1000);\n`;
 
 const TERMINAL_METHODS = new Set([

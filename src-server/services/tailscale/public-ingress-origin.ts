@@ -55,7 +55,7 @@ export const TAILSCALE_MACOS_APP_CLI =
  * packaged app does not inherit an interactive shell PATH, so macOS tries the
  * official app bundle before the ordinary PATH installation.
  */
-export function tailscaleCliExecutableCandidates(
+function tailscaleCliExecutableCandidates(
   platform: NodeJS.Platform = process.platform,
 ): readonly string[] {
   return platform === 'darwin'

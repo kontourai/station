@@ -244,23 +244,25 @@ describe('SessionOutputsModule', () => {
           length: 2,
         },
       });
-      let current = true,
-        readable = true;
+      // Authority holds for the entry check and the post-read check, then
+      // the named side is revoked by the time the file I/O has finished: the
+      // third authority check is the only one that can withhold the result.
+      let callerChecks = 0;
+      let sessionChecks = 0;
       const module = createSessionOutputsModule({
         eventStore: store as any,
-        canReadSession: () => readable,
+        canReadSession: () => !(kind === 'session' && ++sessionChecks === 3),
         workspaceForSession: () => root,
       });
-      if (kind === 'caller') current = false;
-      else readable = false;
       await expect(
         module.inspect({
           sessionId: 'session-a',
           eventId: 'event-0',
           authority,
-          current: () => current,
+          current: () => !(kind === 'caller' && ++callerChecks === 3),
         }),
       ).resolves.toEqual({ status: 'not-found' });
+      expect(kind === 'caller' ? callerChecks : sessionChecks).toBe(3);
     },
   );
 

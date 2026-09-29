@@ -168,9 +168,17 @@ export const STATION_CONTROL_CALLER_TOKEN_HEADER =
  */
 export const STATION_CONTROL_ORIGIN_HEADER = 'x-station-control-origin';
 export const STATION_CONTROL_ORIGIN_AGENT_TOOL = 'agent-tool';
-/** Spawn-env key carrying a stdio child's per-session caller credential. */
+/**
+ * Retired spawn-env key that once carried a stdio child's per-session caller
+ * credential. Nothing delivers or reads it; `withStationControlRuntimeEnv`
+ * still strips it from every child's env so an inherited value never
+ * reaches one.
+ */
 export const STATION_CONTROL_CALLER_TOKEN_ENV = 'STATION_CONTROL_CALLER_TOKEN';
-/** The REST projection of the verified caller (used by stdio children). */
+/**
+ * The REST projection of the verified caller. It has no production client:
+ * in-process tools resolve their caller directly, and a stdio child has none.
+ */
 export const STATION_CONTROL_CALLER_PATH =
   '/api/orchestration/station-control/caller';
 
@@ -192,12 +200,7 @@ interface StationControlCallerContext {
 }
 const callerContexts = new AsyncLocalStorage<StationControlCallerContext>();
 
-// Installed only by the stdio entry point (`station-control-server.ts`), which
-// reads it from its own spawn env. Station's own process never installs one,
-// so an in-process tool call outside an HTTP MCP request has no caller rather
-// than inheriting whatever the server's environment happens to hold.
-let stdioCallerToken: string | undefined;
-// Set by the stdio entry point. A stdio child is a station-control tool
+// Set by the stdio entry point (`station-control-server.ts`). A stdio child is a station-control tool
 // process by definition, so nothing it sends is Station's own server code
 // (`serverSelfHeaders`), whatever else this process happens to hold.
 let stdioEntryInstalled = false;
@@ -214,23 +217,16 @@ export function withStationControlCallerContext<T>(
 }
 
 /**
- * Stdio entry point only: adopt the per-session caller credential from the
- * spawn env and remove it from `process.env`, so nothing this child spawns
- * inherits it.
+ * Stdio entry point only: mark this process as a station-control stdio
+ * child. A stdio child carries no per-session caller credential, so it has
+ * no caller, and it never sends the server-self attestation.
  */
-export function installStationControlStdioCallerCredential(
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  const value = env[STATION_CONTROL_CALLER_TOKEN_ENV];
-  delete env[STATION_CONTROL_CALLER_TOKEN_ENV];
+export function installStationControlStdioEntry(): void {
   stdioEntryInstalled = true;
-  stdioCallerToken =
-    typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-/** Test-only reset for the stdio credential. */
-export function __resetStationControlStdioCallerCredentialForTests(): void {
-  stdioCallerToken = undefined;
+/** Test-only reset for the stdio entry marker. */
+export function __resetStationControlStdioEntryForTests(): void {
   stdioEntryInstalled = false;
 }
 
@@ -247,86 +243,22 @@ function serverSelfHeaders(): Record<string, string> {
 }
 
 function callerCredential(): string | undefined {
-  const context = callerContexts.getStore();
-  // An HTTP MCP request always decides for itself; it never falls back to a
-  // process-level credential.
-  if (context) return context.token;
-  return stdioCallerToken;
-}
-
-function parseCallerProjection(value: unknown): StationControlCaller | null {
-  if (!value || typeof value !== 'object') return null;
-  const record = value as Record<string, unknown>;
-  if (typeof record.sessionId !== 'string' || record.sessionId.length === 0)
-    return null;
-  if (
-    typeof record.assurance !== 'string' ||
-    !(STATION_CONTROL_CALLER_ASSURANCES as readonly string[]).includes(
-      record.assurance,
-    )
-  )
-    return null;
-  const principal = record.principal as Record<string, unknown> | undefined;
-  const source = principal?.source;
-  return Object.freeze({
-    sessionId: record.sessionId,
-    assurance: record.assurance as StationControlCallerAssurance,
-    ...(principal &&
-    typeof principal.id === 'string' &&
-    principal.id.length > 0 &&
-    typeof source === 'string' &&
-    (STATION_CONTROL_CALLER_PRINCIPAL_SOURCES as readonly string[]).includes(
-      source,
-    )
-      ? {
-          // Re-derived locally: a projection cannot assert eligibility.
-          principal: stationControlCallerPrincipal(
-            principal.id,
-            source as StationControlCallerPrincipalSource,
-          ),
-        }
-      : {}),
-    ...(typeof record.localProjectId === 'string'
-      ? {
-          localProjectId: record.localProjectId,
-          // Unknown or missing provenance is treated as the weaker source.
-          projectIdSource:
-            record.projectIdSource === 'session-record'
-              ? ('session-record' as const)
-              : ('slug-lookup' as const),
-        }
-      : {}),
-    ...(typeof record.projectSlug === 'string'
-      ? { projectSlug: record.projectSlug }
-      : {}),
-    ...(typeof record.conversationId === 'string'
-      ? { conversationId: record.conversationId }
-      : {}),
-  });
+  // Only a verified MCP request context carries a credential; there is no
+  // process-level fallback.
+  return callerContexts.getStore()?.token;
 }
 
 /**
  * The verified caller of the current station-control tool call, or `null`
- * when this delivery path carries no per-session credential, the credential
- * is revoked or expired, or Station cannot be reached. In-process (HTTP MCP)
- * calls resolve directly against the token registry; a stdio child asks
- * Station's REST projection, which runs the same derivation.
+ * when this delivery path carries no per-session credential (a stdio child
+ * never does) or the credential is revoked or expired. In-process and HTTP
+ * MCP calls resolve directly against the token registry.
  */
 export async function getStationControlCaller(): Promise<StationControlCaller | null> {
   const context = callerContexts.getStore();
-  if (context) {
-    try {
-      return context.resolve();
-    } catch {
-      return null;
-    }
-  }
-  if (!stdioCallerToken) return null;
+  if (!context) return null;
   try {
-    const body = (await api(STATION_CONTROL_CALLER_PATH)) as {
-      caller?: unknown;
-    };
-    return parseCallerProjection(body?.caller);
+    return context.resolve();
   } catch {
     return null;
   }

@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -110,21 +110,6 @@ afterEach(() => {
 });
 
 describe('native invocation runs', () => {
-  test('requires the native projection dependency instead of retaining the optional bypass', () => {
-    const source = readFileSync(
-      new URL('../run-service.ts', import.meta.url),
-      'utf8',
-    );
-
-    expect(source).toContain(
-      'private readonly nativeInvocationRuns: NativeInvocationRunReader',
-    );
-    expect(source).not.toContain('nativeInvocationRuns?:');
-    expect(Object.getOwnPropertyNames(EventStore.prototype)).not.toContain(
-      'createNativeInvocationRuns',
-    );
-  });
-
   test('publishes separate starter and reader capabilities without a public reconcile operation', () => {
     const store = createStore();
     expect(Object.keys(store.nativeInvocationStarter())).toEqual(['begin']);
@@ -293,17 +278,12 @@ describe('native invocation runs', () => {
       mkdtempSync(join(tmpdir(), 'native-invocation-startup-retry-')),
       'events.sqlite',
     );
-    const recovered = new EventStore(
-      path,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      () => {
+    const recovered = new EventStore(path, undefined, undefined, {
+      nativeInvocationStartup: () => {
         attempts += 1;
         if (attempts <= 3) throw new Error('transient native startup lock');
       },
-    );
+    });
     stores.push(recovered);
     expect(attempts).toBe(4);
     expect(
@@ -319,16 +299,11 @@ describe('native invocation runs', () => {
     );
     expect(
       () =>
-        new EventStore(
-          failedPath,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          () => {
+        new EventStore(failedPath, undefined, undefined, {
+          nativeInvocationStartup: () => {
             throw new Error('persistent native startup lock');
           },
-        ),
+        }),
     ).toThrow(NativeInvocationStartupUnavailableError);
     // The typed startup failure closes its SQLite handle; a later runtime can
     // retry construction instead of inheriting a half-published route graph.
@@ -518,10 +493,11 @@ describe('native invocation runs', () => {
       ),
       undefined,
       undefined,
-      undefined,
-      () => {
-        transitions += 1;
-        if (transitions === 2) throw new Error('after commit');
+      {
+        nativeInvocationTransition: () => {
+          transitions += 1;
+          if (transitions === 2) throw new Error('after commit');
+        },
       },
     );
     stores.push(store);
@@ -538,6 +514,8 @@ describe('native invocation runs', () => {
     expect(claim.claim.completed('2026-08-14T00:00:02.000Z')).toEqual({
       kind: 'applied',
     });
+    // The completion answered through its readback: the fault did fire.
+    expect(transitions).toBe(2);
   });
 
   test('projects the same canonical id through RunService without creating an orchestration session', async () => {

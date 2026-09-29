@@ -89,7 +89,27 @@ describe('external GitHub monitor', () => {
     ).toBe('budget-exhausted');
   });
 
-  test('refuses redirects and bounds probe body diagnostics', async () => {
+  test.each([
+    ['redirected', true],
+    ['type', 'opaqueredirect'],
+  ] as const)(
+    'refuses a followed redirect (response %s: %s) and asks fetch never to follow one',
+    async (property, value) => {
+      const fetcher = vi.fn(async (_url: string, _init: RequestInit) =>
+        Object.defineProperty(githubResponse(pull()), property, { value }),
+      );
+      const result = await probeGitHubPullRequest(config, fetcher);
+      expect(result.observation).toMatchObject({
+        outcome: 'unavailable',
+        detail: 'GitHub probe refused a redirect.',
+      });
+      expect(fetcher).toHaveBeenCalled();
+      for (const [, init] of fetcher.mock.calls)
+        expect(init.redirect).toBe('error');
+    },
+  );
+
+  test('bounds probe body diagnostics', async () => {
     const result = await probeGitHubPullRequest(
       config,
       async () => new Response('x'.repeat(130_000), { status: 200 }),

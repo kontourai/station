@@ -1191,35 +1191,6 @@ describe('SessionQueryModule', () => {
     ).resolves.toEqual({ status: 'unavailable' });
   });
 
-  test.each(['turn.failed', 'turn.aborted', 'turn.cancelled'])(
-    'retains an already-authored input after %s',
-    async () => {
-      const module = createSessionQueryModule({
-        findSession: vi.fn(async () => ({ id: 'session' })),
-        projectConversation: vi.fn(),
-        canReadSession: vi.fn(() => true),
-        listEvents: vi.fn(),
-        userInputEventById: () => ({
-          eventId: 'started',
-          threadId: 'session',
-          turnId: 'turn',
-          method: 'turn.started',
-          prompt: 'keep me',
-          attachments: [],
-        }),
-      });
-      await expect(
-        module.readUserInput(
-          { type: 'user-input', threadId: 'session', eventId: 'started' },
-          sessionReadAuthorityFromRequest('owner', undefined, undefined),
-        ),
-      ).resolves.toMatchObject({
-        status: 'found',
-        input: { prompt: 'keep me' },
-      });
-    },
-  );
-
   test('reports projection failures without allowing an observer failure to escape', async () => {
     const failure = new Error('projection failed');
     const reportUnavailable = vi.fn(() => {

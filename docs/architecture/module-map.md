@@ -2589,10 +2589,10 @@ schedules; the legacy `cron` field remains for compatibility. The authenticated
 scheduler routes, React-free SDK client, CLI and station-control MCP expose the
 verbs in `SCHEDULER_OPERATOR_SURFACE`; scheduler SSE and the inbound webhook are
 API transport surfaces. `SchedulerService` starts and registers the built-in
-provider. `addProvider` and `ISchedulerProvider` are internal composition APIs,
-not a public plugin scheduler-registration SDK. Manual outcomes carry a
-canonical RunSummary ID when the owner actually created one; legacy or deferred
-provider output cannot invent a receipt. In hosted mode, the
+provider. `ISchedulerProvider` is an internal composition API, not a public
+plugin scheduler-registration SDK. Manual outcomes carry a canonical
+RunSummary ID when the owner actually created one; deferred provider output
+cannot invent a receipt. In hosted mode, the
 [scheduler route boundary](../../src-server/routes/operations/scheduler.ts)
 refuses every read, mutation, SSE stream and webhook because scheduler storage
 has no tenant binding. Hosted RunService reads also omit schedule records.
