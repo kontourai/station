@@ -3375,10 +3375,6 @@ button:hover {
    is just the inset its siblings above the composer already use. */
 .chat-dock__session-failure {
   margin: 0 12px 8px;
-  /* In a short dock the banner yields (and scrolls) before the composer's
-     draft does; the composer is where the user acts on it. */
-  min-height: 0;
-  overflow-y: auto;
 }
 
 /* archive#3386: a quiet disclosure, not a failure. It states that a bounded
