@@ -102,9 +102,23 @@ every other route. These rules make it a region rather than a special case
   view renders and the occupant is kept, not cleared. The Home destination
   (`regionSurface: 'home'`) therefore reveals Home by placing it, rather than
   navigating to `/` and showing whatever occupies `main`.
+- **A place row opens its surface as the page.** The sidebar's Activity
+  row, the palette's Activity entry and Home's "View Activity" open Activity
+  in `main` (`useShowSurfacePage`: the model's `showSurface` with
+  `region: 'main'`), on every device — on a phone that is the page, not a
+  layer over Chat — and the model navigates to `/`. The row is then the
+  current page (`aria-current="page"`, derived like Home's row from `main`'s
+  occupant at `/`, so exactly one of the two is current) and pressing it
+  again keeps the page. A docked Activity moves to `main`; a surface is in
+  at most one region. Every contextual producer — the `?surface=activity`
+  link that notifications and evidence mint, a session intent, the chord —
+  keeps `showSurface`'s reveal, which is why Activity's `defaultRegion` is
+  still `right`. Swapping Home and Activity at `/` writes placement, not a
+  URL, so it adds no history entry (as Home's row never did); from another
+  route the navigation to `/` is one entry.
 - **`main` has no toolbar control on any device** (it is always visible;
   since #2143 the toolbar is per DOCK region). A surface that declares `main`
-  (Activity) reaches it through **Move to Main**,
+  (Activity) also reaches it through its place row (above) and **Move to Main**,
   available from a tab or the bar's separate **Move Activity** control
   (#2160). The tab route needs two or more panes while the strip renders
   (`RegionChromeBar`'s `showStrip`, gated on `isMobile` — the 768px layout,
@@ -1087,8 +1101,8 @@ one arrangement, and no control at all that said whether a region was open
   (#2154; #2143's "Show Activity here" offer row); its chord
   (⌘⇧A, `toggleSurface`: to its default dock region, Home back in `main`);
   or the sidebar's Home row (`showSurface('home')` places Home, and the
-  displaced surface is unplaced — its chord or sidebar row places it
-  afresh). With every dock region occupied there is no pointer route in the
+  displaced surface is unplaced — its chord places it afresh in its dock,
+  and its sidebar row makes it the page again). With every dock region occupied there is no pointer route in the
   toolbar itself; the picker's `Hidden` segment for a `main` occupant was
   unconditional, and this is the one capability the toggles narrow.
 - **Folded devices are unchanged.** A bottom-only device has one dock, so its

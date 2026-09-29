@@ -3890,7 +3890,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "426153191586e330abfdfca99debbeab43855d09",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -5322,7 +5322,7 @@
         },
         {
           "path": "src-ui/src/components/CommandPalette.tsx",
-          "digest": "721cba920da20e4f1cfd31b595e4bcb0c024f45a7763284c26bc3bb1c1dfb7f8"
+          "digest": "9fdfadbad42aa869be9311d840262cb96eedeedd3d9431f9a6752ecd043dfcec"
         },
         {
           "path": "src-ui/src/components/home/StarterWorkCard.tsx",
@@ -5334,7 +5334,7 @@
         },
         {
           "path": "src-ui/src/components/project-sidebar/ProjectSidebarNav.tsx",
-          "digest": "b209995c3840045199fff2df124b822840ea1eff3107274b82d7c42e3c9e78fa"
+          "digest": "cb7ea49a5ac22cd6427fff76b105b4a5ff71cc6ff385abc84a65e82023fdef89"
         },
         {
           "path": "src-ui/src/components/review/ReviewLayout.tsx",
@@ -5638,7 +5638,8 @@
         "Integration source review through 5731eba07: #2881 adds a separate station.home-update-backup/v1 schema to station-home-archive.ts, with createStationHomeUpdateBackup/restoreStationHomeUpdateBackup. It omits external registry paths, records symlinks and uses 250,000-file/1 TiB caps. It also adds the service launcher env passthrough in lifecycle.ts and service status 'update' lines plus an internal update-home action in service.ts. #2914 drops the coordinator's line-count ratchets and keeps only the no-import-back check. The startup-readiness test refactor, the pairing-scope leaf and the UI export narrowing change no claims. Corrected the StationHomeArchive purpose to disclose the separate update-backup schema and scope the traversal and caps to home backup. Corrected 'Size/import ratchets' to an import-direction check. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; registry.ts only deleted the caller-less registerBrandingProvider (getBrandingProvider default unchanged); chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "activity-nav: ProjectSidebarNav and CommandPalette still consume the destination registry's ordered sidebar/palette projections; their regionSurface entries now call useShowSurfacePage (main placement) instead of showSurface. No module-map claim names the row's toggle, so no prose change."
       ]
     },
     {
@@ -8748,8 +8749,8 @@
     },
     {
       "path": "docs/design/placement.md",
-      "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "documentDigest": "cd0fb09f6bf7046086a18b4ad60561917c054b435a3e36ebbbf6432fa4b2b4ed",
+      "sourceRevision": "426153191586e330abfdfca99debbeab43855d09",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8869,7 +8870,7 @@
         },
         {
           "path": "src-ui/src/contexts/RegionModelContext.tsx",
-          "digest": "599becaa8adb097282c2303ff7606968594cb0837d5810c4ed89979e2f6e621f"
+          "digest": "e9f4ea517fdba0718e91f22ea85787ceb5ed8bad20902f1297046919fa3871fa"
         },
         {
           "path": "src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx",
@@ -8905,7 +8906,7 @@
         },
         {
           "path": "src-ui/src/contexts/useShowSurface.ts",
-          "digest": "e67ed04d250fe5af41dd3b8ceadef168e12b7322a1a09afd8ef97a39d2ccba8f"
+          "digest": "8af8b1a43e50b3c13b18f6d09cf9c852187a58349b6f61fe4899c332a516007c"
         },
         {
           "path": "src-ui/src/hooks/useDockShellChrome.ts",
@@ -9051,7 +9052,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Its disabled-row claims are about pane chooser/coding rows (aria-disabled reasons), not the approval card; no tool-call or approval-button styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Its disabled claims concern pane chooser rows and its dockSlotPlacement right/left dock claims are unchanged by this CSS; no approval-button claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "activity-nav: added the place-row rule (sidebar/palette/Home View Activity open Activity in main via useShowSurfacePage = showSurface with region main; aria-current derived from main occupant at /; contextual producers and chord unchanged; defaultRegion stays right; no history entry for a Home/Activity swap at /) and corrected the leaving-main note (sidebar row makes it the page again). Traced ProjectSidebarNav, CommandPalette, HomeSurface, RegionModelContext.showSurface/openSurfaceInRegion target branch and phone overChat guard."
       ]
     },
     {
@@ -9866,8 +9868,8 @@
     },
     {
       "path": "docs/design/shell-ownership-and-boards.md",
-      "documentDigest": "d1cb726c803bad2f5ccb50ad104de6c5906f96e03aa749cfd7ab22231d40850d",
-      "sourceRevision": "e5efef30008198db7198fe9dac38f3ad632c6621",
+      "documentDigest": "881b4eee190ccb5b32b47d2743cdbbcb27d705380f67d0ce0cd758aae10c4360",
+      "sourceRevision": "426153191586e330abfdfca99debbeab43855d09",
       "kind": "design",
       "state": "classified",
       "summary": "Accepted ownership/Board design with staged implementation history and current personal-Board owner routing.",
@@ -9887,7 +9889,7 @@
         },
         {
           "path": "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
-          "digest": "515dd447483a0ceaf679ce64ac253e6053466838b9a026fdb13f84d8a38d44a4"
+          "digest": "56a42c10b34d7e2830bf3ccc47b47ed16a256ac3d4b8165609b9e0137da49b8b"
         },
         {
           "path": "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
@@ -9902,7 +9904,8 @@
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Entire original body byte-identical after removing reading banner.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
-        "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence."
+        "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence.",
+        "activity-nav: D3 Home/Activity row semantics updated from 'pressed, not current' to 'each row opens its surface as the page and the row whose surface is the page is current'; ProjectSidebar.tsx change is a comment on isHomeActive only."
       ]
     },
     {
@@ -13978,7 +13981,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "426153191586e330abfdfca99debbeab43855d09",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14086,7 +14089,7 @@
         },
         {
           "path": "tests/e2e-manifest.mjs",
-          "digest": "02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa"
+          "digest": "f892fafd89cc9e3374f8b5b063b83339daa37292def7eb8f331689d7b67fcc1f"
         },
         {
           "path": "tests/mobile-chat-composer.spec.ts",
@@ -14151,7 +14154,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) deleted tests/plugin-system.spec.ts and tests/plugin-dependency-lifecycle.spec.ts and removed them from tests/e2e-manifest.mjs. The commit gives plugin-pane-sdk-context, minimal-workspace-example and bundled-plugin-registry-lifecycle ownership of installed-plugin pane rendering. The same commits added tests/authenticated-request-canary.spec.ts (smoke-live), refactored run-e2e-suite.mjs evidence retention into settleStartedE2ERun, dropped plugin-update's update-banner test and monitoring's redaction assertion, and changed the agents-editor-gates/readiness-board rationale. None of these other changes alter the matrix's claims. Corrected the Plugins row: removed plugin-system, added the three owning specs, and changed 'installed layout loading' to 'installed plugin panes rendering'. The ledger may want to add tests/plugin-pane-sdk-context.spec.ts, tests/minimal-workspace-example.spec.ts and tests/bundled-plugin-registry-lifecycle.spec.ts as sources. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): tests/e2e-manifest.mjs adds tests/branding-theme-boot.spec.ts to the product bucket (parallel-safe, surface Shell, tier full); PR_BROWSER_SMOKE_CONTRACT and suite runner behavior are unchanged. The matrix names no Shell/theming row and claims no exhaustive coverage. Prose accurate. Source review is separate from executed test evidence.",
-        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose."
+        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
+        "activity-nav: only the activity-pane.spec.ts manifest rationale text changed (sidebar place-row journey and the #2549 phone-layer variant); bucket, tier, membership and parallel-safe classification unchanged. The matrix names no activity-pane assertion, so no prose change."
       ]
     },
     {
@@ -24062,7 +24066,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "426153191586e330abfdfca99debbeab43855d09",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24819,7 +24823,7 @@
         },
         {
           "path": "src-ui/src/components/CommandPalette.tsx",
-          "digest": "721cba920da20e4f1cfd31b595e4bcb0c024f45a7763284c26bc3bb1c1dfb7f8"
+          "digest": "9fdfadbad42aa869be9311d840262cb96eedeedd3d9431f9a6752ecd043dfcec"
         },
         {
           "path": "src-ui/src/components/EnvironmentPicker.tsx",
@@ -25062,7 +25066,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/orchestration/orchestration.ts, covered by its notes above; this branch changed the document, packages/sdk/src/query-domains/systemRuntime.ts, packages/sdk/src/query-domains/systemRuntimeRequests.ts, src-ui/src/main.tsx, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "activity-nav: CommandPalette change is the Activity navigation entry opening the page (useShowSurfacePage); the SDK reference's palette claim concerns Workspace search mode, unchanged."
       ]
     },
     {
@@ -26598,7 +26603,7 @@
     {
       "path": "docs/testing/browser-smoke.md",
       "documentDigest": "2bc25a448c6189b75253f9b26a10665f40107d168858254c46752f8a2f559412",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "426153191586e330abfdfca99debbeab43855d09",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "PR smoke manifest, fixture boundaries, browser-health scope and CI execution policy. Full 40-line baseline read. Traced all seven manifest selections, real HTTP Ollama-shaped fixture versus page-routed streams, explicit monitor installations/assertions/exceptions, worker/retry runner flags, CI step timeout and nonblocking artifact retention. Existing mutation protocol remains a maintenance instruction; not executed in this doc-only pass. Final follow-up scopes required fast-checks to same-repository PRs/merge groups, with fork routing distinct.",
@@ -26658,7 +26663,7 @@
         },
         {
           "path": "tests/e2e-manifest.mjs",
-          "digest": "02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa"
+          "digest": "f892fafd89cc9e3374f8b5b063b83339daa37292def7eb8f331689d7b67fcc1f"
         },
         {
           "path": "tests/helpers/browser-health.ts",
@@ -26700,7 +26705,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed scripts/__tests__/run-ci-fast.test.ts, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. orchestration-chat-flow journey row ('Transcript, tool activity, and approval UI driven by synthetic canonical events') remains accurate; the added #2917 test is the same spec and fixture style; manifest selection count unchanged.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. orchestration-chat-flow journey row remains accurate; the spec gained a right-dock case inside the same mocked approval test; manifest and selection count unchanged.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). orchestration-chat-flow row still accurate; manifest unchanged by either side. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). orchestration-chat-flow row still accurate; manifest unchanged by either side. No prose change.",
+        "activity-nav: e2e-manifest change is the activity-pane.spec.ts rationale string only; the PR smoke selection, fixtures and runner flags this doc describes are unchanged."
       ]
     },
     {
@@ -27390,7 +27396,7 @@
     {
       "path": "examples/custom-branding/README.md",
       "documentDigest": "0a02f42f68de5dbbd4665cb52299d704c6386627cdc7b1664ac31b59538efea0",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "426153191586e330abfdfca99debbeab43855d09",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide traced through actual manifest/factory, permission derivation, branding route, SDK mapper and sidebar; corrected copy-only installation, response envelope and universal UI claim.",
@@ -27422,7 +27428,7 @@
         },
         {
           "path": "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
-          "digest": "515dd447483a0ceaf679ce64ac253e6053466838b9a026fdb13f84d8a38d44a4"
+          "digest": "56a42c10b34d7e2830bf3ccc47b47ed16a256ac3d4b8165609b9e0137da49b8b"
         },
         {
           "path": "src-ui/src/lib/branding-theme.ts",
@@ -27434,7 +27440,8 @@
         "Reviewed integration deltas: src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
         "Integration source review through 5731eba07: #2881 adds requestServiceUpdateProgress to systemRuntimeRequests.ts and a serviceUpdate {requestId} result to applyCoreUpdate. The branding request's data.name to appName mapping is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Added a Theme bullet and a Theme overrides section (shape, accepted properties and thresholds, all-or-nothing, flat expansion, device accent and focus precedence) on top of the main audit text. branding.js now returns a per-mode theme; fetchBranding rejects non-OK or unsuccessful answers while still mapping data.name to appName. Thresholds checked against checkModeOverrides in src-ui/src/lib/branding-theme.ts (added as a source); the example theme passes resolveBrandingTheme in unit tests. Installation and rendered provider branding remain NOT_VERIFIED. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); claims unaffected.",
+        "activity-nav: ProjectSidebar.tsx change is a comment beside isHomeActive; the browser sidebar still consumes branding appName and native chrome keeps installed identity."
       ]
     },
     {

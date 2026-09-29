@@ -127,7 +127,8 @@ PROJECTS                                            +
 ```
 
 - **Home and Activity** keep their placed-surface semantics
-  ([placement.md](placement.md)): the rows are pressed, not current.
+  ([placement.md](placement.md)): each row opens its surface as the page
+  (`main` at `/`), and the row whose surface is the page is current.
 - **Boards** is the project-less section. Personal Boards list first, then
   instance-shared ones. The `+` creates a personal Board.
 - **Projects** keep their model. A project row shows a live-work count, a

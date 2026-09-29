@@ -72,7 +72,6 @@ vi.mock('../../../contexts/NavigationContext', () => ({
 // does not claim to mount the RegionModelProvider tree.
 vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
-  useShowSurfacePage: () => showSurface,
 }));
 
 import { ActionOperationsSection } from '../ActionOperationsSection';

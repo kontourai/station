@@ -6,8 +6,12 @@
  * longer offers a surface-owned "Dock this pane" — Activity is a REGISTERED
  * SURFACE (`REGION_SURFACE_REGISTRY`), the link is a REVEAL, and the region
  * model decides where a revealed surface lands. On a fine pointer that is
- * Activity's declared `defaultRegion`, `right`; on a coarse one the dock edges
- * fold to `bottom` and the reveal shows it alone.
+ * Activity's declared `defaultRegion`, `right`; on a phone it opens over Chat
+ * in the one folded slot (#2549), and "‹ Chat" returns.
+ *
+ * The sidebar's Activity row is the other entry point, and it is a PLACE: it
+ * opens Activity as the page (`main`), the way Home's row opens Home, and the
+ * row is then the current page. The deep link keeps its contextual reveal.
  *
  * Activity is also the only surface today that declares every region
  * (`regions: REGION_IDS`), so it is the only one whose journey can cross the
@@ -365,51 +369,77 @@ test.describe('Activity surface at 390x844', () => {
     hasTouch: true,
   });
 
-  test('reveals Activity alone in the one phone dock slot and gives that slot back to Chat', async ({
+  // #2549 (owner decision 2026-09-24, placement.md): on a phone a revealed
+  // pane opens OVER Chat, in Chat's one folded slot, and "‹ Chat" (or Back)
+  // returns. The deep link is such a reveal. (Before #2549 this asserted a
+  // separate Activity dock shell that replaced Chat's.)
+  test('reveals Activity over Chat in the one phone dock slot, and Back to Chat returns', async ({
     page,
   }) => {
     await page.goto('/?surface=activity');
-    const activity = surfaceDockShell(page, 'Activity');
-    await expect(activity).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
-
-    // A coarse pointer folds every dock edge to `bottom` and `RegionShells`
-    // mounts only the folded region, so the reveal does not put Activity
-    // beside Chat — it shows it ALONE, in the single slot this device has.
+    const slot = chatDockShell(page);
+    const back = slot.getByRole('button', { name: 'Back to Chat', exact: true });
+    await expect(back).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await expect(page.locator('.chat-dock')).toHaveCount(1);
-    await expect(activity).toHaveClass(/chat-dock--bottom/);
-    await expect(chatDockShell(page)).toHaveCount(0);
+    await expect(slot).toHaveClass(/chat-dock--bottom/);
+    await expect(
+      slot.getByRole('heading', { name: 'Activity', exact: true }),
+    ).toBeVisible();
+    // A reveal is not the page: the primary area did not become Activity.
+    await expect(mainHeading(page, 'Activity')).toHaveCount(0);
 
     expect(
       await documentFitsViewportWidth(page),
       'the Activity deep link must not push the phone document sideways',
     ).toBe(true);
-    await expectBoxWithinViewport(page, activity, 'the revealed Activity pane');
-
-    // The control that gives the slot back is the pane's own, and on a phone
-    // it has to be thumb-sized.
-    const hide = activity.getByRole('button', {
-      name: 'Hide Activity',
-      exact: true,
-    });
-    const hideBounds = await hide.boundingBox();
+    await expectBoxWithinViewport(page, slot, 'the revealed Activity pane');
     expect(
-      hideBounds?.height,
-      "the pane's own visibility control must be a 44px tap target",
+      (await back.boundingBox())?.height,
+      'the way back to Chat must be a 44px tap target',
     ).toBeGreaterThanOrEqual(44);
 
-    await hide.click();
-
-    // Hiding the only visible dock region hands the slot to Chat's region:
-    // `foldedDockRegion` falls back to wherever Chat is.
+    await back.click();
+    await expect(back).toHaveCount(0);
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(
-      chatDockShell(page),
-      'hiding the revealed pane must return the one phone dock slot to Chat',
-    ).toHaveClass(/chat-dock--bottom/);
-    await expect(activity).toHaveCount(0);
-    expect(
-      await documentFitsViewportWidth(page),
-      'returning the slot to Chat must not push the phone document sideways',
-    ).toBe(true);
+      slot.getByRole('heading', { name: 'Activity', exact: true }),
+    ).toHaveCount(0);
+  });
+
+  // The sidebar row is a place on a phone too: Activity becomes the page
+  // (not a layer over Chat), the row is current, and Home takes it back.
+  test('the drawer Activity row opens Activity as the page, and Home takes it back', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const navigation = page.getByRole('navigation', {
+      name: 'Mobile navigation',
+    });
+    const openDrawer = () =>
+      page.getByRole('button', { name: 'Toggle menu' }).click();
+    const row = (name: string) =>
+      navigation.getByRole('button', { name, exact: true });
+
+    await openDrawer();
+    await row('Activity').click();
+    await expect(mainHeading(page, 'Activity')).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    await expect(
+      page.getByRole('button', { name: 'Back to Chat', exact: true }),
+      'a page open is not a layer over Chat',
+    ).toHaveCount(0);
+    await expect(
+      page.locator('#station-main').getByRole('region', { name: 'Home' }),
+    ).toHaveCount(0);
+
+    await openDrawer();
+    await expect(row('Activity')).toHaveAttribute('aria-current', 'page');
+    await expect(row('Home')).not.toHaveAttribute('aria-current', /.*/);
+    await row('Home').click();
+    await expect(
+      page.locator('#station-main').getByRole('region', { name: 'Home' }),
+    ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+    await expect(mainHeading(page, 'Activity')).toHaveCount(0);
   });
 });
