@@ -15687,7 +15687,7 @@
     {
       "path": "docs/guides/mobile-release.md",
       "documentDigest": "e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "sourceRevision": "45a0216d182201f9ff1957e870e53e9b1f208cec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all remaining documented claims through actual release/TestFlight and client callers: optional feed reads versus compile inclusion, pinned-origin fetch and HTTPS action validation, conditional writes/readback/compensation and ambiguous outcomes, container alias publication, three-profile/extension entitlement export checks, native credential persistence rejection and iOS accessibility, and pinned OIDC/Secret Manager action behavior. Corrected guarantees to the checks performed.",
@@ -15715,7 +15715,7 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
+          "digest": "db72fb17806fe52f91a891d8e3b48b6f20b1a3137cecb24524fceae7bf833919"
         },
         {
           "path": ".github/workflows/release.yml",
@@ -15934,7 +15934,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "#2959 delta: release.yml gains host-archives/host-manifest jobs feeding assemble-draft; publish-release.yml gains gated host-stream steps; inventory schema gains host-archive/host-manifest-payload roles. No mobile feed, TestFlight, Play or credential claim changes; re-checked the draft/publish sequence claims still hold.",
-        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
+        "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes."
       ]
     },
     {
@@ -16028,8 +16029,8 @@
     },
     {
       "path": "docs/guides/native-releases.md",
-      "documentDigest": "29914388577248a3a8599ea831ad948703ceaf91ad6019955df78d8820d40931",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "documentDigest": "79e9a4650cbdd6a96d8f6ae35eaddd4e4b1206f18e0e5cb06b4ff6928a808f45",
+      "sourceRevision": "45a0216d182201f9ff1957e870e53e9b1f208cec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed detailed cohort admission/fence/ledger/partial-provider protocols, mobile and desktop compensation boundaries, macOS notarization overlap, Windows installer/payload proof limits and portable host-target staging. Actual AppImage entrypoint callers checked against Cargo.lock-verified tauri-utils resource resolution; source/config mismatch documented without claiming an executed Linux failure. Frozen Windows/shared-runtime-pruning changes traced through callers.",
@@ -16061,7 +16062,7 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
+          "digest": "db72fb17806fe52f91a891d8e3b48b6f20b1a3137cecb24524fceae7bf833919"
         },
         {
           "path": ".github/workflows/release.yml",
@@ -16380,7 +16381,8 @@
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "#2959: documented the native-release-publish signing secret and gate variable, the host-stream draft assets, the single attestation-loop exemption for the signed manifest (verified by inventory revalidation) and the gated step order; qualified the every-asset provenance claim. Other publish/rollback claims re-read against publish-release.yml and unchanged.",
-        "#2959 review fixes: updated the host-stream paragraph for the separate host-pointer job, ledger/availability independence, compensation, rerun and rollback behavior; checked against publish-release.yml."
+        "#2959 review fixes: updated the host-stream paragraph for the separate host-pointer job, ledger/availability independence, compensation, rerun and rollback behavior; checked against publish-release.yml.",
+        "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. Updated the host-pointer sentences to match; checked against publish-release.yml."
       ]
     },
     {
@@ -16571,7 +16573,7 @@
     {
       "path": "docs/guides/nightly.md",
       "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "sourceRevision": "45a0216d182201f9ff1957e870e53e9b1f208cec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
@@ -16599,7 +16601,7 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
+          "digest": "db72fb17806fe52f91a891d8e3b48b6f20b1a3137cecb24524fceae7bf833919"
         },
         {
           "path": ".github/workflows/release.yml",
@@ -16863,7 +16865,8 @@
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "#2959 delta: portable-nightly-publication.mjs now wraps the ring-generic scripts/lib/portable-publication.mjs with its API, CLI and URLs unchanged (existing nightly tests pass unmodified); release workflow and inventory changes touch tagged releases only. Nightly claims unchanged.",
-        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
+        "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes."
       ]
     },
     {
@@ -17776,8 +17779,8 @@
     },
     {
       "path": "docs/guides/release-rings.md",
-      "documentDigest": "4ee3facfe584e2e9e6b5dfe08db2c3bb49522ada508404750a2217c35e2e2d59",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "documentDigest": "61d48a69c803eecb8ca0322b0bae1427eee6e956424aebc28f7e5859b1562db7",
+      "sourceRevision": "45a0216d182201f9ff1957e870e53e9b1f208cec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Portable release trust, exact-commit promotion and recovery requirements. Full143-line baseline read. Traced install.sh default attestation and optional pinned-key public manifest branches, token lifetime, explicit channel mapping, downgrade/freshness limits, restore failure handling and publish authority. Corrected exact preview-commit promotion and routine destructive cleanup recipe.",
@@ -17809,7 +17812,7 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
+          "digest": "db72fb17806fe52f91a891d8e3b48b6f20b1a3137cecb24524fceae7bf833919"
         },
         {
           "path": ".github/workflows/release.yml",
@@ -17965,7 +17968,8 @@
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "#2959: added the signed host-stream manifests section; checked every claim against release.yml host-archives/host-manifest, publish-release.yml gated host steps and their order, public-release-locations.mjs URLs, the key table and the installer's existing STATION_INSTALL_PUBLIC_MANIFEST_URL acceptance. States nothing is published and installer defaults are unchanged.",
         "#2959: PUBLIC_RELEASE_REPOSITORY became module-private; the documented base URL and pointer locations are unchanged.",
-        "#2959 review fixes: rewrote the gated flow to the publish job plus host-pointer job; checked pointer-plan outcomes (replace, unchanged rerun, skip-older rollback, refusals), the allow_empty_host_manifest_bootstrap input, compensation on failed replace/re-verify, and added the pre-change-tag note against publish-release.yml and portable-release-publication.mjs."
+        "#2959 review fixes: rewrote the gated flow to the publish job plus host-pointer job; checked pointer-plan outcomes (replace, unchanged rerun, skip-older rollback, refusals), the allow_empty_host_manifest_bootstrap input, compensation on failed replace/re-verify, and added the pre-change-tag note against publish-release.yml and portable-release-publication.mjs.",
+        "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. Rewrote the host-pointer paragraph (released gating, pinned verify of the fetched manifest before any write, warning in the run summary, mis-tagged high version recovery is an owner action); checked against publish-release.yml."
       ]
     },
     {
@@ -19201,7 +19205,7 @@
     {
       "path": "docs/guides/store-entry.md",
       "documentDigest": "147cfd2465d9fa280eda3d75b7a7d5fc963bafe32d7593d196e4fdeb629e06e8",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "sourceRevision": "45a0216d182201f9ff1957e870e53e9b1f208cec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed owner-setup, API key, workload identity, channel profile, upload/reconciliation and bounded group-assignment claims through declared workflows, pinned action inputs and primary provider documentation. Intended names and privacy/ads answers marked as owner decisions, not observed account facts.",
@@ -19229,7 +19233,7 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
+          "digest": "db72fb17806fe52f91a891d8e3b48b6f20b1a3137cecb24524fceae7bf833919"
         },
         {
           "path": ".github/workflows/release.yml",
@@ -19423,13 +19427,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "#2959 delta: release/publish workflows gain host-stream jobs and gated steps and the inventory gains two roles; store owner-setup and upload claims unaffected.",
-        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
+        "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes."
       ]
     },
     {
       "path": "docs/guides/store-listing.md",
       "documentDigest": "e232df90ff2b65b81e24c84bd160b17719d25a054828ab64da8fa98870ce4057",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "sourceRevision": "45a0216d182201f9ff1957e870e53e9b1f208cec",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Completed all draft copy and capture claims. Channel identity and mobile client ownership checked; seller, ads, age, privacy and tracking assertions made proposed owner-reviewed declarations. Screenshot content plan separated from current primary-provider specifications. Unpublished draft remains a design artifact.",
@@ -19457,7 +19462,7 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
+          "digest": "db72fb17806fe52f91a891d8e3b48b6f20b1a3137cecb24524fceae7bf833919"
         },
         {
           "path": ".github/workflows/release.yml",
@@ -19593,7 +19598,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "#2959 delta: release/publish workflow and inventory changes are host-stream only; listing copy and capture claims unaffected.",
-        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
+        "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes."
       ]
     },
     {
@@ -22537,7 +22543,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "sourceRevision": "45a0216d182201f9ff1957e870e53e9b1f208cec",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22545,7 +22551,7 @@
       "sources": [
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
+          "digest": "db72fb17806fe52f91a891d8e3b48b6f20b1a3137cecb24524fceae7bf833919"
         },
         {
           "path": ".github/workflows/release.yml",
@@ -22929,7 +22935,8 @@
         "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "#2959 delta: release-artifacts assemble/validate now also require the host archives and payload and verify an attached signed host manifest; the documented assemble/validate behavior (every asset digest, SBOM bindings, validation before draft and publish) still holds. No CLI claim changes.",
-        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
+        "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes."
       ]
     },
     {
