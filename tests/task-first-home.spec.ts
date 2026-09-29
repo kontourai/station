@@ -1576,8 +1576,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
       });
       await page.goto('/?surface=activity&session=task-first-home');
 
-      const statusLine = page
-        .getByTestId('session-detail')
+      // Project workflows are evidence: they live in the detail's collapsed
+      // Details disclosure, which the reader opens.
+      const detail = page.getByTestId('session-detail');
+      await detail.locator('summary', { hasText: /^Details$/ }).click();
+      const statusLine = detail
         .locator('.workflow-status-line')
         .filter({ hasText: 'kontourai-station-592' });
       await expect(statusLine).toBeVisible();
