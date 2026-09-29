@@ -236,7 +236,8 @@
 /* The omnibox: lock, host, path, then back / forward / reload inside it. */
 .browser-pane__omni {
   align-items: center;
-  background: var(--bg-input, var(--k-bg));
+  /* A tint of the text colour reads as a field on either theme's surface. */
+  background: color-mix(in oklab, var(--k-text) 7%, transparent);
   border-radius: 999px;
   display: flex;
   flex: 1 1 auto;
@@ -298,7 +299,7 @@
 .browser-pane__omni-host {
   flex: 0 1 auto;
   font-weight: 600;
-  min-width: 2ch;
+  min-width: 7ch;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -327,6 +328,18 @@
 @media (pointer: coarse) {
   .browser-pane__omni-reveal {
     opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Phone widths: the host needs the lock's room more than the lock does. */
+  .browser-pane__omni-lock {
+    display: none;
+  }
+
+  .browser-pane__omni {
+    gap: 0;
+    padding-left: var(--k-space-2);
   }
 }
 
