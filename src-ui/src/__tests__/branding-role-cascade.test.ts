@@ -9,12 +9,14 @@ import {
 } from '../../../tests/helpers/css-cascade-fixture';
 import {
   BRANDING_BASE_THEME,
+  BRANDING_FOCUS_ATTRIBUTE,
   resolveBrandingTheme,
 } from '../lib/branding-theme';
 
 /**
  * Station paints its accent, accent text and focus ring from the interaction
- * roles (`var(--k-action, …)`, `var(--k-focus, …)`), which the installed
+ * roles (`var(--k-action, …)`, and `--k-focus` when a white-label theme
+ * supplies it; otherwise the ring follows the accent), which the installed
  * @kontourai/ui tokens define as literals beside the brand. Only a real
  * cascade can show which declaration wins, so this measures computed values
  * in Chromium against the real index.css (with the installed tokens inlined)
@@ -67,7 +69,7 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
   async function measure(
     mode: Mode,
     channel: Channel,
-    options: { inline?: Record<string, string> } = {},
+    options: { inline?: Record<string, string>; themeFocus?: boolean } = {},
   ): Promise<Measured> {
     const page = await browser.newPage();
     try {
@@ -75,14 +77,20 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
         `<!doctype html><html data-theme="${mode}"><head><style>${css}</style></head><body><button type="button" id="probe">probe</button></body></html>`,
       );
       await page.evaluate(
-        ({ channel, inline }) => {
+        ({ channel, inline, focusAttribute }) => {
           const root = document.documentElement;
           if (channel === 'dev') root.classList.add('is-dev-build');
           else if (channel !== 'release') root.dataset.appChannel = channel;
           for (const [name, value] of Object.entries(inline ?? {}))
             root.style.setProperty(name, value);
+          // What applyBrandingTheme sets when the theme supplies --k-focus.
+          if (focusAttribute) root.setAttribute(focusAttribute, '');
         },
-        { channel, inline: options.inline },
+        {
+          channel,
+          inline: options.inline,
+          focusAttribute: options.themeFocus ? BRANDING_FOCUS_ATTRIBUTE : null,
+        },
       );
       // Keyboard focus, so the product-level :focus-visible rule applies.
       await page.keyboard.press('Tab');
@@ -136,6 +144,7 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
           '--k-action-contrast': '#fedcba',
           '--k-focus': '#abcdef',
         },
+        themeFocus: true,
       });
       expect(toHex(m.accent)).toBe('#123456');
       expect(toHex(m.onAccent)).toBe('#fedcba');
@@ -144,19 +153,45 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
   );
 
   test.each(['dark', 'light'] as const)(
-    'a device accent in %s mode recolours the accent but not the focus ring',
+    'a device accent in %s mode colours the focus ring when no theme sets focus',
     async (mode) => {
       // What the Appearance accent picker writes (lib/accent-contrast.ts).
+      // The installed tokens still define --k-focus; it must not win here.
       const m = await measure(mode, 'release', {
         inline: { '--accent-primary': '#d946ef' },
       });
+      expect(toHex(m.focus)).toBe(SHIPPED[mode]['--k-focus']);
       expect(toHex(m.accent)).toBe('#d946ef');
-      expect(toHex(m.outline)).toBe(SHIPPED[mode]['--k-focus']);
+      expect(toHex(m.outline)).toBe('#d946ef');
+    },
+  );
+
+  test.each(['dark', 'light'] as const)(
+    "a theme's focus wins over a device accent in %s mode",
+    async (mode) => {
+      const m = await measure(mode, 'release', {
+        inline: { '--accent-primary': '#d946ef', '--k-focus': '#abcdef' },
+        themeFocus: true,
+      });
+      expect(toHex(m.accent)).toBe('#d946ef');
+      expect(toHex(m.outline)).toBe('#abcdef');
     },
   );
 
   const channels = (['dev', 'beta', 'nightly'] as const).flatMap((channel) =>
     (['dark', 'light'] as const).map((mode) => [channel, mode] as const),
+  );
+
+  test.each(channels)(
+    'the %s channel in %s mode keeps its focus colour over a device accent',
+    async (channel, mode) => {
+      const m = await measure(mode, channel, {
+        inline: { '--accent-primary': '#d946ef' },
+      });
+      expect(toHex(m.accent)).toBe('#d946ef');
+      expect(toHex(m.outline)).toBe(toHex(m.focus));
+      expect(toHex(m.focus)).not.toBe('#d946ef');
+    },
   );
 
   test.each(channels)(

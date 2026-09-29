@@ -31,11 +31,15 @@ applies local adoption rules. `:root.is-dev-build` and `data-app-channel`
 selectors override the brand/contrast pair and the interaction roles
 (`--k-action`, `--k-action-contrast`, `--k-focus`), and select channel logo
 assets. These are existing Station channel overrides, not new shared product
-themes. `--accent-primary` and `--text-on-accent` read the action role, and
-the focus-visible outline reads `--k-focus`. The installed package defines
-both roles (equal to the shipped brand), so the `--k-brand` and
-`--accent-primary` fallbacks written beside them do not apply. A device accent
-therefore recolours buttons and links but not the focus ring.
+themes. `--accent-primary` and `--text-on-accent` read the action role. The
+installed package defines the roles (equal to the shipped brand), so the
+`--k-brand` fallback written beside them does not apply. The focus-visible
+outline reads `--k-focus` only where something chose a focus colour: a
+white-label theme that sets it for the current mode (the root then carries
+`data-brand-focus`) or a Dev, Beta or Nightly build. Everywhere else it reads
+`--accent-primary`, so a device accent recolours buttons, links and the focus
+ring. The package always defines `--k-focus`, which is why the choice is keyed
+on that marker instead of on the property being defined.
 [branding-role-cascade.test.ts](../../src-ui/src/__tests__/branding-role-cascade.test.ts)
 measures the resolved roles and contrast-checks every channel value in a real
 browser against the rules a white-label theme must pass, including the brand

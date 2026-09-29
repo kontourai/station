@@ -76,9 +76,9 @@ What Station accepts:
 - Flat keys are expanded into both modes before checking, so a flat value must
   pass in both. One value rarely does; prefer the `dark` / `light` objects.
 - A device accent chosen in **Settings → Appearance** still colours buttons and
-  links on that device over the theme's action colour. Focus rings always
-  follow `--k-focus`: the theme's, a Dev, Beta or Nightly build's, or the
-  shipped one.
+  links on that device over the theme's action colour. Focus rings follow
+  `--k-focus` when the theme (or a Dev, Beta or Nightly build) sets it, and
+  the device accent otherwise.
 
 ## Disable without uninstalling
 

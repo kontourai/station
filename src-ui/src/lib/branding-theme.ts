@@ -275,7 +275,25 @@ function writeMode(
       root.style.setProperty(property, value.toLowerCase());
     else root.style.removeProperty(property);
   }
+  // Keyed on what was actually written for this mode, so a theme that sets
+  // focus in one mode only hands the ring back to the accent in the other.
+  if (root.style.getPropertyValue('--k-focus'))
+    root.setAttribute(BRANDING_FOCUS_ATTRIBUTE, '');
+  else root.removeAttribute(BRANDING_FOCUS_ATTRIBUTE);
 }
+
+/**
+ * Set on the theme-scope element while the applied theme supplies
+ * `--k-focus` for the current mode. index.css paints the keyboard focus ring
+ * from `--k-focus` only under it, and from `--accent-primary` otherwise.
+ *
+ * @kontourai/ui 1.16 defines `--k-focus` in its tokens, so "is `--k-focus`
+ * defined" can no longer tell a white-label focus colour from the default.
+ * The marker keeps the device accent chosen in Appearance on the ring unless
+ * a white-label theme chose a focus colour (Dev, Beta and Nightly builds
+ * keep their own focus colour through index.css's channel selectors).
+ */
+export const BRANDING_FOCUS_ATTRIBUTE = 'data-brand-focus';
 
 /**
  * Apply validated overrides for the root's current mode, and keep them in
@@ -286,7 +304,9 @@ function writeMode(
  * Inline style on the theme-scope element outranks the stylesheet's
  * `[data-theme="light"]` and channel blocks, so a provider theme wins over a
  * channel retint; the device accent picker writes `--accent-primary`, which
- * sits above the roles and still wins over both.
+ * sits above the roles and still wins over both. The focus ring follows the
+ * accent too, unless this theme supplies `--k-focus` for the current mode
+ * (`BRANDING_FOCUS_ATTRIBUTE`).
  */
 export function applyBrandingTheme(
   root: HTMLElement,
@@ -299,6 +319,7 @@ export function applyBrandingTheme(
     rootState.delete(root);
     for (const property of BRANDING_THEME_PROPERTIES)
       root.style.removeProperty(property);
+    root.removeAttribute(BRANDING_FOCUS_ATTRIBUTE);
     return;
   }
   const frozen = snapshot(overrides);
