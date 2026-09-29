@@ -19,6 +19,7 @@ import {
   EXIT_GITHUB,
   EXIT_UNCONFIGURED,
   EXIT_USAGE,
+  main,
   SETUP_DOC,
 } from '../gh-app-token.mjs';
 
@@ -189,6 +190,32 @@ function baseEnv(extra: Record<string, string> = {}) {
   };
 }
 
+describe('printing the token', () => {
+  it('refuses a bare run on a terminal before reading any key or calling GitHub', async () => {
+    const printed: string[] = [];
+    const errors: string[] = [];
+    let requests = 0;
+    const status = await main({
+      argv: [],
+      env: { STATION_GH_APP_ID: APP_ID },
+      fetchImpl: (async () => {
+        requests += 1;
+        throw new Error('no request expected');
+      }) as typeof fetch,
+      stdout: (text: string) => printed.push(text),
+      stderr: (text: string) => errors.push(text),
+      run: (() => {
+        throw new Error('no Keychain read expected');
+      }) as any,
+      isTerminal: () => true,
+    });
+    expect(status).toBe(EXIT_USAGE);
+    expect(printed).toEqual([]);
+    expect(requests).toBe(0);
+    expect(errors.join('')).toMatch(/^gh-app-token: stdout-is-terminal:/);
+  });
+});
+
 describe.skipIf(!posix)('gh-app-token as a child process', () => {
   it('mints a narrowed read-only token from a hex Keychain secret by default', async () => {
     const github = await fakeGitHub();
@@ -268,22 +295,88 @@ describe.skipIf(!posix)('gh-app-token as a child process', () => {
     expect(github.seen).toEqual([]);
   });
 
-  it('refuses a config file inside a repository', async () => {
+  /** A repository whose files the helper must refuse to read secrets from. */
+  async function repository() {
     const repo = makeTempDir('station-gh-app-repo-');
     const init = spawn('git', ['init', '-q', repo], { windowsHide: true });
     await new Promise((resolve) => init.on('close', resolve));
+    return repo;
+  }
+  /** The reason code a refusal prints first (#2927). */
+  const refusal = (stderr: string) =>
+    /^gh-app-token: ([a-z-]+):/.exec(stderr)?.[1];
+
+  it('refuses a config file inside a repository, before any request, even when the rest would mint', async () => {
+    const github = await fakeGitHub();
+    const keyDir = makeTempDir('station-gh-app-key-');
+    writeFileSync(join(keyDir, 'app.pem'), PEM, { mode: 0o600 });
+    const repo = await repository();
     mkdirSync(join(repo, 'conf'));
+    // Everything in this config works: only its location is wrong.
     writeFileSync(
       join(repo, 'conf/gh-app.json'),
-      JSON.stringify({ appId: APP_ID, privateKeyPath: '/nonexistent.pem' }),
+      JSON.stringify({
+        appId: APP_ID,
+        privateKeyPath: join(keyDir, 'app.pem'),
+        apiUrl: github.url,
+      }),
     );
     const result = await runHelper(
       [],
       baseEnv({ STATION_GH_APP_CONFIG: join(repo, 'conf/gh-app.json') }),
       repo,
     );
+    expect(refusal(result.stderr)).toBe('config-in-repository');
     expect(result.status).toBe(EXIT_UNCONFIGURED);
     expect(result.stdout).toBe('');
+    expect(github.seen).toEqual([]);
+  });
+
+  it('refuses a private key inside a repository, before any request', async () => {
+    const github = await fakeGitHub();
+    const repo = await repository();
+    writeFileSync(join(repo, 'app.pem'), PEM, { mode: 0o600 });
+    const result = await runHelper(
+      [],
+      baseEnv({
+        STATION_GH_APP_ID: APP_ID,
+        STATION_GH_API_URL: github.url,
+        STATION_GH_APP_PRIVATE_KEY_PATH: join(repo, 'app.pem'),
+      }),
+      repo,
+    );
+    expect(refusal(result.stderr)).toBe('key-in-repository');
+    expect(result.status).toBe(EXIT_UNCONFIGURED);
+    expect(result.stdout).toBe('');
+    expect(github.seen).toEqual([]);
+  });
+
+  it('warns about a key file others can read, and still mints', async () => {
+    const github = await fakeGitHub();
+    const keyDir = makeTempDir('station-gh-app-key-');
+    writeFileSync(join(keyDir, 'app.pem'), PEM, { mode: 0o644 });
+    chmodSync(join(keyDir, 'app.pem'), 0o644);
+    const result = await runHelper(
+      [],
+      baseEnv({
+        STATION_GH_APP_ID: APP_ID,
+        STATION_GH_API_URL: github.url,
+        STATION_GH_APP_PRIVATE_KEY_PATH: join(keyDir, 'app.pem'),
+      }),
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe(`${TOKEN}\n`);
+    expect(result.stderr).toMatch(/^gh-app-token: warning: /);
+  });
+
+  it('refuses an invalid API URL cleanly', async () => {
+    const result = await runHelper(
+      [],
+      baseEnv({ STATION_GH_APP_ID: APP_ID, STATION_GH_API_URL: 'not a url' }),
+    );
+    expect(result.status).toBe(EXIT_UNCONFIGURED);
+    expect(refusal(result.stderr)).toBe('unconfigured');
+    expect(result.stderr).not.toMatch(/\n\s+at /);
   });
 
   it('refuses a permission the helper does not offer', async () => {

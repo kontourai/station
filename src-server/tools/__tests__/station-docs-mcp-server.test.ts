@@ -438,10 +438,23 @@ describe('station-docs plugin-authoring topic', () => {
    * the guard exists for is narrower: no statement may say an agent, the
    * assistant or an automatic step installs a plugin.
    */
+  const AGENT =
+    '(?:agents?|assistants?|models?|engines?|claude(?: code)?|codex|muse|opencode|kiro|gemini)';
+  const INSTALL = 'install(?:s|ed|ing)?';
+  // Active ("the agent installs"), passive ("installed by Codex"), an agent
+  // performing "the installation", and automatic installs all claim that
+  // something other than a person installs. "Installation" alone is the
+  // mechanics' noun, so it counts only with an agent doing it.
   const claimsAgentInstall = (sentence: string) =>
-    /\b(?:agents?|assistants?|models?)\b[^.]{0,60}?\binstall(?:s|ed|ing)?\b|\bautomatic(?:ally)?\b/i.test(
-      sentence,
-    );
+    new RegExp(
+      [
+        `\\b${AGENT}\\b[^.]{0,60}?\\b${INSTALL}\\b`,
+        `\\b(?:${INSTALL}|installation)\\b[^.]{0,40}?\\bby (?:an? |the )?${AGENT}\\b`,
+        `\\b${AGENT}\\b[^.]{0,30}?\\b(?:performs|completes|does|handles|runs|starts)\\b[^.]{0,20}?\\binstallation\\b`,
+        '\\bautomatic(?:ally)?\\b',
+      ].join('|'),
+      'i',
+    ).test(sentence);
 
   test('no architecture installation statement claims an agent installs a plugin', () => {
     const architecture = STATION_DOCS_TOPICS.filter((entry) =>
@@ -464,6 +477,10 @@ describe('station-docs plugin-authoring topic', () => {
       'The agent installs the plugin once its grants reconcile.',
       'An assistant then installed your plugin from the inventory.',
       'Plugins are installed automatically when the scanner finds them.',
+      'The plugin is installed by the agent after review.',
+      'Codex installs the plugin you asked for.',
+      'Plugins are installed by Claude Code on request.',
+      'The assistant completes the installation for you.',
     ])
       expect(claimsAgentInstall(claim), claim).toBe(true);
     for (const mechanics of [

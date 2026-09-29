@@ -19,7 +19,7 @@ import { spawnSync } from 'node:child_process';
  * handed to one child command, and both die with the process.
  */
 import { createPrivateKey, sign as cryptoSign } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -59,18 +59,25 @@ export const DEFAULT_PERMISSIONS = Object.freeze(
 );
 
 class GhAppTokenError extends Error {
-  /** @param {string} message @param {number} exitCode */
-  constructor(message, exitCode) {
+  /**
+   * @param {string} message
+   * @param {number} exitCode
+   * @param {string} [reason] a stable code, printed first, for callers and
+   * tests that must not depend on the wording (#2927)
+   */
+  constructor(message, exitCode, reason = 'error') {
     super(message);
     this.name = 'GhAppTokenError';
     this.exitCode = exitCode;
+    this.reason = reason;
   }
 }
 
-function unconfigured(message) {
+function unconfigured(message, reason = 'unconfigured') {
   return new GhAppTokenError(
     `${message}\nSet up the automation app first: see ${SETUP_DOC}`,
     EXIT_UNCONFIGURED,
+    reason,
   );
 }
 
@@ -165,6 +172,7 @@ function resolveConfiguration({ env = process.env, cwd = process.cwd() } = {}) {
     if (insideRepository(configPath, root))
       throw unconfigured(
         `refusing the config file ${configPath}: it is inside the repository ${root}`,
+        'config-in-repository',
       );
     try {
       file = JSON.parse(readFileSync(configPath, 'utf8'));
@@ -200,9 +208,15 @@ function resolveConfiguration({ env = process.env, cwd = process.cwd() } = {}) {
   if (privateKeyPath && insideRepository(privateKeyPath, root))
     throw unconfigured(
       `refusing the private key ${privateKeyPath}: it is inside the repository ${root}`,
+      'key-in-repository',
     );
   const apiUrl = pick('STATION_GH_API_URL', 'apiUrl') ?? DEFAULT_API_URL;
-  const parsedApi = new URL(apiUrl);
+  let parsedApi;
+  try {
+    parsedApi = new URL(apiUrl);
+  } catch {
+    throw unconfigured(`API URL is not a valid URL: ${apiUrl.slice(0, 200)}`);
+  }
   const loopback = ['127.0.0.1', '[::1]', 'localhost'].includes(
     parsedApi.hostname,
   );
@@ -238,10 +252,15 @@ export function decodeKeychainSecret(value) {
 }
 
 /** The PEM private key, from the key file when one is configured, else the Keychain. */
-function readPrivateKey(config, { run = spawnSync } = {}) {
+function readPrivateKey(config, { run = spawnSync, warn = () => {} } = {}) {
   let pem;
   if (config.privateKeyPath) {
     try {
+      // A key others on the machine can read is a leak waiting to happen.
+      if (statSync(config.privateKeyPath).mode & 0o077)
+        warn(
+          `gh-app-token: warning: ${config.privateKeyPath} is readable by group or others; run chmod 600 on it\n`,
+        );
       pem = readFileSync(config.privateKeyPath, 'utf8');
     } catch (error) {
       throw unconfigured(
@@ -387,7 +406,7 @@ async function mintInstallationToken({
   return { token: minted.token, expiresAt: minted.expires_at, installationId };
 }
 
-async function main({
+export async function main({
   argv = process.argv.slice(2),
   env = process.env,
   cwd = process.cwd(),
@@ -395,11 +414,20 @@ async function main({
   stdout = (text) => process.stdout.write(text),
   stderr = (text) => process.stderr.write(text),
   run = spawnSync,
+  isTerminal = () => Boolean(process.stdout.isTTY),
 } = {}) {
   try {
     const { permissions, command } = parseArguments(argv);
+    // A bare run prints the token; on a terminal that lands it in a session
+    // transcript. `$(...)` and the `-- command` form never reach a terminal.
+    if (command.length === 0 && isTerminal())
+      throw new GhAppTokenError(
+        'refusing to print a token to a terminal; capture it with GH_TOKEN=$(node scripts/gh-app-token.mjs) or run a command after --',
+        EXIT_USAGE,
+        'stdout-is-terminal',
+      );
     const config = resolveConfiguration({ env, cwd });
-    const privateKey = readPrivateKey(config, { run });
+    const privateKey = readPrivateKey(config, { run, warn: stderr });
     const { token } = await mintInstallationToken({
       config,
       permissions,
@@ -426,7 +454,7 @@ async function main({
     return child.status ?? 1;
   } catch (error) {
     if (error instanceof GhAppTokenError) {
-      stderr(`gh-app-token: ${error.message}\n`);
+      stderr(`gh-app-token: ${error.reason}: ${error.message}\n`);
       return error.exitCode;
     }
     throw error;
