@@ -19,22 +19,6 @@
   pointer-events: none;
 }
 
-/* A full-screen mobile chat hides the app toolbar and puts its own header in
-   the toolbar's place, so the toolbar offset above landed this stack — the
-   "Approval needed" pill — on that header, covering its chat-actions button.
-   Anchor it below the header instead: the dock starts at the safe-area inset
-   plus its 4px toolbar clearance (index.css, `.chat-dock.is-maximized`), and
-   the header is `--chat-dock-header-height` tall. The class is only ever set
-   on a phone, so no media query is needed to scope it. */
-body:has(.app__main--mobile-dock-fullscreen) .notification-container {
-  top: calc(
-    var(--safe-top, 0px) +
-    4px +
-    var(--chat-dock-header-height, 53px) +
-    8px
-  );
-}
-
 .notification-approval-queue {
   position: relative;
   display: flex;
