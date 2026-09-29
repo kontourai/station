@@ -12,7 +12,7 @@
 import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
 
 /** The repository whose releases hold Station's public host manifests. */
-export const PUBLIC_RELEASE_REPOSITORY = 'kontourai/station';
+const PUBLIC_RELEASE_REPOSITORY = 'kontourai/station';
 
 const REPOSITORY = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 
