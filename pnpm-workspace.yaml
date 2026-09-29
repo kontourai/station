@@ -62,7 +62,7 @@ overrides:
   "@strands-agents/sdk>@anthropic-ai/sdk": ^0.122.0
   "@strands-agents/sdk>@opentelemetry/exporter-trace-otlp-http": ^0.221.0
   "@strands-agents/sdk>@opentelemetry/exporter-metrics-otlp-http": ^0.221.0
-  "@ai-sdk/provider-utils>undici": ^6.28.0
+  "@ai-sdk/provider-utils>undici": ^6.28.1
   "@kontourai/bearing>csv-parse": ^7.0.2
 patchedDependencies:
   "@voltagent/core@2.10.0": patches/voltagent-core-2.10.0.patch
