@@ -1,5 +1,6 @@
 import type {
   PullRequest,
+  PullRequestCheck,
   PullRequestCheckState,
   PullRequestChecksObservation,
   PullRequestMergeMethod,
@@ -84,6 +85,52 @@ const CHECK_STATE_ORDER: PullRequestCheckState[] = [
   'skipped',
 ];
 
+const ATTENTION_STATES = new Set<PullRequestCheckState>([
+  'failure',
+  'pending',
+  'cancelled',
+]);
+
+function CheckList({ checks }: { checks: readonly PullRequestCheck[] }) {
+  if (checks.length === 0) return null;
+  return (
+    <ul className="pull-request-review__checks">
+      {checks.map((check, index) => (
+        <li
+          // Names repeat across workflows; position disambiguates.
+          key={`${check.group ?? ''}:${check.name}:${index}`}
+          data-check-state={check.state}
+        >
+          <span
+            className={`pull-request-review__check-state pull-request-review__check-state--${check.state}`}
+          >
+            {CHECK_STATE_LABEL[check.state]}
+          </span>
+          <span className="pull-request-review__check-name">
+            {check.name}
+            {check.group ? (
+              <span className="pull-request-review__muted">
+                {' '}
+                · {check.group}
+              </span>
+            ) : null}
+          </span>
+          {check.url ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Open ${check.name} details`}
+              onClick={() => void openExternalLink(check.url!)}
+            >
+              Details
+            </Button>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * The provider's checks for the observed head. Counts come from the list
  * itself, and each state is written in words, not colour alone. Absent
@@ -116,6 +163,11 @@ export function PullRequestChecks({
     (a, b) =>
       CHECK_STATE_ORDER.indexOf(a.state) - CHECK_STATE_ORDER.indexOf(b.state),
   );
+  // What needs the reader stays open; settled checks fold away, counted.
+  const needsAttention = sorted.filter((check) =>
+    ATTENTION_STATES.has(check.state),
+  );
+  const settled = sorted.filter((check) => !ATTENTION_STATES.has(check.state));
   return (
     <>
       <p role="status" className="pull-request-review__checks-summary">
@@ -129,40 +181,17 @@ export function PullRequestChecks({
           ? '. Only part of the checks could be read; open the forge for the rest.'
           : ''}
       </p>
-      <ul className="pull-request-review__checks">
-        {sorted.map((check, index) => (
-          <li
-            // Names repeat across workflows; position disambiguates.
-            key={`${check.group ?? ''}:${check.name}:${index}`}
-            data-check-state={check.state}
-          >
-            <span
-              className={`pull-request-review__check-state pull-request-review__check-state--${check.state}`}
-            >
-              {CHECK_STATE_LABEL[check.state]}
-            </span>
-            <span className="pull-request-review__check-name">
-              {check.name}
-              {check.group ? (
-                <span className="pull-request-review__muted">
-                  {' '}
-                  · {check.group}
-                </span>
-              ) : null}
-            </span>
-            {check.url ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={`Open ${check.name} details`}
-                onClick={() => void openExternalLink(check.url!)}
-              >
-                Details
-              </Button>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+      <CheckList checks={needsAttention} />
+      {settled.length > 0 && (
+        <details className="pull-request-review__settled">
+          <summary>
+            {needsAttention.length === 0 ? 'Show' : 'Show the other'}{' '}
+            {settled.length} passed, neutral or skipped check
+            {settled.length === 1 ? '' : 's'}
+          </summary>
+          <CheckList checks={settled} />
+        </details>
+      )}
     </>
   );
 }

@@ -107,3 +107,9 @@
     min-width: 44px;
   }
 }
+.pull-request-review__settled summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}

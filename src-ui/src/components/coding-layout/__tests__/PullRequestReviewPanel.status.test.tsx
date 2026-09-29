@@ -195,6 +195,16 @@ describe('pull request status', () => {
     ]);
     // The state is a word, not only a colour.
     expect(within(items[0]).getByText('Failed')).toBeTruthy();
+    // Failed and pending stay open; settled checks fold behind a counted
+    // disclosure.
+    expect(items[0].closest('details')).toBeNull();
+    expect(items[1].closest('details')).toBeNull();
+    const settled = screen
+      .getByText('Show the other 2 passed, neutral or skipped checks')
+      .closest('details');
+    expect(settled?.open).toBe(false);
+    expect(items[2].closest('details')).toBe(settled);
+    expect(items[3].closest('details')).toBe(settled);
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Open Windows PR portable floor details',
