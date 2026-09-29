@@ -3523,6 +3523,60 @@
       ]
     },
     {
+      "path": "docs/adr/0020-distribution-two-trains-channels-as-pointers.md",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Accepted decision record for the distribution epic (#2956, #2958): channels as signed pointers over one host stream, a client train and a host stream joined by launcher and client-API protocol ranges with rejection paths, a manifest-only installer, a desktop shell that fetches and verifies the host with the installer verifier, one opt-in service-install capability, and the #2713 answers (never-backwards channel switching with restore/start-fresh escape hatches, consent-based migration to the stable desktop identity, URL-keyed pairing, one channel record per axis).",
+      "limits": "Decision record only; no behavior ships with it. Context statements describe origin/main on 2026-09-29 and were checked against the listed sources; the decisions are implemented and proven by #2959-#2962, not by this record.",
+      "sources": [
+        {
+          "path": "install.sh",
+          "digest": "f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc"
+        },
+        {
+          "path": "packages/shared/src/service-launcher-protocol.ts",
+          "digest": "fdbe729811c373d0bdf059c51ea72dbc5d1e3240c88c91fa553d878107a9b68e"
+        },
+        {
+          "path": "src-server/routes/system/archive-update.ts",
+          "digest": "97a36602f6d3d0b0ad2e19d566784adad7c1caafece78d961c849167232003f9"
+        },
+        {
+          "path": "packages/contracts/src/environment-security.ts",
+          "digest": "2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65"
+        },
+        {
+          "path": "src-ui/src/lib/compatibility.ts",
+          "digest": "4c3ddfb66d0c660278dbb12f3dcc66fbb4a7c3c24a882c3d65afe3c89bd9dac3"
+        },
+        {
+          "path": "packages/shared/src/station-home-schema.ts",
+          "digest": "db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db"
+        },
+        {
+          "path": "packages/cli/src/commands/lifecycle.ts",
+          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+        },
+        {
+          "path": "config/release-manifest-keys.json",
+          "digest": "28b356665f581456dcddd64ae86ebf3bde1fb1ee12408c480b7a2fa68923f0c3"
+        },
+        {
+          "path": "config/channel-ports.json",
+          "digest": "b57f2202d6b699d201df79f80e3dd7b3049b3a4c5b3455185e8d35c619a69bcf"
+        },
+        {
+          "path": "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
+          "digest": "d088c73563837f29d5e1c39e122785b0f45afccb5323396df40f0d1524f0b9c0"
+        }
+      ],
+      "checks": [
+        "Context claims checked against source: launcher protocol constants and refusals (install.sh range refuse; service-launcher-protocol.ts; archive-update.ts; none in src-desktop Rust); client API compat (environment-security.ts STATION_COMPAT_*; compatibility.ts client-side refusal; host records only); home schema downgrade refusal (station-home-schema.ts); install state record read by lifecycle.ts; pinned keys (release-manifest-keys.json); per-channel identities (channel-ports.json). Decisions: owner direction and owner answers of 2026-09-29; engineering additions labeled."
+      ],
+      "documentDigest": "1779ad1aa736105e5032a29d24aa9786b1e3c2e876975847c6c22c3edad9ffdd",
+      "sourceRevision": "8608541b9e415540cefdce10aece994bb51d0000"
+    },
+    {
       "path": "docs/architecture.md",
       "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
       "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
