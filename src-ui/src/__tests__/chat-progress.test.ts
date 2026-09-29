@@ -10,7 +10,9 @@ describe('formatToolName', () => {
     expect(formatToolName('mcp__github__create_issue')).toBe(
       'mcp github create issue',
     );
-    expect(formatToolName('github/create-issue')).toBe('github/create issue');
+    expect(formatToolName('github/create-issue')).toBe('github/create-issue');
+    // Deliberate: a hyphenated single token is kept as written.
+    expect(formatToolName('git-lfs')).toBe('git-lfs');
   });
 
   test('never rewrites display text: a command line or a path is shown as written', () => {

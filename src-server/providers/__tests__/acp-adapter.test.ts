@@ -19,6 +19,10 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import {
+  toolRequestFromPayload,
+  toolRequestGrantLabel,
+} from '@kontourai/station-shared/tool-request-preview';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
@@ -633,6 +637,43 @@ describe('AcpAdapter', () => {
     });
     const odd = await nextEvent(iterator, 'request.opened');
     expect((odd as any).payload).not.toHaveProperty('toolKind');
+    await adapter.stopAll();
+  });
+
+  test('request.opened names the tool a session grant would cover', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-request-name',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const proc = processes[0];
+    await adapter.sendTurn({ threadId: 'thread-request-name', input: 'Go' });
+    await nextEvent(iterator, 'turn.started');
+    void requestPermission(proc.client, 'tool-named', 'write');
+    const opened = await nextEvent(iterator, 'request.opened');
+    expect((opened as any).payload).toMatchObject({ toolName: 'write' });
+    // The shared label names it: the same words on the card and the toast.
+    expect(
+      toolRequestGrantLabel(
+        toolRequestFromPayload((opened as any).payload).toolName,
+      ),
+    ).toBe('Allow write for this session');
+    // …and that is exactly what the grant covers: the next `write` is
+    // allowed without a second request.
+    await adapter.respondToRequest(
+      'thread-request-name',
+      String(opened.requestId),
+      'acceptForSession',
+    );
+    await nextEvent(iterator, 'request.resolved');
+    await expect(
+      requestPermission(proc.client, 'tool-named-2', 'write'),
+    ).resolves.toMatchObject({ outcome: { outcome: 'selected' } });
     await adapter.stopAll();
   });
 

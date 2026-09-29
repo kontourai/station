@@ -184,7 +184,7 @@ describe('classifyToolCallRun', () => {
     const group = classifyFirstRun([
       toolCall({
         toolCallId: 'a',
-        toolName: 'STATION_DOCS_FRESHNESS=scoped MODE="a b" npm run docs:check',
+        toolName: 'STATION_DOCS_FRESHNESS=scoped MODE=full npm run docs:check',
         toolKind: 'execute',
         args: undefined,
       }),
@@ -219,6 +219,95 @@ describe('classifyToolCallRun', () => {
     ]);
     expect(group.summary).toBe('Ran 2 commands');
     expect(group.failedCount).toBe(1);
+  });
+
+  describe('env assignments in the collapsed command label (security legibility)', () => {
+    const label = (command: string, state: string, needsApproval = false) =>
+      classifyFirstRun([
+        toolCall({
+          toolCallId: 'a',
+          toolName: 'Bash',
+          args: { command },
+          state,
+          needsApproval,
+        }),
+      ]).summary;
+
+    test.each([
+      'LD_PRELOAD=/tmp/evil.so ls',
+      'PATH=/tmp/evil:$PATH git status',
+      'FOO=$(rm -rf /) ls',
+      'STATION_DOCS_FRESHNESS=scoped npm run docs:check',
+    ])('a call awaiting approval shows %s whole', (command) => {
+      expect(label(command, 'awaiting-approval', true)).toBe(`Run ${command}`);
+    });
+
+    test.each([
+      ['LD_PRELOAD=/tmp/evil.so ls', 'Ran LD_PRELOAD=/tmp/evil.so ls'],
+      [
+        'PATH=/tmp/evil:$PATH git status',
+        'Ran PATH=/tmp/evil:$PATH git status',
+      ],
+      ['FOO=$(rm -rf /) ls', 'Ran FOO=$(rm -rf /) ls'],
+      ['A=1 FOO="x y" npm test', 'Ran A=1 FOO="x y" npm test'],
+      ['A=`id` ls', 'Ran A=`id` ls'],
+      ['A=1 B=scoped npm test', 'Ran npm test'],
+    ])(
+      'a settled %s trims only plain, harmless literals',
+      (command, expected) => {
+        expect(label(command, 'completed')).toBe(expected);
+      },
+    );
+  });
+
+  test.each([
+    ['fs.write_file', { path: 'a.txt', text: 'x' }, 'write'],
+    ['filesystem:edit_file', { path: 'a.txt' }, 'write'],
+    ['notion.search', { q: 'x' }, 'search'],
+    ['shell.exec', { cmdline: 'ls' }, 'exec'],
+  ])(
+    'a scoped tool name %s still classifies by its words',
+    (toolName, args, kind) => {
+      const group = classifyFirstRun([
+        toolCall({ toolCallId: 'a', toolName, args }),
+      ]);
+      expect(group.calls[0]!.kind).toBe(kind);
+    },
+  );
+
+  test('a command argument wins over an engine kind that says otherwise, and is shown', () => {
+    const group = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'bash',
+        toolKind: 'read',
+        args: { command: 'rm -rf ~' },
+      }),
+    ]);
+    expect(group.calls[0]!.kind).toBe('exec');
+    expect(group.summary).toBe('Ran rm -rf ~');
+  });
+
+  test('a pending batch of searches reads as an inventory of searches', () => {
+    const grep = (id: string, extra: Partial<ToolCallLike> = {}) =>
+      toolCall({
+        toolCallId: id,
+        toolName: 'Grep',
+        args: { pattern: 'x' },
+        ...extra,
+      });
+    expect(
+      classifyFirstRun([
+        grep('a'),
+        grep('b', { needsApproval: true, state: 'awaiting-approval' }),
+      ]).summary,
+    ).toBe('2 searches');
+    expect(
+      classifyFirstRun([
+        grep('a'),
+        toolCall({ toolCallId: 'r', state: 'cancelled', cancelled: true }),
+      ]).summary,
+    ).toBe('1 file read, 1 search');
   });
 
   test('a finished batch with a cancelled call is an inventory, not an instruction', () => {

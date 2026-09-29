@@ -792,11 +792,15 @@ export class AcpToolUpdateSupervisor {
       this.observe('update_limit');
       return;
     }
+    // A kind outside the vocabulary is ignored, never a reason to forget the
+    // last valid one; an unchanged kind is not new metadata.
+    const nextKind = update.hasKind ? engineToolKind(update.kind) : undefined;
+    const kindChanged = nextKind !== undefined && nextKind !== call.kind;
     const metadataChanged =
       start ||
       update.hasName ||
       update.hasTitle ||
-      update.hasKind ||
+      kindChanged ||
       update.hasRawInput;
     if (update.hasName)
       call.name = typeof update.name === 'string' ? update.name : undefined;
@@ -804,7 +808,7 @@ export class AcpToolUpdateSupervisor {
       call.title = typeof update.title === 'string' ? update.title : undefined;
     // An unrecognised kind is refused, not coerced to `other`: `other` is a
     // claim the engine made, and an unknown string is not that claim.
-    if (update.hasKind) call.kind = engineToolKind(update.kind);
+    if (kindChanged) call.kind = nextKind;
     if (update.hasRawInput) {
       const rawInput =
         update.rawInput === null

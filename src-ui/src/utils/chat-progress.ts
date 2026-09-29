@@ -41,8 +41,10 @@ export function isProgrammaticToolName(value: unknown): boolean {
  * indicator and the collapsed tool-call batch summary (`tool-call-groups.ts`)
  * — one label vocabulary, not two parallel ones.
  *
- * A programmatic name has its separators humanized (`shell_exec` →
- * `shell exec`). Anything else is display text the engine already wrote for a
+ * A programmatic name has its underscores humanized (`shell_exec` →
+ * `shell exec`). Hyphens are kept: a hyphenated single token is as often a
+ * command or file name (`git-lfs`, `docker-compose`) as a tool name, and
+ * `create-issue` reads fine as written. Anything else is display text the engine already wrote for a
  * person — a command line, a path — and is returned as written, with only
  * its whitespace collapsed onto one line.
  */
@@ -52,7 +54,7 @@ export function formatToolName(value: unknown): string {
   }
   const trimmed = value.trim();
   if (!isProgrammaticToolName(trimmed)) return trimmed.replace(/\s+/g, ' ');
-  return trimmed.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ');
+  return trimmed.replace(/_+/g, ' ').replace(/\s+/g, ' ');
 }
 
 function activityTimestamp(part: ToolContentPart): number {

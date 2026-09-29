@@ -2050,6 +2050,10 @@ export class AcpAdapter implements ProviderAdapterShape {
         title: params.toolCall?.title ?? 'Allow tool call',
         payload: {
           toolCallId: params.toolCall?.toolCallId,
+          // The programmatic name, when the engine reports one: it is what
+          // `respondToRequest` records a session grant under, so the grant
+          // button must be able to name it.
+          ...(toolName ? { toolName } : {}),
           rawInput: params.toolCall?.rawInput,
           // The engine's ACP kind, so a card with no bound transcript row
           // still says whether it gates a command, an edit or a read.
