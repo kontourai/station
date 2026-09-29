@@ -19,6 +19,9 @@ import { hexContrast } from '../lib/branding-theme';
  * actually sits on, for every channel in both modes. The rule-level check of
  * the channel values lives in `branding-role-cascade.test.ts`; this one
  * catches a surface the rules do not model (the raised rows, a hover fill).
+ *
+ * The chat-dock resize grips are measured too, as non-text UI (3:1): on hover
+ * and keyboard focus they sit on a brand tint, so a brand retint moves them.
  */
 
 const readinessState = {
@@ -51,6 +54,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useTrustReportQuery: () => reportState,
 }));
 
+import { ChatDockResizeHandle } from '../components/chat-dock/ChatDockResizeHandle';
 import { ProjectSidebarHeader } from '../components/project-sidebar/ProjectSidebarHeader';
 import { ReadinessPanel } from '../components/readiness/ReadinessPanel';
 import { TrustPanel } from '../components/trust/TrustPanel';
@@ -65,6 +69,48 @@ const VENDOR_ROLES_SHIM = `
 `;
 
 const AA_TEXT = 4.5;
+/** WCAG 1.4.11 non-text contrast, for the resize grips. */
+const NON_TEXT = 3;
+
+/**
+ * Page-side measuring helpers, installed once per page. `backdrop` composites
+ * each ancestor's fill, nearest first, until an opaque one; a background
+ * image would make the measurement meaningless, so it is refused.
+ */
+const MEASURE_HELPERS = `
+window.__contrast = (() => {
+  const probe = document.createElement('canvas').getContext('2d');
+  const rgba = (value) => {
+    probe.clearRect(0, 0, 1, 1);
+    probe.fillStyle = '#000';
+    probe.fillStyle = value;
+    probe.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = probe.getImageData(0, 0, 1, 1).data;
+    return [r, g, b, a / 255];
+  };
+  const hex = ([r, g, b]) =>
+    '#' + [r, g, b].map((n) => Math.round(n).toString(16).padStart(2, '0')).join('');
+  const over = (top, bottom) => {
+    const alpha = top[3] + bottom[3] * (1 - top[3]);
+    if (alpha === 0) return [0, 0, 0, 0];
+    return [0, 1, 2].map(
+      (i) => (top[i] * top[3] + bottom[i] * bottom[3] * (1 - top[3])) / alpha,
+    ).concat(alpha);
+  };
+  const backdropRgba = (element) => {
+    let color = [0, 0, 0, 0];
+    for (let node = element; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.backgroundImage !== 'none')
+        throw new Error('background image behind ' + node.className);
+      color = over(color, rgba(style.backgroundColor));
+      if (color[3] >= 0.999) return color;
+    }
+    throw new Error('no opaque backdrop for ' + element.className);
+  };
+  return { rgba, hex, over, backdrop: (element) => hex(backdropRgba(element)), backdropRgba };
+})();
+`;
 
 type Mode = 'dark' | 'light';
 type Channel = 'release' | 'dev' | 'beta' | 'nightly';
@@ -183,6 +229,42 @@ function renderSurfaces(): string {
   return html;
 }
 
+/**
+ * The two chat-dock resize handles: the real bottom-dock `<hr>` (its grip is
+ * an `::after`) and the side-panel button as DockShell renders it. Each sits
+ * in a `.chat-dock`, which supplies the surface behind the handle; the inline
+ * styles only place the two docks apart on the page.
+ */
+function renderGrips(): string {
+  const bottom = render(
+    <ChatDockResizeHandle
+      mode="desktop-free"
+      snap="half"
+      currentHeight={240}
+      toolbarHeight={48}
+      collapsedHeight={38}
+      onSnap={() => {}}
+      onCommitHeight={() => {}}
+      onLiveHeight={() => {}}
+      onDragStateChange={() => {}}
+    />,
+  );
+  const html = `<div class="chat-dock" style="height:200px;right:320px">${bottom.container.innerHTML}</div><div class="chat-dock" style="top:0;bottom:auto;left:auto;right:0;width:300px;height:200px"><button type="button" tabindex="-1" class="chat-dock__resize-handle chat-dock__resize-handle--horizontal" aria-label="Resize panel"><span class="chat-dock__resize-grip chat-dock__resize-grip--vertical"></span></button></div>`;
+  cleanup();
+  return html;
+}
+
+/** The grips fade between states; measure the state, not a frame of the fade. */
+const SETTLED = '*, *::after { transition: none !important; }';
+
+interface GripSample {
+  grip: string;
+  state: string;
+  focused: boolean;
+  fill: string;
+  background: string;
+}
+
 interface Sample {
   target: string;
   state: string;
@@ -195,6 +277,7 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
   let browser: Awaited<ReturnType<typeof chromium.launch>>;
   let css: string;
   let markup: string;
+  let gripMarkup: string;
 
   beforeAll(async () => {
     browser = await chromium.launch();
@@ -208,6 +291,7 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
       .join('\n');
     assertNoImportsSurvive(css);
     markup = renderSurfaces();
+    gripMarkup = renderGrips();
   });
   afterAll(async () => {
     await browser?.close();
@@ -225,6 +309,7 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
       await page.setContent(
         `<!doctype html><html data-theme="${mode}"><head>${shim}<style>${css}</style></head><body>${markup}</body></html>`,
       );
+      await page.addScriptTag({ content: MEASURE_HELPERS });
       await page.evaluate(
         ({ channel, inline }) => {
           const root = document.documentElement;
@@ -243,49 +328,15 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
             const rootStyle = getComputedStyle(document.documentElement);
             const token = (name: string) =>
               rootStyle.getPropertyValue(name).trim();
-            // Resolve any CSS colour (including color-mix output) to rgba.
-            const probe = document.createElement('canvas').getContext('2d')!;
-            const rgba = (value: string): [number, number, number, number] => {
-              probe.clearRect(0, 0, 1, 1);
-              probe.fillStyle = '#000';
-              probe.fillStyle = value;
-              probe.fillRect(0, 0, 1, 1);
-              const [r, g, b, a] = probe.getImageData(0, 0, 1, 1).data;
-              return [r, g, b, a / 255];
-            };
-            const hex = ([r, g, b]: number[]) =>
-              `#${[r, g, b]
-                .map((n) => Math.round(n).toString(16).padStart(2, '0'))
-                .join('')}`;
-            // The painted backdrop: composite each ancestor's fill, nearest
-            // first, until an opaque one. A background image would make the
-            // measurement meaningless, so it is refused, not ignored.
-            const backdrop = (element: Element): string => {
-              let color = [0, 0, 0, 0];
-              for (
-                let node: Element | null = element;
-                node;
-                node = node.parentElement
-              ) {
-                const style = getComputedStyle(node);
-                if (style.backgroundImage !== 'none')
-                  throw new Error(
-                    `background image behind text: ${node.className}`,
-                  );
-                const [r, g, b, a] = rgba(style.backgroundColor);
-                const alpha = color[3] + a * (1 - color[3]);
-                if (alpha > 0)
-                  color = [0, 1, 2].map(
-                    (i) =>
-                      (color[i] * color[3] +
-                        [r, g, b][i] * a * (1 - color[3])) /
-                      alpha,
-                  );
-                color[3] = alpha;
-                if (alpha >= 0.999) return hex(color);
+            const { rgba, hex, backdrop } = (
+              window as unknown as {
+                __contrast: {
+                  rgba: (value: string) => number[];
+                  hex: (color: number[]) => string;
+                  backdrop: (element: Element) => string;
+                };
               }
-              throw new Error(`no opaque backdrop for ${element.className}`);
-            };
+            ).__contrast;
             return targets.map(({ name, selector, role }) => {
               const element = document.querySelector(selector);
               if (!element) throw new Error(`missing ${selector}`);
@@ -375,6 +426,121 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
         'trust eyebrow': theme.brand,
         'trust evidence toggle': theme.action,
       });
+    },
+  );
+
+  // A white-label theme is applied inline on the root, so it outranks a
+  // channel's stylesheet retint, including in a channel build.
+  test('a white-label theme outranks the nightly retint on every surface', async () => {
+    const theme = { brand: '#e08b2f', action: '#7983f4', onAction: '#06080b' };
+    const samples = await sample('dark', 'nightly', false, {
+      '--k-brand': theme.brand,
+      '--k-action': theme.action,
+      '--k-action-contrast': theme.onAction,
+    });
+    const painted = Object.fromEntries(
+      samples
+        .filter((entry) => entry.state === 'resting')
+        .map((entry) => [entry.target, entry.color]),
+    );
+    expect(painted).toEqual({
+      [BADGE]: theme.brand,
+      'readiness eyebrow': theme.brand,
+      'readiness why link': theme.action,
+      'trust eyebrow': theme.brand,
+      'trust evidence toggle': theme.action,
+    });
+  });
+
+  async function sampleGrips(
+    mode: Mode,
+    channel: Channel,
+  ): Promise<GripSample[]> {
+    const page = await browser.newPage({
+      viewport: { width: 1280, height: 720 },
+    });
+    try {
+      await page.setContent(
+        `<!doctype html><html data-theme="${mode}"><head><style>${css}</style><style>${SETTLED}</style></head><body>${gripMarkup}</body></html>`,
+      );
+      await page.addScriptTag({ content: MEASURE_HELPERS });
+      await page.evaluate((channel) => {
+        const root = document.documentElement;
+        if (channel === 'dev') root.classList.add('is-dev-build');
+        else if (channel !== 'release') root.dataset.appChannel = channel;
+      }, channel);
+
+      const read = (grip: 'bottom' | 'side', state: string) =>
+        page.evaluate(
+          ({ grip, state }) => {
+            const { rgba, hex, over, backdropRgba } = (
+              window as unknown as {
+                __contrast: {
+                  rgba: (value: string) => number[];
+                  hex: (color: number[]) => string;
+                  over: (top: number[], bottom: number[]) => number[];
+                  backdropRgba: (element: Element) => number[];
+                };
+              }
+            ).__contrast;
+            const handle = document.querySelector(
+              grip === 'bottom'
+                ? 'hr.chat-dock__resize-handle'
+                : 'button.chat-dock__resize-handle',
+            )!;
+            const gripStyle =
+              grip === 'bottom'
+                ? getComputedStyle(handle, '::after')
+                : getComputedStyle(handle.querySelector('span')!);
+            const behind = backdropRgba(handle);
+            const [r, g, b, a] = rgba(gripStyle.backgroundColor);
+            // The grip's own alpha and opacity both let the backdrop through.
+            const fill = over([r, g, b, a * Number(gripStyle.opacity)], behind);
+            return {
+              grip,
+              state,
+              focused: handle.matches(':focus-visible'),
+              fill: hex(fill),
+              background: hex(behind),
+            };
+          },
+          { grip, state },
+        );
+
+      await page.hover('hr.chat-dock__resize-handle');
+      const bottomHover = await read('bottom', 'hover');
+      await page.hover('button.chat-dock__resize-handle');
+      const sideHover = await read('side', 'hover');
+      // Keyboard focus with the pointer away from the handle.
+      await page.mouse.move(640, 700);
+      await page.keyboard.press('Tab');
+      const bottomFocus = await read('bottom', 'focus');
+      return [bottomHover, sideHover, bottomFocus];
+    } finally {
+      await page.close();
+    }
+  }
+
+  const gripCases = (['release', 'dev', 'beta', 'nightly'] as const).flatMap(
+    (channel) =>
+      (['dark', 'light'] as const).map((mode) => [channel, mode] as const),
+  );
+
+  test.each(gripCases)(
+    'the %s channel in %s mode keeps the dock resize grips visible on hover and focus',
+    async (channel, mode) => {
+      const samples = await sampleGrips(mode, channel);
+      // The focus sample is only a focus measurement if focus-visible holds.
+      expect(samples.find((entry) => entry.state === 'focus')?.focused).toBe(
+        true,
+      );
+      const failing = samples
+        .map((entry) => ({
+          ...entry,
+          ratio: Number(hexContrast(entry.fill, entry.background).toFixed(2)),
+        }))
+        .filter((entry) => entry.ratio < NON_TEXT);
+      expect(failing).toEqual([]);
     },
   );
 });

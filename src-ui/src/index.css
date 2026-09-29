@@ -1570,11 +1570,15 @@ button:hover {
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
+/* On hover and focus the grip sits on the handle's brand tint. The primary
+   text colour contrasts with that tint in every mode and channel; the brand's
+   own contrast partner (`--text-inverted`) is chosen for the solid brand, not
+   a 30% tint, and fell below 3:1 in both modes. */
 .chat-dock__resize-handle:hover .chat-dock__resize-grip,
 .chat-dock__resize-handle:focus-visible .chat-dock__resize-grip,
 .chat-dock__resize-handle:hover::after,
 .chat-dock__resize-handle:focus-visible::after {
-  background: var(--text-inverted);
+  background: var(--text-primary);
 }
 
 /* Rotated grip for the side-panel (width) handle. */
