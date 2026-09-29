@@ -2308,7 +2308,7 @@ describe('an untitled open chat takes its session name before "<Agent> Chat"', (
   const session: OrchestrationSessionSummary = {
     threadId,
     provider: 'station',
-    status: 'completed',
+    status: 'ready',
     controlMode: 'station-owned',
     lifecycleState: 'completed',
     createdAt: '2026-09-28T10:00:00Z',
@@ -2321,7 +2321,8 @@ describe('an untitled open chat takes its session name before "<Agent> Chat"', (
     displayTitle: 'Review the release notes',
   };
   const untitled = createDefaultChatState(
-    { agentSlug: 'reviewer', agentName: 'Code Reviewer' },
+    // A rehydrated chat: the store did not keep its title.
+    { agentSlug: 'reviewer', agentName: 'Code Reviewer', title: '' },
     10,
   );
 
