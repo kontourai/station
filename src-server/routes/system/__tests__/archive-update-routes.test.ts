@@ -503,10 +503,80 @@ describe('POST /core-update on a launcher-run archive', () => {
     }
   });
 
-  test('never follows a redirect off the recorded manifest URL', async () => {
+  // GitHub answers every release-asset URL with a redirect to its asset host
+  // (a 302 to release-assets.githubusercontent.com), so these are the shape a
+  // real check always takes, not an edge case.
+  function serveRedirects(hops: string[], body: string) {
+    fetchFn.mockImplementation(async (url: string) => {
+      const index = url === MANIFEST_URL ? 0 : hops.indexOf(url) + 1;
+      if (index < hops.length)
+        return new Response(null, {
+          status: 302,
+          headers: { location: hops[index] },
+        });
+      return new Response(body, { status: 200 });
+    });
+  }
+  const assetHop = (n: number) =>
+    `https://release-assets.example.test/asset-${n}.json`;
+
+  test('follows the https redirects GitHub serves release assets through', async () => {
     const install = makeInstall();
-    await createApp(install).request('/core-update');
-    expect(fetchFn.mock.calls[0]?.[1]).toMatchObject({ redirect: 'error' });
+    serveRedirects([assetHop(1)], signedManifest(releasePayload(NEWER)));
+    const body = await json(await createApp(install).request('/core-update'));
+    expect(body).toMatchObject({
+      releaseCheck: 'verified',
+      latestVersion: NEWER,
+      updateAvailable: true,
+    });
+    expect(fetchFn.mock.calls.map((call) => call[0])).toEqual([
+      MANIFEST_URL,
+      assetHop(1),
+    ]);
+    // Each hop is followed by hand, so each one is checked before it is used.
+    for (const call of fetchFn.mock.calls)
+      expect(call[1]).toMatchObject({ redirect: 'manual' });
+  });
+
+  test('refuses a redirect that leaves https, without following it', async () => {
+    const install = makeInstall();
+    serveRedirects(
+      ['http://release-assets.example.test/asset.json'],
+      signedManifest(releasePayload(NEWER)),
+    );
+    const body = await json(await createApp(install).request('/core-update'));
+    expect(body).toMatchObject({
+      releaseCheck: 'unverified',
+      updateAvailable: false,
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  test('follows at most 5 redirects and refuses the sixth', async () => {
+    const install = makeInstall();
+    const manifest = signedManifest(releasePayload(NEWER));
+    serveRedirects([1, 2, 3, 4, 5].map(assetHop), manifest);
+    expect(
+      await json(await createApp(install).request('/core-update')),
+    ).toMatchObject({ releaseCheck: 'verified' });
+    expect(fetchFn).toHaveBeenCalledTimes(6);
+
+    fetchFn.mockClear();
+    serveRedirects([1, 2, 3, 4, 5, 6].map(assetHop), manifest);
+    expect(
+      await json(await createApp(install).request('/core-update')),
+    ).toMatchObject({ releaseCheck: 'unreachable', updateAvailable: false });
+    expect(fetchFn).toHaveBeenCalledTimes(6);
+  });
+
+  test('a redirect with no location is a failed check', async () => {
+    const install = makeInstall();
+    fetchFn.mockImplementation(
+      async () => new Response(null, { status: 302 }),
+    );
+    expect(
+      await json(await createApp(install).request('/core-update')),
+    ).toMatchObject({ releaseCheck: 'unreachable', updateAvailable: false });
   });
 
   test('refuses while the launcher has an update pending, and without a manifest to update from', async () => {

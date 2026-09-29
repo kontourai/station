@@ -119,6 +119,14 @@ function archiveApplyRefusal(
  */
 const MANIFEST_MAX_BYTES = 1024 * 1024;
 const MANIFEST_FETCH_TIMEOUT_MS = 15_000;
+/**
+ * GitHub serves every release asset through a redirect to its asset host, so
+ * a check that refuses redirects can never reach a real release. Hops are
+ * followed by hand so each one must stay https; the count is bounded, and one
+ * more than this is refused. The signature, not the path, is what vouches for
+ * the bytes.
+ */
+const MANIFEST_MAX_REDIRECTS = 5;
 
 class ReleaseCheckError extends Error {
   constructor(
@@ -166,17 +174,47 @@ async function fetchVerifiedReleaseManifest(
       'the recorded release manifest URL is not a plain https URL',
     );
   }
+  const fetchFn = options.fetchFn ?? fetch;
+  const signal = AbortSignal.timeout(MANIFEST_FETCH_TIMEOUT_MS);
+  let url = manifestUrl;
   let response: Response;
-  try {
-    response = await (options.fetchFn ?? fetch)(manifestUrl, {
-      signal: AbortSignal.timeout(MANIFEST_FETCH_TIMEOUT_MS),
-      headers: { accept: 'application/json' },
-      // A redirect could leave https; the signature would still verify, but
-      // the check promised the recorded URL, so none is followed.
-      redirect: 'error',
-    });
-  } catch (error) {
-    throw new ReleaseCheckError('unreachable', errorMessage(error));
+  for (let hop = 0; ; hop += 1) {
+    try {
+      response = await fetchFn(url, {
+        signal,
+        headers: { accept: 'application/json' },
+        redirect: 'manual',
+      });
+    } catch (error) {
+      throw new ReleaseCheckError('unreachable', errorMessage(error));
+    }
+    if (response.status < 300 || response.status > 399) break;
+    const location = response.headers.get('location');
+    if (!location)
+      throw new ReleaseCheckError(
+        'unreachable',
+        `the release manifest request returned HTTP ${response.status} without a location`,
+      );
+    if (hop >= MANIFEST_MAX_REDIRECTS)
+      throw new ReleaseCheckError(
+        'unreachable',
+        `the release manifest request redirected more than ${MANIFEST_MAX_REDIRECTS} times`,
+      );
+    let next: URL;
+    try {
+      next = new URL(location, url);
+    } catch {
+      throw new ReleaseCheckError(
+        'unverified',
+        'the release manifest redirect is not a valid URL',
+      );
+    }
+    if (next.protocol !== 'https:')
+      throw new ReleaseCheckError(
+        'unverified',
+        'the release manifest redirect leaves https',
+      );
+    url = next.href;
   }
   if (!response.ok) {
     throw new ReleaseCheckError(
