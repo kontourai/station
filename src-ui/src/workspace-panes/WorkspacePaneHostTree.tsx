@@ -112,6 +112,13 @@ export interface WorkspacePaneHostTreeProps {
   ): void;
   popOut?: WorkspacePaneHostPopOut;
   onDocumentChange?(document: WorkspacePaneHostDocumentV1): void;
+  /**
+   * The host's persistence standing, for a caller that draws the host
+   * chromeless and so owns where a read-only or contended state is said.
+   */
+  onPersistenceStatusChange?(
+    status: 'owned' | 'contended' | 'unavailable',
+  ): void;
   operationalEventSink?: WorkspacePaneOperationalEventSink;
   operationalEventContext?(
     instance: WorkspacePaneInstance,
@@ -174,6 +181,7 @@ export function WorkspacePaneHostTree({
   onDockSlotActionChange,
   popOut,
   onDocumentChange,
+  onPersistenceStatusChange,
   operationalEventSink,
   operationalEventContext,
   operationalAvailability,
@@ -227,6 +235,11 @@ export function WorkspacePaneHostTree({
     onDockSlotActionChange?.(controller.replace);
     return () => onDockSlotActionChange?.(null);
   }, [controller.replace, onDockSlotActionChange]);
+  const persistenceStatusSink = useRef(onPersistenceStatusChange);
+  persistenceStatusSink.current = onPersistenceStatusChange;
+  useEffect(() => {
+    persistenceStatusSink.current?.(controller.persistenceStatus);
+  }, [controller.persistenceStatus]);
   const { state, closeConfirmation } = controller;
   const persistenceNotice =
     controller.persistenceStatus === 'owned'

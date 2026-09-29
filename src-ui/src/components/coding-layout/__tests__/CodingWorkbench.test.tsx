@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { requestCenterChatPage } from '../../../app-shell/chat-placement';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import type { WorkspacePaneHostOpenAction } from '../../../workspace-panes/WorkspacePaneHostOpenContext';
 import { workspacePaneHostScopeKey } from '../../../workspace-panes/workspacePaneHostNavigation';
 import { WORKSPACE_PANE_OPENED } from '../../../workspace-panes/workspacePaneHostOpenOutcome';
@@ -146,18 +147,10 @@ const crumbs = () =>
   within(screen.getByRole('list', { name: 'Breadcrumb' }))
     .getAllByRole('listitem')
     .map((item) => item.textContent);
-const backButton = () =>
-  screen.getByRole('button', { name: 'Back' }) as HTMLButtonElement;
-const forwardButton = () =>
-  screen.getByRole('button', { name: 'Forward' }) as HTMLButtonElement;
+const rail = () => screen.getByRole('navigation', { name: 'Views' });
 
 async function drillInto(name: 'Files' | 'Diff') {
-  fireEvent.click(screen.getByRole('button', { name: 'Views' }));
-  fireEvent.click(
-    within(screen.getByRole('region', { name: 'Views' })).getByRole('button', {
-      name,
-    }),
-  );
+  fireEvent.click(within(rail()).getByRole('button', { name }));
   await act(async () => undefined);
 }
 
@@ -195,9 +188,22 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     expect(drillInPage().getAttribute('data-active')).toBe('false');
     expect(drillInPage().hasAttribute('inert')).toBe(true);
     expect(drillInPage().getAttribute('aria-hidden')).toBe('true');
-    expect(crumbs()).toEqual([harness.chatTitle]);
-    expect(backButton().disabled).toBe(true);
-    expect(forwardButton().disabled).toBe(true);
+    expect(crumbs()).toEqual(['Inbox', harness.chatTitle]);
+    // The bar is the breadcrumb alone: Back and Forward are the browser's and
+    // the chords', not buttons.
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Forward' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Views' })).toBeNull();
+    // Every drill-in is an icon on the rail, named, none of them current.
+    const items = within(rail()).getAllByRole('button');
+    // Diff leads the rail whatever the host's document order.
+    expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
+      'Diff',
+      'Files',
+    ]);
+    expect(
+      items.some((item) => item.getAttribute('aria-current') === 'page'),
+    ).toBe(false);
   });
 
   test('a drill-in is a pushed history entry; Back returns to the conversation and Forward re-enters', async () => {
@@ -219,44 +225,49 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     // its toasts must reach the reader.
     expect(harness.chatProps).toMatchObject({ onScreen: false });
     expect(chatPage().hasAttribute('inert')).toBe(true);
-    expect(crumbs()).toEqual([harness.chatTitle, 'Diff']);
+    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Diff']);
     // The conversation stays mounted behind the pane (its draft, its scroll).
     expect(
       window.document.querySelector('[data-testid="center-chat"]'),
     ).not.toBeNull();
 
-    expect(backButton().disabled).toBe(false);
-    fireEvent.click(backButton());
+    // The drill-in on screen is the rail's current icon.
+    expect(
+      within(rail())
+        .getByRole('button', { name: 'Diff' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+    // The earlier crumb goes back to the conversation.
+    fireEvent.click(screen.getByRole('button', { name: harness.chatTitle }));
     await historyBackSettled();
 
     expect(navigationStore.getHistoryIndex()).toBe(chatIndex);
     expect(chatPage().getAttribute('data-active')).toBe('true');
     expect(chatPage().getAttribute('data-enter')).toBe('pop');
     expect(harness.chatProps).toMatchObject({ onScreen: true });
-    expect(crumbs()).toEqual([harness.chatTitle]);
-    expect(forwardButton().disabled).toBe(false);
+    expect(crumbs()).toEqual(['Inbox', harness.chatTitle]);
 
-    fireEvent.click(forwardButton());
+    act(() => harness.shortcuts.get('codingStack.forward')?.handler());
     await act(async () => {
       await vi.waitFor(() =>
         expect(navigationStore.getHistoryIndex()).toBe(chatIndex + 1),
       );
     });
     expect(drillInPage().getAttribute('data-active')).toBe('true');
-    expect(crumbs()).toEqual([harness.chatTitle, 'Diff']);
+    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Diff']);
   });
 
-  test('Back on a drill-in reached from outside the layout goes UP to the Chat page', async () => {
+  test('Back (the chord) on a drill-in reached from outside the layout goes UP to the Chat page', async () => {
     navigationStore.navigate('/elsewhere');
     navigationStore.navigate(ROUTE, {
       pane: files.instanceId,
       paneScope: scopeKey,
     });
     renderStack();
-    expect(crumbs()).toEqual([harness.chatTitle, 'Files']);
+    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Files']);
     const index = navigationStore.getHistoryIndex();
 
-    fireEvent.click(backButton());
+    act(() => harness.shortcuts.get('codingStack.back')?.handler());
     await act(async () => undefined);
 
     // Not a history.back() out of the layout: a push to the parent page.
@@ -388,5 +399,117 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     renderStack({ hostOpen: { open } });
     await act(async () => undefined);
     expect(open).not.toHaveBeenCalled();
+  });
+
+  test('the Inbox crumb returns to the conversation with the inbox open', async () => {
+    deviceSettingsStore.set('inboxOpen', false);
+    renderStack();
+    await drillInto('Files');
+    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
+    await historyBackSettled();
+    expect(chatPage().getAttribute('data-active')).toBe('true');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+  });
+
+  function renderStatic(props: Partial<Parameters<typeof CodingWorkbench>[0]>) {
+    return render(
+      <NavigationProvider>
+        <CodingWorkbench
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          hostOpen={null}
+          onOpenCatalog={vi.fn()}
+          {...props}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+  }
+
+  test('a known changed-file count badges the Diff icon, and is part of its name', () => {
+    renderStatic({ badges: { [diff.descriptorId]: 2 } });
+    const icon = within(rail()).getByRole('button', {
+      name: 'Diff, 2 changed files',
+    });
+    expect(icon.textContent).toBe('2');
+    expect(
+      within(rail()).getByRole('button', { name: 'Files' }).textContent,
+    ).toBe('');
+  });
+
+  test('the rail ends with the pane catalog, which asks the host for its picker', () => {
+    const onOpenCatalog = vi.fn();
+    renderStatic({
+      hostOpen: { open: vi.fn(() => WORKSPACE_PANE_OPENED) },
+      onOpenCatalog,
+    });
+    const items = within(rail()).getAllByRole('button');
+    expect(items.at(-1)?.getAttribute('aria-label')).toBe('Add pane');
+    fireEvent.click(items.at(-1)!);
+    expect(onOpenCatalog).toHaveBeenCalledWith({
+      type: 'add',
+      targetGroupId: 'root',
+    });
+  });
+
+  test('a drill-in page offers its own actions behind one ⋯: close for a pane the reader opened', async () => {
+    const close = vi.fn(async () => undefined);
+    renderStatic({
+      location: { page: 'drill-in', paneId: files.instanceId },
+      hostOpen: { open: vi.fn(() => WORKSPACE_PANE_OPENED), close },
+      closable: (instance) => instance.instanceId === files.instanceId,
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More actions for Files' }),
+    );
+    fireEvent.click(
+      within(screen.getByRole('menu', { name: 'Actions for Files' })).getByRole(
+        'menuitem',
+        { name: 'Close Files' },
+      ),
+    );
+    expect(close).toHaveBeenCalledWith(files.instanceId);
+  });
+
+  test('a built-in drill-in with no pop-out has no ⋯ at all', () => {
+    renderStatic({
+      location: { page: 'drill-in', paneId: diff.instanceId },
+      hostOpen: { open: vi.fn(() => WORKSPACE_PANE_OPENED), close: vi.fn() },
+      closable: () => false,
+    });
+    expect(screen.queryByRole('button', { name: /More actions/ })).toBeNull();
+  });
+
+  test('persistence is said only when it is a problem', async () => {
+    const view = renderStatic({ persistence: 'owned' });
+    expect(screen.queryByRole('status')).toBeNull();
+    view.rerender(
+      <NavigationProvider>
+        <CodingWorkbench
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          hostOpen={null}
+          onOpenCatalog={vi.fn()}
+          persistence="contended"
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    await act(async () => undefined);
+    expect(screen.getByRole('status').textContent).toMatch(/another tab/);
   });
 });

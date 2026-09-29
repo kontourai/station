@@ -44,7 +44,11 @@ import {
 } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneHostDocumentV1 } from '@kontourai/station-contracts/workspace-pane-host';
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
-import { telemetry, useProjectLayoutQuery } from '@kontourai/station-sdk';
+import {
+  telemetry,
+  useGitStatusQuery,
+  useProjectLayoutQuery,
+} from '@kontourai/station-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CodingWorkbench } from '../components/coding-layout/CodingWorkbench';
 import {
@@ -474,6 +478,36 @@ function BuiltinCodingLayoutHost({
    * page replaced never did.
    */
   const [drillInVisited, setDrillInVisited] = useState(false);
+  const [hostPersistence, setHostPersistence] = useState<
+    'owned' | 'contended' | 'unavailable'
+  >('owned');
+  /**
+   * The Diff rail icon's changed-file count, when the layout already knows
+   * it: the git status the Coding panes (the branch toolbar, the Diff) read
+   * and cache. Read passively — the rail never adds a git read of its own.
+   */
+  const layoutWorkingDirectory = (
+    layout as { config?: Record<string, unknown> | null }
+  ).config?.workingDirectory;
+  const gitStatus = useGitStatusQuery(
+    typeof layoutWorkingDirectory === 'string' && layoutWorkingDirectory.trim()
+      ? { projectSlug, workingDir: layoutWorkingDirectory.trim() }
+      : null,
+    { enabled: false },
+  ).data as
+    | { isRepo?: boolean; changes?: readonly string[] }
+    | null
+    | undefined;
+  const railBadges = useMemo(
+    () =>
+      gitStatus?.isRepo && Array.isArray(gitStatus.changes)
+        ? {
+            [WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID]:
+              gitStatus.changes.length,
+          }
+        : undefined,
+    [gitStatus],
+  );
   /**
    * archive#3794: these five are host-effect dependencies
    * (`workspacePaneHostController.ts` — the availability sweep, the
@@ -1161,6 +1195,14 @@ function BuiltinCodingLayoutHost({
       hostOpen={hostOpen}
       onOpenCatalog={requestCatalog}
       browserPreviewAvailability={browserPreviewEntry?.availability}
+      badges={railBadges}
+      popOut={popOut}
+      persistence={document ? hostPersistence : 'owned'}
+      closable={(instance) =>
+        !drillInInstances.some(
+          (builtIn) => builtIn.instanceId === instance.instanceId,
+        )
+      }
     >
       {fileCompositionReceipt ? (
         <CodingFileCompositionReceiptTracker receipt={fileCompositionReceipt} />
@@ -1189,6 +1231,11 @@ function BuiltinCodingLayoutHost({
           runtime={workspacePaneRuntime.current}
           compact={compact}
           navigationSelection="explicit"
+          // A drill-in is its page: the pane and nothing else. No tab strip, no
+          // save notice, no pane-actions chrome — the stack's breadcrumb, rail
+          // and ⋯ carry what the reader needs (`CodingWorkbench`).
+          presentation="chromeless"
+          onPersistenceStatusChange={setHostPersistence}
           onDocumentChange={handleHostDocumentChange}
           onOpenCatalog={requestCatalog}
           onOpenActionChange={captureHostOpen}

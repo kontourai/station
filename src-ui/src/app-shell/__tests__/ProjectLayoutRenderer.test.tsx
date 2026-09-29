@@ -144,6 +144,8 @@ vi.mock('@kontourai/station-sdk', async () => ({
     },
     isPending: false,
   }),
+  // The rail's Diff badge reads the git status passively; unknown here.
+  useGitStatusQuery: () => ({ data: undefined }),
   useProjectLayoutQuery: (...args: unknown[]) => {
     const result = layoutQueryMock(...args);
     return result?.data
@@ -1224,6 +1226,15 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.getByText(/instances 6/)).toBeTruthy();
     expect(screen.queryByText('Coding chat pane')).toBeNull();
     expect(screen.getByTestId('coding-center-chat')).toBeTruthy();
+    // A drill-in is its page: the host is drawn chromeless (no tab strip, no
+    // save notice, no pane-actions chrome), and its selection names a pane
+    // only when the reader picks one.
+    expect(hostMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        presentation: 'chromeless',
+        navigationSelection: 'explicit',
+      }),
+    );
     // The dock's Chat, in the centre: the dock's conversation scope, and no
     // maximize chord for a page that has nothing to maximize.
     expect(chatWorkspacePaneMock).toHaveBeenLastCalledWith(
@@ -1255,7 +1266,7 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.getByText('Plan pane')).toBeTruthy();
     expect(screen.getByText('Readiness pane')).toBeTruthy();
     expect(screen.getByText('Trust pane')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Views' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Browser pane' }));
     expect(screen.getByRole('button', { name: 'Open Browser' })).toBeTruthy();
     expect(layoutQueryMock.mock.calls).toEqual(
       expect.arrayContaining([['project-route', 'coding']]),
@@ -1595,7 +1606,7 @@ describe('ProjectLayoutRenderer', () => {
     // The launcher moved from the Coding tab's body into the stack's Views
     // panel; it still receives the catalog's own resolution.
     expect(codingChatPaneMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Views' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Browser pane' }));
     expect(
       (
         screen.getByRole('button', {
@@ -1604,8 +1615,9 @@ describe('ProjectLayoutRenderer', () => {
       ).disabled,
     ).toBe(true);
     expect(
-      within(screen.getByRole('region', { name: 'Views' })).getByRole('status')
-        .textContent,
+      within(screen.getByRole('region', { name: 'Browser' })).getByRole(
+        'status',
+      ).textContent,
     ).toMatch(/\S/);
   });
 
@@ -1690,7 +1702,7 @@ describe('ProjectLayoutRenderer', () => {
     // The launcher moved from the Coding tab's body into the stack's Views
     // panel; it still receives the catalog's own resolution.
     expect(codingChatPaneMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Views' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Browser pane' }));
     expect(
       (
         screen.getByRole('button', {
@@ -1699,8 +1711,9 @@ describe('ProjectLayoutRenderer', () => {
       ).disabled,
     ).toBe(true);
     expect(
-      within(screen.getByRole('region', { name: 'Views' })).getByRole('status')
-        .textContent,
+      within(screen.getByRole('region', { name: 'Browser' })).getByRole(
+        'status',
+      ).textContent,
     ).toMatch(/\S/);
   });
 
@@ -1878,7 +1891,7 @@ describe('ProjectLayoutRenderer', () => {
       first.onOpenActionChange({ open: vi.fn(), close });
       first.onDocumentChange({
         instances: [
-          { instanceId: 'instance:other' },
+          createWorkspaceCodingFileBrowserPaneInstance('project-uuid')!,
           WORKSPACE_DEVICE_PANE_INSTANCE,
         ],
       });

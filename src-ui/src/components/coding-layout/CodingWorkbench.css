@@ -3,72 +3,34 @@
    scroll and its mounted state while it is hidden. */
 .coding-workbench {
   display: flex;
-  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   height: 100%;
 }
 
+.coding-workbench__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The bar is the breadcrumb and nothing else: Inbox / conversation / pane. */
 .coding-workbench__bar {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
   flex: none;
   min-width: 0;
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border-primary);
-  background: var(--bg-primary);
-}
-
-.coding-workbench__history {
-  display: flex;
-  gap: var(--space-1);
-  flex: none;
-}
-
-.coding-workbench__icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.coding-workbench__icon-button svg {
-  width: 14px;
-  height: 14px;
-}
-
-.coding-workbench__icon-button:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.coding-workbench__icon-button:disabled {
-  color: var(--text-muted);
-  opacity: 0.45;
-  cursor: default;
-}
-
-.coding-workbench__icon-button:focus-visible,
-.coding-workbench__crumb-link:focus-visible,
-.coding-workbench__views-trigger:focus-visible,
-.coding-workbench__view:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 1px;
 }
 
 .coding-workbench__crumbs {
   display: flex;
   align-items: center;
-  flex: 1 1 auto;
+  gap: var(--space-2);
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -79,80 +41,89 @@
 .coding-workbench__crumb {
   display: flex;
   align-items: center;
+  gap: var(--space-2);
   min-width: 0;
-  color: var(--text-primary);
-  font-weight: var(--weight-medium);
 }
 
-.coding-workbench__crumb > span,
-.coding-workbench__crumb-link {
+.coding-workbench__crumb + .coding-workbench__crumb::before {
+  content: "/";
+  flex: none;
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.coding-workbench__crumb-link,
+.coding-workbench__crumb-current {
   overflow: hidden;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.coding-workbench__crumb + .coding-workbench__crumb::before {
-  content: "›";
-  flex: none;
-  margin: 0 var(--space-3);
-  color: var(--text-muted);
-  font-weight: var(--weight-regular);
-}
-
 .coding-workbench__crumb-link {
-  max-width: 100%;
-  padding: 0;
   border: 0;
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
-  font-weight: var(--weight-regular);
   cursor: pointer;
 }
 
 .coding-workbench__crumb-link:hover {
+  background: color-mix(in srgb, var(--k-text) 7%, transparent);
   color: var(--text-primary);
-  text-decoration: underline;
 }
 
-.coding-workbench__views {
+.coding-workbench__crumb-current {
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.coding-workbench__crumb-link:focus-visible,
+.coding-workbench__rail-item:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+.coding-workbench__bar {
+  gap: var(--space-4);
+  justify-content: space-between;
+}
+
+.coding-workbench__more {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   flex: none;
 }
 
-.coding-workbench__views-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: 28px;
-  padding: 0 var(--space-4);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: var(--text-base);
-  cursor: pointer;
+.coding-workbench__more-notice,
+.coding-workbench__notice {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
-.coding-workbench__views-trigger svg {
-  width: 12px;
-  height: 12px;
+.coding-workbench__notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--border-primary);
+  background: color-mix(
+    in srgb,
+    var(--k-caution, var(--accent-yellow)) 10%,
+    transparent
+  );
 }
 
-.coding-workbench__views-trigger[aria-expanded="true"] {
-  background: var(--bg-active);
-}
-
-.coding-workbench__views-panel {
+.coding-workbench__more-menu {
   position: absolute;
   z-index: var(--layer-popover);
   top: calc(100% + var(--space-2));
   right: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  min-width: 16rem;
-  max-width: min(24rem, 90vw);
+  min-width: 12rem;
   padding: var(--space-2);
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-lg);
@@ -160,17 +131,7 @@
   box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
 }
 
-.coding-workbench__views-list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.coding-workbench__view {
-  display: block;
-  width: 100%;
+.coding-workbench__more-item {
   padding: var(--space-3) var(--space-4);
   border: 0;
   border-radius: var(--radius-sm);
@@ -181,23 +142,94 @@
   cursor: pointer;
 }
 
-.coding-workbench__view:hover {
+.coding-workbench__more-item:hover,
+.coding-workbench__more-item:focus-visible {
   background: var(--bg-hover);
 }
 
-.coding-workbench__view[aria-current="page"] {
-  background: var(--bg-selected);
+/* The drill-ins: a slim icon rail on the trailing edge. Round ghost icons
+   with an accent wash on hover (Contour); the drill-in on screen is a solid
+   accent fill with the on-accent colour, so "where am I" reads at a glance. */
+.coding-workbench__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  width: 44px;
+  padding: var(--space-5) 0;
+  border-left: 1px solid var(--border-primary);
+  overflow-y: auto;
 }
 
-.coding-workbench__view--add {
-  border-top: 1px solid var(--border-primary);
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+.coding-workbench__rail-slot {
+  position: relative;
+}
+
+.coding-workbench__rail-item {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
   color: var(--text-secondary);
+  font-size: var(--text-xl);
+  cursor: pointer;
 }
 
-.coding-workbench__views-launcher {
-  padding: var(--space-2) var(--space-2) 0;
-  border-top: 1px solid var(--border-primary);
+.coding-workbench__rail-item:hover {
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+  color: var(--accent-primary);
+}
+
+.coding-workbench__rail-item[aria-current="page"] {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.coding-workbench__rail-item[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+  color: var(--accent-primary);
+}
+
+.coding-workbench__rail-count {
+  position: absolute;
+  top: -3px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.coding-workbench__rail-item[aria-current="page"]
+  .coding-workbench__rail-count {
+  background: var(--text-on-accent);
+  color: var(--accent-primary);
+}
+
+.coding-workbench__rail-panel {
+  position: absolute;
+  z-index: var(--layer-popover);
+  top: 0;
+  right: calc(100% + var(--space-4));
+  width: min(22rem, 70vw);
+  padding: var(--space-4);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
 }
 
 .coding-workbench__pages {
@@ -271,9 +303,14 @@
   }
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .coding-workbench__icon-button,
-  .coding-workbench__views-trigger {
+/* Coarse pointers keep the 44px floor. */
+@media (pointer: coarse), (max-width: 768px) {
+  .coding-workbench__rail {
+    width: 52px;
+  }
+
+  .coding-workbench__rail-item,
+  .coding-workbench__crumb-link {
     min-width: 44px;
     min-height: 44px;
   }
