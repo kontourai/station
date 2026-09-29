@@ -1010,7 +1010,9 @@ describe('the selector CLI takes its discovery deadline from run-ci-fast (#2855 
     const changedScript = 'scripts/lib/icns.mjs';
     const premise = selectChangedVerification(
       [changedScript],
-      buildTestImpactManifest({ root }),
+      buildTestImpactManifest({ root }) as Parameters<
+        typeof selectChangedVerification
+      >[1],
     );
     expect(premise.lanes, 'the changed script must defer no lane').toEqual([]);
     expect(premise.relatedPaths).toEqual([changedScript]);
