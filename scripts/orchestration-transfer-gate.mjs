@@ -16,6 +16,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 import { collectVerificationProvenance } from './lib/test-reliability.mjs';
 import {
   findReusableBaseline,
+  laneMergeBases,
   listRegisteredWorktrees,
   pruneStaleTransferBaselines,
   TRANSFER_BASELINE_PREFIX,
@@ -183,9 +184,16 @@ function prepareBaseline(
 ) {
   if (!baselineRoot) fail('--prepare-baseline requires --baseline-root');
   const target = resolve(baselineRoot);
-  // Keep the base being prepared AND the current origin/main tip: an explicit
-  // older --base must not delete the baseline every other session needs.
-  const keepShas = [baseSha, originMainSha(candidateRoot)];
+  // Keep the base being prepared, the current origin/main tip (an explicit
+  // older --base must not delete the baseline every other session needs), and
+  // every other lane's merge base with origin/main, which is the baseline
+  // that lane's gate compares against.
+  const mainSha = originMainSha(candidateRoot);
+  const keepShas = [
+    baseSha,
+    mainSha,
+    ...laneMergeBases({ repoRoot: candidateRoot, mainSha }),
+  ];
   const reclaim = (kept) => {
     // The session that prepared this is about to install or push with it.
     touchTransferBaselineMarker(kept);

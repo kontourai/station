@@ -186,6 +186,32 @@ function gitSync(root, args) {
   });
 }
 
+/**
+ * The merge base with `mainSha` of every registered branch worktree: the
+ * baseline each other lane's transfer gate compares against. Pruning keeps
+ * these, so preparing one lane's baseline never deletes a sibling lane's
+ * still-valid one (#2925).
+ * @param {{ repoRoot: string, mainSha: string | null, worktrees?: ReturnType<typeof listRegisteredWorktrees>, git?: typeof gitSync }} input
+ */
+export function laneMergeBases({
+  repoRoot,
+  mainSha,
+  worktrees = listRegisteredWorktrees(repoRoot),
+  git = gitSync,
+}) {
+  if (!mainSha) return [];
+  const bases = new Set();
+  for (const worktree of worktrees) {
+    if (!worktree.branch || typeof worktree.head !== 'string') continue;
+    try {
+      bases.add(git(repoRoot, ['merge-base', mainSha, worktree.head]).trim());
+    } catch {
+      // Unrelated history has no base to keep.
+    }
+  }
+  return [...bases];
+}
+
 export function listRegisteredWorktrees(repoRoot, git = gitSync) {
   return parseWorktreePorcelain(
     git(repoRoot, ['worktree', 'list', '--porcelain', '-z']),

@@ -551,6 +551,40 @@ describe.skipIf(!posix)('--prepare-baseline reuse and pruning (#2355)', () => {
     expect(after).toEqual(expect.arrayContaining([tipBaseline, requested]));
     expect(after).not.toContain(stale);
   });
+  test('keeps the baseline another lane branched from while pruning an orphaned one (#2925)', () => {
+    const f = fixture();
+    // A sibling lane branched from old1 and has not merged main since: its
+    // gate compares against old1, so that baseline is still in use.
+    const siblingLane = join(f.lanes, 'sibling-lane');
+    git(f.primary, ['worktree', 'add', '-b', 'sibling', siblingLane, f.old1]);
+    writeFileSync(join(siblingLane, 'subject.txt'), 'sibling work\n');
+    git(siblingLane, [
+      '-c',
+      'user.name=x',
+      '-c',
+      'user.email=x@x',
+      'commit',
+      '-qam',
+      'sibling work',
+    ]);
+    const siblingBaseline = f.addDetached(f.baselinePath(f.old1), f.old1);
+    // Nothing branches from old2 any more.
+    const orphaned = f.addDetached(f.baselinePath(f.old2), f.old2);
+
+    quiet(() =>
+      runTransferGate({
+        candidateRoot: f.primary,
+        baselineRoot: f.baselinePath(f.tip),
+        base: f.tip,
+        outputDir: '.kontourai/orchestration-transfer-gate',
+        prepareBaseline: true,
+      }),
+    );
+
+    const after = registered(f.primary);
+    expect(after).toContain(siblingBaseline);
+    expect(after).not.toContain(orphaned);
+  });
 });
 
 describe.skipIf(!posix)('pre-push baseline discovery (#2925)', () => {
