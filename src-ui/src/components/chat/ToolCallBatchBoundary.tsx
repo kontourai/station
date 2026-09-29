@@ -88,6 +88,10 @@ export function ToolCallBatchBoundary<P extends ToolCallLike>({
       load={load}
       componentProps={{ run, renderCall }}
       pending={pending}
+      // A chunk that cannot load leaves the run as its standalone rows —
+      // every call, and any Allow/Deny, stays on screen — rather than
+      // replacing the calls with an error.
+      unavailable={() => pending}
     />
   );
 }

@@ -8,8 +8,8 @@
  * then snapped into the collapsed line. The rendering below is read
  * synchronously after `render`, i.e. the first committed frame.
  */
-import { cleanup, render } from '@testing-library/react';
-import { afterEach, beforeAll, describe, expect, test } from 'vitest';
+import { act, cleanup, render } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
 import { StreamingMessageView } from '../components/chat/StreamingMessage';
 import { preloadToolCallBatch } from '../components/chat/ToolCallBatchBoundary';
@@ -95,5 +95,63 @@ describe('tool-call batches in their first frame', () => {
         .querySelector('.tool-call-batch__summary .tool-call__glyph path')
         ?.getAttribute('d'),
     ).toBe(soloGlyph);
+  });
+
+  test('a transcript warms the batch chunk itself: the second call lands collapsed', async () => {
+    // A fresh module graph, as on a page that has never shown a batch; no
+    // manual preload — the transcript's first tool call has to do it.
+    vi.resetModules();
+    const { MessageContent: FreshMessageContent } = await import(
+      '../components/chat/message-bubble/MessageContent'
+    );
+    const props = {
+      textContent: '',
+      chatFontSize: 14,
+      showReasoning: false,
+      showToolDetails: false,
+      isStreamingMessage: false,
+    };
+    const view = render(
+      <FreshMessageContent
+        {...props}
+        contentParts={[call('a', 'git status')]}
+      />,
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    view.rerender(
+      <FreshMessageContent
+        {...props}
+        contentParts={[call('a', 'git status'), call('b', 'git log -3')]}
+      />,
+    );
+    expect(shape(view.container)).toEqual({ standalone: 0, batches: 1 });
+  });
+
+  test('a batch chunk that cannot load leaves the calls as standalone rows', async () => {
+    vi.resetModules();
+    vi.doMock('../components/chat/ToolCallBatch', () => {
+      throw new Error('chunk failed to load');
+    });
+    const { MessageContent: FreshMessageContent } = await import(
+      '../components/chat/message-bubble/MessageContent'
+    );
+    const view = render(
+      <FreshMessageContent
+        textContent=""
+        chatFontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        isStreamingMessage={false}
+        contentParts={[call('a', 'git status'), call('b', 'git log -3')]}
+      />,
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(shape(view.container)).toEqual({ standalone: 2, batches: 0 });
+    expect(view.container.textContent).not.toContain('Unable to load');
+    vi.doUnmock('../components/chat/ToolCallBatch');
   });
 });
