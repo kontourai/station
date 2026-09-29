@@ -193,7 +193,9 @@
   border: none;
   background: none;
   padding: 0;
-  color: var(--k-brand);
+  /* An interactive control reads the action role, not the brand (an
+     identity slot only). The fallback covers @kontourai/ui before 1.14. */
+  color: var(--k-action, var(--k-brand));
   font-size: var(--k-text-xs);
   cursor: pointer;
   text-decoration: underline;
