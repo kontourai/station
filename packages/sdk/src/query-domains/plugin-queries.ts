@@ -230,6 +230,7 @@ import {
 } from '@kontourai/station-contracts/workspace-home-role';
 
 import { apiErrorMessage } from '../api-core';
+import { unlessDeadline } from '../client/request-deadline';
 export const WORKSPACE_HOME_ROLE_QUERY_KEY = ['workspace-home-role'] as const;
 
 export interface WorkspaceHomeRoleCandidateRecord {
@@ -375,7 +376,9 @@ export async function revokeWorkspaceHomeRoleGrant(): Promise<void> {
     { method: 'DELETE' },
   );
   if (!response.ok) {
-    const result = (await response.json().catch(() => null)) as {
+    const result = (await response
+      .json()
+      .catch(unlessDeadline(() => null))) as {
       error?: string;
     } | null;
     throw new Error(

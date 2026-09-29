@@ -51,7 +51,11 @@ export interface EnvironmentAccess {
   verifiedProjectPath?: string;
   /** Remote home captured by the SSH worker during Environment verification. */
   remoteHome?: string;
-  requestOptions?: { headers: Record<string, string> };
+  /**
+   * `timeoutMs`: the route-owned bound on each request to another Station,
+   * set by the remote forwarder (#2377 C2b); absent for this Station.
+   */
+  requestOptions?: { headers: Record<string, string>; timeoutMs?: number };
 }
 
 export interface ExecutionTargetAgentView extends Partial<AgentSpec> {

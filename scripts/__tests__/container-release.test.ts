@@ -569,7 +569,13 @@ describe('container source contract', () => {
     expect(compose).toContain('max-size: "10m"');
     expect(compose).toContain('max-file: "3"');
     expect(ignore).toMatch(/^\*$/m);
-    expect(ignore).not.toContain('!.git');
+    // Pattern-exact, not a substring: `!.gitignore` is a build input (Biome's
+    // vcs.useIgnoreFile needs it), but no line may re-admit the .git directory
+    // itself, as `!.git`, `!.git/`, `!.git/**` or a glob such as `!.git*`.
+    // Docker trims surrounding whitespace and normalizes `./` and `**/`.
+    expect(ignore).not.toMatch(
+      /^[ \t]*![ \t]*(?:\.?\/|\*\*\/)?\.git(?:[ \t]*$|[/*?[])/m,
+    );
     expect(ignore).not.toContain('!.env');
     expect(ignore).not.toContain('!.station');
     expect(ignore).not.toContain('!.ssh');

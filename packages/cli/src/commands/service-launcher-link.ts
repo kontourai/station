@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
+import { installerInheritedEnv } from '@kontourai/station-shared/prebuilt-archive';
 import {
   parseServiceUpdateRequest,
   readServiceLauncherContext,
@@ -57,12 +58,13 @@ const INSTALL_TEST_OVERRIDES = new Set([
  * The service's environment without the installer's switches (#2675 D
  * review F8): a unit can carry STATION_INSTALL_* from the shell that
  * installed it (NO_START, ALLOW_ROLLBACK, ASSET_URL, ports...), and each one
- * changes what an install does. Staging sets the few it needs itself.
+ * changes what an install does. Staging sets the few it needs itself. Nor
+ * the service CLI's own bootstrap launch facts, which are not install ports.
  */
 function stagingInheritedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const testMode = env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS === '1';
   return Object.fromEntries(
-    Object.entries(env).filter(
+    Object.entries(installerInheritedEnv(env)).filter(
       ([key]) =>
         !key.startsWith('STATION_INSTALL_') ||
         (testMode && INSTALL_TEST_OVERRIDES.has(key)),
