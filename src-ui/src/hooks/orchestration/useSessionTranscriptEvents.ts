@@ -33,12 +33,6 @@ import { useSessionEventWindow } from './useSessionEventWindow';
  *   truncation watermark; when it truncates past this window, the window is
  *   re-read (the server has the frames), exactly as the chat dock does.
  */
-function coveredThrough(events: ReadonlyArray<{ sequence: number }>): number {
-  let newest = 0;
-  for (const item of events) newest = Math.max(newest, item.sequence);
-  return newest;
-}
-
 export function useSessionTranscriptEvents(
   apiBase: string,
   session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>,
@@ -90,14 +84,7 @@ export function useSessionTranscriptEvents(
     () =>
       stitchWindowWithLiveEvents({
         windowEvents: window.events,
-        // The newest frame the window actually RETURNED, not the log head it
-        // reports. A long turn is served in pages (the read budget stops
-        // partway through it and hands back a cursor), so frames between the
-        // page's end and the head are not in `events`; admitting live frames
-        // only past the head dropped the back half of a just-finished answer
-        // the moment the turn ended and the window was re-read (seen live:
-        // w1–w238 of 450).
-        watermark: coveredThrough(window.events),
+        watermark: window.watermark,
         liveEvents,
         threadIds: new Set([
           session.threadId,
