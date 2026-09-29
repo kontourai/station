@@ -37,7 +37,14 @@ brand fallback, and the focus-visible outline reads `--k-focus` with an
 installed package defines the roles (1.12.0 does not).
 [branding-role-cascade.test.ts](../../src-ui/src/__tests__/branding-role-cascade.test.ts)
 measures those fallbacks and contrast-checks every channel value in a real
-browser.
+browser against the rules a white-label theme must pass, including the brand
+as text. The sidebar channel badge and the package `.eyebrow` paint the brand
+as text; interactive text such as the Readiness and Trust panel links reads
+the action role. Where a channel's own hue fails as text in a mode, that mode
+uses a nearby shade for the brand and the roles.
+[channel-text-contrast.test.tsx](../../src-ui/src/__tests__/channel-text-contrast.test.tsx)
+renders those surfaces and measures each text colour against the background it
+sits on, including the raised panel rows and the sidebar hover fill.
 Do not copy the package's theme or primitive styles into a feature; propose a
 shared value upstream when it belongs to the public design system.
 
