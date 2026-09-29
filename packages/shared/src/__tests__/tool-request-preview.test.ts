@@ -1,12 +1,190 @@
 import { describe, expect, test } from 'vitest';
 import {
+  directoryPermissionUpdateKind,
   MAX_TOOL_REQUEST_PREVIEW_LENGTH,
+  sessionGrantPermissionUpdates,
   TOOL_REQUEST_ARGS_FIELDS,
   toolRequestDisplayName,
   toolRequestFromPayload,
   toolRequestPreview,
   toolRequestPreviewFromPayload,
+  toolRequestSessionGrant,
 } from '../tool-request-preview.js';
+
+describe('#2915: directory permission updates', () => {
+  const rule = (toolName: string, ruleContent: string) => ({
+    type: 'addRules',
+    rules: [{ toolName, ruleContent }],
+    behavior: 'allow',
+    destination: 'session',
+  });
+
+  test.each([
+    'dir/**',
+    './\\srv\\share/**',
+    '~/x/**',
+    '//abs/**',
+    '/.claude/skills/n/**',
+  ])('a Read rule for %s widens reads', (content) => {
+    expect(directoryPermissionUpdateKind(rule('Read', content))).toBe('read');
+  });
+
+  test.each(['Edit', 'Write', 'NotebookEdit'])(
+    'an %s path rule widens access',
+    (toolName) => {
+      expect(directoryPermissionUpdateKind(rule(toolName, '//abs/**'))).toBe(
+        'access',
+      );
+    },
+  );
+
+  test('addDirectories widens access', () => {
+    expect(
+      directoryPermissionUpdateKind({
+        type: 'addDirectories',
+        directories: ['/abs'],
+        destination: 'session',
+      }),
+    ).toBe('access');
+  });
+
+  test.each([
+    ['Bash', '~/scripts/deploy.sh:*'],
+    ['Bash', 'ls src/**'],
+    ['Bash', 'npm run build:*'],
+    ['PowerShell', 'Get-ChildItem //abs/**'],
+  ])('a %s command rule %s is not a directory', (toolName, content) => {
+    expect(directoryPermissionUpdateKind(rule(toolName, content))).toBe(
+      undefined,
+    );
+  });
+
+  test('a mode change is not a directory', () => {
+    expect(
+      directoryPermissionUpdateKind({
+        type: 'setMode',
+        mode: 'acceptEdits',
+        destination: 'session',
+      }),
+    ).toBe(undefined);
+  });
+});
+
+describe('#2915/#2916: what a session answer grants', () => {
+  const readRule = {
+    type: 'addRules',
+    rules: [{ toolName: 'Read', ruleContent: '//work/b/**' }],
+    behavior: 'allow',
+    destination: 'session',
+  };
+  const addDir = {
+    type: 'addDirectories',
+    directories: ['/work/b'],
+    destination: 'session',
+  };
+  const acceptEdits = {
+    type: 'setMode',
+    mode: 'acceptEdits',
+    destination: 'session',
+  };
+  test.each([
+    ['a plain Bash call', { toolName: 'Bash' }, 'tool'],
+    [
+      'a Bash call with a command rule',
+      {
+        toolName: 'Bash',
+        suggestions: [
+          {
+            ...readRule,
+            rules: [{ toolName: 'Bash', ruleContent: 'ls src/**' }],
+          },
+        ],
+      },
+      'tool',
+    ],
+    ['a plan exit', { toolName: 'ExitPlanMode' }, 'none'],
+    [
+      'a read outside the folders',
+      { toolName: 'Read', suggestions: [readRule] },
+      'read-folder',
+    ],
+    ['a read with nothing to forward', { toolName: 'Glob' }, 'none'],
+    [
+      'an edit outside the folders',
+      {
+        toolName: 'Edit',
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+          addDir,
+        ],
+      },
+      'folder',
+    ],
+    [
+      'a blocked Bash path with a directory',
+      { toolName: 'Bash', blockedPath: '/work/b/x', suggestions: [addDir] },
+      'folder',
+    ],
+    [
+      'a blocked Bash path with nothing to forward',
+      { toolName: 'Bash', blockedPath: '/work/b/x' },
+      'none',
+    ],
+    [
+      'a rule-forced ask',
+      { toolName: 'Bash', matchedAskRule: { source: 'userSettings' } },
+      'none',
+    ],
+    ["another engine's read tool", { toolName: 'read' }, 'tool'],
+    [
+      'a plain edit in default mode',
+      { toolName: 'Edit', suggestions: [acceptEdits] },
+      'edit-mode',
+    ],
+    [
+      'a sensitive-file edit once in acceptEdits',
+      { toolName: 'Write', suggestions: [] },
+      'none',
+    ],
+    [
+      'an edit forced by an ask rule',
+      {
+        toolName: 'NotebookEdit',
+        matchedAskRule: { source: 'userSettings' },
+        suggestions: [acceptEdits],
+      },
+      'none',
+    ],
+    ["another engine's edit tool", { toolName: 'edit' }, 'tool'],
+    [
+      'a file edit under full access',
+      {
+        toolName: 'Write',
+        permissionMode: 'bypassPermissions',
+        suggestions: [acceptEdits],
+      },
+      'none',
+    ],
+    [
+      'a file edit in plan mode',
+      { toolName: 'Edit', permissionMode: 'plan', suggestions: [acceptEdits] },
+      'none',
+    ],
+  ])('%s', (_case, request, grant) => {
+    expect(toolRequestSessionGrant(request)).toBe(grant);
+  });
+
+  test.each([
+    ['tool', [acceptEdits, addDir]],
+    ['edit-mode', [acceptEdits]],
+    ['folder', [addDir]],
+    ['none', []],
+  ] as const)('a %s grant forwards its own updates', (grant, forwarded) => {
+    expect(sessionGrantPermissionUpdates(grant, [acceptEdits, addDir])).toEqual(
+      forwarded,
+    );
+  });
+});
 
 describe('toolRequestPreview', () => {
   describe('names what the call will do, per tool family', () => {

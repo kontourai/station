@@ -1,4 +1,8 @@
-import { toolRequestGrantLabel } from '@kontourai/station-shared/tool-request-preview';
+import {
+  type ToolRequestSessionGrant,
+  toolRequestGrantLabel,
+  toolRequestSessionGrant,
+} from '@kontourai/station-shared/tool-request-preview';
 import { memo, useMemo, useState } from 'react';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import {
@@ -49,6 +53,8 @@ export interface ToolCallData {
   outputTruncated?: boolean;
   needsApproval?: boolean;
   approvalId?: string;
+  /** #2915/#2916: what a session answer grants; see `MessagePart`. */
+  approvalSessionGrant?: ToolRequestSessionGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -267,6 +273,12 @@ function ToolCallDisplayComponent({
             <ToolApprovalButtons
               onApprove={onApprove}
               toolName={toolCall.toolName}
+              sessionGrant={
+                // A part without the projected grant (a registry-route
+                // request) is judged by its tool name alone.
+                toolCall.approvalSessionGrant ??
+                toolRequestSessionGrant({ toolName: toolCall.toolName })
+              }
             />
           </div>
         )}
@@ -307,9 +319,11 @@ function ToolCallDisplayComponent({
 function ToolApprovalButtons({
   onApprove,
   toolName,
+  sessionGrant,
 }: {
   onApprove: ToolApprovalHandler;
   toolName?: string;
+  sessionGrant: ToolRequestSessionGrant;
 }) {
   const [phase, setPhase] = useState<
     'idle' | 'sending' | 'sent' | 'already-settled'
@@ -343,6 +357,8 @@ function ToolApprovalButtons({
     );
   };
   const busy = phase !== 'idle';
+  // #2915/#2916: undefined where no session grant is offered.
+  const grantLabel = toolRequestGrantLabel(toolName, sessionGrant);
   return (
     <>
       <button
@@ -353,16 +369,18 @@ function ToolApprovalButtons({
       >
         Allow Once
       </button>
-      <button
-        type="button"
-        onClick={() => decide('trust')}
-        disabled={busy}
-        className="tool-call__approve-btn tool-call__approve-btn--secondary"
-      >
-        {/* #2316: the same words as the toast for the same grant — every
-            later call to this tool in this session, not "always". */}
-        {toolRequestGrantLabel(toolName)}
-      </button>
+      {grantLabel && (
+        <button
+          type="button"
+          onClick={() => decide('trust')}
+          disabled={busy}
+          className="tool-call__approve-btn tool-call__approve-btn--secondary"
+        >
+          {/* #2316: the same words as the toast for the same grant, scoped
+              to this session, not "always". */}
+          {grantLabel}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => decide('deny')}
