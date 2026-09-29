@@ -242,7 +242,10 @@ The command applies each record the branch changed since that base. It merges
 bindings per source, adds the branch's appended checks as one new notes file
 and deletes the old file. Where both sides reviewed different bytes of one
 source, it keeps the binding that matches the current bytes. If neither
-matches, the record stays stale, and the command names it so you can review it.
+matches, the record stays stale, and the command names it so you can review it. It also carries
+the branch's in-place edits to earlier checks, such as a redaction. Where both
+sides edited the same check, it keeps ours and names the record so you can
+apply the branch's edit by hand.
 
 Staleness that no single pull request owns, such as two merges that combine,
 is collected by the Nightly
