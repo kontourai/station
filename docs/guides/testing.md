@@ -211,7 +211,10 @@ hand-maintained manifest keeps the edges these derivations cannot see. A
 file imported by the scripts of more than 16 spawning tests, such as the
 `module-entry.mjs` entry shim, defers those tests to the `test-full` lane
 instead of running them inline, so one shared-helper edit cannot exceed the
-`ci:fast` budget.
+`ci:fast` budget. When that deferral is the only reason a lane is deferred,
+the other changed files keep their related discovery and only the deferring
+file leaves the inline run. Any other deferral, such as an escalation or an
+unavailable related path, still defers the whole related selection.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
