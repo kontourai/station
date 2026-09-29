@@ -242,13 +242,15 @@ const MCP_TOOL_NAME = /^mcp__(.+?)__(.+)$/;
  * the tool and the session scope: "Always Allow" overstated its duration and
  * hid its breadth.
  *
- * When the request reports NO tool name, Station records no tool grant at
- * all: the decision is forwarded as the engine's own session-scoped option
- * (ACP `allow_always`, Codex `acceptForSession`), whose breadth the engine
- * decides — for Codex it is the one command, not the tool. So the nameless
- * label claims only the session scope. It never names adapter display text
- * either: a title (Codex's and OpenCode's are the whole command line) would
- * misstate the grant as covering exactly that string.
+ * When the request reports NO tool name, the breadth of the grant is not one
+ * thing the label could name: Codex's adapter derives its own grant key (every
+ * later command, or every later file change, in the session), an ACP engine
+ * with no reported name gets only its own `allow_always` rule (OpenCode's is
+ * pattern-scoped), and an escalation request records no Station grant at all.
+ * So the nameless label claims only what holds for all of them: the session
+ * scope. It never names adapter display text either — a title (Codex's and
+ * OpenCode's are the whole command line) would misstate the grant as covering
+ * exactly that string.
  */
 export function toolRequestGrantLabel(toolName: string | undefined): string {
   const displayName = toolRequestDisplayName(toolName);

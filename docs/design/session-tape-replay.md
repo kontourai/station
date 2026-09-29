@@ -102,9 +102,11 @@ reconnecting, catch-up, revoked credentials, multiple turns, incomplete history,
 virtualized long history, and reduced motion in both themes. This is browser
 evidence; native lifecycle and device delivery require separate verification.
 
-Chat activity uses one aligned phrase, `Working for m:ss`, before content;
-reported reasoning uses `Thinking for m:ss`. Active tool rows supply their own
-animation, and streamed answer text has a caret. Approval and transport
+Chat activity uses one aligned phrase, `Working for m:ss`: the clock is the
+open turn's, so the timed phrase names the turn, never its current phase.
+Without a clock the row names the phase instead (`Thinking…`, `Working…`), and
+the progress row beneath names a running or last tool. Active tool rows supply
+their own animation, and streamed answer text has a caret. Approval and transport
 recovery have explicit states. A timer measures observed waiting, never an
 estimate of completion.
 
