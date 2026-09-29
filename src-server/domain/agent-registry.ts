@@ -99,11 +99,6 @@ export class EngineConnectionBindingCollisionError extends Error {
   }
 }
 
-export interface AgentRegistryWriteHooks {
-  /** Test-only deterministic interleaving point, immediately before rename. */
-  beforeRename?: () => void;
-}
-
 export interface AgentRegistryReadHooks {
   /** Test-only fallback simulation immediately before opening the registry. */
   beforeRegistryOpen?: () => void;
@@ -288,7 +283,6 @@ async function saveRegistry(
   homeDir: string,
   registry: AgentRegistry,
   expectedSignature: string | null,
-  hooks: AgentRegistryWriteHooks = {},
 ): Promise<void> {
   assertRegistry(registry);
   const path = registryPath(homeDir);
@@ -324,7 +318,6 @@ async function saveRegistry(
     // cross-process races this code already defends against.
     const release = await acquireFileMutationLockAsync(`${path}.mutation`);
     try {
-      hooks.beforeRename?.();
       if (
         canonicalStationHome(homeDir) !== homeDir ||
         configDirectory(homeDir) !== directory ||
@@ -421,25 +414,6 @@ export async function loadOrCreateAgentRegistry(
   throw new AgentRegistryConflictError();
 }
 
-export async function agentRegistrySourceSignature(
-  configLoader: ConfigLoader,
-): Promise<string | null> {
-  return registrySignature(
-    canonicalStationHome(configLoader.getProjectHomeDir()),
-  );
-}
-
-export async function saveAgentRegistry(
-  configLoader: ConfigLoader,
-  registry: AgentRegistry,
-  expectedSourceSignature: string | null,
-  hooks: AgentRegistryWriteHooks = {},
-): Promise<void> {
-  const homeDir = canonicalStationHome(configLoader.getProjectHomeDir());
-  await ensureStationHomeSchema(homeDir);
-  await saveRegistry(homeDir, registry, expectedSourceSignature, hooks);
-}
-
 /**
  * CAS mutation boundary for later lifecycle waves. Persist first; runtime
  * activation remains owned by StationRuntime.applyAgentConfigurationMutation.
@@ -463,7 +437,7 @@ export async function updateAgentRegistry(
   const updated = mutate(structuredClone(current));
   assertRegistry(updated);
   updated.revision = current.revision + 1;
-  await saveAgentRegistry(configLoader, updated, signature);
+  await saveRegistry(homeDir, updated, signature);
   return updated;
 }
 

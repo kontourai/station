@@ -6,6 +6,7 @@ import {
   buildLayoutAgentReferences,
   deleteStoredRecord,
   listSortedConversations,
+  listStoredRecords,
   saveStoredRecord,
 } from '../file-storage-records.js';
 
@@ -25,9 +26,11 @@ describe('file-storage-records', () => {
   test('saveStoredRecord upserts by id and deleteStoredRecord removes existing entries', async () => {
     await saveStoredRecord(filePath, { id: 'one', value: 1 });
     await saveStoredRecord(filePath, { id: 'one', value: 2 });
+    expect(listStoredRecords(filePath)).toEqual([{ id: 'one', value: 2 }]);
 
     expect(await deleteStoredRecord(filePath, 'one')).toBe(true);
     expect(await deleteStoredRecord(filePath, 'missing')).toBe(false);
+    expect(listStoredRecords(filePath)).toEqual([]);
   });
 
   test('listSortedConversations sorts newest-first and applies pagination', async () => {

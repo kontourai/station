@@ -3,7 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 describe('conversation handoff route', () => {
-  test('uses only the explicit route and returns the structural reset disclosure', async () => {
+  test('forwards conversationId and idempotencyKey and returns the service receipt', async () => {
     const handoffConversation = vi.fn().mockResolvedValue({
       conversationId: 'conversation-a',
       sessionId: 'session-b',

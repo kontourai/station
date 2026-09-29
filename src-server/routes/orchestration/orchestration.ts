@@ -970,10 +970,9 @@ type InterruptDelegatedTaskRequest = z.infer<
  * True when an ORCHESTRATION_EVENT payload should be forwarded to a `/events`
  * subscriber filtered by `threadId`. The eventBus emits `{ event }` where the
  * canonical runtime event carries `threadId`; an unset filter forwards all
- * sessions (the all-sessions stream the app already consumes). Exported for
- * unit coverage of the filter without standing up an SSE stream.
+ * sessions (the all-sessions stream the app already consumes).
  */
-export function orchestrationEventMatchesThread(
+function orchestrationEventMatchesThread(
   data: Record<string, unknown> | undefined,
   threadId: string | undefined,
 ): boolean {
@@ -987,9 +986,8 @@ export function orchestrationEventMatchesThread(
  * (archive#1092). Anything that isn't a plain non-negative integer —
  * missing, malformed, a foreign format from some other stream — is treated
  * as "no cursor" (fail-closed to the snapshot path) rather than thrown.
- * Exported for unit coverage without standing up an SSE stream.
  */
-export function parseResumeCursor(
+function parseResumeCursor(
   headerValue: string | null | undefined,
 ): number | undefined {
   if (!headerValue || !/^\d+$/.test(headerValue)) return undefined;

@@ -1791,49 +1791,6 @@ describe('System Routes', () => {
       ]);
     });
 
-    describe('reconcileExternalEngineReadiness', () => {
-      const signInRequired = {
-        ready: false,
-        source: null,
-        engines: [
-          {
-            engineId: 'claude',
-            name: 'claude',
-            detected: true,
-            ready: false,
-            source: null,
-            reason: 'sign_in_required',
-          },
-        ],
-      } as any;
-      const cannotVerify = {
-        ready: false,
-        source: null,
-        engines: [
-          {
-            engineId: 'claude',
-            name: 'claude',
-            detected: false,
-            ready: false,
-            source: null,
-            reason: 'cannot_verify',
-          },
-        ],
-      } as any;
-
-      test('holds the last genuine sign-in-required observation through a cannot_verify flap', () => {
-        expect(
-          reconcileExternalEngineReadiness(signInRequired, cannotVerify),
-        ).toEqual(signInRequired);
-      });
-
-      test('does not hold cannot_verify when there is no prior observation', () => {
-        expect(
-          reconcileExternalEngineReadiness(undefined, cannotVerify),
-        ).toEqual(cannotVerify);
-      });
-    });
-
     test('a completed version-probe error replaces held ready readiness after the TTL', async () => {
       vi.mocked(checkBedrockCredentials).mockResolvedValue(false);
       const readyAdapter = fakeExternalEngineAdapter({

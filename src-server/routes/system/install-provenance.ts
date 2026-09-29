@@ -272,7 +272,7 @@ export function resolveInstallProvenance(
  * Map a stamp ref (`origin/main`) to the refspec `git ls-remote` matches
  * (`refs/heads/main`). Already-qualified refs pass through.
  */
-export function refspecFromStampRef(ref: string): string {
+function refspecFromStampRef(ref: string): string {
   const name = ref.startsWith('origin/') ? ref.slice('origin/'.length) : ref;
   return name.startsWith('refs/') ? name : `refs/heads/${name}`;
 }
@@ -314,7 +314,7 @@ export async function fetchChannelLatestSha(
  * writes the stamp's `repository`: SSH forms become anonymous https, and a
  * trailing `.git` is insignificant for identity comparison.
  */
-export function normalizeOriginUrl(originUrl: string): string {
+function normalizeOriginUrl(originUrl: string): string {
   return originUrl
     .trim()
     .replace(/^ssh:\/\/git@([^/:]+)(?::\d+)?\//, 'https://$1/')

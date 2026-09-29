@@ -199,12 +199,14 @@ scope, not a substitute for local affected-test evidence.
 Documentation checks run on every fast-checks path. The fixed checks include
 CLI parity, source references, links, public-content hygiene, generated issue
 lifecycle content and contract examples. Veritas readiness also selects the
-full `docs:truth:gate` as required evidence, including strict recorded review
-freshness for source-only changes. The separate **Repository source scans** job
-remains non-required; freshness no longer depends on that job. Merge-queue
-static verification also includes the documentation truth gate. These checks
-catch stale recorded inputs and structural defects; they cannot establish prose
-accuracy or discover every missing dependency. Follow the
+full `docs:truth:gate` as required evidence, including recorded review
+freshness for source-only changes: a stale record blocks when the change's own
+diff touches it ([keep reviews fresh](documentation.md#keep-reviews-fresh)).
+The separate **Repository source scans** job remains non-required and only
+reports freshness. Merge-queue static verification also includes the
+documentation truth gate, where freshness is advisory. These checks catch stale
+recorded inputs and structural defects; they cannot establish prose accuracy or
+discover every missing dependency. Follow the
 [maintenance guide](documentation.md) to review the affected claims.
 
 ## Biome Lint
