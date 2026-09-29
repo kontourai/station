@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
-import { selectCodingPane } from './helpers/coding-stack';
+import { codingViewItem, selectCodingPane } from './helpers/coding-stack';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { installPluginWithConsent } from './helpers/install-plugin';
 
@@ -267,10 +267,8 @@ test.describe('direct plugin Pane SDK context', () => {
     // intended placement origin, reached as a drill-in, not an implicit
     // fallback after invalid context records are lost.
     await selectCodingPane(page, 'Files');
-    await page
-      .getByRole('button', { name: /Pane actions for Files/i })
-      .click({ timeout: 20_000 });
-    await page.getByRole('menuitem', { name: 'Open pane catalog' }).click();
+    // The pane catalog is the rail's last item (#928 coding stack).
+    await codingViewItem(page, 'Add pane').click();
     const plugin = plugins[0];
     const descriptorName = descriptorNames.get(plugin.id)!;
     const picker = page.getByRole('dialog', { name: 'Add workspace pane' });

@@ -35,8 +35,10 @@ import {
 } from '../../contexts/KeyboardShortcutsContext';
 import { navigationStore } from '../../contexts/navigation-store';
 import { useShowSurface } from '../../contexts/useShowSurface';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { BrowserPreviewPaneLauncher } from '../../workspace-panes/BrowserPreviewPaneLauncher';
 import { useCodingChatPositionEffects } from '../../workspace-panes/CodingChatPane';
 import { clearOpenFilePreviewIntent } from '../../workspace-panes/openFilePreviewIntent';
@@ -180,6 +182,26 @@ export function CodingWorkbench({
     readHistoryIndex,
     readHistoryIndex,
   );
+  // A phone's on-screen keyboard shrinks the visual viewport, not the
+  // layout one: the workbench fits the visible part (as the compact pane host
+  // it replaces did), so a focused terminal or preview is not left under the
+  // keyboard.
+  const isMobile = useIsMobile();
+  const visualViewport = useMobileVisualViewport();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [fittedHeight, setFittedHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!isMobile || !rootRef.current) {
+      setFittedHeight(null);
+      return;
+    }
+    const top = rootRef.current.getBoundingClientRect().top;
+    const available = Math.max(
+      0,
+      visualViewport.offsetTop + visualViewport.height - top,
+    );
+    setFittedHeight((current) => (current === available ? current : available));
+  }, [isMobile, visualViewport.height, visualViewport.offsetTop]);
   const [chatTitle, setChatTitle] = useState('Chat');
   const chatPageRef = useRef<HTMLElement>(null);
   const pageRef = useRef(page);
@@ -287,8 +309,9 @@ export function CodingWorkbench({
   }, [centerChat, returnToChatPage]);
   useEffect(() => {
     if (focusRequest === 0 || page !== 'chat') return;
-    // A few frames at most: the page stops being inert in this commit, and a
-    // composer that is still mounting takes a frame to exist.
+    // Up to a second of frames: the page stops being inert in this commit,
+    // and a composer that is still mounting, or briefly disabled while its
+    // conversation settles, refuses focus until it is ready.
     let frame = 0;
     let attempts = 0;
     const tryFocus = () => {
@@ -296,7 +319,7 @@ export function CodingWorkbench({
         '.chat-input textarea',
       );
       composer?.focus();
-      if (window.document.activeElement === composer || ++attempts >= 10)
+      if (window.document.activeElement === composer || ++attempts >= 60)
         return;
       frame = requestAnimationFrame(tryFocus);
     };
@@ -393,7 +416,19 @@ export function CodingWorkbench({
   };
 
   return (
-    <div className="coding-workbench">
+    <div
+      ref={rootRef}
+      className="coding-workbench"
+      style={
+        fittedHeight === null
+          ? undefined
+          : {
+              ...visualViewport.style,
+              height: `${fittedHeight}px`,
+              maxHeight: `${fittedHeight}px`,
+            }
+      }
+    >
       <div className="coding-workbench__main">
         <nav className="coding-workbench__bar" aria-label="Coding navigation">
           <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { selectCodingPane } from './helpers/coding-stack';
+import { codingViewRail, selectCodingPane } from './helpers/coding-stack';
 import { contrastRatio } from './helpers/color-contrast';
 import {
   emitMockOrchestrationEvent,
@@ -204,7 +204,10 @@ test.describe('Coding Layout Inspector — a tool configured', () => {
     await expect(page.locator('.workflow-plan-panel')).toBeVisible();
     await selectWorkspacePane(page, 'Readiness');
     await expect(page.getByText('Merge readiness')).toBeVisible();
-    await expect(page.locator('.workflow-plan-panel')).toHaveCount(1);
+    // One drill-in on screen at a time; the Plan surface is never doubled.
+    expect(
+      await page.locator('.workflow-plan-panel').count(),
+    ).toBeLessThanOrEqual(1);
   });
 
   test('surfaces runtime approval state on the plan panel', async ({
@@ -333,10 +336,6 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
   }) => {
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
 
-    const surfaces = page.getByRole('region', {
-      name: 'Workspace panes',
-      exact: true,
-    });
     // A phone lands on the Chat page, which is its maximized dock.
     const dock = page.locator('#chat-dock');
     await expect(dock).toBeVisible();
@@ -352,14 +351,12 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
         .click();
       await expect(dock).not.toHaveClass(/is-maximized/);
     }
+    // Each pane is a drill-in picked from the rail (#928 coding stack): no
+    // tab strip on the page, and the rail keeps phone-sized targets.
     await selectWorkspacePane(page, 'Files');
-    await expect(surfaces).toBeVisible();
-    await expect(
-      surfaces.getByRole('tab', { name: 'Coding', exact: true }),
-    ).toHaveCount(0);
-
-    for (const tab of await surfaces.getByRole('tab').all()) {
-      const bounds = await tab.boundingBox();
+    await expect(page.getByRole('tab')).toHaveCount(0);
+    for (const item of await codingViewRail(page).getByRole('button').all()) {
+      const bounds = await item.boundingBox();
       expect(bounds?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     }
     await expect(page.getByText('README.md', { exact: true })).toBeVisible();
@@ -371,40 +368,23 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
       page.getByText('State stays here.', { exact: false }),
     ).toBeVisible();
 
-    await page.getByRole('button', { name: 'Back to pane tabs' }).click();
-    await surfaces
-      .getByRole('tab', {
-        name: 'Plan',
-        exact: true,
-      })
-      .click();
+    await selectWorkspacePane(page, 'Plan');
     await expect(page.getByText('Workflow plan')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Back to pane tabs' }).click();
-    await surfaces
-      .getByRole('tab', {
-        name: 'File Preview — README.md',
-        exact: true,
-      })
-      .click();
+    await selectWorkspacePane(page, 'File Preview — README.md');
     await expect(
       page.getByText('State stays here.', { exact: false }),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Back to pane tabs' }).click();
-    await surfaces
-      .getByRole('tab', {
-        name: 'Terminal',
-        exact: true,
-      })
-      .click();
-    const terminal = page.getByRole('tabpanel').filter({ hasText: 'Terminal' });
-    await expect(terminal).toBeVisible();
+    await selectWorkspacePane(page, 'Terminal');
+    const terminal = page.locator('.coding-workbench__page--drill-in');
+    await expect(terminal.getByTitle('New terminal')).toBeVisible();
     await setVisualViewport(page, 480, 12);
-    const hostBox = await page
-      .locator('.workspace-pane-host--compact')
-      .boundingBox();
-    expect(hostBox).not.toBeNull();
-    expect(hostBox!.y + hostBox!.height).toBeLessThanOrEqual(492);
+    await expect
+      .poll(async () => {
+        const box = await page.locator('.coding-workbench').boundingBox();
+        return box ? box.y + box.height : Number.POSITIVE_INFINITY;
+      })
+      .toBeLessThanOrEqual(492);
     await terminal.getByTitle('New terminal').click();
     const terminalPicker = page.getByRole('dialog', { name: 'New terminal' });
     await expect(terminalPicker).toBeVisible();

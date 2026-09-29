@@ -1,5 +1,10 @@
 import { expect, type Page } from '@playwright/test';
-import { codingNavigation, openCodingView } from './helpers/coding-stack';
+import {
+  codingNavigation,
+  codingViewItem,
+  codingViewRail,
+  openCodingView,
+} from './helpers/coding-stack';
 import { test } from './helpers/fixture-audit';
 import {
   DEFAULT_CONVERSATION_LOOKUPS,
@@ -121,13 +126,51 @@ test.describe('Coding stack — desktop (1280px)', () => {
     await expect(page.locator('#chat-workspace-pane')).toHaveCount(1);
     await expect(inbox(page)).toBeVisible();
     await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
+    await expect(crumbs(page)).toContainText('Inbox');
+  });
+
+  test('a first load is Chat and nothing else: no tabs, no save notice, no pane actions, no pane mounted', async ({
+    page,
+  }) => {
+    const diffReads: string[] = [];
+    page.on('request', (request) => {
+      if (/\/api\/coding\/diff/.test(request.url()))
+        diffReads.push(request.url());
+    });
+    await landOnChat(page);
+    await expect(page.getByRole('tab')).toHaveCount(0);
+    await expect(page.getByRole('tablist')).toHaveCount(0);
+    await expect(
+      page.getByText('Workspace pane changes are saved in this tab.'),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: /Pane actions/ }),
+    ).toHaveCount(0);
     await expect(
       codingNavigation(page).getByRole('button', { name: 'Back' }),
-    ).toBeDisabled();
-    // The Coding occurrence is the Chat page, never a tab.
-    await expect(
-      page.getByRole('tab', { name: 'Coding', exact: true }),
     ).toHaveCount(0);
+    // No drill-in is instantiated until it is picked: no pane renderer in the
+    // page, and no Diff read.
+    await expect(
+      page.locator(
+        '.coding-workbench__page--drill-in .file-tree-panel, .coding-workbench__page--drill-in .diff-panel',
+      ),
+    ).toHaveCount(0);
+    // The rail lists what is available, with nothing current.
+    await expect(codingViewItem(page, 'Diff')).toBeVisible();
+    await expect(codingViewItem(page, 'Files')).toBeVisible();
+    await expect(
+      codingViewRail(page).locator('[aria-current="page"]'),
+    ).toHaveCount(0);
+    expect(diffReads).toEqual([]);
+
+    await drillIntoDiff(page);
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    // A drill-in is the breadcrumb and the pane: still no tab strip.
+    await expect(page.getByRole('tab')).toHaveCount(0);
   });
 
   test('choosing another conversation in the inbox is not a history entry', async ({
@@ -141,9 +184,6 @@ test.describe('Coding stack — desktop (1280px)', () => {
       .click();
     await expect(page).toHaveURL(/chat=conv-2|chat=session-2/);
     expect(await page.evaluate(() => window.history.length)).toBe(length);
-    await expect(
-      codingNavigation(page).getByRole('button', { name: 'Back' }),
-    ).toBeDisabled();
   });
 
   test('a drill-in is a history entry: browser Back returns to the conversation, Forward re-enters', async ({
@@ -165,12 +205,10 @@ test.describe('Coding stack — desktop (1280px)', () => {
     await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
     await expect(crumbs(page)).toContainText('Diff');
 
-    // The stack bar's own Back is the same history step.
-    await codingNavigation(page).getByRole('button', { name: 'Back' }).click();
+    // The conversation's crumb is the same step back.
+    await crumbs(page).getByRole('button', { name: 'Dev Agent Chat' }).click();
     await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
-    await expect(
-      codingNavigation(page).getByRole('button', { name: 'Forward' }),
-    ).toBeEnabled();
+    await expect(page).not.toHaveURL(/[?&]pane=/);
   });
 
   test('the stack chords go back and forward', async ({ page }) => {
@@ -180,10 +218,10 @@ test.describe('Coding stack — desktop (1280px)', () => {
     );
     await drillIntoDiff(page);
     // Off the composer, as a reader browsing the pane would be.
-    await crumbs(page).click();
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
     await page.keyboard.press(mac ? 'Meta+BracketLeft' : 'Alt+ArrowLeft');
     await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
-    await crumbs(page).click();
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
     await page.keyboard.press(mac ? 'Meta+BracketRight' : 'Alt+ArrowRight');
     await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
   });
@@ -204,7 +242,7 @@ test.describe('Coding stack — desktop (1280px)', () => {
   }) => {
     await landOnChat(page);
     await drillIntoDiff(page);
-    await crumbs(page).click();
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
     const mac = await page.evaluate(() =>
       navigator.platform.toUpperCase().includes('MAC'),
     );
