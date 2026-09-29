@@ -46,12 +46,54 @@ vi.mock('../../providers/context/CodingFilesContextProvider', () => ({
 vi.mock('../resolvedWorkspacePaneCatalog', () => ({
   useResolvedWorkspacePaneCatalog: () => ({ entries: [] }),
 }));
+// The real highlight client (jsdom has no Worker, so it tokenizes with the
+// real Shiki on the main thread). A test may replace one answer to exercise
+// the pane's refusal path; nothing else is stubbed.
+const tokenizeOverride = vi.hoisted(() => ({
+  current: undefined as
+    | undefined
+    | ((code: string, lang: string) => Promise<unknown>),
+}));
+vi.mock('../../highlight/highlight-client', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../highlight/highlight-client')>();
+  return {
+    ...actual,
+    tokenizeCode: (code: string, lang: string) =>
+      tokenizeOverride.current
+        ? tokenizeOverride.current(code, lang)
+        : actual.tokenizeCode(code, lang),
+  };
+});
+afterEach(() => {
+  tokenizeOverride.current = undefined;
+});
+
+/** Shiki is real and cold on first use; allow its first grammar load. */
+const HIGHLIGHT_TIMEOUT_MS = 10_000;
+async function highlightedTokens(container: HTMLElement) {
+  await waitFor(
+    () =>
+      expect(
+        container
+          .querySelector('[data-file-preview-syntax]')
+          ?.getAttribute('data-file-preview-syntax'),
+      ).toBe('ready'),
+    { timeout: HIGHLIGHT_TIMEOUT_MS },
+  );
+  return [
+    ...container.querySelectorAll<HTMLElement>('[data-file-preview-token]'),
+  ];
+}
 
 import {
   INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT,
   subscribeInteractiveWorkspacePerformanceMarks,
 } from '../../performance/interactive-workspace-performance-hooks';
-import { FilePreviewPane } from '../FilePreviewPane';
+import {
+  FilePreviewPane,
+  MAX_SOURCE_HIGHLIGHT_TOKENS,
+} from '../FilePreviewPane';
 
 // Receipt 3ea2e798 recorded the first real lazy Markdown chunk taking longer
 // than Testing Library's default 1 s polling budget under full-lane load. Keep
@@ -1065,77 +1107,11 @@ describe('FilePreviewPane', () => {
     }
   });
 
-  test('colours every token through a theme rung, never a pigment (#2140)', () => {
-    // The rungs used to be github-dark literals in `style={}`, which the
-    // theme cannot reach: on light the string rung measured 1.54:1 against
-    // the pane. What is pinned is that each token NAMES a rung -- the pigment
-    // is the theme's decision, and `theme-rung-contrast.test.ts` measures it.
-    previewQuery.mockReturnValue({
-      isLoading: false,
-      isError: false,
-      data: {
-        path: 'src/example.ts',
-        status: 'ready',
-        renderKind: 'source',
-        content: 'const n = 42; // "s"',
-      },
-    });
-    const { container } = renderPane();
-    const colours = [...container.querySelectorAll('[data-file-preview-token]')]
-      .map((node) => (node as HTMLElement).style.color)
-      .filter(Boolean);
-    expect(colours.length).toBeGreaterThan(0);
-    for (const colour of colours) {
-      expect(colour, `a token was painted with "${colour}"`).toMatch(
-        /^var\(--(syntax-(keyword|number|string)|text-muted)\)$/,
-      );
-    }
-    expect(colours).toContain('var(--syntax-keyword)');
-    expect(colours).toContain('var(--syntax-number)');
-  });
-
-  test('highlights markup-bearing source as literal text, never as elements', () => {
-    // Workspace content is untrusted: markup inside a highlighted token (the
-    // string literal) or in the gap between tokens must stay inert text.
-    const line = 'const value = "<img src=x onerror=alert(1)>"; <b>gap</b>';
-    previewQuery.mockReturnValue({
-      isLoading: false,
-      isError: false,
-      data: {
-        path: 'src/example.ts',
-        status: 'ready',
-        renderKind: 'source',
-        content: line,
-      },
-    });
-    const { container } = renderPane();
-    // Proves the highlighted path ran, so the negatives below are not vacuous.
-    expect(
-      container.querySelectorAll('[data-file-preview-token]').length,
-    ).toBeGreaterThan(0);
-    expect(container.querySelector('img')).toBeNull();
-    expect(container.querySelector('b')).toBeNull();
-    expect(
-      [...container.querySelectorAll('[data-file-preview-token]')].map(
-        (node) => node.textContent,
-      ),
-    ).toContain('"<img src=x onerror=alert(1)>"');
-    expect(container.textContent).toContain(line);
-  });
-
-  // One dense line trips the per-line fallback; many light lines (32 tokens
-  // each, 2,048 in all) are only caught by the whole-response preflight.
-  test.each([
-    ['one token-dense line', 'const value = 1;'.repeat(32_768)],
-    [
-      'many light lines',
-      Array.from({ length: 64 }, () => 'const value = 1;'.repeat(16)).join(
-        '\n',
-      ),
-    ],
-  ])(
-    'falls back to inert text before %s exceeds the highlight budget',
-    (_corpus, content) => {
+  test(
+    'colours every grammar token through a theme rung, never a pigment (#2140)',
+    async () => {
+      // Each token NAMES a rung -- the pigment is the theme's decision, and
+      // `theme-rung-contrast.test.ts` measures it.
       previewQuery.mockReturnValue({
         isLoading: false,
         isError: false,
@@ -1143,14 +1119,307 @@ describe('FilePreviewPane', () => {
           path: 'src/example.ts',
           status: 'ready',
           renderKind: 'source',
-          content,
+          content: 'function greet(n: number) {\n  return "s" + 42; // done\n}',
         },
       });
       const { container } = renderPane();
-      expect(container.textContent).toContain('const value = 1;');
+      const tokens = await highlightedTokens(container);
+      const colours = tokens.map((node) => node.style.color);
+      expect(colours.length).toBeGreaterThan(0);
+      for (const colour of colours) {
+        expect(colour, `a token was painted with "${colour}"`).toMatch(
+          /^var\(--(syntax-(keyword|number|string|function|tag|variable)|text-muted)\)$/,
+        );
+      }
+      const rungOf = (text: string) =>
+        tokens.find((node) => node.textContent === text)?.style.color;
+      // A real grammar, not a keyword list: the function NAME is an entity
+      // (a rung the retired regex tokenizer never produced), the comment is
+      // muted, the literal is a string and 42 a constant.
+      expect(rungOf('greet')).toBe('var(--syntax-function)');
+      expect(rungOf('function')).toBe('var(--syntax-keyword)');
+      expect(rungOf('42')).toBe('var(--syntax-number)');
       expect(
-        container.querySelectorAll('[data-file-preview-token]'),
-      ).toHaveLength(0);
+        tokens.some(
+          (node) =>
+            node.textContent?.includes('"s"') &&
+            node.style.color === 'var(--syntax-string)',
+        ),
+      ).toBe(true);
+      expect(
+        tokens.some(
+          (node) =>
+            node.textContent?.includes('done') &&
+            node.style.color === 'var(--text-muted)',
+        ),
+      ).toBe(true);
     },
+    HIGHLIGHT_TIMEOUT_MS + 5_000,
   );
+
+  test(
+    'highlights by the file path language, not a JavaScript keyword list',
+    async () => {
+      previewQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: {
+          path: 'tools/job.py',
+          status: 'ready',
+          renderKind: 'source',
+          content: 'def handler(event):\n    return None',
+        },
+      });
+      const { container } = renderPaneAt('tools/job.py');
+      const tokens = await highlightedTokens(container);
+      expect(
+        tokens.find((node) => node.textContent === 'def')?.style.color,
+      ).toBe('var(--syntax-keyword)');
+      expect(
+        tokens.find((node) => node.textContent === 'handler')?.style.color,
+      ).toBe('var(--syntax-function)');
+    },
+    HIGHLIGHT_TIMEOUT_MS + 5_000,
+  );
+
+  test(
+    'highlights markup-bearing source as literal text, never as elements',
+    async () => {
+      // Workspace content is untrusted: markup inside a highlighted token (the
+      // string literal) or in the gap between tokens must stay inert text.
+      const line = 'const value = "<img src=x onerror=alert(1)>"; <b>gap</b>';
+      previewQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: {
+          path: 'src/example.ts',
+          status: 'ready',
+          renderKind: 'source',
+          content: line,
+        },
+      });
+      const { container } = renderPane();
+      // Proves the highlighted path ran, so the negatives below are not vacuous.
+      const tokens = await highlightedTokens(container);
+      expect(tokens.length).toBeGreaterThan(0);
+      expect(container.querySelector('img')).toBeNull();
+      expect(container.querySelector('b')).toBeNull();
+      expect(
+        tokens.some((node) =>
+          node.textContent?.includes('<img src=x onerror=alert(1)>'),
+        ),
+      ).toBe(true);
+      expect(container.textContent).toContain(line);
+    },
+    HIGHLIGHT_TIMEOUT_MS + 5_000,
+  );
+
+  test(
+    'keeps a CRLF file byte-faithful while highlighting it',
+    async () => {
+      previewQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: {
+          path: 'src/example.ts',
+          status: 'ready',
+          renderKind: 'source',
+          content: 'const a = 1;\r\nconst b = 2;\r\n',
+        },
+      });
+      const { container } = renderPane();
+      const tokens = await highlightedTokens(container);
+      expect(tokens.some((node) => node.textContent === 'const')).toBe(true);
+      expect(container.textContent).toContain('const b = 2;');
+    },
+    HIGHLIGHT_TIMEOUT_MS + 5_000,
+  );
+
+  test('refuses tokens that do not reproduce the text and says so', async () => {
+    tokenizeOverride.current = async () => [
+      [{ content: 'const forged = true;', color: '#F97583' }],
+    ];
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'src/example.ts',
+        status: 'ready',
+        renderKind: 'source',
+        content: 'const real = 1;',
+      },
+    });
+    const { container } = renderPane();
+    expect(
+      await screen.findByText(
+        'Syntax colours are off: the highlighter did not reproduce this text exactly.',
+      ),
+    ).toBeTruthy();
+    expect(container.textContent).toContain('const real = 1;');
+    expect(container.textContent).not.toContain('forged');
+    expect(
+      container.querySelectorAll('[data-file-preview-token]'),
+    ).toHaveLength(0);
+  });
+
+  test('a highlighter failure leaves plain text and a stated reason', async () => {
+    tokenizeOverride.current = async () => {
+      throw new Error('highlight worker wedged (>8000ms)');
+    };
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'src/example.ts',
+        status: 'ready',
+        renderKind: 'source',
+        content: 'const plain = 1;',
+      },
+    });
+    const { container } = renderPane();
+    expect(
+      await screen.findByText(
+        'Syntax colours are off: the highlighter did not answer for this file.',
+      ),
+    ).toBeTruthy();
+    expect(container.textContent).toContain('const plain = 1;');
+  });
+
+  test('refuses to colour past the span budget instead of colouring part of it', async () => {
+    // 40,001 coloured runs: one past MAX_SOURCE_HIGHLIGHT_TOKENS (40,000),
+    // answered in the exact shape the worker produces. The literal is pinned
+    // beside the constant so a silent budget change reds here.
+    expect(MAX_SOURCE_HIGHLIGHT_TOKENS).toBe(40_000);
+    const lineCount = 2_000;
+    const perLine = Math.ceil((MAX_SOURCE_HIGHLIGHT_TOKENS + 1) / lineCount);
+    const text = Array.from({ length: perLine }, () => 'x').join(' ');
+    tokenizeOverride.current = async () =>
+      Array.from({ length: lineCount }, () =>
+        text
+          .split(' ')
+          .flatMap((word, index) => [
+            ...(index ? [{ content: ' ' }] : []),
+            { content: word, color: '#F97583' },
+          ]),
+      );
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'src/example.ts',
+        status: 'ready',
+        renderKind: 'source',
+        content: Array.from({ length: lineCount }, () => text).join('\n'),
+      },
+    });
+    const { container } = renderPane();
+    expect(
+      await screen.findByText(
+        'Syntax colours are off: this preview has more than 40,000 coloured tokens.',
+      ),
+    ).toBeTruthy();
+    expect(
+      container.querySelectorAll('[data-file-preview-token]'),
+    ).toHaveLength(0);
+  });
+
+  test('states the rendered-line cap before the code, with the real total', () => {
+    const content = Array.from(
+      { length: 2_500 },
+      (_, index) => `line ${index + 1}`,
+    ).join('\n');
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'notes/long.txt',
+        status: 'ready',
+        renderKind: 'text',
+        lineCount: 2_500,
+        content,
+      },
+    });
+    const { container } = renderPaneAt('notes/long.txt');
+    const notice = screen.getByText(/Showing lines 1–2,000 of 2,500\./);
+    expect(notice.getAttribute('role')).toBe('status');
+    expect(notice.textContent).toContain('renders at most 2,000 lines');
+    const code = container.querySelector('section[aria-label$="source"]');
+    expect(code).toBeTruthy();
+    // Before the code in document order, so it is read first.
+    expect(
+      notice.compareDocumentPosition(code as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Link to line 2000' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Link to line 2001' }),
+    ).toBeNull();
+  });
+
+  test('goes to a rendered line and refuses one outside the rendered lines', () => {
+    const scrolled: string[] = [];
+    (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView =
+      function (this: HTMLElement) {
+        scrolled.push(this.id);
+      };
+    try {
+      previewQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: {
+          path: 'notes/short.txt',
+          status: 'ready',
+          renderKind: 'text',
+          content: Array.from({ length: 40 }, (_, i) => `row ${i + 1}`).join(
+            '\n',
+          ),
+        },
+      });
+      renderPaneAt('notes/short.txt');
+      const input = screen.getByLabelText('Go to line');
+      fireEvent.change(input, { target: { value: '37' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+      expect(scrolled.at(-1)).toBe('file-preview-file-preview:test-line-37');
+      expect(document.activeElement).toBe(
+        screen.getByRole('link', { name: 'Link to line 37' }),
+      );
+      fireEvent.change(input, { target: { value: '41' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+      expect(
+        screen.getByText('Line 41 is not among the rendered lines 1–40.'),
+      ).toBeTruthy();
+      expect(scrolled.at(-1)).toBe('file-preview-file-preview:test-line-37');
+    } finally {
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown })
+        .scrollIntoView;
+    }
+  });
+
+  test('copies the workspace-relative path and reports a refused clipboard', async () => {
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'src/example.ts',
+        status: 'ready',
+        renderKind: 'text',
+        content: 'x',
+      },
+    });
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    renderPane();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy path' }));
+    expect(await screen.findByText('Copied src/example.ts.')).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith('src/example.ts');
+    writeText.mockRejectedValueOnce(new Error('denied'));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy path' }));
+    expect(
+      await screen.findByText(
+        'This browser refused clipboard access. Select the path above to copy it.',
+      ),
+    ).toBeTruthy();
+  });
 });

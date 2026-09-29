@@ -11,8 +11,8 @@ import {
   type WorkspaceFilePreviewStatus,
 } from '@kontourai/station-sdk/workspace-file-preview';
 import {
+  type FormEvent,
   lazy,
-  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -21,10 +21,13 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Button } from '../components/Button';
 import { ImageInspector } from '../components/ImageInspector';
 import { Empty, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { langFromFilePath } from '../highlight/langFromFilePath';
+import type { PreviewTokenLine } from '../highlight/preview-tokens';
+import { copyToClipboard } from '../lib/clipboard';
 import {
   browserEpochMs,
   emitFilePreviewCommitPerformanceMark,
@@ -42,6 +45,7 @@ import {
 } from './openFilePreviewIntent';
 import { useResolvedWorkspacePaneCatalog } from './resolvedWorkspacePaneCatalog';
 import { workspacePaneDirectRoute } from './workspacePaneDirectRoute';
+import './FilePreviewPane.css';
 
 const MAX_RENDERED_LINES = 2_000;
 const MAX_RENDERED_MARKDOWN_CHARACTERS = 64 * 1024;
@@ -72,8 +76,12 @@ const MARKDOWN_SYNTAX_CHARACTERS = new Set([
   '+',
   '!',
 ]);
-const MAX_SOURCE_HIGHLIGHT_TOKENS = 1_024;
-const MAX_SOURCE_HIGHLIGHT_REACT_NODES = 2_048;
+/**
+ * Coloured spans the pane will mount for one preview. Beyond it the whole
+ * preview renders as plain text and says so; a partial colouring would read
+ * as a grammar that stopped understanding the file.
+ */
+export const MAX_SOURCE_HIGHLIGHT_TOKENS = 40_000;
 
 const STATUS_COPY: Record<
   Exclude<WorkspaceFilePreviewStatus, 'ready'>,
@@ -277,86 +285,137 @@ function FilePreviewDownloadHandoff({
   );
 }
 
-type SourceTokenKind = 'comment' | 'keyword' | 'number' | 'string';
-const SOURCE_TOKEN =
-  /(\/\/.*$|#.*$|\/\*.*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:async|await|class|const|else|export|extends|false|for|function|if|import|interface|let|new|null|return|throw|true|type|undefined|while)\b|\b\d+(?:\.\d+)?\b)/g;
-
-function tokenKind(token: string): SourceTokenKind {
-  if (token.startsWith('//') || token.startsWith('#') || token.startsWith('/*'))
-    return 'comment';
-  if (/^\d/.test(token)) return 'number';
-  if (/^["'`]/.test(token)) return 'string';
-  return 'keyword';
-}
-
-// Syntax rungs are theme tokens (#2140). These were github-dark's literals in
-// `style={}`; on the light theme they rendered as TEXT at 1.5-2.5:1 against
-// the pane -- the string rung was nearly invisible. index.css maps each to
-// github-dark on dark and github-light on light, both measured.
-const TOKEN_COLOR: Record<SourceTokenKind, string> = {
-  comment: 'var(--text-muted)',
-  keyword: 'var(--syntax-keyword)',
-  number: 'var(--syntax-number)',
-  string: 'var(--syntax-string)',
+/**
+ * github-dark's foregrounds (the one theme the shared highlighter loads)
+ * mapped onto Station's measured syntax rungs. The theme's own pigments are
+ * dark-only and fail contrast on the light theme (#2140), so the grammar
+ * decides WHAT a token is and the Station theme decides how it looks. A
+ * foreground absent here (the default text colour, brackets, invalid markers)
+ * renders as ordinary text.
+ */
+const SYNTAX_RUNG_BY_THEME_FOREGROUND: Readonly<Record<string, string>> = {
+  '#F97583': 'var(--syntax-keyword)',
+  '#9ECBFF': 'var(--syntax-string)',
+  '#DBEDFF': 'var(--syntax-string)',
+  '#79B8FF': 'var(--syntax-number)',
+  '#6A737D': 'var(--text-muted)',
+  '#B392F0': 'var(--syntax-function)',
+  '#85E89D': 'var(--syntax-tag)',
+  '#FFAB70': 'var(--syntax-variable)',
 };
 
-/** React text nodes preserve content literally; no workspace markup is parsed. */
-function highlightFilePreviewLine(line: string, enabled: boolean): ReactNode {
-  if (!enabled) return line;
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  let tokens = 0;
-  for (const match of line.matchAll(SOURCE_TOKEN)) {
-    const index = match.index ?? 0;
-    if (index > cursor) nodes.push(line.slice(cursor, index));
-    const token = match[0];
-    tokens += 1;
-    if (
-      tokens > MAX_SOURCE_HIGHLIGHT_TOKENS ||
-      nodes.length + 1 > MAX_SOURCE_HIGHLIGHT_REACT_NODES
-    )
-      return line;
-    nodes.push(
-      <span
-        key={`${index}:${token.length}`}
-        data-file-preview-token="true"
-        style={{ color: TOKEN_COLOR[tokenKind(token)] }}
-      >
-        {token}
-      </span>,
-    );
-    cursor = index + token.length;
+type PreviewSyntax =
+  | { status: 'off' }
+  | { status: 'pending' }
+  | { status: 'ready'; lines: readonly PreviewTokenLine[] }
+  | { status: 'plain'; reason: string };
+
+/**
+ * Accepts Shiki's lines only when they reproduce the rendered text exactly:
+ * same line count, and each line's tokens concatenating to that line (a CRLF
+ * file's trailing `\r` is the one difference Shiki is allowed). Anything else
+ * would show the reader text the file does not contain, so it is refused and
+ * the preview stays plain.
+ */
+function acceptPreviewTokens(
+  lines: readonly FilePreviewLineProjection[],
+  tokens: readonly PreviewTokenLine[],
+): PreviewSyntax {
+  if (tokens.length !== lines.length)
+    return {
+      status: 'plain',
+      reason:
+        'Syntax colours are off: the highlighter split lines differently.',
+    };
+  let spans = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const text = lines[index].text;
+    const joined = tokens[index].map((token) => token.content).join('');
+    if (joined !== text && joined !== text.replace(/\r$/, ''))
+      return {
+        status: 'plain',
+        reason:
+          'Syntax colours are off: the highlighter did not reproduce this text exactly.',
+      };
+    for (const token of tokens[index])
+      if (token.color && SYNTAX_RUNG_BY_THEME_FOREGROUND[token.color])
+        spans += 1;
+    if (spans > MAX_SOURCE_HIGHLIGHT_TOKENS)
+      return {
+        status: 'plain',
+        reason: `Syntax colours are off: this preview has more than ${MAX_SOURCE_HIGHLIGHT_TOKENS.toLocaleString()} coloured tokens.`,
+      };
   }
-  if (cursor < line.length) nodes.push(line.slice(cursor));
-  return nodes;
+  return { status: 'ready', lines: tokens };
 }
 
-/** Preflights the whole response so token-dense content gets one inert text node. */
-function shouldHighlightFilePreviewLines(
+/**
+ * Real grammar highlighting through the shared highlight worker (main thread
+ * where no worker exists). Plain text is rendered until tokens arrive and
+ * whenever they are refused; the reason is surfaced, never swallowed.
+ */
+function usePreviewSyntax(
   lines: readonly FilePreviewLineProjection[],
-  source: boolean,
-): boolean {
-  if (!source) return false;
-  let tokens = 0;
-  let nodes = 0;
-  for (const line of lines) {
-    let cursor = 0;
-    for (const match of line.text.matchAll(SOURCE_TOKEN)) {
-      const index = match.index ?? 0;
-      if (index > cursor) nodes += 1;
-      tokens += 1;
-      nodes += 1;
-      if (
-        tokens > MAX_SOURCE_HIGHLIGHT_TOKENS ||
-        nodes > MAX_SOURCE_HIGHLIGHT_REACT_NODES
-      )
-        return false;
-      cursor = index + match[0].length;
+  lang: string | undefined,
+  enabled: boolean,
+): PreviewSyntax {
+  const [syntax, setSyntax] = useState<PreviewSyntax>({ status: 'off' });
+  useEffect(() => {
+    if (!enabled || !lang || lines.length === 0) {
+      setSyntax({ status: 'off' });
+      return;
     }
-    if (cursor < line.text.length) nodes += 1;
-    if (nodes > MAX_SOURCE_HIGHLIGHT_REACT_NODES) return false;
-  }
-  return true;
+    let current = true;
+    setSyntax({ status: 'pending' });
+    const code = lines.map((line) => line.text).join('\n');
+    void import('../highlight/highlight-client')
+      .then(({ tokenizeCode }) => tokenizeCode(code, lang))
+      .then(
+        (tokens) => {
+          if (current) setSyntax(acceptPreviewTokens(lines, tokens));
+        },
+        () => {
+          if (current)
+            setSyntax({
+              status: 'plain',
+              reason:
+                'Syntax colours are off: the highlighter did not answer for this file.',
+            });
+        },
+      );
+    return () => {
+      current = false;
+    };
+  }, [enabled, lang, lines]);
+  return syntax;
+}
+
+/** React text nodes preserve content literally; no workspace markup is parsed. */
+function FilePreviewLineText({
+  text,
+  tokens,
+}: {
+  text: string;
+  tokens?: PreviewTokenLine;
+}) {
+  if (!tokens) return text;
+  return tokens.map((token, index) => {
+    const rung = token.color
+      ? SYNTAX_RUNG_BY_THEME_FOREGROUND[token.color]
+      : undefined;
+    return rung ? (
+      <span
+        // Tokens are positional within one immutable line.
+        key={index}
+        data-file-preview-token="true"
+        style={{ color: rung }}
+      >
+        {token.content}
+      </span>
+    ) : (
+      token.content
+    );
+  });
 }
 
 function PreviewRangeStatus({
@@ -388,11 +447,11 @@ function PreviewRangeStatus({
 function FilePreviewLine({
   line,
   stateKey,
-  highlight,
+  tokens,
 }: {
   line: FilePreviewLineProjection;
   stateKey: string;
-  highlight: boolean;
+  tokens?: PreviewTokenLine;
 }) {
   return (
     <span
@@ -417,7 +476,7 @@ function FilePreviewLine({
       >
         {line.number}
       </a>
-      {highlightFilePreviewLine(line.text, highlight)}
+      <FilePreviewLineText text={line.text} tokens={tokens} />
     </span>
   );
 }
@@ -483,9 +542,11 @@ function FilePreviewToolbar({
 }) {
   return (
     <div
+      className="file-preview__toolbar"
       style={{
         display: 'flex',
         alignItems: 'center',
+        flexWrap: 'wrap',
         gap: '8px',
         marginBottom: '6px',
         fontSize: '11px',
@@ -507,6 +568,88 @@ function FilePreviewToolbar({
   );
 }
 
+/**
+ * The rendered-line cap, stated before the code rather than after it: a
+ * reader of a long file must learn it is truncated without scrolling 2,000
+ * lines to find out.
+ */
+function RenderedLineCapNotice({
+  lines,
+  totalLines,
+}: {
+  lines: readonly FilePreviewLineProjection[];
+  totalLines: number;
+}) {
+  if (totalLines <= lines.length || lines.length === 0) return null;
+  const first = lines[0].number;
+  const last = lines.at(-1)?.number ?? first;
+  return (
+    <p role="status" className="file-preview__notice">
+      Showing lines {first.toLocaleString()}–{last.toLocaleString()} of{' '}
+      {totalLines.toLocaleString()}. This bounded preview renders at most{' '}
+      {MAX_RENDERED_LINES.toLocaleString()} lines; the rest of the file is not
+      shown here.
+    </p>
+  );
+}
+
+function FilePreviewGoToLine({
+  lines,
+  stateKey,
+}: {
+  lines: readonly FilePreviewLineProjection[];
+  stateKey: string;
+}) {
+  const [value, setValue] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+  const first = lines[0]?.number ?? 1;
+  const last = lines.at(-1)?.number ?? first;
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const line = Number(value);
+    // Refuse rather than clamp: jumping to the nearest rendered line would
+    // show the reader a line they did not ask for under the one they did.
+    if (!Number.isInteger(line) || line < first || line > last) {
+      setNotice(
+        `Line ${value || '?'} is not among the rendered lines ${first.toLocaleString()}–${last.toLocaleString()}.`,
+      );
+      return;
+    }
+    const target = document.getElementById(lineId(stateKey, line));
+    if (!target) {
+      setNotice(`Line ${line} is not rendered.`);
+      return;
+    }
+    setNotice(null);
+    if (typeof target.scrollIntoView === 'function')
+      target.scrollIntoView({ block: 'center' });
+    target
+      .querySelector<HTMLAnchorElement>('a')
+      ?.focus({ preventScroll: true });
+  };
+  return (
+    // noValidate: the refusal below names the rendered range; the browser's
+    // own range bubble would pre-empt it with a message that does not.
+    <form className="file-preview__goto" onSubmit={submit} noValidate>
+      <label>
+        Go to line
+        <input
+          type="number"
+          inputMode="numeric"
+          min={first}
+          max={last}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      </label>
+      <Button type="submit" size="sm" disabled={!value}>
+        Go
+      </Button>
+      {notice && <span role="status">{notice}</span>}
+    </form>
+  );
+}
+
 function FilePreviewSourceLines({
   preview,
   state,
@@ -522,11 +665,16 @@ function FilePreviewSourceLines({
     () => projectFilePreviewLines(preview, state),
     [preview, state],
   );
+  const totalLines = useMemo(
+    () => (preview.content ?? '').split('\n').length,
+    [preview.content],
+  );
   const revealLine = preview.lineRange?.start ?? state.lineRange?.start;
-  const highlight = useMemo(
-    () =>
-      shouldHighlightFilePreviewLines(lines, preview.renderKind === 'source'),
-    [lines, preview.renderKind],
+  const syntax = usePreviewSyntax(
+    lines,
+    langFromFilePath(state.path),
+    preview.renderKind === 'source' ||
+      (preview.renderKind === 'markdown' && !!preview.content),
   );
   useEffect(() => {
     if (revealLine === undefined) return;
@@ -537,35 +685,36 @@ function FilePreviewSourceLines({
 
   return (
     <>
-      <section aria-label={`${state.path} source`}>
+      <RenderedLineCapNotice lines={lines} totalLines={totalLines} />
+      {syntax.status === 'plain' && (
+        <p role="status" className="file-preview__notice">
+          {syntax.reason}
+        </p>
+      )}
+      <FilePreviewGoToLine lines={lines} stateKey={stateKey} />
+      <section
+        aria-label={`${state.path} source`}
+        aria-busy={syntax.status === 'pending' || undefined}
+        data-file-preview-syntax={syntax.status}
+      >
         <pre
-          style={{
-            margin: 0,
-            fontFamily: 'monospace',
-            fontSize: '11px',
-            color: 'var(--text-secondary)',
-            whiteSpace: wrap ? 'pre-wrap' : 'pre',
-            overflowX: 'auto',
-          }}
+          className="file-preview__code"
+          style={{ whiteSpace: wrap ? 'pre-wrap' : 'pre' }}
         >
           <code>
-            {lines.map((line) => (
+            {lines.map((line, index) => (
               <FilePreviewLine
                 key={line.number}
                 line={line}
                 stateKey={stateKey}
-                highlight={highlight}
+                tokens={
+                  syntax.status === 'ready' ? syntax.lines[index] : undefined
+                }
               />
             ))}
           </code>
         </pre>
       </section>
-      {(preview.content ?? '').split('\n').length > MAX_RENDERED_LINES && (
-        <p role="status">
-          Only the first {MAX_RENDERED_LINES} lines are rendered in this bounded
-          preview.
-        </p>
-      )}
     </>
   );
 }
@@ -611,6 +760,7 @@ function MarkdownPreviewToolbar({
 }) {
   return (
     <div
+      className="file-preview__toolbar"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -990,6 +1140,16 @@ export function FilePreviewPane({
     state.projectSlug,
   ]);
 
+  const copyPath = () => {
+    void copyToClipboard(state.path).then((copied) =>
+      setContextNotice(
+        copied
+          ? `Copied ${state.path}.`
+          : 'This browser refused clipboard access. Select the path above to copy it.',
+      ),
+    );
+  };
+
   const copyDirectLink = () => {
     if (!directLink || !navigator.clipboard) {
       setContextNotice('A shareable preview link is unavailable here.');
@@ -1014,23 +1174,17 @@ export function FilePreviewPane({
           completed={setCompletedRefresh}
         />
       ) : null}
-      <div style={{ padding: '6px 12px 4px', flexShrink: 0 }}>
-        <div
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: 'var(--text-muted)',
-          }}
-        >
+      <div className="file-preview__header">
+        <div className="file-preview__path">
           {state.projectSlug} / {state.path}
         </div>
         <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
           {fileName} ·{' '}
           {query.data?.mimeType ?? langFromFilePath(state.path) ?? 'text'}
         </div>
-        <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-          <button
-            type="button"
+        <div className="file-preview__actions">
+          <Button
+            size="sm"
             onClick={() => {
               if (!revealRoute || !intent) return;
               const params = serializeOpenFilePreviewIntent(intent);
@@ -1039,12 +1193,15 @@ export function FilePreviewPane({
             disabled={!revealRoute}
           >
             Reveal in Files
-          </button>
-          <button type="button" onClick={copyDirectLink} disabled={!directLink}>
+          </Button>
+          <Button size="sm" onClick={copyPath}>
+            Copy path
+          </Button>
+          <Button size="sm" onClick={copyDirectLink} disabled={!directLink}>
             Copy preview link
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="sm"
             onClick={
               attachedToConversation
                 ? removeFromConversation
@@ -1058,7 +1215,7 @@ export function FilePreviewPane({
             {attachedToConversation
               ? 'Remove from conversation'
               : 'Add to conversation'}
-          </button>
+          </Button>
         </div>
         {contextNotice && <p role="status">{contextNotice}</p>}
       </div>

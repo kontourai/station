@@ -1,0 +1,72 @@
+.file-preview__header {
+  padding: 6px 12px 4px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.file-preview__path {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+/* Wraps rather than overflowing: at phone width four actions do not fit one
+   row, and a clipped row hides actions without saying so. */
+.file-preview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.file-preview__notice {
+  margin: 0 0 6px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.file-preview__goto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: var(--text-sm);
+}
+.file-preview__goto label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.file-preview__goto input {
+  width: 7ch;
+  min-height: 28px;
+}
+.file-preview__code {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  /* Horizontal scroll stays inside the code block, so an unwrapped long line
+     scrolls the code, never the pane chrome above it. */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.file-preview__changes-toggle {
+  display: inline-flex;
+}
+
+/* Touch-target floor: the (pointer: coarse) question, as the entry sheet
+   documents for every member of this family. */
+@media (pointer: coarse) {
+  .file-preview__actions .button,
+  .file-preview__goto .button,
+  .file-preview__goto input,
+  .file-preview__toolbar button,
+  .file-preview__toolbar label {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .file-preview__toolbar label {
+    display: inline-flex;
+    align-items: center;
+  }
+}
