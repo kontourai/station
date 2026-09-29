@@ -153,10 +153,49 @@ describe('ChatDockInboxPanel', () => {
     ]);
   });
 
+  describe('focus survives a server-driven lane move', () => {
+    it('keeps focus on a row that moves Running -> Idle (its Running lane empties)', () => {
+      const running = item('moving', 'Running', NOW - 60_000);
+      const other = item('other', 'Ready', NOW - 5 * 60_000);
+      const view = renderPanel({
+        items: [running, other],
+        openChatSessionIds: [],
+      });
+      const rowName = 'moving title, moving project';
+      screen.getByRole('button', { name: rowName }).focus();
+      expect(document.activeElement?.getAttribute('aria-label')).toBe(rowName);
+
+      // The turn ends: same row, now Idle — a different section, so the
+      // focused button is unmounted and a new one mounted under Idle.
+      view.rerender(
+        <ChatDockInboxPanel
+          {...view.props}
+          items={[{ ...running, lifecycleLabel: 'Ready' }, other]}
+        />,
+      );
+      expect(screen.queryByRole('region', { name: 'Running' })).toBeNull();
+      const idle = screen.getByRole('region', { name: 'Idle' });
+      expect(document.activeElement).toBe(
+        within(idle).getByRole('button', { name: rowName }),
+      );
+    });
+
+    it('falls back to the next row when the focused row disappears', () => {
+      const a = item('a', 'Running', NOW - 60_000);
+      const b = item('b', 'Running', NOW - 2 * 60_000);
+      const view = renderPanel({ items: [a, b], openChatSessionIds: [] });
+      screen.getByRole('button', { name: 'a title, a project' }).focus();
+      view.rerender(<ChatDockInboxPanel {...view.props} items={[b]} />);
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'b title, b project' }),
+      );
+    });
+  });
+
   describe('unsent composer draft cue', () => {
     afterEach(() => {
-      chatDraftsStore.clear('ready');
-      chatDraftsStore.clear('never-prompted');
+      for (const key of ['ready', 'never-prompted', 'conv-42', 'agent:1700'])
+        chatDraftsStore.clear(key);
     });
 
     it('marks a row whose open chat holds unsent composer text, and clears with the text', () => {
@@ -176,6 +215,21 @@ describe('ChatDockInboxPanel', () => {
       expect(
         screen.getByRole('button', { name: 'ready title, ready project' }),
       ).not.toBeNull();
+    });
+
+    it('reads the chat store key (chatSessionId), not the row id', () => {
+      // Real merged rows carry a conversation id as `id` and the composer's
+      // store key as `chatSessionId`; the composer writes under the latter.
+      const merged = {
+        ...item('conv-42', 'Ready', NOW - 30 * 60_000),
+        chatSessionId: 'agent:1700',
+      };
+      chatDraftsStore.set('conv-42', 'text under the WRONG key');
+      renderPanel({ items: [merged], openChatSessionIds: ['agent:1700'] });
+      expect(screen.queryByText('Unsent draft')).toBeNull();
+
+      act(() => chatDraftsStore.set('agent:1700', 'text under the store key'));
+      expect(screen.getByText('Unsent draft')).not.toBeNull();
     });
 
     it('whitespace-only text is not a draft, and a Draft-lifecycle row keeps its single Draft chip', () => {

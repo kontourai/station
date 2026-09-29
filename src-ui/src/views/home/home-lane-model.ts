@@ -67,7 +67,9 @@ export function isTerminalLifecycle(
  * `Ready` session read as active — a label nothing computed.
  *
  * - `needsYou`: `Needs attention` — an approval, question, review or block
- *   that YOU can discharge (the fold is already gated on answerability).
+ *   that YOU can discharge (the fold is already gated on answerability), or
+ *   an offline-queued send (`chat.status === 'queued'`) waiting on the
+ *   connection.
  * - `running`: `Running` — a turn or reported child work is in flight.
  * - `idle`: everything else that is live — `Ready`/`Recent`/`Current` (no
  *   turn in flight, nothing asked, not finished) and `Unanswerable`. The

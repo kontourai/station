@@ -392,6 +392,7 @@ export function InboxRow({
     <div
       className={`chat-dock-inbox__row${isCurrent ? ' is-current' : ''}`}
       data-testid="inbox-row"
+      data-row-key={item.id}
       onPointerEnter={hover.onPointerEnter}
       onPointerLeave={hover.onPointerLeave}
       onFocus={hover.onFocus}

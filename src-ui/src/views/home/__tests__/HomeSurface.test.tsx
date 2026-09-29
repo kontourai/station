@@ -84,6 +84,46 @@ function renderHome(
   return { model: m, onNavigate };
 }
 
+describe('HomeSurface live-lane focus', () => {
+  beforeEach(() => localStorage.clear());
+
+  test('a focused row whose lane empties (Running -> Idle) keeps focus', () => {
+    const running = item(
+      'a',
+      'Wire the delegate verbs',
+      'Station',
+      2,
+      'Running',
+    );
+    const idle = item('b', 'Audit the ref translation', 'Station', 30, 'Ready');
+    const view = render(
+      <HomeSurface
+        model={model({ workItems: [running, idle] })}
+        continuation={null}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const open = (title: string) =>
+      screen
+        .getByText(title)
+        .closest<HTMLElement>('.home-view__task-open') as HTMLElement;
+    open('Wire the delegate verbs').focus();
+    expect(document.activeElement).toBe(open('Wire the delegate verbs'));
+
+    view.rerender(
+      <HomeSurface
+        model={model({
+          workItems: [{ ...running, lifecycleLabel: 'Ready' }, idle],
+        })}
+        continuation={null}
+        onNavigate={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
+    expect(document.activeElement).toBe(open('Wire the delegate verbs'));
+  });
+});
+
 describe('HomeSurface composition', () => {
   beforeEach(() => {
     localStorage.clear();
