@@ -220,6 +220,17 @@ describe('fan-out budget (#2922 review)', () => {
       'ci-fast',
     );
     expect(escalated.executionSelection.relatedPaths).toEqual([]);
+    // So does test-full for another reason, even alongside the deferral: a
+    // related path that no longer exists escalates to the same lane.
+    const unavailable = prepare([
+      'scripts/lib/module-entry.mjs',
+      'scripts/lib/icns.mjs',
+      'scripts/lib/no-such-module.mjs',
+    ]);
+    expect(unavailable.selection.lanes.map((lane) => lane.id)).toEqual([
+      'test-full',
+    ]);
+    expect(unavailable.executionSelection.relatedPaths).toEqual([]);
   });
 
   it('refuses a deferred lane on an ordinary edge', () => {
