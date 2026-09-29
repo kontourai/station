@@ -191,6 +191,11 @@ export function WorkspacePaneHostTree({
 }: WorkspacePaneHostTreeProps) {
   const visualViewport = useMobileVisualViewport();
   const compactHostRef = useRef<HTMLElement | null>(null);
+  // Pane-owned failure context, read once per failure by the frame's
+  // boundary and kept per instance (`paneFailureContext`).
+  const failureContextSnapshots = useRef(
+    new Map<string, WorkspacePaneFailureContext | undefined>(),
+  );
   const [compactHeight, setCompactHeight] = useState<number | null>(null);
   useLayoutEffect(() => {
     if (!compact || !compactHostRef.current) {
@@ -388,11 +393,11 @@ export function WorkspacePaneHostTree({
     const occupant = paneById.get(state.document.activeInstanceId);
     const failed =
       occupant && controller.state.rendererFailures[occupant.instanceId];
-    // Read for the occupant whether or not the host has recorded a failure
-    // yet: the frame's own boundary renders the same failure state first,
-    // and keeps it if a hydration restore clears the host's record.
+    // The context captured when this occupant failed (see `onFailure`
+    // below), not a fresh read: the failure screen keeps naming, and acting
+    // on, the thing that failed.
     const occupantFailureContext = occupant
-      ? paneFailureContext?.(occupant)
+      ? failureContextSnapshots.current.get(occupant.instanceId)
       : undefined;
     // A pane-supplied Back changes what the pane opens, then remounts it on
     // that state: the retry is what makes the new state visible.
@@ -467,9 +472,16 @@ export function WorkspacePaneHostTree({
                 elementless
                 instanceId={occupant.instanceId}
                 paneName={paneLabel(occupant)}
-                failureContext={occupantFailureContext}
+                readFailureContext={
+                  paneFailureContext
+                    ? () => paneFailureContext(occupant)
+                    : undefined
+                }
                 runtime={runtime}
-                onFailure={controller.fail}
+                onFailure={(instanceId, detail, context) => {
+                  failureContextSnapshots.current.set(instanceId, context);
+                  controller.fail(instanceId, detail);
+                }}
                 onRetry={controller.retry}
               >
                 {renderPane(occupant, CHROMELESS_PANE_PRESENTATION)}

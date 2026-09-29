@@ -2073,21 +2073,6 @@
     min-height: 44px;
     min-width: 44px;
   }
-
-  /* The Agent/Model/Mode rail has no fill of its own and sits flush on the
-     transcript's bottom edge, so a line scrolled to that edge was sliced
-     mid-glyph right against the chips and read as text running under them.
-     Fade the transcript out over its own bottom gutter instead: at rest at
-     the bottom only padding is in the fade, and mid-scroll the cut line
-     dissolves before it reaches the rail. */
-  .chat-messages {
-    -webkit-mask-image: linear-gradient(
-      to bottom,
-      #000 calc(100% - 16px),
-      transparent
-    );
-    mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
-  }
 }
 
 /* #1132 defect 2: below this width the toolbar's action cluster no longer fits,
@@ -2209,7 +2194,9 @@
   height: 44px;
   border: 0;
   background: transparent;
-  color: var(--text-muted);
+  /* A control, so it must stand off the surface at 3:1 (WCAG 1.4.11);
+     --text-muted read as a faint smudge under each answer. */
+  color: var(--text-secondary);
   border-radius: var(--radius-md);
 }
 .message-details__panel {
@@ -2292,4 +2279,20 @@
 .source-quote-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The Agent/Model/Mode rail has no fill of its own and sits flush on the
+   transcript's bottom edge, so a line scrolled to that edge was sliced
+   mid-glyph right against the chips and read as text running under them — on
+   a phone and in a desktop dock alike. Fade the transcript out over its own
+   bottom gutter instead: at rest at the bottom only padding is in the fade,
+   and mid-scroll the cut line dissolves before it reaches the rail. A static
+   mask on the scroller, no animation and no blur. */
+.chat-messages {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 16px),
+    transparent
+  );
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
 }

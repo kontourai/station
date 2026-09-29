@@ -69,9 +69,7 @@ vi.mock('../../hooks/useKeyboardShortcut', () => ({
 
 const STORE_KEY = 'chat-failure-store-key';
 const CONVERSATION_ID = 'conversation-that-crashes';
-// A derived title is the user's first words, markdown included.
-const TITLE = 'Are you running the **latest** version? Run `ls -la`';
-const PLAIN_TITLE = 'Are you running the latest version? Run ls -la';
+const TITLE = 'Are you running the latest version? Run ls -la';
 const CRASH = "Cannot read properties of undefined (reading 'capabilities')";
 
 /** Throws while its conversation is the open one, like a conversation-specific crash. */
@@ -148,21 +146,22 @@ test('a crashed Chat pane names the conversation, shows the error, and goes back
   expect(failure.className).toContain(
     'workspace-pane-host--chromeless-failure',
   );
-  expect(within(failure).getByText('Chat couldn’t open')).toBeTruthy();
-  // Which conversation failed, not just which pane: labelled, and as plain
-  // text rather than raw markdown.
-  const name = within(failure).getByText(PLAIN_TITLE);
+  // The failure is the heading; what failed is secondary to it.
+  expect(
+    within(failure).getByRole('heading', { name: 'Chat couldn’t open' }),
+  ).toBeTruthy();
+  // Which conversation failed, not just which pane, labelled as the chat.
+  const name = within(failure).getByText(TITLE);
   expect(name.className).toBe('workspace-pane-failure__subject-name');
   expect(
     name.previousElementSibling?.textContent,
     'the name is labelled as the chat',
   ).toBe('Chat');
-  expect(within(failure).queryByText(TITLE)).toBeNull();
   // The raw details sit inside the failure card, under its actions.
   expect(
     within(failure)
       .getByRole('button', { name: 'Try again' })
-      .closest('.workspace-pane-failure__footer')
+      .closest('.workspace-pane-failure__card')
       ?.querySelector('details'),
   ).not.toBeNull();
   // The error the boundary caught, kept behind a disclosure rather than
@@ -173,6 +172,9 @@ test('a crashed Chat pane names the conversation, shows the error, and goes back
   expect(details, 'raw details sit behind a disclosure').not.toBeNull();
   expect(details?.open).toBe(false);
   expect(details?.textContent).toContain(`TypeError: ${CRASH}`);
+  // Frames keep file names, never the machine's paths or origins.
+  expect(details?.textContent).not.toMatch(/\/(?:Users|home|private)\//);
+  expect(details?.textContent).not.toMatch(/[a-z]+:\/\//);
 
   // A plain retry reopens the same conversation and fails again.
   fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }));
@@ -181,8 +183,8 @@ test('a crashed Chat pane names the conversation, shows the error, and goes back
   ).toBeTruthy();
   expect(screen.queryByTestId('chat-list')).toBeNull();
 
-  // Back clears the open conversation and remounts the pane on the list.
-  fireEvent.click(screen.getByRole('button', { name: 'Back to chats' }));
+  // Close clears the open conversation and remounts the pane without it.
+  fireEvent.click(screen.getByRole('button', { name: 'Close this chat' }));
   await waitFor(() => {
     expect(screen.queryByTestId('chat-list')).not.toBeNull();
   });
@@ -208,13 +210,58 @@ test('with no conversation open the failure offers only the retry', async () => 
     name: 'Chat unavailable',
   });
   expect(
-    within(failure).queryByRole('button', { name: 'Back to chats' }),
+    within(failure).queryByRole('button', { name: 'Close this chat' }),
   ).toBeNull();
-  expect(within(failure).queryByText(PLAIN_TITLE)).toBeNull();
+  expect(within(failure).queryByText(TITLE)).toBeNull();
 
   crash = false;
   fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }));
   await waitFor(() => {
     expect(screen.queryByTestId('recovered')).not.toBeNull();
   });
+});
+
+test('the failure keeps naming, and acting on, the chat that failed', async () => {
+  const OTHER = 'another-conversation';
+  render(
+    <RegionPaneHost
+      renderChatPane={() => <ConversationSpecificCrash />}
+      chatPaneFailureContext={ambientChatPaneFailureContext}
+    />,
+  );
+  const failure = await screen.findByRole('region', {
+    name: 'Chat unavailable',
+  });
+  expect(within(failure).getByText(TITLE)).toBeTruthy();
+
+  // Another chat is opened elsewhere while the failure is on screen.
+  act(() => navigationStore.setActiveChat(OTHER));
+  expect(
+    within(screen.getByRole('region', { name: 'Chat unavailable' })).getByText(
+      TITLE,
+    ),
+    'the failure is not relabelled by a later selection',
+  ).toBeTruthy();
+
+  // Close only ever closes the failed chat: the newer selection survives,
+  // and the pane remounts on it.
+  fireEvent.click(screen.getByRole('button', { name: 'Close this chat' }));
+  await waitFor(() => {
+    expect(screen.queryByTestId('chat-list')).not.toBeNull();
+  });
+  expect(navigationStore.getSnapshot().activeChat).toBe(OTHER);
+});
+
+test('the failure can minimize the dock its header would have collapsed', async () => {
+  navigationStore.setDockState(true, true);
+  render(
+    <RegionPaneHost
+      renderChatPane={() => <ConversationSpecificCrash />}
+      chatPaneFailureContext={ambientChatPaneFailureContext}
+    />,
+  );
+  await screen.findByRole('region', { name: 'Chat unavailable' });
+  fireEvent.click(screen.getByRole('button', { name: 'Minimize' }));
+  expect(new URL(window.location.href).searchParams.get('dock')).toBeNull();
+  expect(new URL(window.location.href).searchParams.get('maximize')).toBeNull();
 });

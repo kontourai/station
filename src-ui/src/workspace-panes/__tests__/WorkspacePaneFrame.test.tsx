@@ -72,6 +72,8 @@ describe('WorkspacePaneFrame', () => {
         name: 'Error',
         message: 'intentional pane failure',
       }),
+      // No pane-owned failure context was supplied.
+      undefined,
     );
     expect(
       screen.getByText('Technical details').closest('details')?.textContent,

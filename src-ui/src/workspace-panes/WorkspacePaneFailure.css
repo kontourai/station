@@ -11,14 +11,66 @@
   overflow-y: auto;
 }
 
-/* What failed, labelled: a small caption over the plain-text name, clamped
-   to two lines with an ellipsis instead of a bold raw excerpt. */
+/* One card, everything inside it, one reading width: heading, what failed,
+   why, the actions, and the raw details under them. */
+.workspace-pane-failure__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-space-2);
+  width: 100%;
+  max-width: 40rem;
+  margin-inline: auto;
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  text-align: center;
+}
+
+.workspace-pane-failure__dismiss {
+  position: absolute;
+  top: var(--k-space-1);
+  right: var(--k-space-1);
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-text-muted);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+
+.workspace-pane-failure__dismiss:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.workspace-pane-failure__icon {
+  color: var(--color-error, var(--k-negative));
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.workspace-pane-failure__title {
+  margin: 0;
+  color: var(--k-text);
+  font-size: var(--k-text-lg);
+  font-weight: 600;
+}
+
+/* What failed, secondary to the heading: a small caption over the plain-text
+   name, clamped to two lines. */
 .workspace-pane-failure__subject {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  margin-bottom: var(--k-space-2);
+  max-width: 100%;
+  margin: 0;
 }
 
 .workspace-pane-failure__subject-label {
@@ -32,7 +84,8 @@
   display: -webkit-box;
   max-width: 100%;
   overflow: hidden;
-  color: var(--k-text);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
   font-weight: 400;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -40,15 +93,9 @@
 }
 
 .workspace-pane-failure__reason {
-  display: block;
-}
-
-.workspace-pane-failure__footer {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--k-space-3);
-  width: 100%;
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 
 .workspace-pane-failure__actions {
@@ -56,10 +103,12 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--k-space-2);
+  margin-top: var(--k-space-2);
 }
 
 .workspace-pane-failure__details {
   width: 100%;
+  margin-top: var(--k-space-2);
   border-top: 1px solid var(--k-line);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);

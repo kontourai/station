@@ -741,6 +741,10 @@ button:hover {
   gap: 14px;
   padding: 3px 14px;
   padding-top: var(--safe-top);
+  /* Landscape phones: keep the drawer and overflow controls clear of the
+     side insets; 14px wherever there are none. */
+  padding-left: max(14px, var(--safe-left));
+  padding-right: max(14px, var(--safe-right));
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
 }
@@ -3449,6 +3453,12 @@ button:hover {
   overflow-wrap: anywhere;
 }
 
+/* The dock's "No chat open" card keeps the dock's gutter instead of
+   drawing its dashed edge flush against the screen. */
+.chat-dock__no-chat {
+  margin: var(--k-space-4);
+}
+
 .chat-dock__empty {
   flex: 1;
   display: flex;
@@ -4084,6 +4094,10 @@ button:hover {
   vertical-align: top;
   overflow-wrap: normal;
   word-break: normal;
+  /* A floor per column so a prose column is not squeezed to its longest
+     word (a very tall row) once the table is wider than the phone anyway;
+     the wrapper scrolls. */
+  min-width: 9rem;
 }
 
 .message.assistant table td code,
@@ -9253,9 +9267,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      gives way — one line, ellipsised — not the chat title, which used to be
      held to 28% of the bar and clamped to two lines beside empty space. */
   --chat-dock-mobile-header-edge: 96px;
+  /* `fit-content`: a short title ("Chat", "New chat") gives its unused width
+     back to the edges, so the project name only truncates when the title
+     actually needs the room. The 80px floor is the identity's own min-width. */
   grid-template-columns:
     minmax(0, 1fr)
-    minmax(80px, calc(100% - 2 * var(--chat-dock-mobile-header-edge)))
+    fit-content(calc(100% - 2 * var(--chat-dock-mobile-header-edge)))
     minmax(0, 1fr);
   align-items: center;
   gap: var(--space-1);
@@ -9505,7 +9522,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .chat-dock__mobile-identity {
   justify-content: center;
-  min-width: 0;
+  min-width: 80px;
   text-align: center;
 }
 
@@ -9821,6 +9838,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
       --chat-visual-viewport-bottom,
       var(--visual-viewport-bottom-inset, 0px)
     );
+    /* A phone in landscape has side insets (the notch or Dynamic Island on
+       one side, the rounded corner on the other; 59px on current iPhones).
+       The sheet's surface still runs edge to edge; its header, transcript
+       and composer sit inside the insets. */
+    padding-inline: var(--safe-left, 0px) var(--safe-right, 0px);
   }
 
   /* A full-screen mobile chat owns the viewport. ChatDockMobileHeader already

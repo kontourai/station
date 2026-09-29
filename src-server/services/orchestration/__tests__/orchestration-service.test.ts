@@ -13616,7 +13616,10 @@ describe('OrchestrationService', () => {
       turnId: 'turn-1',
       createdAt: '2026-07-23T00:00:01.000Z',
       method: 'turn.started',
-      prompt: 'Continue the Station history fix',
+      // Markdown in the first message: every conversation read path (the
+      // session query module AND the lineage's readSessionConversation /
+      // list folds) must title it as plain text.
+      prompt: 'Continue the **Station** `history` fix',
     });
     eventStore.appendEvent({
       eventId: 'conversation-completed',

@@ -3,49 +3,48 @@ import { navigationStore } from '../../contexts/navigation-store';
 import type { WorkspacePaneFailureContext } from '../../workspace-panes/WorkspacePaneFailure';
 
 /**
- * The Chat pane's side of a renderer crash: which conversation was open and a
- * way back to the chat list.
+ * The Chat pane's side of a renderer crash: which conversation was open, a
+ * way to close it, and a way to minimize the dock (the pane's own header, with
+ * its collapse control, went down with the pane).
  *
  * The open conversation is the URL's `chat` parameter, and a remounted Chat
  * pane reopens it (`useChatDockActiveChatSync`). So when the crash is specific
  * to that conversation, a plain retry reopens the same conversation and
- * crashes again; clearing the parameter is the recovery a retry cannot give.
- * Without an open conversation there is nothing to go back from, and the
- * failure state offers only the retry.
+ * crashes again; closing it is the recovery a retry cannot give. The pane then
+ * opens on its "No chat open" state (the chat list is one tap away in its
+ * header), which is why the action is named for what it does.
  *
- * A plain read of the two stores, not a hook: the failure state is a static
- * screen rendered by the pane host, which supplies no chat context of its own
- * (`RegionPaneHost` takes its renderers from the caller for the same reason).
+ * The host calls this once, when the pane fails, and keeps the result: the
+ * conversation id is captured here, so if another chat is opened elsewhere
+ * while the failure is on screen, Close only ever closes the one that failed.
  */
 export function ambientChatPaneFailureContext():
   | WorkspacePaneFailureContext
   | undefined {
-  const activeChat = navigationStore.getSnapshot().activeChat;
-  if (!activeChat) return undefined;
+  const navigation = navigationStore.getSnapshot();
+  const failedChat = navigation.activeChat;
+  const dismiss = {
+    label: 'Minimize',
+    onDismiss: () => navigationStore.setDockState(false, false),
+  };
+  if (!failedChat) return { dismiss };
   const open = Object.entries(activeChatsStore.getSnapshot()).find(
     ([storeId, chat]) =>
-      storeId === activeChat || chat.conversationId === activeChat,
+      storeId === failedChat || chat.conversationId === failedChat,
   )?.[1];
-  const title = open?.title ? plainChatTitle(open.title) : '';
+  // Derived titles arrive as plain text (the server strips the markdown of
+  // the first message they come from); the screen renders it as text.
+  const title = open?.title?.trim();
   return {
     ...(title ? { subject: { label: 'Chat', name: title } } : {}),
     back: {
-      label: 'Back to chats',
-      onBack: () => navigationStore.setActiveChat(null),
+      label: 'Close this chat',
+      onBack: () => {
+        if (navigationStore.getSnapshot().activeChat === failedChat) {
+          navigationStore.setActiveChat(null);
+        }
+      },
     },
+    dismiss,
   };
-}
-
-/**
- * A chat title as plain text. Untitled chats are titled by the first thing
- * the user wrote, which is often markdown ("Run `ls -la`"); the failure
- * screen shows it as a name, not as markup.
- */
-function plainChatTitle(title: string): string {
-  return title
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[`*_~]+/g, '')
-    .replace(/^\s*(?:#{1,6}|>|[-+]|\d+\.)\s+/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
 }

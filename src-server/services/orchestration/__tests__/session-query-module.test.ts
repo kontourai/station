@@ -540,8 +540,9 @@ describe('SessionQueryModule', () => {
           'Are you running the latest version of the tooling here? Run `ls -la`, `git status`, and read README.md',
       },
     ]);
+    // ...and is a plain-text name: the markdown of the message is dropped.
     expect(long.conversation.title).toBe(
-      'Are you running the latest version of the tooling here? Run `ls -la`, `git\u2026',
+      'Are you running the latest version of the tooling here? Run ls -la, git\u2026',
     );
     expect(Array.from(long.conversation.title).length).toBeLessThanOrEqual(80);
 

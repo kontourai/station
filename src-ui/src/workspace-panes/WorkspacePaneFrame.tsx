@@ -22,13 +22,22 @@ class WorkspacePaneErrorBoundary extends Component<
   {
     children: ReactNode;
     paneName: string;
-    failureContext?: WorkspacePaneFailureContext;
-    onFailure?: (detail: WorkspacePaneFailureDetail) => void;
+    readFailureContext?: () => WorkspacePaneFailureContext | undefined;
+    onFailure?: (
+      detail: WorkspacePaneFailureDetail,
+      context: WorkspacePaneFailureContext | undefined,
+    ) => void;
     onRetry: () => boolean | Promise<boolean>;
   },
-  { error: WorkspacePaneFailureDetail | null }
+  {
+    error: WorkspacePaneFailureDetail | null;
+    context?: WorkspacePaneFailureContext;
+  }
 > {
-  state: { error: WorkspacePaneFailureDetail | null } = { error: null };
+  state: {
+    error: WorkspacePaneFailureDetail | null;
+    context?: WorkspacePaneFailureContext;
+  } = { error: null };
 
   static getDerivedStateFromError(error: unknown) {
     return { error: workspacePaneFailureDetail(error) };
@@ -40,18 +49,23 @@ class WorkspacePaneErrorBoundary extends Component<
     // its failure state can show what failed instead of discarding it (React
     // also reports it to the console). Runtime ownership is optional because
     // direct routes deliberately retain their lightweight local boundary.
-    this.props.onFailure?.(workspacePaneFailureDetail(error));
+    // The pane-owned context is read HERE, once, at the moment of failure,
+    // and kept: a later change (another chat opened elsewhere) must not
+    // relabel this failure or redirect its actions.
+    const context = this.props.readFailureContext?.();
+    this.setState({ context });
+    this.props.onFailure?.(workspacePaneFailureDetail(error), context);
   }
 
   private retry = () => {
     void Promise.resolve(this.props.onRetry()).then((recovered) => {
-      if (recovered) this.setState({ error: null });
+      if (recovered) this.setState({ error: null, context: undefined });
     });
   };
 
   render() {
     if (this.state.error) {
-      const context = this.props.failureContext;
+      const context = this.state.context;
       const back = context?.back;
       return (
         <WorkspacePaneFailure
@@ -94,7 +108,7 @@ export function WorkspacePaneFrame({
   onRetry,
   runtime,
   elementless,
-  failureContext,
+  readFailureContext,
 }: {
   instanceId: WorkspacePaneInstanceId;
   paneName: string;
@@ -118,11 +132,12 @@ export function WorkspacePaneFrame({
    * that can switch between panes.
    */
   elementless?: boolean;
-  /** Pane-owned failure context (see `WorkspacePaneFailureContext`). */
-  failureContext?: WorkspacePaneFailureContext;
+  /** Reads the pane-owned failure context; called once, when the pane fails. */
+  readFailureContext?: () => WorkspacePaneFailureContext | undefined;
   onFailure?: (
     instanceId: WorkspacePaneInstanceId,
     detail: WorkspacePaneFailureDetail,
+    context?: WorkspacePaneFailureContext,
   ) => void;
   onRetry?: (instanceId: WorkspacePaneInstanceId) => boolean | Promise<boolean>;
   /** The host runtime invokes these callbacks only after this renderer frame exists. */
@@ -152,8 +167,8 @@ export function WorkspacePaneFrame({
     <WorkspacePaneErrorBoundary
       key={`${instanceId}:${retry}`}
       paneName={paneName}
-      failureContext={failureContext}
-      onFailure={(detail) => onFailure?.(instanceId, detail)}
+      readFailureContext={readFailureContext}
+      onFailure={(detail, context) => onFailure?.(instanceId, detail, context)}
       onRetry={async () => {
         const recovered = (await onRetry?.(instanceId)) ?? true;
         if (recovered) setRetry((current) => current + 1);

@@ -2050,6 +2050,12 @@ test('the maximized phone dock header clears the status bar once, not twice', as
   await openComposer(page, true);
   const header = page.getByTestId('chat-dock-mobile-header');
   const resting = (await header.boundingBox())!;
+  const dockBorderTop = () =>
+    page
+      .locator('.chat-dock')
+      .evaluate((element) => getComputedStyle(element).borderTopWidth);
+  // Premise: the resting sheet draws its accent top edge.
+  expect(await dockBorderTop()).not.toBe('0px');
 
   await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
   await page.getByRole('menuitem', { name: /^Expand chat/ }).click();
@@ -2067,6 +2073,9 @@ test('the maximized phone dock header clears the status bar once, not twice', as
   });
   // The premise: the dock itself sits below the inset.
   expect(geometry.dockTop).toBeGreaterThanOrEqual(SAFE_TOP_PX);
+  // Maximized, nothing is above the sheet for an edge to separate it from:
+  // no accent rule under the status bar or under the toolbar's hairline.
+  expect(await dockBorderTop()).toBe('0px');
   // So the header is the same bar it is when not maximized — no second inset.
   expect(
     geometry.headerHeight,
@@ -2074,18 +2083,127 @@ test('the maximized phone dock header clears the status bar once, not twice', as
   ).toBeLessThanOrEqual(resting.height + 1);
   expect(geometry.leadingTop - geometry.dockTop).toBeLessThan(SAFE_TOP_PX / 2);
 
-  // The centred title takes the bar minus a fixed reserve for each edge; the
-  // project name is what truncates. At 28% of the bar it got ~107px here.
+  // The centred title takes the bar minus a fixed reserve for each edge
+  // (`fit-content`), and the project name is what truncates. At 28% of the
+  // bar a long title got ~107px here. The fixture's title is "New chat", so a
+  // long one is written into the title node: the track sizing under test is
+  // pure CSS, and re-measuring after the text changes exercises exactly it.
+  await header.locator('.chat-dock__mobile-title-text').evaluate((element) => {
+    element.textContent =
+      'Are you running the latest version of the tooling here';
+  });
   const identity = (await header
     .getByRole('button', { name: /^Switch task/ })
     .boundingBox())!;
-  expect(identity.width).toBeGreaterThanOrEqual(180);
   const headerBox = (await header.boundingBox())!;
+  expect(identity.width).toBeGreaterThanOrEqual(180);
   expect(
     Math.abs(
       identity.x + identity.width / 2 - (headerBox.x + headerBox.width / 2),
     ),
   ).toBeLessThanOrEqual(1);
+  const project = (await header
+    .getByRole('button', { name: /^Switch project/ })
+    .boundingBox())!;
+  expect(project.width).toBeGreaterThanOrEqual(44);
+  expect(project.x + project.width).toBeLessThanOrEqual(identity.x + 1);
+});
+
+/**
+ * iPhone inset contract. A WKWebView with `viewport-fit=cover` reports the
+ * Dynamic Island / home indicator / landscape notch through
+ * `env(safe-area-inset-*)`, which index.css reads into the `--safe-*` tokens
+ * (Android's bridge writes the same tokens). Headless Chromium reports 0 for
+ * env(), so the tokens are written directly: each inset must be honoured
+ * exactly once by the maximized chat — top by the dock's position, bottom by
+ * the composer's padding, and the landscape sides by the sheet's inline
+ * padding.
+ */
+async function writeSafeArea(
+  page: Page,
+  inset: { top: number; right: number; bottom: number; left: number },
+) {
+  await page.addInitScript((value) => {
+    const apply = () => {
+      const style = document.documentElement.style;
+      style.setProperty('--safe-top', `${value.top}px`);
+      style.setProperty('--safe-right', `${value.right}px`);
+      style.setProperty('--safe-bottom', `${value.bottom}px`);
+      style.setProperty('--safe-left', `${value.left}px`);
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', apply, { once: true });
+    } else {
+      apply();
+    }
+  }, inset);
+}
+
+async function maximizeChat(page: Page) {
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Expand chat/ }).click();
+  await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+}
+
+const chatGeometry = (page: Page) =>
+  page.evaluate(() => {
+    const box = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`missing ${selector}`);
+      return element.getBoundingClientRect();
+    };
+    const leading = box('.chat-dock__mobile-leading');
+    const overflow = box('.chat-dock__mobile-overflow-trigger');
+    const capsule = box('.chat-input__capsule');
+    return {
+      vw: innerWidth,
+      vh: innerHeight,
+      dockTop: box('.chat-dock').top,
+      headerTop: box('.chat-dock__mobile-header').top,
+      headerHeight: box('.chat-dock__mobile-header').height,
+      leadingLeft: leading.left,
+      overflowRight: overflow.right,
+      capsuleLeft: capsule.left,
+      capsuleRight: capsule.right,
+      capsuleBottom: capsule.bottom,
+    };
+  });
+
+test('an iPhone 15 portrait inset is honoured once by the maximized chat', async ({
+  page,
+}) => {
+  await writeSafeArea(page, { top: 59, right: 0, bottom: 34, left: 0 });
+  await page.setViewportSize({ width: 393, height: 852 });
+  await mockChatShell(page);
+  await openComposer(page, true);
+  await maximizeChat(page);
+  const g = await chatGeometry(page);
+  // Top: the sheet clears the Dynamic Island (plus its 4px toolbar
+  // clearance) and its header starts right there, not a second inset lower.
+  expect(g.dockTop).toBe(59 + 4);
+  expect(g.headerTop - g.dockTop, JSON.stringify(g)).toBeLessThanOrEqual(2);
+  expect(g.headerHeight).toBeLessThan(59);
+  // Bottom: the composer ends exactly one home-indicator inset above the edge.
+  expect(Math.round(g.vh - g.capsuleBottom), JSON.stringify(g)).toBe(34);
+});
+
+test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
+  test.use({ hasTouch: true, isMobile: true });
+  test('a landscape iPhone keeps the chat clear of its side insets', async ({
+    page,
+  }) => {
+    await writeSafeArea(page, { top: 0, right: 59, bottom: 21, left: 59 });
+    await page.setViewportSize({ width: 852, height: 393 });
+    await mockChatShell(page);
+    await openComposer(page, true);
+    await maximizeChat(page);
+    const g = await chatGeometry(page);
+    expect(g.leadingLeft, JSON.stringify(g)).toBeGreaterThanOrEqual(59);
+    expect(g.overflowRight).toBeLessThanOrEqual(g.vw - 59);
+    expect(g.capsuleLeft).toBeGreaterThanOrEqual(59);
+    expect(g.capsuleRight).toBeLessThanOrEqual(g.vw - 59);
+    expect(Math.round(g.vh - g.capsuleBottom), JSON.stringify(g)).toBe(21);
+  });
 });
 
 /**

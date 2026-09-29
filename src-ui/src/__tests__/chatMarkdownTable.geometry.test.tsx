@@ -39,7 +39,7 @@ function answerMarkup(): string {
   return html;
 }
 
-function fixtureHtml(answer: string): string {
+function fixtureHtml(answer: string, desktop = false): string {
   const css = [
     resolveCssImports(resolve(HERE, '../index.css')),
     resolveCssImports(resolve(HERE, '../components/chat/chat.css')),
@@ -50,10 +50,19 @@ function fixtureHtml(answer: string): string {
   <head><style>${css}</style></head>
   <body style="margin:0">
     <div class="chat-messages" style="height:900px">
-      <div class="message-row message-row--compact">
-        <div class="message assistant">${answer}</div>
-        <button type="button" class="message-details__trigger">⋯</button>
-      </div>
+      ${
+        desktop
+          ? // The desktop row: avatar beside an answer capped at 70% inline,
+            // exactly as MessageBubble renders it off a phone.
+            `<div class="message-row">
+               <div class="message-row__avatar" style="width:32px;height:32px"></div>
+               <div class="message assistant" style="position:relative;max-width:70%">${answer}</div>
+             </div>`
+          : `<div class="message-row message-row--compact">
+               <div class="message assistant">${answer}</div>
+               <button type="button" class="message-details__trigger">⋯</button>
+             </div>`
+      }
     </div>
   </body>
 </html>`;
@@ -71,59 +80,73 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
     });
     afterEach(() => cleanup());
 
-    test('scroll sideways inside the answer instead of breaking words', async () => {
-      const page = await browser.newPage({
-        viewport: { width: 412, height: 915 },
-      });
-      try {
-        await page.setContent(fixtureHtml(answerMarkup()));
-        const m = await page.evaluate(() => {
-          const lines = (element: Element) => {
-            const range = document.createRange();
-            range.selectNodeContents(element);
-            return new Set(
-              [...range.getClientRects()].map((rect) => Math.round(rect.top)),
-            ).size;
-          };
-          const wrap = document.querySelector('.chat-markdown-table');
-          const message = document.querySelector('.message.assistant');
-          const row = document.querySelector('.message-row');
-          if (!wrap || !message || !row) throw new Error('fixture incomplete');
-          const firstColumn = [
-            ...document.querySelectorAll('tbody tr td:first-child'),
-          ].map((cell) => ({
-            text: cell.textContent ?? '',
-            lines: lines(cell),
-          }));
-          const code = [...document.querySelectorAll('td code')].map(
-            (element) => ({ text: element.textContent, lines: lines(element) }),
-          );
-          const fourth = document.querySelector('tbody td:nth-child(4)');
-          return {
-            wrapClient: wrap.clientWidth,
-            wrapScroll: wrap.scrollWidth,
-            messageRight: message.getBoundingClientRect().right,
-            rowRight: row.getBoundingClientRect().right,
-            firstColumn,
-            code,
-            fourthAlign: fourth ? getComputedStyle(fourth).textAlign : null,
-          };
+    test.each([
+      { label: 'a 412px phone answer', width: 412, desktop: false },
+      {
+        label: 'a desktop answer in its 70% column',
+        width: 700,
+        desktop: true,
+      },
+    ])(
+      '$label: scrolls sideways instead of breaking words',
+      async ({ width, desktop }) => {
+        const page = await browser.newPage({
+          viewport: { width, height: 915 },
         });
-        // The answer stays inside its row; the table scrolls inside it.
-        expect(m.messageRight).toBeLessThanOrEqual(m.rowRight + 0.5);
-        expect(m.wrapScroll, JSON.stringify(m)).toBeGreaterThan(m.wrapClient);
-        // Two-word cells take at most two lines: no mid-word breaks.
-        for (const cell of m.firstColumn) {
-          expect(cell.lines, JSON.stringify(cell)).toBeLessThanOrEqual(2);
+        try {
+          await page.setContent(fixtureHtml(answerMarkup(), desktop));
+          const m = await page.evaluate(() => {
+            const lines = (element: Element) => {
+              const range = document.createRange();
+              range.selectNodeContents(element);
+              return new Set(
+                [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+              ).size;
+            };
+            const wrap = document.querySelector('.chat-markdown-table');
+            const message = document.querySelector('.message.assistant');
+            const row = document.querySelector('.message-row');
+            if (!wrap || !message || !row)
+              throw new Error('fixture incomplete');
+            const firstColumn = [
+              ...document.querySelectorAll('tbody tr td:first-child'),
+            ].map((cell) => ({
+              text: cell.textContent ?? '',
+              lines: lines(cell),
+            }));
+            const code = [...document.querySelectorAll('td code')].map(
+              (element) => ({
+                text: element.textContent,
+                lines: lines(element),
+              }),
+            );
+            const fourth = document.querySelector('tbody td:nth-child(4)');
+            return {
+              wrapClient: wrap.clientWidth,
+              wrapScroll: wrap.scrollWidth,
+              messageRight: message.getBoundingClientRect().right,
+              rowRight: row.getBoundingClientRect().right,
+              firstColumn,
+              code,
+              fourthAlign: fourth ? getComputedStyle(fourth).textAlign : null,
+            };
+          });
+          // The answer stays inside its row; the table scrolls inside it.
+          expect(m.messageRight).toBeLessThanOrEqual(m.rowRight + 0.5);
+          expect(m.wrapScroll, JSON.stringify(m)).toBeGreaterThan(m.wrapClient);
+          // Two-word cells take at most two lines: no mid-word breaks.
+          for (const cell of m.firstColumn) {
+            expect(cell.lines, JSON.stringify(cell)).toBeLessThanOrEqual(2);
+          }
+          // Inline code stays whole, hyphens included.
+          for (const code of m.code) {
+            expect(code.lines, JSON.stringify(code)).toBe(1);
+          }
+          expect(m.fourthAlign).toBe('left');
+        } finally {
+          await page.close();
         }
-        // Inline code stays whole, hyphens included.
-        for (const code of m.code) {
-          expect(code.lines, JSON.stringify(code)).toBe(1);
-        }
-        expect(m.fourthAlign).toBe('left');
-      } finally {
-        await page.close();
-      }
-    });
+      },
+    );
   },
 );

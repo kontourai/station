@@ -17,6 +17,7 @@ import {
   projectRuntimeEventsToMessages,
 } from '@kontourai/station-shared/runtime-event-projection';
 import type { SafeToolResultProjection } from '@kontourai/thread';
+import { derivedConversationTitle } from './conversation-title.js';
 import {
   projectToolCompletedDescriptor,
   type ToolCompletedEventDescriptor,
@@ -300,24 +301,6 @@ export interface SessionQueryModule {
   ): Promise<SessionAnswerBasisQueryOutcome>;
 }
 
-const TITLE_MAX_CODE_POINTS = 80;
-
-/**
- * A derived title bounded to 80 code points. A cut ends at the last word
- * boundary in the second half of the budget and is marked with "…", so a
- * reader sees the text went on instead of a word sliced mid-way
- * ("…`git statu").
- */
-function boundedTitle(text: string): string {
-  const points = Array.from(text);
-  if (points.length <= TITLE_MAX_CODE_POINTS) return text;
-  const head = points.slice(0, TITLE_MAX_CODE_POINTS - 1).join('');
-  const boundary = head.search(/\s\S*$/);
-  const cut =
-    boundary >= TITLE_MAX_CODE_POINTS / 2 ? head.slice(0, boundary) : head;
-  return `${cut.trimEnd()}\u2026`;
-}
-
 /** The title a conversation shows before anything renames it. */
 const UNTITLED_CONVERSATION_TITLE = 'New chat';
 
@@ -337,8 +320,8 @@ export function conversationTitle(
     if (message.role !== 'user') continue;
     for (const part of message.parts) {
       if (part.type !== 'text') continue;
-      const text = part.text?.trim();
-      if (text) return boundedTitle(text);
+      const title = derivedConversationTitle(part.text);
+      if (title) return title;
     }
   }
   return UNTITLED_CONVERSATION_TITLE;
