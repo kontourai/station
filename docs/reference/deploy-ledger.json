@@ -1,5 +1,39 @@
 [
   {
+    "timestampUtc": "2026-09-29T00:28:17Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2462.3",
+    "sha": "ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe",
+    "artifactBuiltAt": "2026-09-28T23:41:47.339Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36497491629",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36497491629)"
+    ],
+    "changelog": {
+      "previousSha": "d0ca944c58c8dd4de5a17563eb97d06dbdbe3512",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2935](https://github.com/kontourai/station/pull/2935) fix(nightly): let the portable publish job read its signing key",
+          "[#2866](https://github.com/kontourai/station/pull/2866) fix(plugins): strip git metadata from proposed remote clones",
+          "[#2934](https://github.com/kontourai/station/pull/2934) fix(docs): scope documentation freshness to each PR, add docs:review:record and a Nightly sweep"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2929](https://github.com/kontourai/station/pull/2929) test(install): catch an early pipe close on Linux, not only macOS",
+          "[#2906](https://github.com/kontourai/station/pull/2906) test: test-audit Server routes, domain, runtime/mcp and providers (batches 39, 48, 49, 50, 55, 57, 59)"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-09-29T00:28:15Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2462.3",
