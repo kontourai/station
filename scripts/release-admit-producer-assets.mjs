@@ -74,11 +74,17 @@ export function producerArtifactSources({ channel, iosBundleVersion } = {}) {
 }
 
 function sourceFiles(artifactsRoot, { artifact, directory }) {
-  const path = join(artifactsRoot, artifact, directory);
   const label = directory === '.' ? artifact : `${artifact}/${directory}`;
-  if (!existsSync(path)) fail(`producer artifact ${label} is missing`);
-  if (!lstatSync(path).isDirectory())
-    fail(`producer artifact ${label} is not a directory`);
+  // Check each level with lstat so a symlinked artifact directory is refused
+  // rather than followed.
+  const levels = [join(artifactsRoot, artifact)];
+  if (directory !== '.') levels.push(join(levels[0], directory));
+  for (const level of levels) {
+    if (!existsSync(level)) fail(`producer artifact ${label} is missing`);
+    if (!lstatSync(level).isDirectory())
+      fail(`producer artifact ${label} is not a directory`);
+  }
+  const path = levels.at(-1);
   const files = [];
   // Producer asset directories are flat; a nested directory or symlink means
   // the upload layout changed, so refuse rather than guess.
@@ -117,17 +123,31 @@ export function admitProducerAssets({
   return [...planned.keys()].sort();
 }
 
-function option(name) {
-  const index = process.argv.indexOf(name);
-  return index < 0 ? undefined : process.argv[index + 1];
+const OPTIONS = {
+  '--artifacts-root': 'artifactsRoot',
+  '--output-dir': 'outputDir',
+  '--channel': 'channel',
+  '--ios-bundle-version': 'iosBundleVersion',
+};
+
+function parseArguments(argv) {
+  const parsed = {};
+  for (let index = 0; index < argv.length; index += 2) {
+    const key = OPTIONS[argv[index]];
+    if (!key) fail(`unknown option ${JSON.stringify(argv[index])}`);
+    if (key in parsed) fail(`option ${argv[index]} is repeated`);
+    if (index + 1 >= argv.length) fail(`option ${argv[index]} needs a value`);
+    parsed[key] = argv[index + 1];
+  }
+  return parsed;
 }
 
 if (invokedDirectly(import.meta.url)) {
-  const admitted = admitProducerAssets({
-    artifactsRoot: option('--artifacts-root'),
-    outputDir: option('--output-dir'),
-    channel: option('--channel'),
-    iosBundleVersion: option('--ios-bundle-version'),
-  });
-  for (const name of admitted) console.log(`admitted ${name}`);
+  try {
+    const admitted = admitProducerAssets(parseArguments(process.argv.slice(2)));
+    for (const name of admitted) console.log(`admitted ${name}`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }

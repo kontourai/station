@@ -77,8 +77,8 @@ explicit artifact allowlist in
 both macOS desktop artifacts, Windows, Linux, portable, Android, and the
 container descriptor, plus, for Stable only, the iOS simulator archive and the
 `release-assets/` directory of the staged TestFlight artifact. It refuses a
-missing or empty allowlisted artifact, a nested entry, and two producers that
-emit one file name. Build-provenance descriptors, scanner scratch, TestFlight
+missing or empty allowlisted artifact, a nested entry, a symlink, and two
+producers that emit one file name. Build-provenance descriptors, scanner scratch, TestFlight
 receipts, and test artifacts in the same download root are never copied. A new
 producer artifact needs one allowlist entry there.
 

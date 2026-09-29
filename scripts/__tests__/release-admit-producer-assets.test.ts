@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -170,13 +171,26 @@ function workspace(layout: Layout) {
   }
   const step = join(dir, 'admit-step.sh');
   writeFileSync(step, admitRun ?? '');
-  return { work, runnerTemp, artifacts, step };
+  const scratch = join(dir, 'outside');
+  mkdirSync(scratch);
+  return { work, runnerTemp, artifacts, step, scratch };
 }
 
+type StepOptions = {
+  /** Alter the laid-out download root before the step runs. */
+  mutate?: (artifacts: string, scratch: string) => void;
+  iosBundleVersion?: string;
+};
+
 /** Run the workflow step's own `run:` text the way a bash step runs it. */
-async function runAdmitStep(layout: Layout, channel: 'preview' | 'stable') {
+async function runAdmitStep(
+  layout: Layout,
+  channel: 'preview' | 'stable',
+  { mutate, iosBundleVersion = IOS_BUNDLE_VERSION }: StepOptions = {},
+) {
   expect(admitRun, `missing ${ADMIT_STEP} step`).toBeTypeOf('string');
   const ws = workspace(layout);
+  mutate?.(ws.artifacts, ws.scratch);
   const result = await runBoundedFixture(
     'bash',
     ['--noprofile', '--norc', '-eo', 'pipefail', ws.step],
@@ -186,7 +200,7 @@ async function runAdmitStep(layout: Layout, channel: 'preview' | 'stable') {
         PATH: process.env.PATH,
         RUNNER_TEMP: ws.runnerTemp,
         RELEASE_CHANNEL: channel,
-        IOS_BUNDLE_VERSION,
+        IOS_BUNDLE_VERSION: iosBundleVersion,
       },
     },
   );
@@ -199,6 +213,16 @@ async function runAdmitStep(layout: Layout, channel: 'preview' | 'stable') {
   return { ...result, admitted, ws };
 }
 
+/** A refusal exits 1 with one message line and no stack trace. */
+function expectRefusal(
+  result: { status: number | null; stderr: string },
+  message: string,
+) {
+  expect(result.status, result.stderr).toBe(1);
+  expect(result.stderr).toContain(message);
+  expect(result.stderr).not.toMatch(/^\s+at /m);
+}
+
 type Source = { artifact: string; directory: string };
 
 function stableSources(): Source[] {
@@ -208,20 +232,84 @@ function stableSources(): Source[] {
   });
 }
 
-/** Artifact names a job uploads with `path: release-assets`. */
-function releaseAssetUploads(job: Job | undefined): string[] {
-  const names: string[] = [];
+type Upload = { job: string; name: string; paths: string[] };
+
+/** `release-assets/`, `./release-assets` and `release-assets` are one path. */
+const normalizePath = (path: string) =>
+  path.trim().replace(/^\.\//, '').replace(/\/+$/, '');
+
+/**
+ * Uploads in the jobs `assemble-draft` downloads from that are deliberately
+ * not release assets, keyed by the `name:` as written in the workflow.
+ */
+const KNOWN_NON_RELEASE_UPLOADS: Record<string, string> = {
+  [`station-release-client-build-provenance-${expression('github.run_id')}`]:
+    'build descriptor consumed by the native producers',
+  'station-container-sbom-source':
+    'scanner scratch; assemble-draft downloads it separately as SBOM input',
+  [`station-${expression('inputs.channel')}-ios-verification-failure-${expression('inputs.bundle_version')}`]:
+    'failure-only diagnostic IPA',
+  [`station-${expression('inputs.channel')}-ios-testflight-${expression('inputs.bundle_version')}`]:
+    'TestFlight upload receipts; the IPA is admitted from the staged artifact',
+};
+
+function jobUploads(jobLabel: string, job: Job | undefined): Upload[] {
+  const uploads: Upload[] = [];
   const matrix = job?.strategy?.matrix?.include ?? [];
   for (const step of job?.steps ?? []) {
     if (!step.uses?.startsWith('actions/upload-artifact@')) continue;
-    if (step.with?.path !== 'release-assets') continue;
-    const name = String(step.with?.name);
-    if (name === expression('matrix.artifact'))
-      names.push(...matrix.map((entry) => String(entry.artifact)));
-    else names.push(name);
+    // upload-artifact names an unnamed upload `artifact`.
+    const name =
+      step.with?.name === undefined ? 'artifact' : String(step.with.name);
+    const paths = String(step.with?.path ?? '')
+      .split('\n')
+      .map(normalizePath)
+      .filter(Boolean);
+    const names =
+      name === expression('matrix.artifact')
+        ? matrix.map((entry) => String(entry.artifact))
+        : [name];
+    for (const each of names)
+      uploads.push({ job: jobLabel, name: each, paths });
   }
-  return names;
+  return uploads;
 }
+
+/** Every upload-artifact step in a job assemble-draft needs, including called workflows. */
+function neededUploads(): Upload[] {
+  return (release.jobs['assemble-draft']?.needs ?? []).flatMap((jobName) => {
+    const job = release.jobs[jobName];
+    const called = job?.uses?.match(
+      /^\.\/(\.github\/workflows\/[\w.-]+\.ya?ml)$/,
+    )?.[1];
+    if (!called) return jobUploads(jobName, job);
+    const workflow = load(
+      readFileSync(resolve(root, called), 'utf8'),
+    ) as Workflow;
+    return Object.entries(workflow.jobs).flatMap(([name, calledJob]) =>
+      jobUploads(`${jobName} -> ${name}`, calledJob),
+    );
+  });
+}
+
+/**
+ * Where download-artifact puts an upload's files inside `<root>/<name>/`:
+ * a single directory path stores its contents at the artifact root; several
+ * top-level paths keep their paths relative to the workspace.
+ */
+function downloadedDirectory(paths: string[]): string {
+  if (paths.length === 1 && paths[0] === 'release-assets') return '.';
+  const tops = new Set(paths.map((path) => path.split('/')[0]));
+  if (paths.includes('release-assets') && tops.size > 1)
+    return 'release-assets';
+  return `unrecognized upload paths ${JSON.stringify(paths)}`;
+}
+
+/** Resolve the TestFlight caller's inputs for a Stable tag (pinned below). */
+const stableName = (name: string) =>
+  name
+    .replace(expression('inputs.channel'), 'stable')
+    .replace(expression('inputs.bundle_version'), IOS_BUNDLE_VERSION);
 
 describe('assemble-draft producer asset admission (#2977)', () => {
   it(
@@ -275,8 +363,8 @@ describe('assemble-draft producer asset admission (#2977)', () => {
         'station-portable.tar.gz',
       ];
       const result = await runAdmitStep(layout, 'stable');
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain(
+      expectRefusal(
+        result,
         'station-portable.tar.gz is produced by both station-portable and station-android',
       );
       expect(result.admitted).toEqual([]);
@@ -290,8 +378,8 @@ describe('assemble-draft producer asset admission (#2977)', () => {
       const missing = producerLayout(STABLE_TAG, 'stable');
       delete missing['station-desktop-linux-x86_64'];
       const missingResult = await runAdmitStep(missing, 'stable');
-      expect(missingResult.status).not.toBe(0);
-      expect(missingResult.stderr).toContain(
+      expectRefusal(
+        missingResult,
         'producer artifact station-desktop-linux-x86_64 is missing',
       );
       expect(missingResult.admitted).toEqual([]);
@@ -299,8 +387,8 @@ describe('assemble-draft producer asset admission (#2977)', () => {
       const empty = producerLayout(STABLE_TAG, 'stable');
       empty['station-container-release'] = [];
       const emptyResult = await runAdmitStep(empty, 'stable');
-      expect(emptyResult.status).not.toBe(0);
-      expect(emptyResult.stderr).toContain(
+      expectRefusal(
+        emptyResult,
         'producer artifact station-container-release is empty',
       );
 
@@ -309,8 +397,8 @@ describe('assemble-draft producer asset admission (#2977)', () => {
         'staged-identity/source-identity.json',
       ];
       const noIpaResult = await runAdmitStep(noIpa, 'stable');
-      expect(noIpaResult.status).not.toBe(0);
-      expect(noIpaResult.stderr).toContain(
+      expectRefusal(
+        noIpaResult,
         `producer artifact station-stable-ios-staged-${IOS_BUNDLE_VERSION}/release-assets is missing`,
       );
     },
@@ -324,33 +412,145 @@ describe('assemble-draft producer asset admission (#2977)', () => {
         producerLayout(STABLE_TAG, 'stable'),
         'nightly' as 'stable',
       );
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('unknown release channel "nightly"');
+      expectRefusal(result, 'unknown release channel "nightly"');
     },
     FIXTURE_TEST_TIMEOUT_MS,
   );
 
-  it('allowlists exactly the release-assets uploads of the jobs assemble-draft needs', () => {
-    const uploaded = (release.jobs['assemble-draft']?.needs ?? [])
-      .flatMap((jobName) => releaseAssetUploads(release.jobs[jobName]))
-      .sort();
-    const flat = stableSources()
-      .filter((source) => source.directory === '.')
-      .map((source) => source.artifact)
-      .sort();
-    expect(flat).toEqual(uploaded);
+  it(
+    'refuses a nested directory in a flat producer artifact and copies nothing',
+    async () => {
+      const layout = producerLayout(STABLE_TAG, 'stable');
+      layout['station-android'] = [
+        ...(layout['station-android'] ?? []),
+        'release-assets/extra.apk',
+      ];
+      const result = await runAdmitStep(layout, 'stable');
+      expectRefusal(
+        result,
+        'station-android/release-assets is not a regular file',
+      );
+      expect(result.admitted).toEqual([]);
+    },
+    FIXTURE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses a symlinked producer file and copies nothing',
+    async () => {
+      const result = await runAdmitStep(
+        producerLayout(STABLE_TAG, 'stable'),
+        'stable',
+        {
+          mutate: (artifacts, scratch) => {
+            const target = join(scratch, 'elsewhere.tar.gz');
+            writeFileSync(target, 'outside\n');
+            const link = join(
+              artifacts,
+              'station-portable',
+              'station-portable.tar.gz',
+            );
+            rmSync(link);
+            symlinkSync(target, link);
+          },
+        },
+      );
+      expectRefusal(
+        result,
+        'station-portable/station-portable.tar.gz is not a regular file',
+      );
+      expect(result.admitted).toEqual([]);
+    },
+    FIXTURE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses a symlinked producer artifact directory and copies nothing',
+    async () => {
+      const result = await runAdmitStep(
+        producerLayout(STABLE_TAG, 'stable'),
+        'stable',
+        {
+          mutate: (artifacts, scratch) => {
+            const real = join(scratch, 'station-android');
+            renameSync(join(artifacts, 'station-android'), real);
+            symlinkSync(real, join(artifacts, 'station-android'), 'dir');
+          },
+        },
+      );
+      expectRefusal(
+        result,
+        'producer artifact station-android is not a directory',
+      );
+      expect(result.admitted).toEqual([]);
+    },
+    FIXTURE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses an invalid stable iOS bundle version and copies nothing',
+    async () => {
+      for (const iosBundleVersion of ['', '../10203']) {
+        const result = await runAdmitStep(
+          producerLayout(STABLE_TAG, 'stable'),
+          'stable',
+          { iosBundleVersion },
+        );
+        expectRefusal(
+          result,
+          `invalid iOS bundle version ${JSON.stringify(iosBundleVersion)}`,
+        );
+        expect(result.admitted).toEqual([]);
+      }
+    },
+    FIXTURE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses unknown, repeated and valueless CLI options with a one-line message',
+    async () => {
+      const script = join(root, 'scripts/release-admit-producer-assets.mjs');
+      const cases: Array<[string[], string]> = [
+        [['--artifact-root', 'x'], 'unknown option "--artifact-root"'],
+        [
+          ['--channel', 'stable', '--channel', 'preview'],
+          'option --channel is repeated',
+        ],
+        [['--channel'], 'option --channel needs a value'],
+      ];
+      for (const [args, message] of cases) {
+        const result = await runBoundedFixture(
+          process.execPath,
+          [script, ...args],
+          {
+            env: { PATH: process.env.PATH },
+          },
+        );
+        expectRefusal(result, message);
+        expect(result.stderr.trim().split('\n')).toHaveLength(1);
+      }
+    },
+    FIXTURE_TEST_TIMEOUT_MS,
+  );
+
+  it('classifies every upload in the jobs assemble-draft needs and derives each allowlisted directory', () => {
+    const allowlist = new Map(
+      stableSources().map((source) => [source.artifact, source.directory]),
+    );
+    const derived = new Map<string, string>();
+    const unclassified: string[] = [];
+    for (const upload of neededUploads()) {
+      const name = stableName(upload.name);
+      if (allowlist.has(name))
+        derived.set(name, downloadedDirectory(upload.paths));
+      else if (!(upload.name in KNOWN_NON_RELEASE_UPLOADS))
+        unclassified.push(`${upload.job}: ${upload.name}`);
+    }
+    expect(unclassified).toEqual([]);
+    expect(Object.fromEntries(derived)).toEqual(Object.fromEntries(allowlist));
   });
 
-  it('reads the stable iOS device IPA from the staged TestFlight artifact', () => {
-    // The iOS device IPA comes from the reusable TestFlight workflow's staged
-    // multi-path upload, which keeps its `release-assets/` directory.
-    const nested = stableSources().filter((source) => source.directory !== '.');
-    expect(nested).toEqual([
-      {
-        artifact: `station-stable-ios-staged-${IOS_BUNDLE_VERSION}`,
-        directory: 'release-assets',
-      },
-    ]);
+  it('reads the stable iOS device IPA from the multi-path staged TestFlight upload', () => {
     const iosDevice = release.jobs['ios-device'];
     expect(release.jobs['assemble-draft']?.needs).toContain('ios-device');
     expect(iosDevice?.uses).toBe('./.github/workflows/testflight-delivery.yml');
@@ -370,6 +570,13 @@ describe('assemble-draft producer asset admission (#2977)', () => {
     expect(staged?.with?.name).toBe(
       `station-${expression('inputs.channel')}-ios-staged-${expression('inputs.bundle_version')}`,
     );
-    expect(String(staged?.with?.path).split('\n')).toContain('release-assets');
+    // A single `release-assets` path would store the IPA at the artifact
+    // root, and the allowlisted `release-assets/` directory would be missing.
+    const paths = String(staged?.with?.path)
+      .split('\n')
+      .map(normalizePath)
+      .filter(Boolean);
+    expect(paths).toContain('release-assets');
+    expect(paths.length).toBeGreaterThan(1);
   });
 });

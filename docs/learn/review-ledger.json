@@ -10963,7 +10963,7 @@
     {
       "path": "docs/guides/android-build.md",
       "documentDigest": "37d8dffe745a92d090cb31abdd509507d7666139868987c50cac217887a11d49",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Android build, generated-project ownership, provenance and verification boundaries. Full baseline read. Traced debug/release/Nightly workflow callers, managed bootstrap and app-directory selection, Kotlin geometry/native permissions, packaged provenance writer and Settings consumer, ELF/ZIP alignment owner, signing handoff and emulator checks. No builds or recipes executed.",
@@ -11239,7 +11239,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes fnv1a32 module-private in packages/cli/src/commands/dev-ports.ts without changing its behavior; prose accurate: the guide doesn't name or import that export. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2914) android-build-manifest.mjs un-exports ANDROID_PROJECT_DIR/ANDROID_ASSETS_DIR with unchanged values, channel-ports.mjs refactors generation with an optional outputRoot, tauri-context.mjs un-exports parseArgs; (#2881) install.sh/service changes do not touch Android build claims; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
@@ -13136,7 +13137,7 @@
     {
       "path": "docs/guides/desktop-build.md",
       "documentDigest": "77055f3a680def05143bb5ba04e5bb7f40ef154663094843ef7191edae473e8d",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop compile/update/CSP contract and bounded packaged Browser Preview fixture. Full baseline read. Traced clean-checkout status-entry verifier, update UI/native registration and capabilities, manifest/lock versions, CSP config and trusted registry caller. Independently probed actual fixture helpers/shared schema; traced earlier native profile-genesis refusal. No native launch or package build.",
@@ -13420,13 +13421,14 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) un-exports fnv1a32 in packages/cli/src/commands/dev-ports.ts without changing port derivation; prose accurate: the guide makes no claim about that export. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2881 adds a stage-only mode and a service-launcher handoff to install.sh, launcher-link and liveness delegation to service-run.ts, and update status to service.ts. #2914 gives channel-ports sync/check an outputRoot option, makes tauri-context parseArgs and the android-build-manifest constants non-exported, and refactors the startup-readiness static test. The guide's desktop updater, 'Connected Station server' separation, clean-checkout, readiness and fixture claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
       "path": "docs/guides/desktop-tray.md",
       "documentDigest": "65ed27eebefb1258681b81b175dd06c183fdaec0a3c3294e79215a4ba68acdc4",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop-owned service/sidecar tray health, controls, companion lifetime and logs. Full baseline read. Traced tray snapshot/action/destination decisions and ten-second health cadence, service-command identity arguments, Windows Task Scheduler implementation, companion caller after backend health, logging registration and pinned dependency rotation. Runtime/tray OS behavior remains unverified.",
@@ -13719,7 +13721,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) only makes fnv1a32 private in dev-ports.ts, and the hashing behavior is the same. Nothing in the tray health, controls, companion or logging claims depends on it. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881): `service install` now points an installer-owned archive unit on macOS/Linux at the fixed launcher <install-root>/runtime/station-launcher.mjs (service-command.ts runsLauncher, service.ts installServiceLauncher). It also adds the update-home action and the service status update line. #2914 changes to channel-ports, android-build-manifest and tauri-context are refactors or export narrowing only. src-desktop did not change, so the tray still finds no command paths for an archive manifest and refuses Start/Stop. Corrected the claim that an archive service runs `bin/station.mjs` so it also names the fixed launcher. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
@@ -15683,7 +15686,7 @@
     {
       "path": "docs/guides/mobile-release.md",
       "documentDigest": "e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all remaining documented claims through actual release/TestFlight and client callers: optional feed reads versus compile inclusion, pinned-origin fetch and HTTPS action validation, conditional writes/readback/compensation and ambiguous outcomes, container alias publication, three-profile/extension entitlement export checks, native credential persistence rejection and iOS accessibility, and pinned OIDC/Secret Manager action behavior. Corrected guarantees to the checks performed.",
@@ -15929,7 +15932,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2914) native-update-feed.mjs removes the validateUpdateConfig alias (tests call resolveNativeUpdateAuthority), publish-mobile-feed-transaction tests drop helper-only fixture cases, install-macos.zsh adds `--` to print; (#2881) install.sh changes are archive-service only; publisher/wrapper behavior described is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
@@ -16023,8 +16027,8 @@
     },
     {
       "path": "docs/guides/native-releases.md",
-      "documentDigest": "649ca29c8b3945de8f695e18bdfe78545bd883905d88c0a4c700d767b18c3c6e",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "documentDigest": "91c995e7fcc2f71113d5eee89d8239a5d22a2dfdf056a91c4b5eb079b34f90bc",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed detailed cohort admission/fence/ledger/partial-provider protocols, mobile and desktop compensation boundaries, macOS notarization overlap, Windows installer/payload proof limits and portable host-target staging. Actual AppImage entrypoint callers checked against Cargo.lock-verified tauri-utils resource resolution; source/config mismatch documented without claiming an executed Linux failure. Frozen Windows/shared-runtime-pruning changes traced through callers.",
@@ -16344,7 +16348,7 @@
         },
         {
           "path": "scripts/release-admit-producer-assets.mjs",
-          "digest": "ba654b10bfd422747d2fab5c735135fe8ba11a251176de8496290247974a2e3e"
+          "digest": "04fd408eba2f6cca5e14a5567bd2a7c2d13adf5f5b6e21cc944a0027482e5587"
         }
       ],
       "checks": [
@@ -16378,7 +16382,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "#2977: added the draft-assembly producer admission paragraph, checked against scripts/release-admit-producer-assets.mjs (allowlist, stable-only iOS sources, missing/empty/nested/duplicate refusals) and the release.yml assemble-draft step. The #2783 readFileSync blocker paragraph was re-checked and remains true on this tree."
+        "#2977: added the draft-assembly producer admission paragraph, checked against scripts/release-admit-producer-assets.mjs (allowlist, stable-only iOS sources, missing/empty/nested/duplicate refusals) and the release.yml assemble-draft step. The #2783 readFileSync blocker paragraph was re-checked and remains true on this tree.",
+        "#2977 review round: the admission script now also refuses a symlinked artifact directory (checked per level with lstat) and unknown, repeated or valueless CLI options, printing one message line and exiting 1. Updated the admission paragraph to name symlink refusal. Correction to the earlier #2977 note: the replaced find did not match nothing; it copied nothing from single-path producer uploads but matched the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, twice, including the beta IPA on preview tags."
       ]
     },
     {
@@ -16569,7 +16574,7 @@
     {
       "path": "docs/guides/nightly.md",
       "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
@@ -16860,7 +16865,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
@@ -17465,7 +17471,7 @@
     {
       "path": "docs/guides/release-channel-ports.md",
       "documentDigest": "3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
@@ -17767,13 +17773,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and, when runtime/service-state.json exists and an archive service is active, only stages the version and hands off to the fixed service launcher (trial/rollback; refuses on pending or needs-operator update state); service.ts copies runtime/station-launcher.mjs at archive service install (non-win32); lifecycle-code-root.ts moves archive helpers to @kontourai/station-shared/prebuilt-archive (re-exported, no behavior change); channel-ports.mjs adds an optional outputRoot to sync/check; android-build-manifest.mjs and tauri-context.mjs only drop exports (#2914). Corrected the archive-service upgrade paragraph, which claimed the installer always stops the service, switches current and restarts it: it now says a running launcher service stages and hands off to a launcher trial, keeps the stop/switch/restart path otherwise, and notes that an unfinished or operator-blocked launcher update refuses the upgrade. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
       "path": "docs/guides/release-rings.md",
       "documentDigest": "75d72fe29216dca1d8443e8c502cda5d7fc03aa2d88d74fee939a688c9ee62eb",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Portable release trust, exact-commit promotion and recovery requirements. Full143-line baseline read. Traced install.sh default attestation and optional pinned-key public manifest branches, token lifetime, explicit channel mapping, downgrade/freshness limits, restore failure handling and publish authority. Corrected exact preview-commit promotion and routine destructive cleanup recipe.",
@@ -17951,7 +17958,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh (and so station upgrade) no longer switches current under a running launcher-run service. It stages the version with STATION_INSTALL_STAGE_ONLY semantics, queues an update request, and the launcher trials it, restoring its home backup and the previous version on failure. The install-macos.zsh and portable-server-archive.mjs deltas are cosmetic or ship the launcher. Corrected 'Upgrade and rollback behavior' with one sentence on the launcher-run path, linking the service reference. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
@@ -19187,7 +19195,7 @@
     {
       "path": "docs/guides/store-entry.md",
       "documentDigest": "147cfd2465d9fa280eda3d75b7a7d5fc963bafe32d7593d196e4fdeb629e06e8",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed owner-setup, API key, workload identity, channel profile, upload/reconciliation and bounded group-assignment claims through declared workflows, pinned action inputs and primary provider documentation. Intended names and privacy/ads answers marked as owner decisions, not observed account facts.",
@@ -19408,13 +19416,14 @@
         "Integration source review through 5731eba07: #2881 adds the install.sh launcher handoff and stage-only mode. #2914 adds `print --` in install-macos.zsh, removes the validateUpdateConfig alias in favor of resolveNativeUpdateAuthority, and drops runBoundedFixture tests. None touches TestFlight/Play authority, secrets, tagging or the out-of-scope list; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
       "path": "docs/guides/store-listing.md",
       "documentDigest": "e232df90ff2b65b81e24c84bd160b17719d25a054828ab64da8fa98870ce4057",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Completed all draft copy and capture claims. Channel identity and mobile client ownership checked; seller, ads, age, privacy and tracking assertions made proposed owner-reviewed declarations. Screenshot content plan separated from current primary-provider specifications. Unpublished draft remains a design artifact.",
@@ -19577,7 +19586,8 @@
         "Integration source review through 5731eba07: 3ab09593d install.sh wraps itself in a brace group and adds archive-service staging and hand-off (#2881); install-macos.zsh only adds `--` to print (#2914); neither touches store-listing claims; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
@@ -22521,7 +22531,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22912,7 +22922,8 @@
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
@@ -30482,7 +30493,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "e8dc2e2202e955216046d761958cd37f17bf4000",
+      "sourceRevision": "f3a384ddde628d62f0ea2eb72200f2a0b3452496",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -30555,7 +30566,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Icon generation only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The raster channel icons and the favicon-dev swap under is-dev-build are unchanged; the CSS brand stays an amber/indigo/violet shade per channel.",
-        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected."
       ]
     },
     {
