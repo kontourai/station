@@ -132,14 +132,14 @@ describe('#2309 inbox running state from the conversation record', () => {
 
   it('a turn in a lineage child renders Running, though the newest row is the idle root', () => {
     renderInbox(rows(OPEN), chat({ conversationActivity: OPEN }));
-    const active = screen.getByRole('region', { name: 'Active now' });
+    const active = screen.getByRole('region', { name: 'Running' });
     // The in-motion chip ('Running' renders as "Active").
     expect(within(active).getByText('Active')).not.toBeNull();
   });
 
   it('with only the session rows carrying the record (the chat has none yet), the row still renders Running', () => {
     renderInbox(rows(OPEN), chat({}));
-    const active = screen.getByRole('region', { name: 'Active now' });
+    const active = screen.getByRole('region', { name: 'Running' });
     expect(within(active).getByText('Active')).not.toBeNull();
   });
 

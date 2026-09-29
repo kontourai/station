@@ -119,7 +119,7 @@ export const LIFECYCLE_CHIP_LABELS = new Set<HomeLifecycleLabel>([
   // different hat. The chip renders in the neutral treatment, not a fourth
   // colour meaning: nothing is broken and nothing needs acting on.
   'Unanswerable',
-  // #2310: chipped because a Draft sits outside "Active now", and a row that
+  // #2310: chipped because a Draft sits outside the live lanes, and a row that
   // moved without saying why reads as lost work. Neutral treatment again.
   'Draft',
 ]);

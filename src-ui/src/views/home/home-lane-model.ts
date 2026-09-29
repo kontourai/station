@@ -1,15 +1,15 @@
 import { compareTaskRecency, type HomeWorkItem } from './home-view-model';
 
 /**
- * Position-stable active lane + snooze/linger model for the Home work list
+ * Position-stable live lanes + snooze/linger model for the Home work list
  * (archive#1099). Every function here is pure and `now`-injected so the
  * invariants are testable without faking timers; the stateful glue (refs,
  * localStorage, a re-render tick) lives in `useHomeWorkLanes.ts`.
  *
- * Design reference (issue archive#1099, competitor analysis): the active lane never
- * reorders on activity — rows hold position from entry until a lifecycle
- * transition (settle/snooze) moves them out of the lane; new items enter at
- * the top.
+ * Design reference (issue archive#1099, competitor analysis): the live lanes
+ * never reorder on activity — rows hold position from entry until a
+ * lifecycle transition (settle/snooze, or Running -> Idle) moves them out of
+ * the lane; new items enter at the top.
  */
 
 /**
@@ -43,21 +43,54 @@ export const WOKE_PILL_WINDOW_MS = 15 * 60 * 1000;
  * Settled for lane purposes — deliberately NOT including `'Unanswerable'`
  * (archive#1783). The settled/"Just finished" lane asserts the work FINISHED,
  * and an unanswerable session did not; it stopped being reachable. So it
- * stays in the Active lane, ranked and chipped, with its basis on the row.
+ * stays in the live lanes (under Idle, see `liveLaneFor`), chipped, with its
+ * basis on the row.
  *
- * archive#3227 A6: this is now the ONE "active" predicate for every surface
- * that renders the label "Active now" — desktop Home lanes, the Sessions
- * lanes (`sessions-lane-model.ts`), and the mobile activity groups
- * (`mobile-activity-groups.ts` now derives its groups from
- * `partitionHomeWorkItems` instead of a private `Running`/`Needs attention`
- * match). An earlier version of this comment recorded the desktop/mobile
- * divergence as defensible; the audit found the counts contradicting on one
- * device ("Active now 14" vs "Active now 1") and retired it.
+ * archive#3227 A6: `partitionHomeWorkItems` is the ONE live/finished
+ * classifier for every surface — desktop Home lanes, the Sessions lanes
+ * (`sessions-lane-model.ts`), the project live-work badge, and the chat dock
+ * inbox / mobile activity groups (`mobile-activity-groups.ts`). An earlier
+ * version recorded a desktop/mobile divergence as defensible; the audit
+ * found the counts contradicting on one device ("Active now 14" vs "Active
+ * now 1") and retired it.
  */
 export function isTerminalLifecycle(
   label: HomeWorkItem['lifecycleLabel'],
 ): boolean {
   return label === 'Completed' || label === 'Failed' || label === 'Stopped';
+}
+
+/**
+ * The three live lanes, named by what is actually happening (the owner's
+ * "'Active' feels incorrect when there's no activity"). Before this split
+ * every unfinished row sat under one "Active now" heading, so an idle
+ * `Ready` session read as active — a label nothing computed.
+ *
+ * - `needsYou`: `Needs attention` — an approval, question, review or block
+ *   that YOU can discharge (the fold is already gated on answerability).
+ * - `running`: `Running` — a turn or reported child work is in flight.
+ * - `idle`: everything else that is live — `Ready`/`Recent`/`Current` (no
+ *   turn in flight, nothing asked, not finished) and `Unanswerable`. The
+ *   last is here, not in Needs you, because nothing on this Station can act
+ *   on it (archive#1783), and not in a finished lane because it did not
+ *   finish; its own "Can't answer here" chip and basis notice say why it is
+ *   quiet. Idle is the only word all four share without claiming more: it
+ *   is not "your turn", because an idle session may simply be done from
+ *   your point of view, and the fold cannot tell.
+ */
+export type LiveLaneId = 'needsYou' | 'running' | 'idle';
+
+/** The live lanes' words — one set for Home, Sessions and the inbox. */
+export const LIVE_LANE_LABELS: Record<LiveLaneId, string> = {
+  needsYou: 'Needs you',
+  running: 'Running',
+  idle: 'Idle',
+};
+
+export function liveLaneFor(label: HomeWorkItem['lifecycleLabel']): LiveLaneId {
+  if (label === 'Needs attention') return 'needsYou';
+  if (label === 'Running') return 'running';
+  return 'idle';
 }
 
 /**
@@ -82,7 +115,7 @@ export function isTerminalLifecycle(
  * to know in advance which one occurred.
  *
  * Not persisted: the alias map (like `orderRef`) lives only in
- * `useHomeWorkLanes`'s in-memory refs, so a reload rebuilds active-lane
+ * `useHomeWorkLanes`'s in-memory refs, so a reload rebuilds live-lane
  * position from recency, same as a brand-new session. scope is status
  * churn within a session, not surviving a reload.
  */
@@ -152,13 +185,16 @@ interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
   terminalSince: ReadonlyMap<string, number>;
 }
 
-interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
-  active: T[];
+export interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
+  /** Live lanes — see `liveLaneFor`. Always present, possibly empty. */
+  needsYou: T[];
+  running: T[];
+  idle: T[];
   external?: T[];
   /**
    * #2310: sessions nothing has been sent to (`lifecycleLabel === 'Draft'`,
-   * the server's lineage-aware fold). Not "Active now", which means actually
-   * active — and not a finished lane either, because nothing finished. Present
+   * the server's lineage-aware fold). Not a live lane — nothing is running,
+   * asking or waiting — and not a finished lane either, because nothing finished. Present
    * only when non-empty, like `external`; every consumer renders it, so a
    * draft stays findable, openable and closable.
    */
@@ -174,7 +210,11 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
   snoozedUntil,
   terminalSince,
 }: LaneInputs<T>): LanePartition<T> {
-  const active: T[] = [];
+  const live: Record<LiveLaneId, T[]> = {
+    needsYou: [],
+    running: [],
+    idle: [],
+  };
   const external: T[] = [];
   const drafts: T[] = [];
   const recentlyFinished: T[] = [];
@@ -230,11 +270,13 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       recentlyFinished.push(item);
       continue;
     }
-    active.push(item);
+    live[liveLaneFor(item.lifecycleLabel)].push(item);
   }
 
   return {
-    active,
+    needsYou: live.needsYou,
+    running: live.running,
+    idle: live.idle,
     recentlyFinished,
     snoozed,
     settled,
@@ -271,7 +313,12 @@ export function terminalSinceFromRecency(
 }
 
 /**
- * ordering invariant: status churn never reorders the active lane.
+ * ordering invariant: status churn never reorders the live lanes.
+ *
+ * Computed over the UNION of the live lanes (needsYou/running/idle) and then
+ * filtered per lane, so a row keeps its relative position among its lane
+ * peers. Moving between live lanes (Running -> Idle when a turn ends) is a
+ * lifecycle transition, which archive#1099 always allowed to move a row.
  *
  * `previousOrder` is the caller's last committed order (a list of
  * `HomeLaneItem.stableId` — NOT `HomeWorkItem.id`; the raw `id` can change

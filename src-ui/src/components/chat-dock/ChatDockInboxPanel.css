@@ -206,6 +206,13 @@
   font-size: var(--text-xs);
 }
 
+/* Unsent composer text on this device. Sized to sit beside the recency in
+ * the state column; the kit badge's own padding would out-rank the chip. */
+.chat-dock-inbox__draft-cue {
+  padding: 0 var(--k-space-1);
+  white-space: nowrap;
+}
+
 /* Recency shown beside a lifecycle chip (chip rows used to drop the time). */
 .chat-dock-inbox__since {
   white-space: nowrap;

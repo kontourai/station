@@ -30,11 +30,15 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
     'Review pending',
     'Blocked',
   ]),
-  // In flight, idle, or stranded — none of them finished, none of them yours
-  // to discharge. "Can't answer here" belongs to this lane by design
-  // (archive#1783: an unanswerable session did not FINISH, it stopped being
-  // reachable, so it is not filed under Recently finished).
-  activeNow: new Set(['Running', 'Ready', 'Queued', "Can't answer here"]),
+  // In flight. The only word that may claim work is happening.
+  running: new Set(['Running']),
+  // Idle or stranded — not finished, not in flight, not yours to discharge.
+  // "Can't answer here" belongs to this lane by design (archive#1783: an
+  // unanswerable session did not FINISH, it stopped being reachable, so it
+  // is not filed under Recently finished). "Running" is deliberately absent:
+  // an idle lane whose row says Running is the owner's "Active with no
+  // activity" complaint in the other direction.
+  idle: new Set(['Ready', 'Queued', "Can't answer here"]),
   // Over. The refinement is which ending.
   recentlyFinished: new Set(['Completed', 'Stopped', 'Failed']),
   // #2310: nothing has been sent. Not "Queued" or "Running" — the raw state
@@ -77,7 +81,7 @@ const UNANSWERABLE = {
  * empty and no state is unrepresented.
  */
 const MIXED_FIXTURE: OrchestrationSessionSummary[] = [
-  // A1 shape 1 (#1069): lane Active now, row used to say "Running".
+  // A1 shape 1 (#1069): lane Idle, row used to say "Running".
   session({
     threadId: 'a1-idle-running',
     lifecycleState: 'running',
@@ -97,7 +101,7 @@ const MIXED_FIXTURE: OrchestrationSessionSummary[] = [
     hasActiveTurn: true,
     status: 'closed',
   }),
-  // A1 shape 4 (#1783): lane Active now, row used to say "Waiting on you".
+  // A1 shape 4 (#1783): lane Idle, row used to say "Waiting on you".
   session({
     threadId: 'a1-unanswerable',
     lifecycleState: 'needs_input',
@@ -164,11 +168,12 @@ describe('a row word can never contradict its lane heading', () => {
     // Without this, a fixture edit that emptied a lane would leave the walk
     // green while checking nothing — the "unreachable fixture" failure mode.
     expect(lanes.map((lane) => lane.id).sort()).toEqual([
-      'activeNow',
       'drafts',
       'earlier',
+      'idle',
       'needsYou',
       'recentlyFinished',
+      'running',
     ]);
     expect(lanes.reduce((total, lane) => total + lane.sessions.length, 0)).toBe(
       MIXED_FIXTURE.length,
@@ -206,7 +211,7 @@ describe('a row word can never contradict its lane heading', () => {
       return sessionStatusWord(found);
     };
 
-    expect(laneOf('a1-idle-running')).toBe('activeNow');
+    expect(laneOf('a1-idle-running')).toBe('idle');
     expect(wordOf('a1-idle-running')).toBe('Ready');
 
     expect(laneOf('a1-review-while-running')).toBe('needsYou');
@@ -215,7 +220,7 @@ describe('a row word can never contradict its lane heading', () => {
     expect(laneOf('a1-closed-while-running')).toBe('recentlyFinished');
     expect(wordOf('a1-closed-while-running')).toBe('Completed');
 
-    expect(laneOf('a1-unanswerable')).toBe('activeNow');
+    expect(laneOf('a1-unanswerable')).toBe('idle');
     expect(wordOf('a1-unanswerable')).toBe("Can't answer here");
   });
 });

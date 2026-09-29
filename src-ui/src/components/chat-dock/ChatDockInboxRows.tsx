@@ -1,5 +1,14 @@
 import type { GitReadLocation } from '@kontourai/station-sdk';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Badge } from '@kontourai/ui/react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
@@ -331,6 +340,28 @@ interface InboxRowProps {
   snoozeMenuOnly?: boolean;
 }
 
+/**
+ * Whether this row's chat holds unsent composer text on THIS device.
+ *
+ * Read from the store the composer itself writes (`chatDraftsStore`, keyed
+ * by the chat store key the composer uses — `item.chatSessionId`), never a
+ * copy, so the cue appears and clears with the text. Rows with no local chat
+ * (orchestration-only, remote, attached) have no composer here and so no
+ * cue: the text is per device and per open chat, not server state.
+ *
+ * Suppressed on a `Draft`-lifecycle row, whose "Draft" chip already says
+ * nothing has been sent — two draft words on one row would read as two
+ * different facts.
+ */
+function useHasUnsentComposerDraft(item: HomeWorkItem): boolean {
+  const key = item.lifecycleLabel === 'Draft' ? undefined : item.chatSessionId;
+  return useSyncExternalStore(
+    chatDraftsStore.subscribe,
+    () => (key ? chatDraftsStore.hasDraft(key) : false),
+    () => false,
+  );
+}
+
 export function InboxRow({
   item,
   isCurrent,
@@ -356,6 +387,7 @@ export function InboxRow({
   // left edge of a mixed list, which reads as broken rather than as absent
   // information.
   const showsIcons = Boolean(agents?.length);
+  const hasUnsentDraft = useHasUnsentComposerDraft(item);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover/focus host for the metadata card; the keyboard paths are the row button (focus opens the card) and Escape (the card closes itself).
     <div
@@ -369,7 +401,7 @@ export function InboxRow({
       <button
         type="button"
         className={`chat-dock-inbox__item${showsIcons ? ' chat-dock-inbox__item--avatars' : ''}`}
-        aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? `, started in ${item.agentLabel}` : ''}`}
+        aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? `, started in ${item.agentLabel}` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
         aria-describedby={hover.anchor ? hoverCardId : undefined}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={() => onActivate(item)}
@@ -430,6 +462,13 @@ export function InboxRow({
           </span>
         )}
         <span className="chat-dock-inbox__state">
+          {hasUnsentDraft && (
+            <Badge
+              value="Unsent draft"
+              tone="neutral"
+              className="chat-dock-inbox__draft-cue"
+            />
+          )}
           {item.controlMode !== 'read-only-attached' &&
           hasLifecycleChip(item.lifecycleLabel) ? (
             <>
