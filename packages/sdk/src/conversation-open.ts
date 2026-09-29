@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { authenticatedFetch } from './client/http';
+import { StationRequestTimeoutError } from './client/request-deadline';
 import { resolveApiBase } from './query-core';
 
 /**
@@ -29,6 +30,9 @@ export async function resolveConversationOpen(
   try {
     result = (await response.json()) as typeof result;
   } catch (cause) {
+    // A deadline mid-body is a network failure, as it is before the headers.
+    if (cause instanceof StationRequestTimeoutError)
+      throw conversationOpenResolutionError('network', cause);
     throw conversationOpenResolutionError('invalid-response', cause);
   }
   if (!response.ok || result.success !== true) {

@@ -33,7 +33,8 @@ async function unwrapKnowledgeResponse<T>(response: Response): Promise<T> {
   let result: KnowledgeEnvelope<T> | null = null;
   try {
     result = (await response.json()) as KnowledgeEnvelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // Unreadable, but answered: the status still says what happened (#2708).
     throw envelopeError(response, undefined, fallback);
   }
@@ -272,6 +273,7 @@ import type {
   KitRecord,
   KitRecordType,
 } from '@kontourai/station-contracts/knowledge-store';
+import { rethrowDeadline } from './request-deadline';
 
 /** Body for `POST /api/knowledge/roots/:rootId/records`. */
 export interface CreateKnowledgeRecordInput extends CreateInput {}

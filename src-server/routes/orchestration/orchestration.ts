@@ -2495,6 +2495,14 @@ export function createOrchestrationRoutes(
           503,
         );
       }
+      // #2377 slice C2b: a tool's discovery on a saved Environment arrives
+      // here; another Station needs a bound operator, decided before the
+      // route connects or forwards anything.
+      const remoteRefused = refuseRemoteForStationControlCaller(
+        c,
+        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
+      );
+      if (remoteRefused) return remoteRefused;
       try {
         const data = await deps.discoverDelegationOptions(getBody(c));
         return c.json({ success: true, data });
@@ -2521,6 +2529,12 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+    // #2377 slice C2b: as the single-task reads below.
+    const remoteRefused = refuseRemoteForStationControlCaller(
+      c,
+      parsed.data.environmentId !== undefined,
+    );
+    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.listDelegatedTasks({
         ...parsed.data,
