@@ -8796,7 +8796,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "2f68e41b36baef9ffa5ec14acb762685795d9213",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8880,7 +8880,7 @@
         },
         {
           "path": "src-ui/src/components/chat/chat.css",
-          "digest": "517428900672dfdc84b9325895fdb99976f78796224cc2e08942394dededacbc"
+          "digest": "f8421559260dc8cb1b73bbc8d8c32b74187f39a70e96a84bc971f825e0180b7f"
         },
         {
           "path": "src-ui/src/components/dialog-history.ts",
@@ -9095,7 +9095,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c adds a .chat-stream-status[data-chat-decision-delivery] column-layout rule to chat.css. The document's CSS claims (dock and maximized region ownership) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) unexports agentIdentityFromSession and AMBIENT_CHAT_DOCK_DOCUMENT_ID, removes createAmbientChatDockPaneDocument and its two tests. RegionPaneHost.test.tsx still pins the literal 'station:workspace-pane-host:v2:ambient:chat-dock' key and adoptLegacyChatDockDocument, and renderAmbientChatPane in ChatDock.tsx is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The maximized-region dock-hiding rule is unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; ChatDock.tsx only passes imageCaveat and conversationAwaitingFirstTurn to the composer; chat.css only restyles attachment chips, the steer note and composer validation text. Placement's claims about the dock shell, regions and pane hosting are unaffected; it makes no composer or attachment-styling claim. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; ChatDock.tsx only passes imageCaveat and conversationAwaitingFirstTurn to the composer; chat.css only restyles attachment chips, the steer note and composer validation text. Placement's claims about the dock shell, regions and pane hosting are unaffected; it makes no composer or attachment-styling claim. Claims unaffected.",
+        "Re-checked after chat.css changed: the composer draft now keeps its JS-sized height (flex 0 1 auto), yields before the controls row on a short dock, and the attachment strip does not shrink. placement.md makes no claims about composer internals, chip layout or textarea sizing (grep for textarea/composer/attachment: no matches), so its placement claims are unaffected."
       ]
     },
     {
@@ -9689,7 +9690,7 @@
     {
       "path": "docs/design/session-tape-replay.md",
       "documentDigest": "733eb5ac7f5c9f91d12f772af3ce822ad4cd5b57d0d542b74fcedab950924056",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "2f68e41b36baef9ffa5ec14acb762685795d9213",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9713,7 +9714,7 @@
         },
         {
           "path": "src-ui/src/contexts/active-chats-state.ts",
-          "digest": "31149a87a81d9820f8bdeabb64de4da57c922d10144152117c03d48e400a2f12"
+          "digest": "ac26efc5dbad6a1e61117ab5f22b0f675c321a7757ff420380228af021e11aff"
         },
         {
           "path": "src-ui/src/hooks/orchestration/eventHandlers.ts",
@@ -9796,7 +9797,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added Codex approvalAcknowledgement and replyToApproval, an unacknowledgedDecisions ChatUIState field, and request.delivery dispatch in eventHandlers.ts. The replay coverage, redaction and steer-mechanism claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) makes createEphemeralMessageState take a required conversationId instead of falling back to chat.conversationId. Replay isolation (no conversationId copied from the source, not durable, effect no-ops) is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; the event-log projection now emits pre-steer assistant output as its own row; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; codex-adapter.ts (#2921, landed on main) only rewords the session-grant comment. Prose changed in Queue vs steer: the projection splits the open turn at a steer with provenance/answer eligibility on the final row, and the Any other ACP fallback also cancels the running tool and marks its turn.started with steerInterruptedRun (steer row note). Live fold claim (streamingMessage not reset) re-checked against turnHandlers.ts."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; the event-log projection now emits pre-steer assistant output as its own row; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; codex-adapter.ts (#2921, landed on main) only rewords the session-grant comment. Prose changed in Queue vs steer: the projection splits the open turn at a steer with provenance/answer eligibility on the final row, and the Any other ACP fallback also cancels the running tool and marks its turn.started with steerInterruptedRun (steer row note). Live fold claim (streamingMessage not reset) re-checked against turnHandlers.ts.",
+        "Re-checked after active-chats-state.ts changed hydrateActiveChats to read every nested persisted field through shape guards (persisted-chat-shape.ts). The doc's claims concern the replay tape and projection (steer split recorded earlier), not sessionStorage restore; the persisted fields it relies on are still restored when well-formed, so its claims hold."
       ]
     },
     {
@@ -24084,7 +24086,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "2f68e41b36baef9ffa5ec14acb762685795d9213",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24893,7 +24895,7 @@
         },
         {
           "path": "src-ui/src/contexts/chat-drafts-store.ts",
-          "digest": "3deb5d4be2f52c92fdc0601fd95ce7f7757329731f0e0876d0bc54ff45c39bdd"
+          "digest": "7d0ad1efa918a621e16a0009c5c79ffc542d9cc39ba0c4fccde67ac8cfac090a"
         },
         {
           "path": "src-ui/src/core/PluginRegistry.ts",
@@ -25084,7 +25086,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/orchestration/orchestration.ts, covered by its notes above; this branch changed the document, packages/sdk/src/query-domains/systemRuntime.ts, packages/sdk/src/query-domains/systemRuntimeRequests.ts, src-ui/src/main.tsx, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): provider.ts only adds ATTACHMENT_INPUT_UNSUPPORTED_CODE; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal; useChatInput.ts adds conversationAwaitingFirstTurn and attachment notice/unavailable-reason outputs. useSendMessage is documented as a send that can queue or refuse, which stays true; the SDK reference documents no useChatInput option list or error-action labels. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): provider.ts only adds ATTACHMENT_INPUT_UNSUPPORTED_CODE; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal; useChatInput.ts adds conversationAwaitingFirstTurn and attachment notice/unavailable-reason outputs. useSendMessage is documented as a send that can queue or refuse, which stays true; the SDK reference documents no useChatInput option list or error-action labels. Claims unaffected.",
+        "Re-checked after chat-drafts-store.ts now filters portable-draft attachment elements and dropped/unreadable name lists by shape on read. The draft statements at ~3388/3516/3542 (draft text kept across agent change, local draft retained after indeterminate response) are unchanged in behavior for well-formed stored drafts."
       ]
     },
     {
