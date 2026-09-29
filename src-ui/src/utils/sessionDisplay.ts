@@ -397,11 +397,10 @@ export function displayEnvironment(
  * retryable). archive#3244 replaced the hand-written list that used to sit
  * here — the same drift class archive#1548 deleted server-side — with the
  * derivation, keeping the members identical. Callers gate ranking
- * (`delegatedTaskPriority`) and finished-session affordance removal
- * (`DelegatedTaskCoordinator`) on it, which are stopped-semantics questions;
- * whether the coordinator's follow-up composer should instead follow the
- * terminal predicate, as the session detail's composer now does, is a
- * separate deliberate call (reported on archive#3244).
+ * (`delegatedTaskPriority`) and the Activity row menu's Stop… on it, which
+ * are stopped-semantics questions. (The delegated-work coordinator card that
+ * also gated its follow-up composer on it was removed from Activity; the
+ * session detail's composer follows the terminal predicate, archive#3244.)
  */
 export function isTerminalSession(
   session: OrchestrationSessionSummary,
@@ -439,11 +438,12 @@ export function isTerminalSession(
  * they do not silently filter).
  *
  * Rank 3 is archive#1781's addition. Before it, a dead session's sticky
- * `review_pending`/`pendingReview` returned rank 0 — the highest — and
- * `DelegatedTaskCoordinator` renders `tasks[0]` only, so one stranded task
- * occupied the single coordinator slot indefinitely while live work sat
- * behind it. It ranks above `terminal` because a session that has not
- * finished is still more interesting than one that has.
+ * `review_pending`/`pendingReview` returned rank 0 — the highest — and the
+ * (since removed) delegated-work coordinator card rendered `tasks[0]` only,
+ * so one stranded task occupied its single slot indefinitely while live work
+ * sat behind it. It ranks above `terminal` because a session that has not
+ * finished is still more interesting than one that has. Activity itself now
+ * orders delegated work by the shared state lanes, not by this rank.
  */
 export function delegatedTaskPriority(
   session: OrchestrationSessionSummary,

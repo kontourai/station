@@ -4,6 +4,8 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { clientOriginSummary } from '../../utils/clientOrigin';
 import { relativeTime } from '../../utils/relativeTime';
 import { activeTurnProgress } from '../../utils/session-state';
+import { foldConversationTurns } from '../sessions/conversation-groups';
+import { groupDelegatedSessionRuns } from '../sessions/run-groups';
 import { sessionProjectKeys } from '../sessions/sessions-lane-model';
 
 /**
@@ -110,6 +112,24 @@ export function matchesActivityOrigin(
   return origin === null || activityOriginKey(session) === origin;
 }
 
+/**
+ * The sessions the list actually shows as rows: delegated runs kept whole,
+ * sibling turn-sessions of one conversation folded to their representative
+ * (`foldConversationTurns`). Lane headings count this population, so filter
+ * option counts must too — a three-turn chat is one row, not three.
+ */
+export function foldedActivityPopulation(
+  sessions: readonly OrchestrationSessionSummary[],
+): OrchestrationSessionSummary[] {
+  return foldConversationTurns(groupDelegatedSessionRuns(sessions), {
+    pinnedThreadId: null,
+  }).presentations.flatMap((presentation) =>
+    presentation.kind === 'run'
+      ? [...presentation.run.members]
+      : [presentation.session],
+  );
+}
+
 export interface ActivityFilterOption {
   value: string;
   label: string;
@@ -161,10 +181,13 @@ export const DATED_STREAM_ORDER: readonly DatedStreamBucket[] = [
   'Older',
 ];
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function startOfLocalDay(epochMs: number): number {
-  const day = new Date(epochMs);
+/** Local midnight `daysBack` calendar days before `now`'s day. */
+function localMidnight(now: number, daysBack: number): number {
+  const day = new Date(now);
+  // setDate/setHours step by CALENDAR day in local time, so a day that is
+  // 23 or 25 hours long (a DST change) still starts at its own midnight;
+  // subtracting a fixed 24h does not.
+  day.setDate(day.getDate() - daysBack);
   day.setHours(0, 0, 0, 0);
   return day.getTime();
 }
@@ -172,19 +195,19 @@ function startOfLocalDay(epochMs: number): number {
 /**
  * Which dated sub-section a finished session reads under, by the same
  * recency fold the lanes sort by (`sessionRecency`). Calendar days in the
- * reader's local time; "This week" is the five days before yesterday. A
- * session with no parseable stamp (`recency <= 0`) is "Older" — never
- * claimed as recent.
+ * reader's local time: today, yesterday, the five days before yesterday
+ * ("This week"), then older. A stamp in the future (clock skew) reads as
+ * today; a session with no parseable stamp (`recency <= 0`) is "Older" —
+ * never claimed as recent.
  */
 export function datedStreamBucket(
   recency: number,
   now: number,
 ): DatedStreamBucket {
   if (!Number.isFinite(recency) || recency <= 0) return 'Older';
-  const today = startOfLocalDay(now);
-  if (recency >= today) return 'Earlier today';
-  if (recency >= today - DAY_MS) return 'Yesterday';
-  if (recency >= today - 6 * DAY_MS) return 'This week';
+  if (recency >= localMidnight(now, 0)) return 'Earlier today';
+  if (recency >= localMidnight(now, 1)) return 'Yesterday';
+  if (recency >= localMidnight(now, 6)) return 'This week';
   return 'Older';
 }
 
@@ -218,29 +241,5 @@ export function activityRunningDetail(
   return {
     duration,
     activity: progress ? `last progress ${progress} ago` : null,
-  };
-}
-
-/**
- * Where "Open in chat" goes for a Station-owned session: the chat dock deep
- * link the server's `sessionOpenHref` and notification activation
- * (`lib/notification-activation.ts`) already produce —
- * `?chat=<id>&dock=open`, under the project page when the session has a
- * local one.
- * The dock resolves `chat` against an open tab's conversation id or a
- * conversation lookup, so the conversation id is preferred when known.
- */
-export function activityChatTarget(session: OrchestrationSessionSummary): {
-  pathname: string;
-  params: Record<string, string>;
-} {
-  // The LOCAL project attribution only: a delegation's `projectSlug` may be a
-  // remote Station's unverified name (archive#1463), not a page here.
-  const projectSlug = session.projectSlug;
-  return {
-    pathname: projectSlug
-      ? `/projects/${encodeURIComponent(projectSlug)}`
-      : '/',
-    params: { chat: session.conversationId ?? session.threadId, dock: 'open' },
   };
 }

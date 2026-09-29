@@ -90,8 +90,10 @@ export function RunBoardSummary({
 }) {
   const buckets = summarizeRunBoard(members);
   return (
+    // `responsive-surface-actions`: the shared action-row primitive gives
+    // each cluster button the 44px phone touch floor.
     <fieldset
-      className="run-board"
+      className="run-board responsive-surface-actions"
       data-testid="run-board"
       aria-label={boardSentence(buckets)}
     >

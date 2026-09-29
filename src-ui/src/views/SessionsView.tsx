@@ -17,20 +17,21 @@ import {
   useState,
 } from 'react';
 import { ActionOperationsSection } from '../components/action-operations/ActionOperationsSection';
+import { Button } from '../components/Button';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
 import { DiscardDraftButton } from '../components/drafts/DiscardDraftButton';
 import { AgentIcon } from '../components/icons/AgentIcon';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import { useIsPageFramed } from '../components/page-frame';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { SessionPullRequestConflictChip } from '../components/session/SessionPullRequestConflictChip';
 import type { SessionEvidenceReveal } from '../components/session-detail/MutableSessionDetail';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { StatusGlyph } from '../components/status/StatusGlyph';
 import { useAgents } from '../contexts/AgentsContext';
-import { navigationStore } from '../contexts/navigation-store';
-import { useOpenChats } from '../contexts/open-chats-store';
-import { useToast } from '../contexts/ToastContext';
+import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
+import { toastStore } from '../contexts/ToastContext';
 import { copyToClipboard } from '../lib/clipboard';
 import { relativeTime, relativeTimeAgo } from '../utils/relativeTime';
 import {
@@ -39,6 +40,7 @@ import {
   sessionStatusWord,
 } from '../utils/session-state';
 import {
+  humanizeId,
   isStreamingSession,
   isTerminalSession,
   sessionIconAgent,
@@ -54,19 +56,23 @@ import {
 } from './activity/ActivityRowMenu';
 import {
   type ActivityFilters,
-  activityChatTarget,
   activityOriginOptions,
   activityOriginShortLabel,
   activityProjectOptions,
   activityRunningDetail,
   DATED_STREAM_ORDER,
   datedStreamBucket,
+  foldedActivityPopulation,
   matchesActivityKind,
   matchesActivityOrigin,
   NO_ACTIVITY_FILTERS,
 } from './activity/activity-list-model';
 import { olderDraftsLabel } from './home/draft-lane';
 import { isTerminalLifecycle } from './home/home-lane-model';
+import {
+  focusChatEventDetailForAction,
+  resolveConversationOpenAction,
+} from './home/work-item-open-policy';
 import { foldConversationTurns } from './sessions/conversation-groups';
 import { RunBoardSummary } from './sessions/RunBoardSummary';
 import { groupDelegatedSessionRuns } from './sessions/run-groups';
@@ -83,6 +89,9 @@ import './page-layout.css';
 
 /** Live-refresh cadence for the all-sessions list (the SSE feed is per-session). */
 const SESSION_LIST_REFRESH_MS = 5000;
+
+/** How often relative times, lanes and dated buckets re-derive. */
+const ACTIVITY_CLOCK_MS = 30_000;
 
 /**
  * The terminal history lane that reads as a dated stream ("what happened
@@ -283,6 +292,7 @@ export function SessionsView({
     refetchInterval: SESSION_LIST_REFRESH_MS,
   });
   const agents = useAgents();
+  const framed = useIsPageFramed();
   const openChats = useOpenChats(agents, sessions);
   const openConversationIds = useMemo(
     () => new Set(openChats.map((chat) => chat.id)),
@@ -307,11 +317,22 @@ export function SessionsView({
   const [evidenceReveal, setEvidenceReveal] =
     useState<SessionEvidenceReveal | null>(null);
   const [search, setSearch] = useState('');
+  // One clock for everything time-based on this surface — lane membership
+  // (the recently-finished window), the dated history buckets and the row
+  // times — so they age together instead of freezing at the last data change.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), ACTIVITY_CLOCK_MS);
+    return () => clearInterval(timer);
+  }, []);
   // Kind / Project / Started from. Origins come from recorded session
   // provenance; the device management registry is operator-only and reading
   // it here can invalidate a valid browser session.
   const [filters, setFilters] = useState<ActivityFilters>(NO_ACTIVITY_FILTERS);
   const [isDelegationOpen, setIsDelegationOpen] = useState(false);
+  /** The row a "Delegate subtask…" was chosen from; null for "New task". */
+  const [delegationParent, setDelegationParent] =
+    useState<OrchestrationSessionSummary | null>(null);
   const delegationReturnFocusRef = useRef<HTMLElement[]>([]);
   const postDelegateSelectRef = useRef<((threadId: string) => void) | null>(
     null,
@@ -460,8 +481,6 @@ export function SessionsView({
     armEvidenceReveal,
   ]);
 
-  const { showToast } = useToast();
-
   // Filters and the free-text search COMPOSE: a session must pass every
   // active filter AND the search. `collectionFiltered` is the filtered
   // collection with no query applied, kept apart so an empty result can say
@@ -476,23 +495,53 @@ export function SessionsView({
       ),
     [sessions, filters],
   );
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return collectionFiltered.filter(
-      (s) =>
+  const matchesSearch = useCallback(
+    (s: OrchestrationSessionSummary) => {
+      const q = search.trim().toLowerCase();
+      return (
         !q ||
         searchableSessionFields(s, agents).some((field) =>
           field.toLowerCase().includes(q),
-        ),
-    );
-  }, [collectionFiltered, search, agents]);
+        )
+      );
+    },
+    [search, agents],
+  );
+  const filtered = useMemo(
+    () => collectionFiltered.filter(matchesSearch),
+    [collectionFiltered, matchesSearch],
+  );
+  // Option counts are FACETED and FOLDED: each picker counts the rows the
+  // list would show if you picked that option, given every other active
+  // filter and the search — over the same run/conversation-folded
+  // population the lane headings count.
   const projectOptions = useMemo(
-    () => activityProjectOptions(sessions),
-    [sessions],
+    () =>
+      activityProjectOptions(
+        foldedActivityPopulation(
+          sessions.filter(
+            (s) =>
+              matchesActivityKind(s, filters.kind) &&
+              matchesActivityOrigin(s, filters.origin) &&
+              matchesSearch(s),
+          ),
+        ),
+      ),
+    [sessions, filters.kind, filters.origin, matchesSearch],
   );
   const originOptions = useMemo(
-    () => activityOriginOptions(sessions),
-    [sessions],
+    () =>
+      activityOriginOptions(
+        foldedActivityPopulation(
+          sessions.filter(
+            (s) =>
+              matchesActivityKind(s, filters.kind) &&
+              matchesProjectFilter(s, filters.project) &&
+              matchesSearch(s),
+          ),
+        ),
+      ),
+    [sessions, filters.kind, filters.project, matchesSearch],
   );
   const clearSearchAndFilters = useCallback(() => {
     setSearch('');
@@ -506,12 +555,10 @@ export function SessionsView({
    * emits exactly one heading because its rows are contiguous.
    */
   const lanes = useMemo(
-    () =>
-      partitionSessionLanes({ sessions: filtered, agents, now: Date.now() }),
-    [filtered, agents],
+    () => partitionSessionLanes({ sessions: filtered, agents, now }),
+    [filtered, agents, now],
   );
 
-  const now = Date.now();
   const sessionRows = lanes.flatMap((lane) =>
     lane.sessions.map((session) => ({ session, laneId: lane.id })),
   );
@@ -563,6 +610,18 @@ export function SessionsView({
   // conversation's NEWEST Session. Old means the whole conversation is old.
   const isOlderDraft = (members: readonly OrchestrationSessionSummary[]) =>
     olderDraftThreadIds.has(members[0].threadId);
+  // Every Session of each conversation, for a discarded Draft's tab cleanup —
+  // built once rather than scanning the whole list per Draft row.
+  const threadIdsByConversation = useMemo(() => {
+    const byConversation = new Map<string, string[]>();
+    for (const session of sessions) {
+      const key = session.conversationId ?? session.threadId;
+      const ids = byConversation.get(key) ?? [];
+      ids.push(session.threadId);
+      byConversation.set(key, ids);
+    }
+    return byConversation;
+  }, [sessions]);
 
   // "Stop…" always asks first: it ends a turn the reader may not be watching.
   const [stopTarget, setStopTarget] =
@@ -576,9 +635,28 @@ export function SessionsView({
       void refetch();
     },
   });
-  const openStationChat = (session: OrchestrationSessionSummary) => {
-    const target = activityChatTarget(session);
-    navigationStore.navigate(target.pathname, target.params);
+  /**
+   * "Open in chat" through archive#1297's one open policy — the same
+   * `resolveConversationOpenAction` → `openChatsStore.focus` path Home and a
+   * project's Live work use — so this surface cannot disagree with them about
+   * whether a session can be reopened. Only the `rehydrate` outcome is an
+   * "open in chat"; `navigate` means Station cannot rehydrate it (no agent,
+   * or attached), and Activity already IS that fallback.
+   */
+  const chatOpenDetail = (session: OrchestrationSessionSummary) => {
+    // A paired Station's record: its transcript is not local (#847).
+    if (session.delegation?.environmentKind === 'peer') return null;
+    const action = resolveConversationOpenAction({
+      threadId: session.threadId,
+      conversationId: session.conversationId,
+      agentSlug: session.assignedAgentSlug,
+      controlMode: session.controlMode,
+      projectSlug: session.projectSlug,
+      model: session.model,
+    });
+    return action.kind === 'rehydrate'
+      ? focusChatEventDetailForAction(action)
+      : null;
   };
 
   const rowActions = (
@@ -595,11 +673,13 @@ export function SessionsView({
         onSelect: () => selectWithIntent(s.threadId),
       });
     } else {
-      actions.push({
-        id: 'open-in-chat',
-        label: 'Open in chat',
-        onSelect: () => openStationChat(s),
-      });
+      const detail = chatOpenDetail(s);
+      if (detail)
+        actions.push({
+          id: 'open-in-chat',
+          label: 'Open in chat',
+          onSelect: () => openChatsStore.focus(detail),
+        });
     }
     if (showEvidence)
       actions.push({
@@ -619,12 +699,24 @@ export function SessionsView({
         onSelect: () =>
           setFilters((current) => ({ ...current, project: filterKey })),
       });
+    // Delegating a subtask of a delegated task: the launcher with this row
+    // as parent (the coordinator card's former "Delegate subtask"). Not for a
+    // paired Station's record — its work runs there.
+    if (s.delegation && s.delegation.environmentKind !== 'peer')
+      actions.push({
+        id: 'delegate-subtask',
+        label: 'Delegate subtask…',
+        onSelect: (trigger) => openDelegation(s, trigger),
+      });
     actions.push({
       id: 'copy-id',
       label: 'Copy session ID',
       onSelect: () => {
         void copyToClipboard(s.threadId).then((copied) =>
-          showToast(
+          // The store directly, not `useToast`: the toast host is the app
+          // shell's, and this surface is also embedded where no provider
+          // wraps it (the Developer archive tab's test harness).
+          toastStore.show(
             copied
               ? 'Session ID copied'
               : "Couldn't copy the session ID — this browser refused clipboard access.",
@@ -687,27 +779,47 @@ export function SessionsView({
     // Turn-sessions folded away by `foldConversationTurns` do NOT count: the
     // folded conversation is the unit this list shows, the same population
     // Home and Project Live Work count.
-    const classifiedCount = (rows: typeof lanePresentations) =>
-      rows.reduce(
-        (total, row) =>
-          total +
-          row.members.filter(
-            (member) => lanesByThreadId.get(member.threadId) === laneId,
-          ).length,
-        0,
+    //
+    // A dated sub-section counts the rows PLACED in it: a run goes where its
+    // newest member is, and every member of it classified into this lane is
+    // counted there, so each heading's count is what sits under it.
+    const classifiedIn = (row: (typeof lanePresentations)[number]) =>
+      row.members.filter(
+        (member) => lanesByThreadId.get(member.threadId) === laneId,
+      ).length;
+    const countBySection = new Map<string, number>();
+    const sectionKeyOf = (row: (typeof lanePresentations)[number]) =>
+      dated ? bucketOf(row) : SESSION_LANE_LABELS[laneId];
+    for (const row of lanePresentations) {
+      const key = sectionKeyOf(row);
+      countBySection.set(
+        key,
+        (countBySection.get(key) ?? 0) + classifiedIn(row),
       );
-    const sectionFor = (row: (typeof lanePresentations)[number]) => {
-      if (!dated)
-        return `${SESSION_LANE_LABELS[laneId]} · ${classifiedCount(lanePresentations)}`;
-      const bucket = bucketOf(row);
-      return `${bucket} · ${classifiedCount(
-        lanePresentations.filter((other) => bucketOf(other) === bucket),
-      )}`;
-    };
+    }
     return lanePresentations.flatMap((row) => {
       const { presentation, members } = row;
-      const section = sectionFor(row);
+      const sectionKey = sectionKeyOf(row);
+      const section = `${sectionKey} · ${countBySection.get(sectionKey)}`;
       const subtaskCount = members.length - 1;
+      // A run renders in its highest-priority member's lane — the point is
+      // that a waiting subtask surfaces the run. When that pulls the run
+      // above the lane its ROOT is in, the group label says why, so a root
+      // reading "Completed" under "Needs you" is explained, not contradicted.
+      const pulledUpBy =
+        presentation.kind === 'run' &&
+        lanesByThreadId.get(members[0].threadId) !== laneId
+          ? members
+              .slice(1)
+              .filter(
+                (member) => lanesByThreadId.get(member.threadId) === laneId,
+              ).length
+          : 0;
+      const runLabel = `${subtaskCount} ${subtaskCount === 1 ? 'subtask' : 'subtasks'}${
+        pulledUpBy > 0
+          ? ` · ${pulledUpBy} ${SESSION_LANE_LABELS[laneId].toLowerCase()}`
+          : ''
+      }`;
       const group =
         presentation.kind !== 'run' &&
         olderDraftCount > 0 &&
@@ -720,10 +832,12 @@ export function SessionsView({
           : presentation.kind === 'run'
             ? {
                 id: presentation.run.id,
-                label: `${subtaskCount} ${subtaskCount === 1 ? 'subtask' : 'subtasks'}`,
+                label: runLabel,
+                // The board summarises the SAME population the label counts:
+                // the subtasks, not the root row above them.
                 renderSummary: (focusMember: (memberId: string) => void) => (
                   <RunBoardSummary
-                    members={presentation.run.members}
+                    members={presentation.run.members.slice(1)}
                     onFocusMember={focusMember}
                   />
                 ),
@@ -762,8 +876,10 @@ export function SessionsView({
           ...(group ? { group } : {}),
           // Interactive controls live in `trailing`, a sibling of the row
           // button, because a button may not contain interactive content.
+          // `responsive-surface-actions`: the shared action-row primitive,
+          // whose direct controls get the 44px phone touch floor.
           trailing: (
-            <>
+            <div className="activity-row__actions responsive-surface-actions">
               {recency > 0 && (
                 <time
                   className="activity-row__time"
@@ -778,21 +894,18 @@ export function SessionsView({
                   threadId={s.threadId}
                   title={sessionTitle(s)}
                   className="session-discard-draft"
-                  closeSessionIds={sessions
-                    .filter(
-                      (other) =>
-                        (other.conversationId ?? other.threadId) ===
-                        (s.conversationId ?? s.threadId),
-                    )
-                    .map((other) => other.threadId)
-                    .concat(s.conversationId ? [s.conversationId] : [])}
+                  closeSessionIds={(
+                    threadIdsByConversation.get(
+                      s.conversationId ?? s.threadId,
+                    ) ?? []
+                  ).concat(s.conversationId ? [s.conversationId] : [])}
                 />
               )}
               <ActivityRowMenu
                 itemTitle={sessionTitle(s)}
                 actions={rowActions(s, showEvidence)}
               />
-            </>
+            </div>
           ),
         };
       });
@@ -814,21 +927,27 @@ export function SessionsView({
   // return-focus capture (archive#1259), exactly as the footer card did.
   const selectItemRef = useRef<((threadId: string) => void) | null>(null);
 
-  const openTopLevelDelegation = () => {
-    // Found by archive#1245's sweep: delegating invalidates the list, so the
-    // control that opened the launcher may not survive it. Capture the whole
-    // ancestor chain while it is still attached so the restore has a
-    // fallback to walk.
-    const trigger =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
+  // Found by archive#1245's sweep: delegating invalidates the list, so the
+  // control that opened the launcher may not survive it. Capture the whole
+  // ancestor chain while it is still attached so the restore has a fallback.
+  function openDelegation(
+    parent: OrchestrationSessionSummary | null,
+    trigger: HTMLElement | null,
+  ) {
     delegationReturnFocusRef.current = trigger
       ? captureReturnFocus(trigger)
       : [];
     postDelegateSelectRef.current = selectItemRef.current;
+    setDelegationParent(parent);
     setIsDelegationOpen(true);
-  };
+  }
+  const openTopLevelDelegation = () =>
+    openDelegation(
+      null,
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null,
+    );
 
   const closeDelegation = () => {
     const chain = delegationReturnFocusRef.current;
@@ -836,6 +955,12 @@ export function SessionsView({
     setIsDelegationOpen(false);
     restoreReturnFocus(chain);
   };
+
+  const delegationProjectSlug =
+    delegationParent?.delegation?.projectSlug ?? delegationParent?.projectSlug;
+  const delegationParentTaskId = delegationParent
+    ? (delegationParent.delegation?.taskId ?? delegationParent.threadId)
+    : undefined;
 
   const searchActive = search.trim().length > 0;
   const collectionEmpty = sessions.length === 0;
@@ -871,12 +996,28 @@ export function SessionsView({
            above) cover filters as well as the query, which the layout's own
            search-only FilteredEmpty cannot. */
         collectionEmpty
-        onAdd={openTopLevelDelegation}
-        addLabel="New task"
+        /* "New task" is the header's primary action in every placement:
+           framed (Activity as the main page) the layout puts `onAdd` in the
+           page header; unframed (a dock pane) the layout would put it in the
+           list FOOTER, so it renders at the top of the list instead. */
+        {...(framed
+          ? { onAdd: openTopLevelDelegation, addLabel: 'New task' }
+          : {})}
         listIntro={(selectItem) => {
           selectItemRef.current = selectItem;
           return (
             <>
+              {!framed && (
+                <div className="activity-header-actions">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={openTopLevelDelegation}
+                  >
+                    New task
+                  </Button>
+                </div>
+              )}
               {!collectionEmpty && (
                 <ActivityFilterBar
                   filters={filters}
@@ -927,12 +1068,27 @@ export function SessionsView({
         )}
       </SplitPaneLayout>
 
-      {/* "New task" is always a TOP-LEVEL task: no parent, so the launcher
-          never silently files it as someone else's subtask. Delegating a
-          subtask belongs to a task's own detail. */}
+      {/* "New task" is always a TOP-LEVEL task (no parent), so the launcher
+          never silently files it as someone else's subtask; a subtask comes
+          only from a delegated row's "Delegate subtask…". */}
       <DelegationLauncher
         isOpen={isDelegationOpen}
         apiBase={apiBase}
+        projectSlug={delegationProjectSlug}
+        projectName={
+          delegationProjectSlug ? humanizeId(delegationProjectSlug) : null
+        }
+        currentAgentId={
+          delegationParent?.delegation?.targetId ??
+          delegationParent?.assignedAgentSlug
+        }
+        currentModel={delegationParent?.model}
+        parentTaskId={delegationParentTaskId}
+        parentTaskLabel={
+          delegationParentTaskId
+            ? humanizeId(delegationParentTaskId)
+            : undefined
+        }
         onClose={closeDelegation}
         onDelegated={(task) => {
           setIsDelegationOpen(false);

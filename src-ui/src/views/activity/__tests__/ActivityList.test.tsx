@@ -21,23 +21,27 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
-import { navigationStore } from '../../../contexts/navigation-store';
+import { openChatsStore } from '../../../contexts/open-chats-store';
 import {
   SESSION_LANE_LABELS,
   type SessionLaneId,
 } from '../../sessions/sessions-lane-model';
 
 const interruptTurn = vi.fn();
+const focusSpy = vi.spyOn(openChatsStore, 'focus').mockImplementation(() => {});
 const delegateTask = vi.fn();
 const refetchSessions = vi.fn().mockResolvedValue(undefined);
-const showToast = vi.fn();
+const useLiveActivityQuery = vi.fn(() => ({ data: undefined }));
 let sessions: Array<Record<string, unknown>> = [];
 
 vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
 }));
-vi.mock('../../../contexts/ToastContext', () => ({
-  useToast: () => ({ showToast }),
+// Activity no longer mounts the host-wide collaborator roster (the sidebar
+// footer's presence tray shows it). Any live-activity read from this surface
+// would be that roster coming back.
+vi.mock('@kontourai/station-sdk/live-activity', () => ({
+  useLiveActivityQuery,
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
@@ -166,6 +170,7 @@ const runningChat = () =>
     lifecycleState: 'running',
     hasActiveTurn: true,
     projectSlug: 'station',
+    assignedAgentSlug: 'reviewer',
     conversationId: 'conv-parser',
     turnOrigin: {
       latest: {
@@ -238,7 +243,8 @@ describe('Activity list', () => {
       resumable: true,
     });
     refetchSessions.mockClear();
-    showToast.mockReset();
+    useLiveActivityQuery.mockClear();
+    focusSpy.mockClear();
     vi.stubGlobal('matchMedia', () => ({
       addEventListener: vi.fn(),
       matches: false,
@@ -427,10 +433,12 @@ describe('Activity list', () => {
       within(finished)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Open in chat', 'Show details & evidence', 'Copy session ID']);
+      // No agent to reopen it with: Station cannot rehydrate it into a chat,
+      // so the menu does not offer to.
+    ).toEqual(['Show details & evidence', 'Copy session ID']);
   });
 
-  test('Open in chat opens the conversation in the chat dock', () => {
+  test('Open in chat reopens the conversation through the shared open policy', () => {
     sessions = [runningChat()];
     renderView();
     fireEvent.click(
@@ -438,10 +446,70 @@ describe('Activity list', () => {
         name: 'Open in chat',
       }),
     );
-    const state = navigationStore.getSnapshot();
-    expect(state.pathname).toBe('/projects/station');
-    expect(state.activeChat).toBe('conv-parser');
-    expect(state.isDockOpen).toBe(true);
+    expect(focusSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-parser',
+        agentSlug: 'reviewer',
+        threadId: 'Refactor the parser',
+        projectSlug: 'station',
+      }),
+    );
+  });
+
+  test('a paired Station record offers neither Open in chat, Delegate subtask nor Stop', () => {
+    sessions = [
+      session('Peer checks', {
+        lifecycleState: 'running',
+        hasActiveTurn: true,
+        assignedAgentSlug: 'reviewer',
+        delegation: {
+          taskId: 'task:peer',
+          environmentKind: 'peer',
+          environmentId: 'env-peer',
+        },
+      }),
+    ];
+    renderView();
+    const labels = within(openRowMenu('Peer checks'))
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent);
+    expect(labels).toEqual(['Copy session ID']);
+  });
+
+  test('Delegate subtask… opens the launcher as a CHILD of that delegated row', async () => {
+    sessions = [
+      session('Check the migration', {
+        assignedAgentSlug: 'reviewer',
+        delegation: {
+          taskId: 'task:check-migration',
+          targetId: 'codex',
+          targetKind: 'agent-app',
+        },
+      }),
+    ];
+    renderView();
+    fireEvent.click(
+      within(openRowMenu('Check the migration')).getByRole('menuitem', {
+        name: 'Delegate subtask…',
+      }),
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Delegate a task' });
+    expect(within(dialog).getByText('Child worker of')).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText('Task'), {
+      target: { value: 'Split the migration' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delegate' }));
+    await waitFor(() => expect(delegateTask).toHaveBeenCalledTimes(1));
+    expect(
+      (delegateTask.mock.calls[0][0] as { input: Record<string, unknown> })
+        .input.parentTaskId,
+    ).toBe('task:check-migration');
+  });
+
+  test('never reads the live-activity roster', () => {
+    sessions = [runningChat()];
+    renderView();
+    expect(useLiveActivityQuery).not.toHaveBeenCalled();
   });
 
   test('filters compose with each other and with search, show as removable chips, and reset together', () => {
@@ -477,7 +545,8 @@ describe('Activity list', () => {
     const project = screen.getByLabelText('Project') as HTMLSelectElement;
     expect(
       Array.from(project.options).map((option) => option.textContent),
-    ).toEqual(['All projects', 'beacon (1)', 'station (3)']);
+      // Faceted by Kind = Tasks: the station chat is not counted.
+    ).toEqual(['All projects', 'beacon (1)', 'station (2)']);
     fireEvent.change(project, { target: { value: 'station' } });
     expect(rowNames().sort()).toEqual(['Station deploy task', 'Station task']);
 
@@ -561,8 +630,127 @@ describe('Activity list', () => {
     expect(
       screen.getByRole('button', { name: '1 stopped — focus first stopped' }),
     ).toBeTruthy();
+    // The board summarises the subtasks the label counts — the running
+    // ROOT is not one of them.
     expect(
-      screen.getByRole('button', { name: '1 running — focus first running' }),
+      screen.queryByRole('button', { name: /running — focus first running/ }),
+    ).toBeNull();
+  });
+
+  test('removing one filter chip leaves the others applied', () => {
+    sessions = [
+      session('Station task', {
+        projectSlug: 'station',
+        delegation: { taskId: 'task:station', projectSlug: 'station' },
+      }),
+      session('Station chat', { projectSlug: 'station' }),
+      session('Beacon task', {
+        projectSlug: 'beacon',
+        delegation: { taskId: 'task:beacon', projectSlug: 'beacon' },
+      }),
+    ];
+    const { container } = renderView();
+    const rowNames = () =>
+      Array.from(container.querySelectorAll('.split-pane__item-name-text'))
+        .map((node) => node.textContent)
+        .sort();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Kind' }), {
+      target: { value: 'tasks' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: /^Project/ }), {
+      target: { value: 'station' },
+    });
+    expect(rowNames()).toEqual(['Station task']);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove filter Kind: Tasks' }),
+    );
+    // Project is still station: the beacon task stays out.
+    expect(rowNames()).toEqual(['Station chat', 'Station task']);
+    expect(
+      (screen.getByRole('combobox', { name: /^Project/ }) as HTMLSelectElement)
+        .value,
+    ).toBe('station');
+  });
+
+  test('filter counts count the rows the headings count, faceted by the other filters', () => {
+    const turn = (threadId: string, minutes: number) =>
+      session(threadId, {
+        displayTitle: 'Long chat',
+        conversationId: 'conv-long',
+        projectSlug: 'station',
+        updatedAt: minutesAgo(minutes),
+      });
+    sessions = [
+      // One conversation that ran three turn-sessions: ONE row.
+      turn('conv-long', 9),
+      turn('conv-long:session:2', 6),
+      turn('conv-long:session:3', 4),
+      session('Beacon task', {
+        projectSlug: 'beacon',
+        delegation: { taskId: 'task:beacon', projectSlug: 'beacon' },
+      }),
+    ];
+    const { container } = renderView();
+    const optionTexts = (name: RegExp) =>
+      Array.from(
+        (screen.getByRole('combobox', { name }) as HTMLSelectElement).options,
+      ).map((option) => option.textContent);
+    expect(optionTexts(/^Project/)).toEqual([
+      'All projects',
+      'beacon (1)',
+      'station (1)',
+    ]);
+    expect(
+      container.querySelectorAll('.split-pane__item-name-text'),
+    ).toHaveLength(2);
+    // Faceted: with Kind = Tasks, the station conversation is not a task.
+    fireEvent.change(screen.getByRole('combobox', { name: 'Kind' }), {
+      target: { value: 'tasks' },
+    });
+    expect(optionTexts(/^Project/)).toEqual(['All projects', 'beacon (1)']);
+  });
+
+  test('a run pulled into a higher lane by a subtask says so, and its board counts the subtasks', () => {
+    sessions = [
+      session('Plan the release', { lifecycleState: 'completed' }),
+      session('Answer the reviewer', {
+        lifecycleState: 'needs_input',
+        delegation: { taskId: 'task:answer', parentTaskId: 'Plan the release' },
+      }),
+      session('Check the migration', {
+        lifecycleState: 'completed',
+        delegation: { taskId: 'task:check', parentTaskId: 'Plan the release' },
+      }),
+    ];
+    const { container } = renderView();
+    expect(sectionHeadings(container)).toEqual([
+      `${SESSION_LANE_LABELS.needsYou} · 1`,
+    ]);
+    expect(
+      screen.getByRole('button', {
+        name: `2 subtasks · 1 ${SESSION_LANE_LABELS.needsYou.toLowerCase()}`,
+      }),
+    ).toBeTruthy();
+    // Two subtasks on the board — the completed ROOT is not a third.
+    expect(
+      screen.getByRole('button', { name: /^1 completed — / }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /^1 needs attention — / }),
+    ).toBeTruthy();
+  });
+
+  test('in a dock pane (no page frame) New task sits at the top of the list, not in the footer', () => {
+    sessions = [runningChat()];
+    const { container } = renderView();
+    const button = screen.getByRole('button', { name: 'New task' });
+    expect(button.closest('.split-pane__add')).toBeNull();
+    const list = container.querySelector('.split-pane__list') as HTMLElement;
+    expect(list.contains(button)).toBe(true);
+    const firstHeading = list.querySelector('.split-pane__section-header');
+    expect(
+      button.compareDocumentPosition(firstHeading as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 });

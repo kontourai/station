@@ -756,7 +756,7 @@ describe('SessionsView', () => {
     const view = renderView();
     const list = view.container.querySelector('.split-pane__list')!;
     const group = screen.getByRole('button', {
-      name: '1 subtask',
+      name: '1 subtask · 1 needs you',
     });
 
     expect(
@@ -777,7 +777,7 @@ describe('SessionsView', () => {
             ? button.textContent?.replace('⌄', '').trim()
             : button.querySelector('.split-pane__item-name')?.textContent,
         ),
-    ).toEqual(['1 subtask', 'Active parent', 'Needs you child']);
+    ).toEqual(['1 subtask · 1 needs you', 'Active parent', 'Needs you child']);
 
     fireEvent.click(group);
     expect(group.getAttribute('aria-expanded')).toBe('false');
@@ -787,7 +787,9 @@ describe('SessionsView', () => {
         (heading) => heading.textContent,
       ),
     ).toEqual(['Needs you · 1']);
-    expect(screen.getByRole('button', { name: '1 subtask' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: '1 subtask · 1 needs you' }),
+    ).toBeTruthy();
 
     view.rerenderSession('needs-you-child');
     await waitFor(() =>
@@ -824,7 +826,7 @@ describe('SessionsView', () => {
     renderView();
 
     const toggle = screen.getByRole('button', {
-      name: '1 subtask',
+      name: '1 subtask · 1 needs you',
     });
     fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
@@ -1175,7 +1177,7 @@ describe('SessionsView', () => {
 
     function openLauncher() {
       const trigger = screen.getByRole('button', { name: 'New task' });
-      const starter = trigger.closest('.split-pane__add') as HTMLElement;
+      const starter = trigger.parentElement as HTMLElement;
       trigger.focus();
       fireEvent.click(trigger);
       return { starter, trigger };
@@ -4263,9 +4265,19 @@ describe('SessionsView', () => {
       });
       const items = within(menu).getAllByRole('menuitem');
       await waitFor(() => expect(document.activeElement).toBe(items[0]));
+      const target = items.findIndex(
+        (item) => item.textContent === 'Show details & evidence',
+      );
+      expect(target).toBeGreaterThanOrEqual(0);
+      // End then Down wraps to the top; Down from there walks to the item.
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'End' });
       fireEvent.keyDown(document.activeElement as HTMLElement, {
         key: 'ArrowDown',
       });
+      for (let step = 0; step < target; step += 1)
+        fireEvent.keyDown(document.activeElement as HTMLElement, {
+          key: 'ArrowDown',
+        });
       expect(document.activeElement?.textContent).toBe(
         'Show details & evidence',
       );
