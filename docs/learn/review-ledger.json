@@ -1584,7 +1584,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "6a0d3e154170e88514a9ad71e1b7af587073aeb4",
+      "sourceRevision": "8ae3b83b4ec1734981364866a774503a6cc97751",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1608,7 +1608,7 @@
         },
         {
           "path": "docs/guides/nightly.md",
-          "digest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a"
+          "digest": "1d2d768b4dddb1cfae5f123b0322621f5e70565918118fb8027d7e840041aba3"
         },
         {
           "path": "docs/privacy-policy.md",
@@ -1656,7 +1656,7 @@
         },
         {
           "path": "docs/guides/release-channel-ports.md",
-          "digest": "a318455a18fdb96350fa2d0b1af309d9bfdee2de5c029345440ebf97e92dfebb"
+          "digest": "4539c41cbf53a187eb31598523ee47144e01f9a62be8db2607ca0be39d088911"
         }
       ],
       "checks": [
@@ -1678,7 +1678,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed."
+        "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed.",
+        "#2675 W1: its linked guides (release-channel-ports, nightly) gained install.ps1 stage-only sentences. Re-read the README's install and prebuilt-archive paragraphs: they describe the macOS/Linux install.sh path and still hold; Windows standalone install is not offered to users until W2, so no prose change."
       ]
     },
     {
@@ -13710,7 +13711,7 @@
     {
       "path": "docs/guides/development.md",
       "documentDigest": "ec666bebf846549080f52a23b5d13a1f3fc7a87be01a72c78a1ce8cdf13a7a25",
-      "sourceRevision": "998b7be07c2298ead61e8cffa39dab7583d8b6f3",
+      "sourceRevision": "55801ec665d22cd64e90ad6b83c848f45bf95bf7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checkout setup and contributor workflow, with normative boundaries routed to owners. Full 415-line baseline read. Dependency lifecycle, workspace/package contract, command ownership, verification paths and plugin workflow boundaries checked. No installs outside managed setup, plugin installation, runtime/service control, native build or publication performed.",
@@ -13746,7 +13747,7 @@
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
+          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
         },
         {
           "path": ".github/workflows/windows-pr-verification.yml",
@@ -13798,7 +13799,7 @@
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
-          "digest": "1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830"
+          "digest": "2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6"
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
@@ -13846,7 +13847,7 @@
         },
         {
           "path": "scripts/lib/portable-server-archive.mjs",
-          "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
+          "digest": "5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d"
         },
         {
           "path": "scripts/prepare-verify-static.mjs",
@@ -13927,7 +13928,8 @@
         "Named the evidence-check registration and generated-output invariants that ci:fast now runs (run-ci-fast.mjs FAST_STATIC_COMMANDS). Other deltas (package.json scripts, documentation guide and skill freshness text, review compiler predicate) do not affect this guide's claims.",
         "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
         "Reviewed the compileDocumentationReviews reportMissing passthrough and the guide wording change; this guide's claims are unchanged.",
-        "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes."
+        "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes.",
+        "#2675 W1: portable-server-archive.mjs only adds install.ps1 to win32 archives, the archive workflow adds install.ps1 to its paths, and the vectors test adds an entry point. Re-read the guide's archive/verification mentions: none describes archive contents or those tests; no prose change needed."
       ]
     },
     {
@@ -14233,7 +14235,7 @@
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
+          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
         },
         {
           "path": "install.sh",
@@ -14253,11 +14255,11 @@
         },
         {
           "path": "packaging/manifest/README.md",
-          "digest": "7922c9b16e0c0c9174a54e992ac9533e83c04c473f46ea274ca1c553da4f049b"
+          "digest": "54b625415596f5a8347a9b98caa705978def18f23ad22d69da3a27e12f641047"
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
-          "digest": "1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830"
+          "digest": "2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6"
         },
         {
           "path": "scripts/ecosystem-manifest.mjs",
@@ -14273,7 +14275,7 @@
         },
         {
           "path": "scripts/install-script-generated.mjs",
-          "digest": "2c40c48272518a9db1eb3c44903171385ce7c45ac694465b86ec4e0938a74cd6"
+          "digest": "b6cc8658bf3390211a0601fbfcb7081c9553d1e1814bed5c479cf1df6915a9e4"
         }
       ],
       "checks": [
@@ -14284,10 +14286,11 @@
         "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
         "Landing review through d0d9d33f7: Installer input now triggers archive builds. Added missing documentation compiler and all four declared data inputs to both push/PR filters; the actual import/data coverage guard catches omissions. Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Retained v1-only cask behavior and clarified that current consumers refuse the former source-v2 shape. Updated current platform-v2 consumers, explicit former-v2 refusal and same-version cross-layout exception. Homebrew still requires v1 application artifacts. Golden vectors now also execute the real shell verifier with fixture keys and refused downloads; v1 source fallback and v2 platform semantics stay explicit. This is verifier evidence, not publication or installed runtime proof. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
         "Integration source review through e0314c727: install.sh now switches archive services that run the install root's current (stop, switch, restart, identity rollback), records and reuses install ports, and validates port values. The guide makes no service or port claim and sends upgrade, rollback and service limits to release-channel-ports.md, so its own prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds stage-only mode and the launcher-service handoff to install.sh. The guide's manifest-path selection, v1/v2 schema and host-archive selection claims still hold, and it defers upgrade and service limits to the archive install contract; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds stage-only mode and the launcher-service handoff to install.sh. The guide's manifest-path selection, v1/v2 schema and host-archive selection claims still hold, and it defers upgrade and service limits to the archive install contract; prose accurate. Source review is separate from executed test evidence.",
+        "#2675 W1: checked the v2 consumer paragraph against install.ps1's core (manifest.ts composes the shared verifier; stage-only). Added the Windows consumer sentence. Workflow path additions (install.ps1, installer core, smoke driver) and the vectors test's new core entry point change no stated claim."
       ],
-      "documentDigest": "3a9d120976213bfd9ade0d704be4862248d7212ef3a6187924fca1052bde54b3",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+      "documentDigest": "e66f5793fee5134a95659ae766e2751206850bc2f2e5c3ad3de4f57a2da3dc76",
+      "sourceRevision": "55801ec665d22cd64e90ad6b83c848f45bf95bf7"
     },
     {
       "path": "docs/guides/home-transfer-controller.md",
@@ -16006,8 +16009,8 @@
     },
     {
       "path": "docs/guides/native-releases.md",
-      "documentDigest": "f83643fc0d8ed58bd9daa879a86f8b0ea09c4f4d67597226de8b268f15038b8c",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "documentDigest": "6bc6841cc8f88ecb931415c3f0166c6742152358ac5977d1359ee8da9c4400b0",
+      "sourceRevision": "55801ec665d22cd64e90ad6b83c848f45bf95bf7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed detailed cohort admission/fence/ledger/partial-provider protocols, mobile and desktop compensation boundaries, macOS notarization overlap, Windows installer/payload proof limits and portable host-target staging. Actual AppImage entrypoint callers checked against Cargo.lock-verified tauri-utils resource resolution; source/config mismatch documented without claiming an executed Linux failure. Frozen Windows/shared-runtime-pruning changes traced through callers.",
@@ -16035,7 +16038,7 @@
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
+          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
         },
         {
           "path": ".github/workflows/publish-release.yml",
@@ -16147,7 +16150,7 @@
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
-          "digest": "1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830"
+          "digest": "2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6"
         },
         {
           "path": "scripts/__tests__/release-workflow.test.ts",
@@ -16227,7 +16230,7 @@
         },
         {
           "path": "scripts/lib/portable-server-archive.mjs",
-          "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
+          "digest": "5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d"
         },
         {
           "path": "scripts/lib/portable-smoke-diagnostics.mjs",
@@ -16355,7 +16358,8 @@
         "Integration source review through e0314c727: install.sh gained #2867 archive-service switching (stop, switch current, restart, identity rollback) and recorded install ports; install-macos.zsh now calls the signing-identity helper's designated-requirement transition check; the dead createExclusiveDirectory and DMG_CREATION_COMMAND_TIMEOUT_MS exports were dropped; lifecycle.ts upgrade no longer blocks on an archive service of its own install root; lib.rs removed the dormant notification watch; package.json dropped bearing/forage. None of these touch the guide's cohort, notarization-overlap, AppImage resource-path or portable-archive claims, and the guide sends upgrade and service behavior to release-channel-ports.md, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and a launcher handoff. When a running launcher-run service owns the install, install.sh stages versions/<v>, writes runtime/update-request.json and waits for the launcher instead of promoting current. portable-server-archive.mjs now ships bin/station-launcher.mjs. #2914 only drops the dead validateUpdateConfig alias, adds a `--` to install-macos.zsh print calls, and reshapes feed/cohort/build-only tests. Corrected the unconditional 'then promotes the active link' with one sentence: under a running launcher-run service the installer only stages and the launcher trials the switch. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta."
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
+        "#2675 W1: portable-server-archive.mjs now copies install.ps1 into win32 archives only; workflow paths add install.ps1. Checked the portable-archive section; added that the Windows zip is install.ps1's and stage-only so far. Other claims (long-path smoke, install.sh selection) unchanged."
       ]
     },
     {
@@ -16544,8 +16548,8 @@
     },
     {
       "path": "docs/guides/nightly.md",
-      "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "documentDigest": "1d2d768b4dddb1cfae5f123b0322621f5e70565918118fb8027d7e840041aba3",
+      "sourceRevision": "55801ec665d22cd64e90ad6b83c848f45bf95bf7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
@@ -16717,7 +16721,7 @@
         },
         {
           "path": "scripts/lib/portable-server-archive.mjs",
-          "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
+          "digest": "5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d"
         },
         {
           "path": "scripts/lib/portable-smoke-diagnostics.mjs",
@@ -16834,7 +16838,8 @@
         "Integration source review through e0314c727: the inputs changed in four ways. install.sh gained archive-service stop/switch/restart and recorded ports (#2867). The build-only exclusive output directory moved from a JS helper into the zsh installer's `mkdir` refusal, which still exits with 'already exists'. The designated-requirement check moved into the macos-signing-identity CLI. The notification watch, DMG_CREATION timeout alias and bearing/forage deps were removed. The guide's install, build-only, notarization and archive claims are still accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds install.sh STATION_INSTALL_STAGE_ONLY and hand-off to a running launcher service, and copies bin/station-launcher.mjs in portable-server-archive.mjs. lifecycle.ts now passes STATION_SERVICE_LAUNCHER only to the supervised server. 'Check for server updates' (GET /api/system/core-update) now checks an archive's signed public manifest and can apply the update through the fixed launcher. 8b48e2b35 (#2914) only adds `--` to print calls in install-macos.zsh and changes tests. The 'Server source check' bullet said the route only compares source and build stamps and never shows an update as available, which is now wrong for archives. Corrected it: added the archive exception (verified manifest, running and newest versions, apply only when the launcher runs the server, otherwise station upgrade or reinstall) with a link to the cli.md#service section. The install, build-only and rollback prose is still accurate. The route source (src-server/routes/system/archive-update.ts) is not a recorded input; the ledger owner may add it. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta."
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
+        "#2675 W1: portable-server-archive.mjs adds install.ps1 to the Windows archive. Checked the platform-array v2 install paragraph; added the Windows stage-only sentence. Publication claims unchanged."
       ]
     },
     {
@@ -17438,8 +17443,8 @@
     },
     {
       "path": "docs/guides/release-channel-ports.md",
-      "documentDigest": "a318455a18fdb96350fa2d0b1af309d9bfdee2de5c029345440ebf97e92dfebb",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "documentDigest": "4539c41cbf53a187eb31598523ee47144e01f9a62be8db2607ca0be39d088911",
+      "sourceRevision": "55801ec665d22cd64e90ad6b83c848f45bf95bf7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
@@ -17695,7 +17700,7 @@
         },
         {
           "path": "scripts/install-script-generated.mjs",
-          "digest": "2c40c48272518a9db1eb3c44903171385ce7c45ac694465b86ec4e0938a74cd6"
+          "digest": "b6cc8658bf3390211a0601fbfcb7081c9553d1e1814bed5c479cf1df6915a9e4"
         },
         {
           "path": "packages/shared/src/portable-server-targets.mjs",
@@ -17739,13 +17744,14 @@
         "Integration source review through e0314c727: #2867 (slice C) changed service handling. `station service install` from an archive's active version now runs `<install root>/current` and records `kind: \"archive\"` and `installRoot`. The installer stops that service, switches `current`, restarts it, and rolls back if the identity check fails; any other service still blocks upgrade (lifecycle.ts `archiveInstallRoot`, install.sh). Installs also record their ports and reuse them on upgrade. Corrected the stale \"under an installed service, upgrade refuses\" and \"services still run the source-release layout until slice C\" claims, added the archive-service upgrade, inactive-version and port rules and the uninstall refusal, and noted port reuse. Cargo.toml/lib.rs (notification-watch removal, rustls comment) and bearing/forage removal do not affect the channel identity matrix. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes fnv1a32 private in dev-ports.ts, with the same deterministic offset and scan callers. It deletes the test-only parseGitSource/extractPluginName from commands/helpers.ts. Neither change affects the worktree allocation or root derivation the guide describes. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and, when runtime/service-state.json exists and an archive service is active, only stages the version and hands off to the fixed service launcher (trial/rollback; refuses on pending or needs-operator update state); service.ts copies runtime/station-launcher.mjs at archive service install (non-win32); lifecycle-code-root.ts moves archive helpers to @kontourai/station-shared/prebuilt-archive (re-exported, no behavior change); channel-ports.mjs adds an optional outputRoot to sync/check; android-build-manifest.mjs and tauri-context.mjs only drop exports (#2914). Corrected the archive-service upgrade paragraph, which claimed the installer always stops the service, switches current and restarts it: it now says a running launcher service stages and hands off to a launcher trial, keeps the stop/switch/restart path otherwise, and notes that an unfinished or operator-blocked launcher update refuses the upgrade. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "#2675 W1: re-read the generated-block and prebuilt-archive sections against install-script-generated.mjs (now also renders install.ps1's channel list, win32-x64 Node.js zip pin and bundled installer core; --check covers both installers) and against install.ps1's stage-only core. Added the install.ps1 generation and stage-only scope; install.sh claims unchanged (install.sh bytes unchanged)."
       ]
     },
     {
       "path": "docs/guides/release-rings.md",
       "documentDigest": "75d72fe29216dca1d8443e8c502cda5d7fc03aa2d88d74fee939a688c9ee62eb",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "55801ec665d22cd64e90ad6b83c848f45bf95bf7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Portable release trust, exact-commit promotion and recovery requirements. Full143-line baseline read. Traced install.sh default attestation and optional pinned-key public manifest branches, token lifetime, explicit channel mapping, downgrade/freshness limits, restore failure handling and publish authority. Corrected exact preview-commit promotion and routine destructive cleanup recipe.",
@@ -17773,7 +17779,7 @@
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
+          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
         },
         {
           "path": ".github/workflows/publish-release.yml",
@@ -17821,7 +17827,7 @@
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
-          "digest": "1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830"
+          "digest": "2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6"
         },
         {
           "path": "scripts/__tests__/release-workflow.test.ts",
@@ -17873,7 +17879,7 @@
         },
         {
           "path": "scripts/lib/portable-server-archive.mjs",
-          "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
+          "digest": "5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d"
         },
         {
           "path": "scripts/lib/release-artifacts.mjs",
@@ -17922,7 +17928,8 @@
         "Integration source review through e0314c727: install.sh (#2867) now records resolved ports in schema-3/4 state, validates ports, and stops, switches and restarts archive services that run `current`, rolling back on identity failure. install-macos.zsh moved its designated-requirement check into the helper; package.json dropped bearing/forage; lib.rs removed the dormant notification watch. Attestation, public-manifest, channel, downgrade/freshness and restore-on-failed-start prose stays accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh (and so station upgrade) no longer switches current under a running launcher-run service. It stages the version with STATION_INSTALL_STAGE_ONLY semantics, queues an update request, and the launcher trials it, restoring its home backup and the previous version on failure. The install-macos.zsh and portable-server-archive.mjs deltas are cosmetic or ship the launcher. Corrected 'Upgrade and rollback behavior' with one sentence on the launcher-run path, linking the service reference. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta."
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
+        "#2675 W1: changes are install.ps1 in the Windows archive, workflow paths and a vectors-test entry point. The guide's trust/promotion claims cite install.sh's policy, which is byte-unchanged; no prose change needed."
       ]
     },
     {
@@ -19552,7 +19559,7 @@
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "55801ec665d22cd64e90ad6b83c848f45bf95bf7",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -19728,11 +19735,11 @@
         },
         {
           "path": "scripts/__tests__/portable-server-archive.test.ts",
-          "digest": "080cf7aa36c4680b1a4e296ae8aa96b83ee57a84c71c61c225a074e9e3468b4a"
+          "digest": "f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181"
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
+          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
         },
         {
           "path": "scripts/run-changed-verification.mjs",
@@ -19796,7 +19803,8 @@
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only path-read-pin-boundary.test.ts, adding turn-started-attachment-projection.test.ts to the unreported path-read suite list (verified with git diff d0ca944c5 062fad816); the guide names neither file; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
         "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes.",
         "2026-09-28 follow-up: run-changed-verification.mjs changed only by forwarding runChangedVerification's paths from the representative narrow-diff fixture (its summary had always printed 0 changed paths); changed-verification.test.ts asserts that count and records the measured basis for the existing 120s CLI liveness limit. Claims unaffected. Source review only; no new executed evidence beyond the focused suite.",
-        "Rechecked the repo-scan and path-read-pin guidance: adding the SDK body-read scan to REPO_SCAN_SUITES and UNREPORTED_PATH_READING_SUITES follows the rules the guide describes; no count or list in the guide changes."
+        "Rechecked the repo-scan and path-read-pin guidance: adding the SDK body-read scan to REPO_SCAN_SUITES and UNREPORTED_PATH_READING_SUITES follows the rules the guide describes; no count or list in the guide changes.",
+        "#2675 W1: portable-server-archive.test.ts adds install.ps1 to the required-input list; the archive workflow adds it to paths. The guide's resource-manifest and focused-test guidance still applies (install-ps1.test.ts is classified in vitest-resource-manifest.mjs); no prose change needed."
       ]
     },
     {
@@ -22489,7 +22497,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "55801ec665d22cd64e90ad6b83c848f45bf95bf7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22853,7 +22861,7 @@
         },
         {
           "path": "scripts/lib/portable-server-archive.mjs",
-          "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
+          "digest": "5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d"
         }
       ],
       "checks": [
@@ -22878,7 +22886,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c auto-merged a new 'Recorded versus acknowledged decisions' subsection after the delegate examples. It fits the branch's delegate text (respond/status/events). It also matches source: the six delivery values in station-control-delegation.ts; CODEX_APPROVAL_ACK_WINDOW_MS = 30_000; the codes engine-decision-unacknowledged and engine-decision-not-sent; the CLI line formats in packages/cli delegate.ts; and acknowledgement 'none' in the acp and claude adapters. 7cd4892e5 refuses a decision on a closed Codex request ('not open'), which matches the closed-by-engine row. The approvals section's request.opened/request.resolved description still holds. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) main's own edit to the service section (fixed launcher at <install root>/runtime/station-launcher.mjs, 165s TimeoutStopSec, launcher-run self-update with trial/rollback/needs-operator, install.sh handoff, Check for server updates) auto-merged cleanly into the branch's text. It is not duplicated and does not contradict the branch's tier table (packaged service status|start|stop). Main left the `upgrade` section saying the installer always stops the service, switches current and restarts it; that is wrong for a running launcher-run service now that install.sh hands off. Corrected the upgrade section: the installer only stages and asks the service to switch, the launcher trials and keeps the previous version on failure, and the old stop/switch/restart applies otherwise. Source review is separate from executed test evidence.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers."
+        "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers.",
+        "#2675 W1: portable-server-archive.mjs adds install.ps1 to win32 archives only. The Native installation, service and upgrade sections describe install.sh on macOS/Linux and remain accurate; Windows installs are not documented as available (stage-only), so no prose change yet (W2 adds it)."
       ]
     },
     {
@@ -26939,7 +26948,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "8ae3b83b4ec1734981364866a774503a6cc97751",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -27108,7 +27117,7 @@
         },
         {
           "path": "docs/guides/release-channel-ports.md",
-          "digest": "a318455a18fdb96350fa2d0b1af309d9bfdee2de5c029345440ebf97e92dfebb"
+          "digest": "4539c41cbf53a187eb31598523ee47144e01f9a62be8db2607ca0be39d088911"
         }
       ],
       "checks": [
@@ -27139,7 +27148,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
         "Own edit: only the archive-install guide's link target changed, from the repo-relative ../guides/release-channel-ports.md to the absolute repository blob URL for the same file and the same #prebuilt-archives-and-source-releases anchor, so the published Start Here page no longer links to an ungenerated target. The surrounding claims (STATION_INSTALL_PUBLIC_MANIFEST_URL, the signed platform-v2 prebuilt archive, bundled Node.js, and the published-manifest requirement) are untouched. Verified docs:links:check re-resolves the blob URL as a local link and validates the anchor in 423 Markdown files.",
-        "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the getting-started captures and steps are unchanged, so the page holds."
+        "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the getting-started captures and steps are unchanged, so the page holds.",
+        "#2675 W1: release-channel-ports.md gained install.ps1 generation and stage-only scope. The guide's prebuilt-archive paragraph names the macOS/Linux path only, which remains accurate; no prose change."
       ]
     },
     {
@@ -29896,7 +29906,7 @@
     },
     {
       "path": "packaging/homebrew/README.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "8ae3b83b4ec1734981364866a774503a6cc97751",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Actual CLI cask still admits schema-v1/macOS only. Platform-array v2 is accepted for verify/create but refused for cask; older installer-shape v2 is a separate contract. Renderer/template and explicit-key fixture boundary remain. Workflow source delta only expands tracked triggers; no Homebrew or publish proof.",
@@ -29921,7 +29931,7 @@
         },
         {
           "path": "packaging/manifest/README.md",
-          "digest": "7922c9b16e0c0c9174a54e992ac9533e83c04c473f46ea274ca1c553da4f049b"
+          "digest": "54b625415596f5a8347a9b98caa705978def18f23ad22d69da3a27e12f641047"
         },
         {
           "path": "scripts/ecosystem-manifest.mjs",
@@ -29943,21 +29953,22 @@
         "2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
         "Landing review through d0d9d33f7: Updated current platform-v2 consumers, explicit former-v2 refusal and same-version cross-layout exception. Homebrew still requires v1 application artifacts. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained.",
         "Integration source review through c8bae67da: packaging/manifest/README.md added that only the Linux prebuilt-installer smoke leg covers a systemd service. The linked #formats-and-consumers section and the cask claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 2ef40ae83: packaging/manifest/README.md changed only its Linux smoke description (a launcher trial and commit hand-off). The linked #formats-and-consumers section and the cask claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through 2ef40ae83: packaging/manifest/README.md changed only its Linux smoke description (a launcher trial and commit hand-off). The linked #formats-and-consumers section and the cask claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "#2675 W1: packaging/manifest/README.md added the install.ps1 core as a platform-v2 consumer. The Homebrew README's claims (cask admits schema v1 only; platform v2 refused for cask) are unaffected; no prose change."
       ]
     },
     {
       "path": "packaging/manifest/README.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "55801ec665d22cd64e90ad6b83c848f45bf95bf7",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Updated producer/consumer table from actual CLI/shared verifier and exact inline install.sh parser. Controlled signed platform payload: CLI accepts, installer parser rejects; signed old installer v2: inverse. Workflow uploads server CI archives/descriptors; no production URL connects assembler output to shell installer. Existing ring/source archive staging manifests are distinct evidence, not signed public ecosystem envelopes.",
       "limits": "install.sh was read, not executed. No release/attestation download, actual installation/upgrade, profile operation, live distribution or production signing-custody proof. The manifest/cask CLI fixture does not establish installer/platform behavior.",
-      "documentDigest": "7922c9b16e0c0c9174a54e992ac9533e83c04c473f46ea274ca1c553da4f049b",
+      "documentDigest": "54b625415596f5a8347a9b98caa705978def18f23ad22d69da3a27e12f641047",
       "sources": [
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
+          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
         },
         {
           "path": "config/release-manifest-keys.json",
@@ -29977,7 +29988,7 @@
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
-          "digest": "1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830"
+          "digest": "2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6"
         },
         {
           "path": "scripts/ecosystem-manifest.mjs",
@@ -29997,7 +30008,7 @@
         },
         {
           "path": ".github/workflows/install-smoke.yml",
-          "digest": "c9b62d21dfa9827d6fba11e3f4168da91c32202021c82d169c22604968cf2fd0"
+          "digest": "27f5dc7306a32d86680d949858bf694e9fbc112dafc530d50666d2e8f14ddec8"
         },
         {
           "path": ".github/workflows/portable-nightly-publish.yml",
@@ -30017,7 +30028,8 @@
         "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified.",
         "Landing review through d0d9d33f7: Installer input now triggers archive builds. Added missing documentation compiler and all four declared data inputs to both push/PR filters; the actual import/data coverage guard catches omissions. Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Golden vectors now also execute the real shell verifier with fixture keys and refused downloads; v1 source fallback and v2 platform semantics stay explicit. This is verifier evidence, not publication or installed runtime proof. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
         "Integration source review through e0314c727: #2867 extended install.sh (archive service restart and rollback, recorded ports, uninstall refusal) and the prebuilt-archive smoke. The Linux leg now builds a second archive from an empty local commit and installs a systemd user service, requiring it to restart as archive 2 across `station upgrade`; macOS skips the service path. Added that Linux-only service coverage to the smoke description. Manifest format and consumer table claims remain accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) changes smoke-install-prebuilt-archive.sh so the systemd unit runs the fixed launcher and `station upgrade` hands the second archive to it. The launcher trials and commits (runtime/service-state.json), and install.sh gains that handoff. Corrected 'checks that it restarts on the upgraded archive' to describe the launcher trial and commit handoff. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) changes smoke-install-prebuilt-archive.sh so the systemd unit runs the fixed launcher and `station upgrade` hands the second archive to it. The launcher trials and commits (runtime/service-state.json), and install.sh gains that handoff. Corrected 'checks that it restarts on the upgraded archive' to describe the launcher trial and commit handoff. Source review is separate from executed test evidence.",
+        "#2675 W1: checked the formats-and-consumers table against the new install.ps1 core, which verifies platform v2 via the shared verifier; added it as a consumer (stage-only). install-smoke gains a Windows job; no stated claim about install-smoke legs changes."
       ]
     },
     {
@@ -30163,7 +30175,7 @@
     },
     {
       "path": "scripts/AGENTS.md",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "55801ec665d22cd64e90ad6b83c848f45bf95bf7",
       "kind": "policy",
       "state": "classified",
       "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
@@ -30192,7 +30204,7 @@
         },
         {
           "path": "scripts/vitest-resource-manifest.mjs",
-          "digest": "9e5ec42efb02239ca3f1f122935882909c0a662c2c766d8b081800bbcf6536ee"
+          "digest": "b3c6131e5c013ae4148da49c9a894db60f66a55f1714911311bddfa0112be6d4"
         }
       ],
       "checks": [
@@ -30213,7 +30225,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) removes the deleted longrunning-fixture-child.abnormal-exit test entry from PROCESS_HEAVY_VITEST_FILES in scripts/vitest-resource-manifest.mjs; prose accurate: the rule that new child-process tests must be classified in that manifest still holds, and the file still exists. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881), 8b48e2b35 (#2914) and a290454b4 (#2919) add process-heavy entries to vitest-resource-manifest.mjs: service-launcher, tauri-context, bounded-fixture-process and the Chromium geometry tests. That is consistent with the rule that new child-process tests must be classified there; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the vitest-resource-manifest delta (documentation-freshness.test.ts classified as a bounded child-process file) and code-quality.md freshness wording; the routed rules here are unchanged.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "#2675 W1: vitest-resource-manifest.mjs adds install-ps1.test.ts to the child-process group, which is exactly the rule this file states; no prose change needed."
       ]
     },
     {
