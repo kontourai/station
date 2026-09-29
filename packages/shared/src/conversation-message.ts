@@ -110,6 +110,8 @@ export interface ConversationMessage {
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';
+    /** That steer was delivered by cancelling the running step (see `TurnStartedEvent`). */
+    steerInterruptedRun?: true;
     /** Durable source event for an authored user row, never an optimistic id. */
     sourceEventId?: string;
     /** The model Station requested — NOT a runtime-confirmed observation. See `reportedModel`. */

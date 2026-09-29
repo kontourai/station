@@ -308,13 +308,18 @@ export function projectRuntimeEventsToMessages(
     role: ConversationMessage['role'],
     p: MessagePart[],
     inputKind?: 'steer',
+    /**
+     * The part of a turn produced before a steer. The turn's provenance and
+     * answer eligibility describe the whole turn and stay on its final row.
+     */
+    beforeSteer = false,
   ) => {
     const reportedModel = turnReportedModel ?? sessionReportedModel;
     // station#1410: only an assistant turn that both has an observed turn
     // identity AND reached a terminal event has an envelope. An open or
     // untagged turn carries none rather than a partially-folded one.
     const provenance =
-      role === 'assistant' && turnIdentity
+      role === 'assistant' && !beforeSteer && turnIdentity
         ? envelopesByTurn.get(turnKey(turnSessionId, turnIdentity) ?? '')
         : undefined;
     const metadata = {
@@ -334,7 +339,7 @@ export function projectRuntimeEventsToMessages(
       ...(role === 'assistant' && turnSessionId
         ? { sessionId: turnSessionId }
         : {}),
-      ...(role === 'assistant' && turnAnswerEligible
+      ...(role === 'assistant' && turnAnswerEligible && !beforeSteer
         ? { answerEligible: true }
         : {}),
       ...(provenance ? { provenance } : {}),
@@ -459,9 +464,19 @@ export function projectRuntimeEventsToMessages(
     switch (ev.method) {
       case 'turn.started': {
         if (ev.inputKind === 'steer') {
-          // Same open turn: append the user row and keep buffering the
-          // in-flight assistant. Emitting here would split the answer
-          // around the steer and leave a turn.started with no terminal.
+          // Same open turn, so the turn stays open (no terminal is implied).
+          // What the engine produced BEFORE the steer is emitted as its own
+          // row first: buffering the whole turn put the steer above every
+          // part of it — above the very command it interrupted — so on a long
+          // turn the steer looked like it had never been sent. Tool parts
+          // are shared by reference, so a call settled after the steer still
+          // updates its row here.
+          flushReasoning();
+          flushText();
+          if (parts.length > 0) {
+            pushMessage('assistant', parts, undefined, true);
+            parts = [];
+          }
           turnAnchorEventId = ev.eventId;
           stamp(ev.createdAt);
           const steerParts: MessagePart[] = [];
@@ -481,6 +496,13 @@ export function projectRuntimeEventsToMessages(
           }
           if (steerParts.length > 0) {
             pushMessage('user', steerParts, 'steer');
+            if (ev.steerInterruptedRun) {
+              const steerRow = messages[messages.length - 1]!;
+              steerRow.metadata = {
+                ...steerRow.metadata,
+                steerInterruptedRun: true,
+              };
+            }
           }
           break;
         }

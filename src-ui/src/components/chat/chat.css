@@ -836,6 +836,14 @@
   color: var(--text-muted);
 }
 
+/* A steer that stopped the running step says so inside its own bubble, on
+   the bubble's accent background. */
+.message__steer-note {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  opacity: 0.85;
+}
+
 .message__thinking {
   display: flex;
   align-items: center;

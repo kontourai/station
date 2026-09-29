@@ -1135,7 +1135,7 @@ describe('projectRuntimeEventsToMessages', () => {
       });
     });
 
-    it('keeps a steer inside the open turn instead of closing the assistant early', () => {
+    it('places a steer where it happened: after the work before it, before the work after it', () => {
       const messages = projectRuntimeEventsToMessages([
         ev({ method: 'turn.started', turnId: 'r1', prompt: 'write the tests' }),
         ev({ method: 'content.text-delta', itemId: 'i1', delta: 'partial ' }),
@@ -1148,23 +1148,72 @@ describe('projectRuntimeEventsToMessages', () => {
         ev({ method: 'content.text-delta', itemId: 'i1', delta: 'answer' }),
         ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
       ]);
+      const text = (index: number) =>
+        messages[index]?.parts
+          .filter((part) => part.type === 'text')
+          .map((part) => part.text)
+          .join('');
 
       expect(messages.map((message) => message.role)).toEqual([
         'user',
+        'assistant',
         'user',
         'assistant',
       ]);
-      expect(messages[1]?.metadata).toMatchObject({
+      expect(text(1)).toBe('partial ');
+      expect(messages[2]?.metadata).toMatchObject({
         inputKind: 'steer',
         turnId: 'r1',
       });
-      expect(
-        messages[2]?.parts
-          .filter((part) => part.type === 'text')
-          .map((part) => part.text)
-          .join(''),
-      ).toBe('partial answer');
-      expect(messages[2]?.metadata?.provenance?.turnId).toBe('r1');
+      expect(text(3)).toBe('answer');
+      // One turn: its envelope and answer eligibility stay on its final row.
+      expect(messages[1]?.metadata?.provenance).toBeUndefined();
+      expect(messages[1]?.metadata?.answerEligible).toBeUndefined();
+      expect(messages[3]?.metadata?.provenance?.turnId).toBe('r1');
+      expect(new Set(messages.map((message) => message.id)).size).toBe(4);
+    });
+
+    it('a tool the steer interrupted settles on the row that shows the call', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'r1', prompt: 'run the gates' }),
+        ev({
+          method: 'tool.started',
+          turnId: 'r1',
+          toolCallId: 'call-1',
+          toolName: 'bash',
+        }),
+        ev({
+          method: 'turn.started',
+          turnId: 'r1',
+          prompt: 'Still going?',
+          inputKind: 'steer',
+          steerInterruptedRun: true,
+        }),
+        ev({
+          method: 'tool.completed',
+          turnId: 'r1',
+          toolCallId: 'call-1',
+          status: 'cancelled',
+        }),
+        ev({ method: 'content.text-delta', itemId: 'i1', delta: 'Stopped.' }),
+        ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+      ]);
+
+      expect(messages.map((message) => message.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+      ]);
+      expect(messages[1]?.parts).toEqual([
+        expect.objectContaining({
+          type: 'tool-invocation',
+          toolCallId: 'call-1',
+          state: 'cancelled',
+        }),
+      ]);
+      expect(messages[2]?.parts[0]?.text).toBe('Still going?');
+      expect(messages[2]?.metadata?.steerInterruptedRun).toBe(true);
     });
 
     it('correlates each assistant message to its own turn across turns', () => {

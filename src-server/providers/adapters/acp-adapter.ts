@@ -1659,6 +1659,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       method: 'turn.started',
       prompt: text,
       inputKind: 'steer',
+      ...(native ? {} : { steerInterruptedRun: true as const }),
     });
   }
 

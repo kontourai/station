@@ -4981,14 +4981,15 @@ describe('AcpAdapter.steerTurn', () => {
     ]);
     expect(processes[0]?.cancelCalls).toBe(0);
     expect(processes[0]?.promptContents).toHaveLength(1);
-    await expect(
-      nextEvent(iterator, 'steer turn.started'),
-    ).resolves.toMatchObject({
+    const nativeSteer = await nextEvent(iterator, 'steer turn.started');
+    expect(nativeSteer).toMatchObject({
       method: 'turn.started',
       turnId: turn.turnId,
       prompt: 'go left',
       inputKind: 'steer',
     });
+    // An additive channel stopped nothing, so it claims nothing.
+    expect(nativeSteer).not.toHaveProperty('steerInterruptedRun');
 
     processes[0]?.resolvePrompt('end_turn');
     await expect(nextEvent(iterator, 'turn.completed')).resolves.toMatchObject({
@@ -5069,6 +5070,8 @@ describe('AcpAdapter.steerTurn', () => {
       method: 'turn.started',
       turnId: turn.turnId,
       inputKind: 'steer',
+      // The fallback cancelled the running prompt (and its tool): say so.
+      steerInterruptedRun: true,
     });
 
     processes[0]?.resolvePrompt('end_turn');

@@ -157,6 +157,12 @@ export interface ChatMessage {
   showContinue?: boolean;
   timestamp?: number;
   traceId?: string;
+  /**
+   * A steer Station delivered by stopping the step that was running (the
+   * engine has no additive steer channel); the bubble says so, because the
+   * step it stopped otherwise reads as cancelled for no reason.
+   */
+  steerInterruptedRun?: boolean;
   fromPrompt?: boolean;
   contentParts?: Array<{
     type:
