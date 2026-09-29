@@ -50,6 +50,7 @@
 </li>
 </ul>
 <p>Station names the concrete engine when that distinction matters. Protocols such as ACP are connection details, not agent types users need to choose.</p>
+<p>The reserved Agent named <strong>Station</strong> is a separate role. Its name does not tell you which engine runs it; that engine is selected in Station settings.</p>
 <p>Concrete examples:</p>
 <ul>
 <li><strong>Local model:</strong> a local model service is the Model connection, one of its installed models is the Model, and a Station agent uses Station's engine to run it.
@@ -59,7 +60,7 @@
 <li><strong>Hosted model:</strong> a hosted model service is the Model connection, one of its models is the Model, and a Station agent owns the prompt, skills, and tools around it.
 </li>
 </ul>
-<p>See the <a href="https://github.com/kontourai/station/blob/main/docs/guides/connections.html">Connections guide</a> for the current supported model services and engines and their setup details.</p>
+<p>See the <a href="https://github.com/kontourai/station/blob/main/docs/guides/connections.md">Connections guide</a> for the current supported model services and engines and their setup details.</p>
 <h2>Projects, Tasks, And Sessions</h2>
 <ul>
 <li>A <strong>Project</strong> supplies the working context and available agents.
@@ -68,10 +69,12 @@
 </li>
 <li>A <strong>Session</strong> is one bounded execution episode. A Task can have more than one Session over time.
 </li>
+<li>A <strong>turn</strong> is one unit of input and execution within a Session. Continuing a conversation can add a turn to its existing Session; it does not necessarily create a new one.
+</li>
 <li>A <strong>direct chat</strong> is an immediate conversation and does not silently create a Task.
 </li>
 </ul>
-<p>Example: “Explain this function” can be a direct chat. “Refactor this module, run its gates, and preserve the evidence” should be a Task. Each attempt or continuation is a Session attached to that Task.</p>
+<p>Example: “Explain this function” can be a direct chat. “Refactor this module, run its gates, and preserve the evidence” should be a Task. A Task can retain one Session across several turns and use another for a later attempt.</p>
 <h2>Gates, Evidence, And Receipts</h2>
 <ul>
 <li>A <strong>gate</strong> decides whether work may advance.
@@ -85,15 +88,15 @@
 <li>A <strong>receipt</strong> records what ran, what passed or failed, and what remains unverified.
 </li>
 </ul>
-<p>Station keeps these beside the work so a confident answer is not mistaken for a verified outcome.</p>
-<p>Example: a test result is evidence. The rule requiring that test is a gate. The record saying which command ran and whether it passed is the receipt. If the test fails, a route-back sends the work to the step that can fix it.</p>
+<p>Station can keep these beside the work through its workflow and evidence integrations. Task status, a completed agent run, and a passed gate are separate facts; inspect the recorded evidence rather than inferring one from another.</p>
+<p>Example: a test result is evidence. The rule requiring that test is a gate. The record saying which command ran and whether it passed is the receipt. A workflow can use a route-back to send a failed test result to the step that can fix it.</p>
 <ul>
 <li>A <strong>degraded capability</strong> is a bounded feature Station runs without, reported with a specific reason and remediation instead of failing silently or refusing to start.
 </li>
 </ul>
 <p>Example: interactive terminal panes need the <code>node-pty</code> native module, which requires a C++ compiler to build on Linux. On a machine without one, Station installs and runs with the terminal capability degraded: <code>station doctor</code> prints a warn line with the rebuild command, the system status readiness record reports <code>terminal</code> as not ready with the same reason, and opening a terminal pane states why it cannot open. Agent execution does not use <code>node-pty</code> and is unaffected.</p>
 <h2>Local-First Data</h2>
-<p>Station stores its data under <code>~/.station</code> by default. A hosted model service, an Engine, a paired device, or a remote computer receives data only when you configure it and use a feature that needs it. Observability data leaves the machine only when an operator configures an export endpoint.</p>
+<p>Station stores its data under <code>~/.station</code> by default. Model services, Engines, paired devices, remote computers and other configured integrations can exchange data outside that directory. Some make startup or background requests; desktop builds also contact their release feed. Observability export requires a configured endpoint. See the repository's <a href="https://github.com/kontourai/station/blob/main/docs/privacy-policy.md">data-flow working copy</a> for the distinction between declared settings and verified behavior.</p>
 <h2>Next</h2>
 <ul>
 <li>Follow <a href="#">Getting started</a>.

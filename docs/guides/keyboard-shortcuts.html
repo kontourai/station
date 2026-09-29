@@ -28,16 +28,21 @@
 <ul>
 <li>Select a shortcut, then press the new key combination.
 </li>
-<li>If another command already uses it, Station explains the conflict before saving. Choose <strong>Replace</strong> to clear the old command and move the shortcut, or <strong>Cancel</strong> to leave both unchanged.
+<li>If the editor finds another registered command using it, Station explains the conflict before saving. Choose <strong>Replace</strong> to clear the old command and move the shortcut, or <strong>Cancel</strong> to leave both unchanged.
 </li>
-<li><strong>Clear</strong> removes a shortcut. <strong>Restore default</strong> returns the command to its shipped binding.
+<li><strong>Clear</strong> removes a shortcut. <strong>Restore default</strong> returns the command to its current registered default binding, which may come from a plugin or command skill.
 </li>
-<li>Each row explains when the command is available. The internal condition is visible only under <strong>Advanced</strong>.
+<li>Each row has a context hint, with a technical hint under <strong>Advanced</strong>. These currently come from the command's ID, not its actual availability rule; they are not a live explanation of why a command can or cannot run. <a href="https://github.com/kontourai/station/issues/2767">#2767</a> tracks that correction.
 </li>
-<li>Browser-reserved combinations carry a warning. They may work more reliably in the desktop app because a browser can intercept them first.
+<li>Some known browser-reserved combinations carry a warning. They may work more reliably in the desktop app because a browser can intercept them first.
 </li>
 </ul>
-<p>Shortcut changes are stored on this device in the versioned <code>station.device-settings</code> record. They are included in Settings export/import and do not change another device. On phones the list is read-only.</p>
+<p>Shortcut changes are stored in this browser/app profile's versioned <code>station-device-settings-v1</code> local-storage envelope. The older <code>station.device-settings</code> record is a migration input. Overrides and command-skill shortcuts are included in Settings export/import; they do not automatically synchronize across Devices. The editor is read-only in the mobile layout, including narrow desktop windows.</p>
+<h2>Dispatch and limits</h2>
+<p>The registry orders matching shortcuts by priority, then registry order. It checks the registered <code>when</code> expression and current input/modal state before running a handler. An active modal suppresses global registry shortcuts; Escape and chat shortcuts have additional input-ownership rules. A visible row or saved binding does not bypass those conditions or a browser-reserved key.</p>
+<p>The editor's replacement dialog considers the first matching enabled command. It does not analyze all conditional overlaps or guarantee that restoring a default leaves every chord conflict-free. The catalog also depends on which components have registered their commands in the current view.</p>
+<p>Custom bindings containing Space currently store a key name that does not match the standard keyboard event. <a href="https://github.com/kontourai/station/issues/2771">#2771</a> tracks the capture-to-dispatch correction; the defect was reproduced through the mounted editor and registry with DOM events.</p>
+<p>The <a href="https://github.com/kontourai/station/blob/main/docs/architecture/module-map.md#keyboard-shortcuts">keyboard shortcut module</a> connects these rules to the editor, registry, device store, import/export owner and tests. DOM/storage tests do not qualify every physical keyboard, OS shortcut, or native shell.</p>
           </article>
         </div>
       </main>
