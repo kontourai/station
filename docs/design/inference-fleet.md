@@ -139,7 +139,10 @@ landed:
   (`packages/contracts/src/environment-security.ts:94-105`, docblock `:63-93`).
 - **`DelegationTarget.kind` is `'current' | 'ssh' | 'peer'`**, and a `'peer'`
   target always carries an `Authorization: Bearer` header from a server-side
-  `PeerCredentialStore` (`src-server/tools/station-control-delegation.ts:58-88`).
+  `PeerCredentialStore`. Since #2377 slice C2b that target is minted only by
+  the runtime's remote forwarder
+  ([`remote-station-forwarder.ts`](../../src-server/services/remote-stations/remote-station-forwarder.ts)),
+  which attaches the bearer in-process; a station-control tool never holds it.
 - **All protected callers require a credential.** Direct loopback and
   SSH-forwarded requests receive `401 authentication_required` unless they
   present a valid bearer or device-session credential. Station's exact

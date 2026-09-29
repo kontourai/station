@@ -1144,6 +1144,13 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         '/api/orchestration/delegations/op-thread-a/interrupt',
         { environmentId: 'env-peer' },
       ],
+      // #2377 slice C2b: a tool's listing and target discovery on a saved
+      // Environment go through these routes, which decide the same way.
+      [
+        'GET',
+        '/api/orchestration/delegations?environmentId=env-peer',
+        undefined,
+      ],
     ];
     for (const [method, path, body] of remote) {
       expect([
@@ -1208,24 +1215,38 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         ),
       ]).toEqual([route, ASSURANCE]);
     }
-    // The listing and options routes take an Environment too; no tool
-    // reaches them (the guard refuses them unmapped).
-    for (const [method, path, body] of [
-      [
-        'GET',
-        '/api/orchestration/delegations?environmentId=env-peer',
-        undefined,
-      ],
-      [
-        'POST',
-        '/api/orchestration/delegations/options',
-        { environmentId: 'env-peer' },
-      ],
-    ] as const)
-      expect([
-        path,
-        await request(method, path, as('bound', 'op-caller-a')(), body),
-      ]).toEqual([path, 'station_control_route_unmapped']);
+    // #2377 slice C2b: target discovery on a saved Environment is the
+    // operator's (decision 1) at the table, and the route decides the remote
+    // verdict before it connects or forwards anything.
+    const options = [
+      'POST',
+      '/api/orchestration/delegations/options',
+      { environmentId: 'env-peer' },
+    ] as const;
+    expect(
+      await request(
+        options[0],
+        options[1],
+        as('bearer-exposed', 'op-caller-a')(),
+        options[2],
+      ),
+    ).toBe(ASSURANCE);
+    expect(
+      await request(
+        options[0],
+        options[1],
+        as('bound', 'person-caller-a')(),
+        options[2],
+      ),
+    ).toBe(ROLE);
+    expect(
+      await request(
+        options[0],
+        options[1],
+        as('bound', 'op-caller-a')(),
+        options[2],
+      ),
+    ).toBe('passed');
   });
 
   // Review A5: the route dispatches the canonical folder its check decided
@@ -1305,43 +1326,58 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     ).toBe('reached');
   });
 
-  test('the remote-target leaves are the bound operator’s alone', async () => {
+  test('the SSH leaves are the bound operator’s alone; no tool reaches a peer credential', async () => {
     const { base } = await setup();
-    const leaves: Array<[string, string]> = [
+    const code = async (
+      method: string,
+      path: string,
+      headers: Record<string, string>,
+    ) => {
+      const response = await fetch(`${base}${path}`, { method, headers });
+      const body = (await response.json().catch(() => ({}))) as {
+        code?: string;
+      };
+      return response.status === 403 &&
+        body.code?.startsWith('station_control_')
+        ? body.code
+        : 'passed-guard';
+    };
+    for (const [method, path] of [
       ['GET', '/api/environments/ssh'],
       ['POST', '/api/environments/ssh/ssh-1/connect'],
-      ['GET', '/api/environments/peers/env-peer/credential'],
-    ];
-    for (const [method, path] of leaves) {
-      const code = async (headers: Record<string, string>) => {
-        const response = await fetch(`${base}${path}`, { method, headers });
-        const body = (await response.json().catch(() => ({}))) as {
-          code?: string;
-        };
-        return response.status === 403 &&
-          body.code?.startsWith('station_control_')
-          ? body.code
-          : 'passed-guard';
-      };
-      expect([path, await code(as('bearer-exposed', 'op-caller-a')())]).toEqual(
-        [path, ASSURANCE],
-      );
+    ] as const) {
       expect([
         path,
-        await code(as('delegated-custody', 'op-caller-a')()),
+        await code(method, path, as('bearer-exposed', 'op-caller-a')()),
       ]).toEqual([path, ASSURANCE]);
-      expect([path, await code(as('bound', 'person-caller-a')())]).toEqual([
+      expect([
         path,
-        ROLE,
-      ]);
-      expect([path, await code(internal())]).toEqual([
+        await code(method, path, as('delegated-custody', 'op-caller-a')()),
+      ]).toEqual([path, ASSURANCE]);
+      expect([
+        path,
+        await code(method, path, as('bound', 'person-caller-a')()),
+      ]).toEqual([path, ROLE]);
+      expect([path, await code(method, path, internal())]).toEqual([
         path,
         'station_control_caller_required',
       ]);
-      expect([path, await code(as('bound', 'op-caller-a')())]).toEqual([
+      expect([
         path,
-        'passed-guard',
-      ]);
+        await code(method, path, as('bound', 'op-caller-a')()),
+      ]).toEqual([path, 'passed-guard']);
     }
+    // #2377 slice C2b: the leaf that handed a tool the peer bearer is gone;
+    // no tool entry names it, so even a bound operator's tool is refused
+    // before any handler, and there is no handler left behind it.
+    const leaf = '/api/environments/peers/env-peer/credential';
+    for (const headers of [
+      as('bound', 'op-caller-a')(),
+      as('bearer-exposed', 'op-caller-a')(),
+      internal(),
+    ])
+      expect(await code('GET', leaf, headers)).toBe(
+        'station_control_route_unmapped',
+      );
   });
 });
