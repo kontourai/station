@@ -17770,7 +17770,7 @@
     {
       "path": "docs/guides/release-rings.md",
       "documentDigest": "98f70d7564e9881c91b5c3d4ef96d76bf6d82fa35b3b41f690884caaf860ad23",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "046fe7bf10be7412daad1dd3501b423c8bf52d4c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Portable release trust, exact-commit promotion and recovery requirements. Full143-line baseline read. Traced install.sh default attestation and optional pinned-key public manifest branches, token lifetime, explicit channel mapping, downgrade/freshness limits, restore failure handling and publish authority. Corrected exact preview-commit promotion and routine destructive cleanup recipe.",
@@ -17926,7 +17926,7 @@
         },
         {
           "path": "scripts/lib/public-release-locations.mjs",
-          "digest": "42c340ad99c776fd368726c1c79914710c5d6198f1629d72edf276bc25024fe9"
+          "digest": "45db15c6ff8408211d1998ddcf31fa40e745fb8f5f0c1d6f7e508fd108c2fdfb"
         },
         {
           "path": "scripts/portable-release-publication.mjs",
@@ -17956,7 +17956,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh (and so station upgrade) no longer switches current under a running launcher-run service. It stages the version with STATION_INSTALL_STAGE_ONLY semantics, queues an update request, and the launcher trials it, restoring its home backup and the previous version on failure. The install-macos.zsh and portable-server-archive.mjs deltas are cosmetic or ship the launcher. Corrected 'Upgrade and rollback behavior' with one sentence on the launcher-run path, linking the service reference. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "#2959: added the signed host-stream manifests section; checked every claim against release.yml host-archives/host-manifest, publish-release.yml gated host steps and their order, public-release-locations.mjs URLs, the key table and the installer's existing STATION_INSTALL_PUBLIC_MANIFEST_URL acceptance. States nothing is published and installer defaults are unchanged."
+        "#2959: added the signed host-stream manifests section; checked every claim against release.yml host-archives/host-manifest, publish-release.yml gated host steps and their order, public-release-locations.mjs URLs, the key table and the installer's existing STATION_INSTALL_PUBLIC_MANIFEST_URL acceptance. States nothing is published and installer defaults are unchanged.",
+        "#2959: PUBLIC_RELEASE_REPOSITORY became module-private; the documented base URL and pointer locations are unchanged."
       ]
     },
     {
