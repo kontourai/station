@@ -184,6 +184,9 @@ describe('runCoreCommand', () => {
     consoleError.mockClear();
     await runSurfaceCommand('connections', ['list']);
     expect(consoleError).not.toHaveBeenCalled();
+    // --verbose already discloses the target; the write must not repeat it.
+    await runSurfaceCommand('connections', ['delete', 'proxy', '--verbose']);
+    expect(consoleError.mock.calls).toEqual([[target]]);
   });
 
   test('lists, reads, and creates tasks through the generic task resource', async () => {

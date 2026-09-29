@@ -16367,7 +16367,7 @@
     {
       "path": "docs/guides/native-shell-verification.md",
       "documentDigest": "d7e005e24651c4609ce268807590dfaa26c7f22f7c70f1b7cd84c3e3b8df4b25",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "9a950616637b9a42bb903879a2fe2bfd3fba5962",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
@@ -16383,7 +16383,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle-doctor.ts",
-          "digest": "e0a3594c498a1ff682523e3f8a61cc3f28dda295ffec677fdb59b5351936fcc0"
+          "digest": "faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b"
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
@@ -16545,7 +16545,8 @@
         "Integration source review through d72f79b08: in cli.ts, #2904 only imports explainFullAccessRefusal and tries it first in describeCliError. Startup epoch, supervisor, log retention, shell-lane selector and doctor dispatch wiring are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 makes parseTsxVersion in packages/cli/src/commands/lifecycle-doctor.ts private. Its behavior is unchanged, and the guide's doctor dispatch claims do not name it. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919/#2914) startup-readiness-static.test.ts still pins the single main-window reveal authority and now pins maybe_reveal waiting for identity and renderer mount. rendererLiveness.test.tsx adds per-desktop-platform mount-commit cases. #2881 adds an `update` field to service status and the launcher env to lifecycle start. 'station service status --json checks a durable installed service, not a Desktop-owned sidecar' still holds; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Startup epoch, supervisor and ApiBaseProvider wiring are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Startup epoch, supervisor and ApiBaseProvider wiring are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Doctor fix payloads for Ollama/Bedrock now include kind and name so they pass the connection write schema; this document quotes no doctor fix command or payload and its doctor claims (checks, readiness, recommendations) are unchanged. No prose change."
       ]
     },
     {
@@ -26870,7 +26871,7 @@
     {
       "path": "docs/user/concepts.md",
       "documentDigest": "9d922716b0ad931258a83c905179d2626aa673eb45a03f875558a2faeb9cb23c",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "9a950616637b9a42bb903879a2fe2bfd3fba5962",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the complete concept guide against work/session, engine, pairing, terminal-readiness, evidence and telemetry owners. Corrected continued-turn identity, reserved Station Agent engine choice and startup/background network limits.",
@@ -26886,7 +26887,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle-doctor.ts",
-          "digest": "e0a3594c498a1ff682523e3f8a61cc3f28dda295ffec677fdb59b5351936fcc0"
+          "digest": "faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b"
         },
         {
           "path": "packages/contracts/src/agent-identity.ts",
@@ -26932,7 +26933,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Re-read 'Station Concepts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Station Concepts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
+        "Doctor fix payloads for Ollama/Bedrock now include kind and name so they pass the connection write schema; this document quotes no doctor fix command or payload and its doctor claims (checks, readiness, recommendations) are unchanged. No prose change."
       ]
     },
     {
@@ -26948,7 +26950,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "9a950616637b9a42bb903879a2fe2bfd3fba5962",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26989,7 +26991,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle-doctor.ts",
-          "digest": "e0a3594c498a1ff682523e3f8a61cc3f28dda295ffec677fdb59b5351936fcc0"
+          "digest": "faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b"
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
@@ -27148,13 +27150,14 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
         "Own edit: only the archive-install guide's link target changed, from the repo-relative ../guides/release-channel-ports.md to the absolute repository blob URL for the same file and the same #prebuilt-archives-and-source-releases anchor, so the published Start Here page no longer links to an ungenerated target. The surrounding claims (STATION_INSTALL_PUBLIC_MANIFEST_URL, the signed platform-v2 prebuilt archive, bundled Node.js, and the published-manifest requirement) are untouched. Verified docs:links:check re-resolves the blob URL as a local link and validates the anchor in 423 Markdown files.",
-        "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the getting-started captures and steps are unchanged, so the page holds."
+        "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the getting-started captures and steps are unchanged, so the page holds.",
+        "Doctor fix payloads for Ollama/Bedrock now include kind and name so they pass the connection write schema; this document quotes no doctor fix command or payload and its doctor claims (checks, readiness, recommendations) are unchanged. No prose change."
       ]
     },
     {
       "path": "docs/user/native-recovery.md",
       "documentDigest": "0a1501079da1ca412c3eddec11a2c2f57cad82b201b5f90b7e6b68a98027c906",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "9a950616637b9a42bb903879a2fe2bfd3fba5962",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all public recovery claims against native readiness and renderer-mount callers, 30-second epoch/activation handling, retry-before-restart, home-reset refusal, four-respawn limit, service-versus-sidecar controls and pinned log retention. Actual CLI dispatch distinguishes local checkout prerequisites from packaged target discovery/credential/service observations.",
@@ -27166,7 +27169,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle-doctor.ts",
-          "digest": "e0a3594c498a1ff682523e3f8a61cc3f28dda295ffec677fdb59b5351936fcc0"
+          "digest": "faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b"
         },
         {
           "path": "packages/cli/src/commands/service.ts",
@@ -27244,7 +27247,8 @@
         "Integration source review through d72f79b08: #2904 changes cli.ts only by importing `explainFullAccessRefusal` and trying it first in `describeCliError`. The CLI dispatch the recovery page relies on, for local checkout prerequisites versus packaged target discovery, credential and service observations, is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) only makes parseTsxVersion private in lifecycle-doctor.ts, and the doctor still calls it. The documented recovery, doctor and CLI dispatch behavior is the same. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds an `update` field and line to `station service status` for launcher-run archives; rendererLiveness.test.tsx (#2919) adds per-desktop-platform mount-commit cases; the doc's status/identity and renderer-mount claims and its NOT_VERIFIED rows are unchanged in meaning; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Native recovery boot paths are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Native recovery boot paths are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Doctor fix payloads for Ollama/Bedrock now include kind and name so they pass the connection write schema; this document quotes no doctor fix command or payload and its doctor claims (checks, readiness, recommendations) are unchanged. No prose change."
       ]
     },
     {

@@ -3883,6 +3883,23 @@ describe('collectDoctorReport', () => {
       effective: 'ollama (detected)',
     });
     expect(report.runtimeState.effective).toBeNull();
+    // The suggested payload must satisfy the server's connection write
+    // schema, which requires these fields (connectionSchema in
+    // src-server/routes/schemas/schema-definitions/runtime.ts).
+    const saveOllama = report.fixCommands.find(
+      (fix) => fix.label === 'Save detected Ollama as a model connection',
+    );
+    const payload = JSON.parse(
+      /--data '(.*)'$/.exec(saveOllama?.command ?? '')?.[1] ?? 'null',
+    );
+    expect(payload).toMatchObject({
+      kind: 'model',
+      type: 'ollama',
+      name: expect.any(String),
+      enabled: true,
+      capabilities: ['llm'],
+      config: expect.any(Object),
+    });
     expect(report.fixCommands).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
