@@ -125,6 +125,14 @@ anonymously, compares them with the payload, and plans the pointer again:
   published to a pointer, no workflow moves it back: recovering is an owner
   action on the pointer release.
 
+An owner cancel can land between the delete and the upload that
+`gh release upload --clobber` performs. That leaves the rolling host pointer
+with no manifest, because the restore trap does not run on cancel. The
+desktop pointer has the same exposure. This fails safe: the next publish
+stops at the empty-pointer refusal. To recover, check the versioned release,
+then re-run `Publish Station release` for that tag with
+`allow_empty_host_manifest_bootstrap`.
+
 A tag built before this workflow change carries no host archives or payload,
 so its draft fails revalidation and cannot be published with it. No such tag
 exists: no tagged release has completed (#1243).

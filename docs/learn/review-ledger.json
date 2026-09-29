@@ -17782,8 +17782,8 @@
     },
     {
       "path": "docs/guides/release-rings.md",
-      "documentDigest": "bea6f2df6cd8388249c6a7418455a6667fd54603d63fc07223f5b2b04e9b8edf",
-      "sourceRevision": "8edcc8c3ebf56213db4403133bd53651e7e298df",
+      "documentDigest": "05394fd622161ca69adcaa774f64822f0b1bef1d9e6fbcb81e43ae92eb674664",
+      "sourceRevision": "9d537242fb65f453cbec69c65155a7ebe19af2d3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Portable release trust, exact-commit promotion and recovery requirements. Full143-line baseline read. Traced install.sh default attestation and optional pinned-key public manifest branches, token lifetime, explicit channel mapping, downgrade/freshness limits, restore failure handling and publish authority. Corrected exact preview-commit promotion and routine destructive cleanup recipe.",
@@ -17973,7 +17973,8 @@
         "#2959: PUBLIC_RELEASE_REPOSITORY became module-private; the documented base URL and pointer locations are unchanged.",
         "#2959 review fixes: rewrote the gated flow to the publish job plus host-pointer job; checked pointer-plan outcomes (replace, unchanged rerun, skip-older rollback, refusals), the allow_empty_host_manifest_bootstrap input, compensation on failed replace/re-verify, and added the pre-change-tag note against publish-release.yml and portable-release-publication.mjs.",
         "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. Rewrote the host-pointer paragraph (released gating, pinned verify of the fetched manifest before any write, warning in the run summary, mis-tagged high version recovery is an owner action); checked against publish-release.yml.",
-        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). Added the run binding and cancel behavior to the host-pointer paragraph; checked against publish-release.yml and portable-release-publication.mjs."
+        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). Added the run binding and cancel behavior to the host-pointer paragraph; checked against publish-release.yml and portable-release-publication.mjs.",
+        "#2959: added the cancel-during-clobber runbook note (empty pointer, fail-safe empty-pointer refusal, bootstrap re-run recovery); checked against the host-pointer replace step and the pointer-plan refusal."
       ]
     },
     {
