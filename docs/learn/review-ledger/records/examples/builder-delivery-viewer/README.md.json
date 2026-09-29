@@ -34,13 +34,13 @@
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"c53f7ddcd9f98e70c6a3ad0085fa0cbc2d4e2cb7e7ac0885c80f6a8728248e41","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/services/plugins/__tests__/plugin-public-server.test.ts","digest":"370a2850713a45bef98d516992b9ac4ed77787f258eb7331baa05e733a0a93ed","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/services/plugins/__tests__/plugin-public-server.test.ts","digest":"1b68eb4818b17281b1436829a86b4f1e35e3671f2ddf7f771e0a1f6ec8cb546f","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"2ffb49b139b202cc8dfe6b7819cda5111a4a8f3fa6299a5b66405a3adb802a9b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"1f005f042138d70be5eddbfce2bd5df406c15f5b084cdad286c973a6df1916bf","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"779654779ddbec3c1d2d2d54987779832ac18bbc2f3a2f491c1a90b46b6fe344","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"fe55098b43fd10dd3117e8099d38cc2ab6aad097dae79cfa81be328832be7189","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"}
   ],
 
   "checks": [

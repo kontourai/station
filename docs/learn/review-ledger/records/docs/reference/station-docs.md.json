@@ -9,7 +9,7 @@
 
   "limits": "No live external-engine MCP delivery, plugin installation, provider execution, Fleet/device journey or repository-wide certification. Architecture topics have their own separate review scope.",
 
-  "document": {"digest":"52d3c088aed1ecaa9eaf65a68eaeedee361d9390ffcd8cf6d5cbcedd846c20a0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -52,7 +52,7 @@
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/agents/enriched-agents.ts","digest":"c0183f5ded60c60935d7648fa1eaee2dbcdefe591e095f3b146fb9d2721a71a3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/routes/inference/fleet-inference.ts","digest":"63d107b638a0aebc99f58a191b37a68e68aab12da0e655e09019b58d42c0966e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -62,7 +62,7 @@
 
     {"path":"src-server/runtime/bootstrap/native-engine-adoption.ts","digest":"553480ee2b76b8672f4a187a0680b30dc2576397644fdecb1aead79d1ef62b82","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"958976bc63f37dfad74594f59cce183640b70daffb787f68d43d905dba05c6fb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/runtime/conversation/dispatch-model-policy.ts","digest":"3fe2e900fd33da1f883a02ee81c9ca8017cfe650390f772e4f7c65cea1e78387","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -80,15 +80,15 @@
 
     {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"1343c8e3c719341bc22fa3ef7c91f98eb217d48b533fdb6918d73ae64ade9636","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"c935fad916983420c6eb619db776d4b932e9e424f1a81b89a1db19da7a5bda23","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"553a893df0e697f3248f1487ab4784eb3360c2e2fa15ac6cbb29de7d6471690d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"4ec510404c46aa8fd0bd0739e593acb214998048418fcac797cbc66a031cea8a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"2ffb49b139b202cc8dfe6b7819cda5111a4a8f3fa6299a5b66405a3adb802a9b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"1f005f042138d70be5eddbfce2bd5df406c15f5b084cdad286c973a6df1916bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/projects/task-dispatcher.ts","digest":"ae50a30b27da6b16cc22a0910af821e0f5d08c80b45b7c336c2935fb87ea0ce1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-server/services/projects/task-output-module.ts","digest":"8e548f679e27457b848fd88dffaf11bf4e54fa775c6c5bd614462599b8f7a4d4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/scheduling/builtin-scheduler-execution.ts","digest":"8285244d8cc76f2500ed6aacec1dc5589e05d3e1c55d79c0a349dcbc6bc5c76a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/scheduling/builtin-scheduler-execution.ts","digest":"388c2403f460021860549a6e16a19f8fb710fa698692894d98a3255cc77a940a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/tools/__tests__/station-docs-mcp-server.test.ts","digest":"5ae33f0d320b2f18b8a8ace8edb252fb0c85fb23263bb3a7c095d90119a27be2","revision":"d1b4b2c9cfe4eeb01c62c945da2d595c9e414eb3"},
 
@@ -104,7 +104,7 @@
 
     {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"a76a7acfcfad7928abcf94738f385b27391ef39deb82644747c41f0a4f377cf0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/tools/station-docs-content.ts","digest":"f7be47371425b7737b50a91cd366d647882e3feda0ffed9fb540abe793350915","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

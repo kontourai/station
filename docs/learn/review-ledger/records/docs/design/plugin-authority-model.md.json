@@ -16,11 +16,11 @@
 
     {"path":"src-server/services/plugins/__tests__/plugin-install-consent.test.ts","digest":"3264a198b19d8e61986e10466443046846262569ea64384719a5186f13990282","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
-    {"path":"src-server/services/plugins/__tests__/plugin-permissions.test.ts","digest":"16267b319f3c5bb72557f24cfa465f7ab42fc03b6cbe5e1acc24104c27312266","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    {"path":"src-server/services/plugins/__tests__/plugin-permissions.test.ts","digest":"a4bf38d311db90edce974642aedd129eaa6baef998356a853d297ff1d9cce958","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"1f005f042138d70be5eddbfce2bd5df406c15f5b084cdad286c973a6df1916bf","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-ui/src/__tests__/PluginRegistry.csp.test.ts","digest":"f635d4e2688ecf45b48d23d272c27642e95a60db9fc7713b9c541f66c37c655b","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 

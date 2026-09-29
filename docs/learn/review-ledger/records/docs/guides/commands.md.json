@@ -20,7 +20,7 @@
 
     {"path":"src-server/domain/validator.ts","digest":"30eafb50e47da5d4affca4fe67b6d7e1b9e79e9e77ae61f265775da273bee69c","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-server/routes/agents/enriched-agents.ts","digest":"c0183f5ded60c60935d7648fa1eaee2dbcdefe591e095f3b146fb9d2721a71a3","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 

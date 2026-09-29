@@ -11,6 +11,7 @@ import type {
   LiveSurfaceVideoMode,
 } from '@kontourai/station-contracts/live-surface';
 import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-device';
+import { jpegSize } from '../live-surface/jpeg-size.js';
 import type {
   LiveSurfaceDispatchContext,
   LiveSurfaceHeldInput,
@@ -19,7 +20,6 @@ import type {
 import {
   annexBHasIdr,
   annexBNalTypes,
-  jpegSize,
   MjpegMultipartParser,
   multipartBoundary,
   parseSemuPacket,

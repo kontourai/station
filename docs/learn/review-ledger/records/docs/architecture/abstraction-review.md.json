@@ -14,9 +14,9 @@
   "sources": [
     {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","digest":"0663ec8460f3271254bdeeba20df7518812da5b49781c0eb07c12a8f4a9d9bd8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"docs/architecture/module-map.md","digest":"5f7f0c65c8562548d628e9854e4232d2a0160e3133f7bf326b452b3f3c615429","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"docs/architecture/module-map.md","digest":"68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"docs/design/orchestration-decomposition-map.md","digest":"d48c06748481ba247cc4f738c37b1d968a68f32571aa3bc21b055d6cc3dcf663","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"docs/design/orchestration-decomposition-map.md","digest":"862b155a3e78daace7b97c0fd5d1005d47c892b99328349d6a8b583378f857d6","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"docs/guides/commands.md","digest":"83622cba5c9fb980797a0b5d57fea1fcf25eb41ab5c72cbefee14d8c3814155e","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/services/orchestration/__tests__/session-lifecycle-module.test.ts","digest":"48925af379888c49356fd0902d0b42f0f23ccf785355ca45557feddbbe3f8f90","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

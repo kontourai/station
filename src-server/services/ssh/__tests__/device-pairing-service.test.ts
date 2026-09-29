@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import {
-  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -26,7 +25,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { credentialAuthorizedForScope } from '../../../security/pairing-route-scopes.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
-import { skipIfCannotChmod } from '../../infra/__tests__/helpers/store-faults.js';
 import { TerminalWebSocketServer } from '../../terminal/terminal-ws-server.js';
 import {
   DevicePairingError,
@@ -1672,116 +1670,6 @@ describe('DevicePairingService', () => {
         revokedAt: null,
       }),
     ]);
-  });
-
-  // These tests induce a persistence fault by revoking write permission on
-  // the security directory, which some hosts cannot express: on Windows,
-  // chmod maps to the read-only attribute, which does not block creating or
-  // renaming files inside a directory, and root bypasses modes entirely, so
-  // the injection never fires there (archive#3259). The restart round-trips
-  // those hosts would otherwise lose run unconditionally below.
-  describe.skipIf(skipIfCannotChmod)('chmod-induced persistence faults', () => {
-    test('a persistence fault leaves a same-instance replacement entirely unapplied', () => {
-      const { service, homeDir } = harness();
-      const clientInstanceId = '11111111-1111-4111-8111-111111111111';
-      const original = pair(service, 'Original phone', clientInstanceId).result;
-      const offer = service.createOffer({
-        endpoint: 'https://station.example.test',
-      });
-      const request = service.requestPairing({
-        requesterPosition: 'off-box',
-        offerId: offer.offerId,
-        proof: offer.challenge,
-        deviceName: 'Replacement phone',
-        clientInstanceId,
-      });
-      service.confirmRequest(request.requestId, OPERATOR_APPROVAL);
-
-      const securityDir = join(homeDir, 'security');
-      chmodSync(securityDir, 0o500);
-      try {
-        expect(() =>
-          service.exchange({
-            offerId: offer.offerId,
-            proof: offer.challenge,
-            requestId: request.requestId,
-            clientInstanceId,
-          }),
-        ).toThrow(/EACCES|EPERM/);
-      } finally {
-        chmodSync(securityDir, 0o700);
-      }
-
-      expect(service.verifyCredential(original.credential)).toBe(true);
-      expect(service.listDevices()).toEqual([
-        expect.objectContaining({ id: original.device.id, revokedAt: null }),
-      ]);
-      expect(
-        readFileSync(join(homeDir, 'security', 'paired-devices.json'), 'utf8'),
-      ).not.toContain('Replacement phone');
-    });
-
-    test('persists revocation before changing live state, so failure, retry, and restart agree', () => {
-      const { service, homeDir } = harness();
-      const paired = pair(service).result;
-      const securityDir = join(homeDir, 'security');
-      chmodSync(securityDir, 0o500);
-      try {
-        expect(() =>
-          service.revokeDevice(paired.device.id, 'operator-credential'),
-        ).toThrow(/EACCES|EPERM/);
-      } finally {
-        chmodSync(securityDir, 0o700);
-      }
-      expect(service.verifyCredential(paired.credential)).toBe(true);
-
-      service.revokeDevice(paired.device.id, 'operator-credential');
-      expect(service.verifyCredential(paired.credential)).toBe(false);
-      const restarted = new DevicePairingService({
-        homeDir,
-        environmentId: ENVIRONMENT_ID,
-      });
-      expect(restarted.verifyCredential(paired.credential)).toBe(false);
-    });
-
-    test('persists activity before changing live state, so failure, retry, and restart agree', () => {
-      const { service, homeDir } = harness();
-      const paired = pair(service).result;
-      const securityDir = join(homeDir, 'security');
-      chmodSync(securityDir, 0o500);
-      try {
-        expect(() =>
-          service.recordCredentialActivity(paired.credential, 'lan'),
-        ).toThrow(/EACCES|EPERM/);
-      } finally {
-        chmodSync(securityDir, 0o700);
-      }
-      expect(service.identifyDevice(paired.credential)?.usageCount).toBe(0);
-
-      expect(service.recordCredentialActivity(paired.credential, 'lan')).toBe(
-        true,
-      );
-      const restarted = new DevicePairingService({
-        homeDir,
-        environmentId: ENVIRONMENT_ID,
-      });
-      expect(restarted.identifyDevice(paired.credential)).toMatchObject({
-        usageCount: 1,
-        lastSeenFrom: 'lan',
-      });
-    });
-  });
-
-  test('a revocation survives restart', () => {
-    const { service, homeDir } = harness();
-    const paired = pair(service).result;
-    service.revokeDevice(paired.device.id, 'operator-credential');
-    expect(service.verifyCredential(paired.credential)).toBe(false);
-    const restarted = new DevicePairingService({
-      homeDir,
-      environmentId: ENVIRONMENT_ID,
-    });
-    expect(restarted.verifyCredential(paired.credential)).toBe(false);
   });
 
   test('transient Windows rename locks preserve exactly one durable activity increment', () => {

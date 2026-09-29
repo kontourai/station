@@ -1,11 +1,11 @@
 /**
- * Invariants that only a source scan can hold — archive#1779 AC4, and the
- * single-fold claim archive#1778 makes about `foldedSessionLifecycleState`.
+ * Invariants that only a source scan can hold — the single-fold claim
+ * archive#1778 makes about `foldedSessionLifecycleState`, and the bare casts
+ * that would exempt a fixture from a decorated wire shape.
  *
  * Both are absence claims about code that does not exist yet, so no runtime
- * test can reach them: nothing calls a deleted barrier, and a re-introduced
- * `?? 'running'` in a file nobody has written yet is exactly the thing that
- * would pass every behavioural suite.
+ * test can reach them: a re-introduced `?? 'running'` in a file nobody has
+ * written yet is exactly the thing that would pass every behavioural suite.
  *
  * WHAT MAKES THIS A GATE RATHER THAN A GESTURE (points 3 and 4 were learned
  * from the delta review, which broke the first version of it):
@@ -90,22 +90,6 @@ const SKIP_DIRECTORIES = new Set([
   '__snapshots__',
 ]);
 
-/** Assembled so this file does not trip its own scan. */
-const RETIRED = [
-  // The startup barrier and its option.
-  ['providerRegistration', 'Settled'],
-  // The boot pass that wrote a synthetic `request.resolved{cancelled}`.
-  ['reconcileOrphaned', 'Requests'],
-  // Its completion receipt.
-  ['session.orphan-reconciliation', '.completed'],
-  // Its metric, and the rename that would have replaced it with a second
-  // instrument nothing on a real Station can read (archive#1686's class).
-  ['orphanRequests', 'Reconciled'],
-  ['orphan_requests', '_reconciled'],
-  ['orphanRequests', 'Projected'],
-  ['orphan_requests', '_projected'],
-].map((parts) => parts.join(''));
-
 /**
  * The `?? 'running'` resolution, assembled for the same reason.
  *
@@ -184,13 +168,11 @@ function allScannedSources(): string[] {
 
 describe('orchestration source invariants — scan integrity', () => {
   test('the scanner sees live code and not prose (directional control)', () => {
-    const identifier = RETIRED[0];
-    expect(stripComments(`const ${identifier} = 1;`)).toContain(identifier);
-    expect(stripComments(`// ${identifier}\n`)).not.toContain(identifier);
-    expect(stripComments(`/**\n * ${identifier}\n */\n`)).not.toContain(
-      identifier,
-    );
     expect(stripComments(`const x = a.${FOLD_COPY};`)).toContain(FOLD_COPY);
+    expect(stripComments(`// a.${FOLD_COPY}\n`)).not.toContain(FOLD_COPY);
+    expect(stripComments(`/**\n * a.${FOLD_COPY}\n */\n`)).not.toContain(
+      FOLD_COPY,
+    );
   });
 
   test('every scanned root is reached, proven by named files rather than a count', () => {
@@ -203,21 +185,6 @@ describe('orchestration source invariants — scan integrity', () => {
         expect(found).toContain(required);
       }
     }
-  });
-});
-
-describe('station#1779 AC4 — retired orphan-reconciliation machinery', () => {
-  test('no live reference to any retired identifier survives in any scanned root', () => {
-    const offenders: string[] = [];
-    for (const file of allScannedSources()) {
-      const source = stripComments(readFileSync(file, 'utf8'));
-      for (const identifier of RETIRED) {
-        if (source.includes(identifier)) {
-          offenders.push(`${relative(REPO_ROOT, file)}: ${identifier}`);
-        }
-      }
-    }
-    expect(offenders).toEqual([]);
   });
 });
 

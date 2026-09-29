@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"c8b91be1b4e6294b8f19cf0eed16425a230339f83e904948a4d10147c7c9c7f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"3b5d2e09a30b6c2e39c51535dffe2e291c06d18b80f4c67223639d99c462ab54","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"04c64d45b9fbe4a43b35611e86011b1bca94a36c4c6692f51a9c2d3790f72658","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -112,7 +112,7 @@
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/agents/enriched-agents.ts","digest":"c0183f5ded60c60935d7648fa1eaee2dbcdefe591e095f3b146fb9d2721a71a3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -150,7 +150,7 @@
 
     {"path":"src-server/routes/operations/monitoring.ts","digest":"18de408f94cfbe0d5a572a7dcb5b5cc95e8f05d14c700869bb83179f464f96b9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/operations/scheduler.ts","digest":"d0ce2f699c5722a126522615a439d108ac956886559d722e383b07e444925bd7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/operations/scheduler.ts","digest":"54d753dc983ec8f5736c4ae750e1da2749976a237ac1eba83071d4be63b1f59a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/routes/orchestration/attachments.ts","digest":"628b930049e5ea6a021ba03e7bee9ec916a32656f6a5979d555864b86eee71f9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -242,7 +242,7 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"c2ae9d87156a800fc13d11264cab62a69d5d57f2c603736a6b9d7d0f1a67770c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"88ffa5c4838158efb5abfcf83b25f635fdd5ac153dd08f016c8e64efbdeabc2f","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -260,7 +260,7 @@
 
     {"path":"src-server/services/evidence/review-receipt-store.ts","digest":"2fc974e86744984d3949297f5b8bbc6b153692f6c31748bd49b3ad4feca6ffc6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/identity/principal-resolver.ts","digest":"d711ab8ee4be0444fb8559d23a356744e8a26f3e8697525236410584e45af614","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/identity/principal-resolver.ts","digest":"479b1c2d15f60ec6e3c1f4b15f2536390ed265a63307c27c9a52329c9c4985e6","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/inference/fleet-inference-service.ts","digest":"c8e7e04752800198ffc520d4f351d54491c6b10c6a35ac7a029741fd2962c4cb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -270,19 +270,19 @@
 
     {"path":"src-server/services/orchestration/model-launch-planning.ts","digest":"597ddcbc218834b005f24a64634a54c805f3563333a9d4d965a36028556bce48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"1343c8e3c719341bc22fa3ef7c91f98eb217d48b533fdb6918d73ae64ade9636","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"c935fad916983420c6eb619db776d4b932e9e424f1a81b89a1db19da7a5bda23","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/orchestration/run-service.ts","digest":"d7549045a5ee8c7f4fea3ab4249562bf98bc9a409031c2207788f0381b55c21d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/mcp-service.ts","digest":"b78e6cab9e9fa8ca2418d5a7a697c355866447e2466ea28d607e5049084a6619","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/plugins/plugin-grant-reconciliation.ts","digest":"287d0f3a1185664279eba08e403d06e17dc5512dd6f974b3fc8de76022a31cb9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"2ffb49b139b202cc8dfe6b7819cda5111a4a8f3fa6299a5b66405a3adb802a9b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/plugins/plugin-runtime-artifact.ts","digest":"3f63050b8c51fc7698e12b14501edf35d8cb902ede18d49b2599564488313a85","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -292,9 +292,9 @@
 
     {"path":"src-server/services/projects/layout-service.ts","digest":"8df842d974f7df9b5d9e8e96971d15c92ba0eb4ee90b26312abb620b3c0a99e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/scheduling/builtin-scheduler.ts","digest":"336dcaccdb0e4b0102e383c186cdacad99b7c4603d67631d21f458ef29e82543","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/scheduling/builtin-scheduler.ts","digest":"23e3eb7ecc40c556f8dcd05c65998ab4fe029cf330373b0f72f268ecdce6a4d4","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/scheduling/scheduler-service.ts","digest":"e62435727e888fa2aed20a7c72b4e519df6cd70fc591cc166dde000eb6b24383","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/scheduling/scheduler-service.ts","digest":"9060db6e6f089bd8f68263f8339de189ce47a90787e856412f31fac3fb0d62b7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/spatial-board/spatial-board-owner-resolver.ts","digest":"723670ffd464128f489e17cb62bee951f5c8277c8363ce1ba415e7647f7af028","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -312,7 +312,7 @@
 
     {"path":"src-server/services/starter-work/starter-work-module.ts","digest":"c522e7213724f7c058c6b22ddf4fd206533a34997afad3de6be1b4edc96932d6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/utils/path-access-failure.ts","digest":"6c1ea7d51fa72a42eea5915cb26fe5a63181371644f6d1c4fbbf5a7f715b10c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -342,7 +342,9 @@
 
     {"path":"src-ui/src/views/agent-editor/useAgentsViewModel.ts","digest":"0f7440eb3188e285a3237c28483b8dbb8a8cc06a9b517c66968788927ac45f65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/lib/branding-theme.ts","digest":"30a806e7e6a449a14e81c7c79bb53464d2917c3486c79f645ec252e16e4a52eb","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"}
   ],
 
   "checks": [

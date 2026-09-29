@@ -18,7 +18,7 @@
 
     {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"a0e76460c4d7e4c103c225d077d0d55f72fb6addf5c3fcce1d571f72b103179d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -28,13 +28,13 @@
 
     {"path":"src-server/services/flow/survey-flow-review-service.ts","digest":"7ccd40600cbf40abfb8c5bd187b1d87366ebef492ffb7edfc128193b482e398e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"1cd8d3c9dc8b75120ff33b203777208d93660abda57b621d4e1c94ed131a5bfc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"ba6372d4e5bd961ae6c61d779eeb21dff966f1efc7c73fc2e69bb786fd535b50","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/orchestration/attached-session-follow-service.ts","digest":"2af62de4e6e4414dd204b33bd4724d382daf5b147946be6a4a2744619e6f563c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/projects/attention-projection.ts","digest":"b1ae045cdbe0b8cf3a73ce5f126f6e9a11f54074ec7aaed8e04284ea3a057625","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/projects/attention-projection.ts","digest":"42a730f47a8961bf89593e2c8e0f5b0347823a9ae5fc54c6e2267398399502ec","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-ui/src/components/attention/AttentionCard.tsx","digest":"ed07cb944c1f39922d56fe2e35938f6b57ab8130f5093861460156787d097558","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -42,7 +42,7 @@
 
     {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"e74f8d5030ab1ba5abe7f1b45e6e6a45d0c71968cb635db3c3abdd3518f81fa6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"f75f4e446e71e75f37283f4d46f96004be4a5d676bc858e9c8c48aeca63a5bab","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -54,9 +54,9 @@
 
     {"path":"src-server/utils/path-containment.ts","digest":"e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"a6a1e3c9602a7314e06a2ceb33f89d7441eeca4daa8120c66c525fdab022265f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"5a0d7172f0bbbc987c0571a3cef95ce9b562d6e6224e65d334513b07467edacf","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"abc4467b87d8221eb657c440823107b555afce1fe01a118d2dcd7f1ffdfff056","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"8f67c22b974050867339a67e4690ba046b7a97e8f6fe61732ebfdf9b90b59021","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/providers/__tests__/codex-adapter-rpc-id.test.ts","digest":"b34f7500b2f83fccbe853cf600614dc88c93bdde1d6287d8e3ad5a444191bf4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

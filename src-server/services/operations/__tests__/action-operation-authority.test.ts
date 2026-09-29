@@ -3,11 +3,9 @@ import {
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test } from 'vitest';
+import { tenantQualifiedAccountId } from '../../../runtime/conversation/authorized-turn-correlation.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
-import {
-  actionOperationAccountId,
-  actionOperationActorForRequest,
-} from '../action-operation-authority.js';
+import { actionOperationActorForRequest } from '../action-operation-authority.js';
 
 describe('action operation request authority', () => {
   test('uses the verified device identity and ignores a forged header', () => {
@@ -58,8 +56,20 @@ describe('action operation request authority', () => {
       { tenantId: tenantId('tenant-bravo') },
       { tenants: [{ id: 'tenant-alpha' }, { id: 'tenant-bravo' }] } as any,
     );
-    expect(actionOperationAccountId(alpha)).not.toBe(
-      actionOperationAccountId(bravo),
+    const request = new Request('http://station.test/api/action-operations');
+    const alphaActor = actionOperationActorForRequest(
+      request,
+      alpha,
+      () => true,
+    );
+    const bravoActor = actionOperationActorForRequest(
+      request,
+      bravo,
+      () => true,
+    );
+    expect(alphaActor.accountId).not.toBe(bravoActor.accountId);
+    expect(alphaActor.accountId).toBe(
+      tenantQualifiedAccountId('same-user', 'tenant-alpha'),
     );
   });
 });

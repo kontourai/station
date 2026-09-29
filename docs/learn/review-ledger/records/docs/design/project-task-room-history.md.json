@@ -16,9 +16,9 @@
 
     {"path":"src-server/services/orchestration/__tests__/project-task-live-work-history-adapter.test.ts","digest":"c49b0801559536fc5fd6cdd58f0c3bd8ee7e3038750c1b27f3e088579d7c6bda","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"9a8770dbf7f04eda46f91dc786f075ec94f41137e1c377971d2b0ad4ddbdd5ef","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"030ad542581f57e8aeecad32b0328ec6615774050940d139b0a68ec1f94fbeac","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/orchestration/project-task-room-history-worker.ts","digest":"6c8f8684aadb16162fdf999f692e82b554773e9edbf17d0b4b36a00aba0d1736","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

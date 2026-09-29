@@ -38,9 +38,10 @@ import {
 import type { BrowserProjectAuthorizer } from '../../services/browser/browser-access.js';
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
 import { BrowserAutomation } from '../../services/browser/browser-automation.js';
-import type {
-  BrowserHost,
-  CdpTransport,
+import {
+  type BrowserHost,
+  type CdpTransport,
+  createLocalBrowserHostResolver,
 } from '../../services/browser/browser-host.js';
 import { BrowserLiveSurfaces } from '../../services/browser/browser-live-surfaces.js';
 import { LocalTargetStore } from '../../services/browser/browser-local-targets.js';
@@ -94,7 +95,7 @@ function harness() {
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
     stationHome,
-    createHost: () => fakeHost(),
+    hostResolver: createLocalBrowserHostResolver(() => fakeHost()),
     newId: () =>
       `bs_00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
   });

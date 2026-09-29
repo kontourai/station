@@ -150,7 +150,6 @@ const rebindGrantsAfterContentChange = vi.hoisted(() =>
 const snapshotPluginGrantEntry = vi.hoisted(() =>
   vi.fn().mockReturnValue(null),
 );
-const restorePluginGrantEntry = vi.hoisted(() => vi.fn());
 // The update route opens one grant mutation scope per update and closes it
 // with `commit()` on success or `rollback()` on failure; this fixture stands
 // in for the receipt-owning scope so the suite can pin which branch ran.
@@ -226,7 +225,6 @@ vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
     ...(manifest.providers?.length ? ['providers.register'] : []),
     ...(manifest.serverModule ? ['plugin.server'] : []),
   ]),
-  restorePluginGrantEntry,
   revokeAllGrants: vi.fn(),
   readPluginDependencyOwnership: vi.fn().mockReturnValue([]),
   removePluginHostRecord: vi.fn().mockResolvedValue(undefined),
@@ -543,7 +541,6 @@ describe('Plugin Routes', () => {
     });
     snapshotPluginGrantEntry.mockClear();
     snapshotPluginGrantEntry.mockReturnValue(null);
-    restorePluginGrantEntry.mockClear();
     forgetPluginContentDigest.mockClear();
     scanPluginPromptGeneration.mockClear();
     scanPluginCommandSkills.mockClear();

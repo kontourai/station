@@ -34,7 +34,7 @@
 
     {"path":"src-server/services/orchestration/orchestration-monitoring-bridge.ts","digest":"865a4b3de74196bf72b911b7c1a7a43e3054a7f3231c2e538f677e6f08f7d773","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/services/projects/project-resource-shadow-record.ts","digest":"da25aefc61c93781943b900ead963aeaee86376b0b3cbff5dbb16dfc6f5d0a20","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/services/projects/project-resource-shadow-record.ts","digest":"380c19f88c6098c68c5ecaac41c3bd9d36cbec901a6d2e9fcca222fac690eff6","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/usage-telemetry-service.ts","digest":"477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

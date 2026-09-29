@@ -9,7 +9,7 @@
 
   "limits": "Boundary tests prove package import/shape rules, not absence of behavioral drift. No real Board execution, consent/provider operation, responsive visual/physical device proof or npm publication.",
 
-  "document": {"digest":"1712fb54c56adde82bddae32ea9f49b9abb66d010905bd63f31ede3ec353d83b","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+  "document": {"digest":"f7fde6380c810e97b0e606ffbf2e0b82a1686695b840fcd9baff9d2c91873069","revision":"3d607908cd1b34cbb6f3ac4331150c9e1080477f"},
 
   "sources": [
     {"path":"packages/board-pane/package.json","digest":"a2e6b74eda8422415c2112b5489f246b767ebc5c98aeb74ed64916433f536f1f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},

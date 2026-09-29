@@ -9,7 +9,7 @@
 
   "limits": "Source review is complete for the documented module claims; it does not establish every application behavior, live provider/device outcomes, deployed services, power-loss safety or production performance. One coordinator test timed out; its failure is retained. Linked designs and historical evidence have separate review records.",
 
-  "document": {"digest":"5f7f0c65c8562548d628e9854e4232d2a0160e3133f7bf326b452b3f3c615429","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -132,7 +132,7 @@
 
     {"path":"scripts/lib/verification-terminal-receipt.mjs","digest":"7b6bce34d4a9094469ba935c9c8f6287ce89b1e2d3839ea3741f13f454bc59c8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"scripts/project-resource-shadow-report.ts","digest":"b9be598d8950a875eec68eafeb6745f50bcd2b0249ceac8b5e91910b282fe267","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"scripts/project-resource-shadow-report.ts","digest":"9480677491847361c562ca81b8f805f17c553b45403725d47dbad37a551b2e6e","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"scripts/run-journey-profiles.mjs","digest":"cd945177b2633bba5c10193f3faedf50f03b92ec9c36f8b995f4810aef4847e7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -260,7 +260,7 @@
 
     {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/operations/scheduler.ts","digest":"d0ce2f699c5722a126522615a439d108ac956886559d722e383b07e444925bd7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/operations/scheduler.ts","digest":"54d753dc983ec8f5736c4ae750e1da2749976a237ac1eba83071d4be63b1f59a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/routes/orchestration/events.ts","digest":"7663dcbc5398d0b859457d25026d30bc7c32ba0e79eb0dd5a253161fc0698e2e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -326,9 +326,9 @@
 
     {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"c2ae9d87156a800fc13d11264cab62a69d5d57f2c603736a6b9d7d0f1a67770c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"88ffa5c4838158efb5abfcf83b25f635fdd5ac153dd08f016c8e64efbdeabc2f","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/__tests__/scheduler.test.ts","digest":"558b32e4d9eb9a98fda8d21bef660a540c3c0c004df31d141df1e08394e5d91b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/__tests__/scheduler.test.ts","digest":"74bb68bb7b32fd0414bbef71ac778852c4b8e77c79008ae437bd64f77d3a0b40","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/__tests__/store-async-lock-cutover.test.ts","digest":"6eaad9437994389a3a66666bf874f6b48700e25c6217c544e1ef06caea23bf23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -344,7 +344,7 @@
 
     {"path":"src-server/services/browser/browser-agent-authority.ts","digest":"e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/browser-automation.ts","digest":"16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/browser/browser-automation.ts","digest":"d24c0f5ae869c2f83866647af0c38066bac77184dc6a2724fdf4bded4d7fecd4","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/browser/browser-egress-proxy.ts","digest":"87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -358,17 +358,17 @@
 
     {"path":"src-server/services/browser/browser-service.ts","digest":"1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"2021e106a5e8148732ecebf92f8872632f27fd318b36aaa48e9f6b403ef29be5","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/browser/chromium-acquisition.ts","digest":"baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"6b6f45100304b04049f432aff93a46a71d457398db5aacebdf554c8d33fce0b4","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/browser/egress-policy.ts","digest":"34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/browser/hosts/chromium-server-host.ts","digest":"f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/station-listeners.ts","digest":"01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/browser/station-listeners.ts","digest":"09c20a6a69a1fd7da1cc0e958a6d775c2a21f5d295a9811dd46cfce1f99b9720","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/browser/url-policy.ts","digest":"46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -386,11 +386,11 @@
 
     {"path":"src-server/services/devices/device-access.ts","digest":"c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/devices/device-host-resolver.ts","digest":"50fb68bfc6dba1fcf53f164e04d78c0b41e27a7f87c097c856cd5105cfb3d5af","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/devices/device-host-resolver.ts","digest":"c43c1efd51ad973fd97c2de591339e9666f1e8854f2b79b6466a397e8754ccdf","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/devices/device-hub-endpoint.ts","digest":"1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/devices/device-live-surface-producer.ts","digest":"c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/devices/device-live-surface-producer.ts","digest":"a12a892c21125c0baf162e09e8c0a0abf2b30dcfc5e8f9aa0f9dc6c2897af1b3","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/devices/device-session-service.ts","digest":"b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -442,9 +442,9 @@
 
     {"path":"src-server/services/identity/local-account-runtime.ts","digest":"fe5b823f91b15a868e183a98f18639531c1ada051ac490268102a26c1f261124","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/infra/__tests__/resource-posture.test.ts","digest":"e6a8ef49e77602932891973a02bd986fef6af63d9130bf1d325135a3a3aed713","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/infra/__tests__/resource-posture.test.ts","digest":"ec4b3c4fec816668459d11190fd7f0dc3d510847544ce67ba5684da450d54d21","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/infra/resource-posture.ts","digest":"3dc4b63bb8619c4f5584d390755ef84e4c676ccbffbd50b1382fe60a3355ee97","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/infra/resource-posture.ts","digest":"f2fa623c5d6cc3961cca60a990d96e6a912133c1e6d98af836b82a919fb59f8a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/knowledge/knowledge-context.ts","digest":"58cb7cc4dadd421f3c8f2e4e840d0edb6bf4ec4e6e8490ad22bfadfba9bf098a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -462,7 +462,7 @@
 
     {"path":"src-server/services/live-surface/surface-hub.ts","digest":"ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/mobile-device/mobile-device-host.ts","digest":"370a00a92efbadd03eb73855a99c95474ea4c785b40c5284f0f8db35f7d71c0a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/mobile-device/mobile-device-host.ts","digest":"c88b2dceb6d09d7054a758b75ec2ddd9f51aa781a05237fb36fbbce8d2229e13","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/operational-events/__tests__/operational-event-delivery.test.ts","digest":"416716130b6029c117489da220d97130f39d20bfe10310f1a63f37da8cd0fc94","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -486,7 +486,7 @@
 
     {"path":"src-server/services/operations/__tests__/fleet-dispatch-action-operation-observer.test.ts","digest":"fb320da0ae31dac54a2220f7cc497dd78bb73f056480198ed07e22679c645f70","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/operations/action-operation-authority.ts","digest":"e8f907b44b50108858df0b9b5115f924c3d3bbda38a899874b6d4060b186eeda","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/operations/action-operation-authority.ts","digest":"99ee1633cd324e04e61a5a15796c867699da4bf0bc3c422c23ff397945438f64","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/operations/action-operation-service.ts","digest":"37f3dfcc8ef91923d68ba7159247a9202d1b04ecd8ce572b96c96b19e49ec3a0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -494,17 +494,17 @@
 
     {"path":"src-server/services/operations/fleet-dispatch-action-operation-observer.ts","digest":"60eb1f5da9f396db8d0a30187f1620acb207804e4fa563ca5625d18f47eb2cde","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/__tests__/native-invocation-runs.test.ts","digest":"f5db9bddda43afb1031abb0a4b9302640607b0367ed9a3cbcacc5c0f7798e22c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/__tests__/native-invocation-runs.test.ts","digest":"80a9868be3a0e07b14b6d72364ab3f6859ba29816a0f71e36f0f434923c1db06","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts","digest":"8e2885010de691c184e135b1e9669b0f550691f3fe52804c9a700dbb48e36e25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/orchestration/__tests__/revision-evidence-persistence.test.ts","digest":"017beaa8034f81f9bf5545777fd6835b9f5aa59da4eadf5e57a11162a52606e4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/__tests__/voice-turn-runs.test.ts","digest":"c172607c19c85181e9d0f16cb86a5aa1551b6e7fa5cae75276a8042177454484","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/__tests__/voice-turn-runs.test.ts","digest":"99ffa8eb800bcf16dffcb80ea32b56af87f6ac445a0c03b074d8fe63fac6caaa","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/orchestration/adoption-ledger.ts","digest":"fdf620001ececec0d9dd14dce71f3507a1adcf608c80122c216912b667d4fcd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"1cd8d3c9dc8b75120ff33b203777208d93660abda57b621d4e1c94ed131a5bfc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"ba6372d4e5bd961ae6c61d779eeb21dff966f1efc7c73fc2e69bb786fd535b50","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/orchestration/conversation-lineage.ts","digest":"d0ef999a7e0d22a508f999f611ae44e673bed445c9f2bdda814e779c1d8f0aaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -514,7 +514,7 @@
 
     {"path":"src-server/services/orchestration/credential-recovery-module.ts","digest":"a30d1344421536b0549657afa880c140faf54f3a5d7adac49e04afaf0617bdba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -524,7 +524,7 @@
 
     {"path":"src-server/services/orchestration/native-invocation-runs.ts","digest":"f60bd1aa1d935d571749b4fe620a754360022df65dc3c10459ecf25ed4ac44eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/orchestration/planned-home-admission-reconciliation.ts","digest":"b7f4f5da84fd564e60bf154c41e7270732d6a57046604e0ada5b9633a8fc1af4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -534,7 +534,7 @@
 
     {"path":"src-server/services/orchestration/planned-home-control-room-write-receipt-verifier.ts","digest":"f6c49a8611da028d5943e1b66be456acd4bb1de51c4e1a3c65bc2176d0711d54","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/planned-home-transfer-store.ts","digest":"05d51752c9cb9463217037e7fe5f788ab02d1414fde0b177ae0d02e824cebaa7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/planned-home-transfer-store.ts","digest":"7af2e74857cfc5af2e968831708daf50d5d4e19751d450044bca9bfc145f6e66","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/orchestration/project-task-live-work-history-adapter.ts","digest":"850b3432f4586d56bf87e644e54549864801baf94db127630f030146e6753127","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -556,7 +556,7 @@
 
     {"path":"src-server/services/orchestration/session-execution-coordinator.ts","digest":"3684cf1980751ddb8c326c2c73f2d84c7cd1d6970df5b912b83521c2f7cef58d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/session-inventory-module.ts","digest":"3051f28a324fb3afccde6636b63b50b5675b66330887f6d1515efc865843e89d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/session-inventory-module.ts","digest":"05bb2f54eb1c4500ffeb3841c7bcc7c4012228b1cdaab2e2a320036b06d03b99","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/orchestration/session-lifecycle-module.ts","digest":"15ad2baa1b461a7dc4f462062bddb458ad08d538c78811cc78b4865563a09bc2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -588,7 +588,7 @@
 
     {"path":"src-server/services/plugins/installed-plugin-inventory.ts","digest":"8d4c4718c0946f2c6c0cf8f0b85118d4cc8bf2cf4cb6a3a4838c5ce28b16028e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/mcp-service.ts","digest":"b78e6cab9e9fa8ca2418d5a7a697c355866447e2466ea28d607e5049084a6619","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/plugins/package-mcp-admission.ts","digest":"992e39f0f0acc7e9d779fcb742308db8cb4e66b9c3559ceb51e91106c757a110","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -600,7 +600,7 @@
 
     {"path":"src-server/services/plugins/plugin-grant-reconciliation.ts","digest":"287d0f3a1185664279eba08e403d06e17dc5512dd6f974b3fc8de76022a31cb9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"2ffb49b139b202cc8dfe6b7819cda5111a4a8f3fa6299a5b66405a3adb802a9b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/plugins/plugin-installation-generation-fence.ts","digest":"7a5b3eca67a7accb179a918ac78c3572e13d5df0644205f9ef589f4bc6bdd5ed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -610,7 +610,7 @@
 
     {"path":"src-server/services/plugins/plugin-manifest-loader.ts","digest":"ad125ed75cbb1bed948db758bded2ab2407b02f4f8b56bfbb6a03a0e80dad0df","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"1f005f042138d70be5eddbfce2bd5df406c15f5b084cdad286c973a6df1916bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/plugins/plugin-runtime-artifact.ts","digest":"3f63050b8c51fc7698e12b14501edf35d8cb902ede18d49b2599564488313a85","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -648,17 +648,17 @@
 
     {"path":"src-server/services/projects/task-graph-service.ts","digest":"c895f75faffb94ab2cbe311400d0b5811bb00148ef83d72de18638635d5a8d68","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts","digest":"967c36dd1c3034e164418e2c0027ef016d5fecc7fcd11b40ca4ca72085eceb83","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts","digest":"ae5ef724741ab5d319f3a2c0065060294f16da12a4cf1da0228c0f9a95a97c3e","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/scheduling/__tests__/external-monitor.test.ts","digest":"e0b81ba7130f8c3194ad7ed3153ad45aa8b22679a07695d74626806115ba328c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/scheduling/__tests__/external-monitor.test.ts","digest":"97fcdc467a3712bfd7d3cf6b94d574cac652aa24ce29720c932b4ec7861b701c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/scheduling/__tests__/scheduler-ledger.test.ts","digest":"229570b1c63beb422ead76cf51d7f7e29825035fa7392426939cb4d60f5db890","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/scheduling/builtin-scheduler.ts","digest":"336dcaccdb0e4b0102e383c186cdacad99b7c4603d67631d21f458ef29e82543","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/scheduling/builtin-scheduler.ts","digest":"23e3eb7ecc40c556f8dcd05c65998ab4fe029cf330373b0f72f268ecdce6a4d4","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/scheduling/external-monitor.ts","digest":"814b1234d7c702b21ae5e01d1fae7d651156fd0ef6df9942ed436d6e44a34232","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/scheduling/scheduler-ledger.ts","digest":"a076db356e5c4b7f1b13b629d13f9dead59a9319a3d8ab35a56f68d759727ed0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/scheduling/scheduler-ledger.ts","digest":"a8bbb6ec381b1a17ccc38266a751818602cc86bc1530894f5719a2c3bc13ca9a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/search/isolated-task-search.ts","digest":"df1e20bb520018a43662317f6128b13854a256229187ed0ff0c3218d0f4a1ab7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -844,7 +844,7 @@
 
     {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"e74f8d5030ab1ba5abe7f1b45e6e6a45d0c71968cb635db3c3abdd3518f81fa6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"f75f4e446e71e75f37283f4d46f96004be4a5d676bc858e9c8c48aeca63a5bab","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

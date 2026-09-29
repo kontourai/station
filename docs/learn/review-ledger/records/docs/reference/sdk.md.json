@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"444262f3adffa8bbce3486cd1873be08e8dc5bed1b0e295cd72681f7eac27592","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -144,7 +144,7 @@
 
     {"path":"packages/sdk/src/host-contexts.ts","digest":"a72220a429a289ab65568feda763883b22536558ac4e073120d26b06399783fd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/index.ts","digest":"c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"packages/sdk/src/layout/context.tsx","digest":"0a3e962f8bc141d067f387441e93d8f36c442bde102ea1e63eeccafbfd996f27","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -158,7 +158,7 @@
 
     {"path":"packages/sdk/src/providers.tsx","digest":"c2e1919b3feade010b3e393920ae4852b88d71921cddfb9716e164049b9acf3b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-core.ts","digest":"3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/query-core.ts","digest":"fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"packages/sdk/src/query-domains/agentAdmin.ts","digest":"d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -184,9 +184,9 @@
 
     {"path":"packages/sdk/src/query-domains/projectData.ts","digest":"abbc2681e46b64e1f204eb5cbb09da581cc67fd2197d5eadd5d4748b8f794571","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-domains/systemRuntime.ts","digest":"d0273b99c44053f57e5192771b1857561f8baf2754ec64bd90ae374cc2a99280","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/query-domains/systemRuntime.ts","digest":"9f3f5d5506f0236b8b6e387c1658c0c9e0ca6d4e4031263c3e579177b1657fd1","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
-    {"path":"packages/sdk/src/query-domains/systemRuntimeRequests.ts","digest":"38993404d9f1d33f62c0a2c160300997d939e823471520ecff90487926d23f5b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/query-domains/systemRuntimeRequests.ts","digest":"ff546b626752e81e54c5c6a6f571144ea0a283c7e073439e38361bb227ee79c5","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"packages/sdk/src/query-domains/taskGraph.ts","digest":"f10a3274579e455eecc3828ec9f11b826703916ee06b1d2859db413b9321901f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -312,7 +312,7 @@
 
     {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"c2ae9d87156a800fc13d11264cab62a69d5d57f2c603736a6b9d7d0f1a67770c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"88ffa5c4838158efb5abfcf83b25f635fdd5ac153dd08f016c8e64efbdeabc2f","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -336,9 +336,9 @@
 
     {"path":"src-server/services/orchestration/isolated-session-transcript-search.ts","digest":"b4583c148fa3069baeb59b4cc80f91e3e2a3dcb5cbfacf0a745757a0abf6de09","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"1343c8e3c719341bc22fa3ef7c91f98eb217d48b533fdb6918d73ae64ade9636","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"c935fad916983420c6eb619db776d4b932e9e424f1a81b89a1db19da7a5bda23","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"src-server/services/orchestration/request-inspection.ts","digest":"82124c3b7495914b211307c7b3b74a7b21777d001dd34daea8ea56d872a295e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -350,7 +350,7 @@
 
     {"path":"src-server/services/plugins/plugin-catalog-installation.ts","digest":"4663e57bee8360c76be9b0e5f20daddce153e11103045627d8b8c55df58a9363","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"2ffb49b139b202cc8dfe6b7819cda5111a4a8f3fa6299a5b66405a3adb802a9b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"src-server/services/plugins/workspace-pane-host-actions.ts","digest":"75590eb71c83be080b9f8b7fb080bc6276c18202b48f91f80cda8eff461c9474","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -382,7 +382,7 @@
 
     {"path":"src-server/services/search/unified-search-service.ts","digest":"9962e58299f905df0fe481de2c5a34586a4fa3c48c2d4203d424fd6abe9b2283","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-shared.ts","digest":"a64f0a06d9ca20825c184e678ed8f0f117e692a047d92203921ea595b21cd065","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/tools/station-control-shared.ts","digest":"1cda615bd82a88dfe4dcde495613c6d1cd87f19d7971853ba2c084baf525a372","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"src-server/voice/voice-session.ts","digest":"957f092791868376ee49c32261dc73d32fa25a8bdbfe5d79d6b70265ea685b28","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -444,7 +444,7 @@
 
     {"path":"src-ui/src/lib/queryPersistence.ts","digest":"b6c8a7052c126e5452bb319e82bfcb1179413379941a32765468e2b1041ec62d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/main.tsx","digest":"89fa3c2aec9ef7634da7610e614274452a70240089bbb2bd838f5349dfbe4828","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"src-ui/src/platform/PlatformSessionGate.tsx","digest":"35d3e16ce939595075ebf514e56bcfc26b1152f1076d1d4c153c248a3b0b1f4f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

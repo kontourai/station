@@ -26,7 +26,7 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"c2ae9d87156a800fc13d11264cab62a69d5d57f2c603736a6b9d7d0f1a67770c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"88ffa5c4838158efb5abfcf83b25f635fdd5ac153dd08f016c8e64efbdeabc2f","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/share/answer-share-service.ts","digest":"d333e854f9cecb3a4dbbbf53793187a45848c8be7a30bf1369e4d75b32d1dc82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -34,7 +34,7 @@
 
     {"path":"src-ui/src/components/chat/ShareAnswerButton.tsx","digest":"31619a6ca447e6a2f40821ecdddc1320bd189d8ae33c7bcf5e8884352af035cc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/main.tsx","digest":"89fa3c2aec9ef7634da7610e614274452a70240089bbb2bd838f5349dfbe4828","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-ui/src/utils/shareUiOrigin.ts","digest":"2678278a09bd74ba8d317c6d1d8f7ba13faef435e0a0844a6f4012105fc2210b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

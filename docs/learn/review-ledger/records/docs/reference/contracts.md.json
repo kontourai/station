@@ -9,7 +9,7 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"39945706aa08160f17fba22fc9bbb715899dd21b0661688c96ad6ebb8767a232","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -42,7 +42,7 @@
 
     {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/pull-request-provider.ts","digest":"1bc819d5161a622cd295ea95ac7a8af87fba68235d9eac2d3eecc306f4cc5b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/pull-request-provider.ts","digest":"569c14c5c749af1ec770131b795657c124297c7e89911dc37a7889173c5cfc34","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"packages/contracts/src/relay-enrollment.ts","digest":"622325708688314a4f708985de77a330c30cfe2615559fc32837f780b7932f22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -98,9 +98,9 @@
 
     {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"1343c8e3c719341bc22fa3ef7c91f98eb217d48b533fdb6918d73ae64ade9636","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"c935fad916983420c6eb619db776d4b932e9e424f1a81b89a1db19da7a5bda23","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"src-server/services/orchestration/session-lifecycle-service.ts","digest":"75bf567644132e438f5197e9897ee48532854e1900623989c42ea6fadaface32","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -108,11 +108,11 @@
 
     {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"11df4b14703e5376a92a9f469ffec78fd88a218745725c509bcd90dfa4e9c655","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"f37324b8e03bf80bd30024bd32700bf26900727eb14b4100b56ab28e84496a80","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"3468a46e4a56d93f46e2cb4973a2c265c818f244798b35dbfe832a700f507af9","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"ac2b9f7a46736ecc544a8ff555b75773917cbcd67b842acd60474b8fea9933f6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","digest":"1ad63d680fb04d56f0a73cda9870eb1d62425d23f9056744ecc20fe28e2218a2","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],

@@ -32,7 +32,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/mcp-service.ts","digest":"b78e6cab9e9fa8ca2418d5a7a697c355866447e2466ea28d607e5049084a6619","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/plugins/mcp-ui-permissions.ts","digest":"e6d70163c93fc6022e028276043c7f2a718b95265b80b1a21eab5b64c908acb6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

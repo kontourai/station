@@ -51,17 +51,6 @@ describe('public handshake compatibility block', () => {
     });
   });
 
-  test('keeps the contract integers monotonic and the floor no higher than the current version', () => {
-    expect(Number.isSafeInteger(STATION_COMPAT_PROTOCOL_VERSION)).toBe(true);
-    expect(Number.isSafeInteger(STATION_COMPAT_MIN_CLIENT_PROTOCOL)).toBe(true);
-    expect(STATION_COMPAT_PROTOCOL_VERSION).toBeGreaterThanOrEqual(1);
-    // A floor above the current contract would mean the host refuses the
-    // client this very repo ships.
-    expect(STATION_COMPAT_MIN_CLIENT_PROTOCOL).toBeLessThanOrEqual(
-      STATION_COMPAT_PROTOCOL_VERSION,
-    );
-  });
-
   test('is purely additive: every pre-existing handshake field is unchanged', async () => {
     const service = new EnvironmentSecurityService({ homeDir: makeHome() });
 

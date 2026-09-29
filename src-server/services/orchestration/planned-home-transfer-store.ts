@@ -249,12 +249,6 @@ export function readPlannedHomeOwner(
 
 class TransferAuthorizationDenied extends Error {}
 
-export function createSqlitePlannedHomeTransferStore(
-  db: HomeTransferDurableDatabase,
-) {
-  return createSqliteStore(db);
-}
-
 /** The authority service must use this entry, with its caller-bound guard. */
 export function createAuthorizedSqlitePlannedHomeTransferStore(
   db: HomeTransferDurableDatabase,
@@ -267,11 +261,10 @@ export function createAuthorizedSqlitePlannedHomeTransferStore(
 
 function createSqliteStore(
   db: HomeTransferDurableDatabase,
-  authorize?: () => boolean,
+  authorize: () => boolean,
 ) {
   // The captured guard revalidates authority synchronously while this DB is locked.
   function checkAuthorization(): void {
-    if (!authorize) return;
     const allowed = authorize();
     if (allowed !== true) {
       // A JS caller may violate the synchronous contract. Never treat its

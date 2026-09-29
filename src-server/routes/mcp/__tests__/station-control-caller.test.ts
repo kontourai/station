@@ -33,9 +33,9 @@ import {
 import { claudeInProcessStationControlOptions } from '../../../runtime/mcp/station-control-in-process.js';
 import {
   __resetStationControlMcpTokensForTests,
-  DEFAULT_TTL_MS,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
+  stationControlTokenAssurance,
 } from '../../../runtime/mcp/station-control-mcp-token.js';
 import {
   createWorkspacePaneHostActorFor,
@@ -48,10 +48,10 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { SessionAuthorization } from '../../../services/orchestration/session-authorization.js';
 import type { WorkspacePaneHostActionActor } from '../../../services/plugins/workspace-pane-host-actions.js';
 import {
-  __resetStationControlStdioCallerCredentialForTests,
+  __resetStationControlStdioEntryForTests,
   api,
   getStationControlCaller,
-  installStationControlStdioCallerCredential,
+  installStationControlStdioEntry,
   jsonToolResult,
   requireStationControlCaller,
   STATION_CONTROL_CALLER_PATH,
@@ -379,7 +379,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   __resetStationControlMcpTokensForTests();
-  __resetStationControlStdioCallerCredentialForTests();
+  __resetStationControlStdioEntryForTests();
   resolveRecord.mockClear();
   delegateTask.mockClear();
   continueDelegatedTask.mockClear();
@@ -444,10 +444,6 @@ const internalHeaders = () => ({
   [INTERNAL_PROXY_CALLER_HEADER]: 'local',
 });
 
-/** A `stdio-env-token` credential, the channel a stdio child reads from its env. */
-const stdioToken = (sessionId: string) =>
-  mintStationControlMcpToken(sessionId, 'stdio-env-token').token;
-
 describe('station-control verified caller (HTTP MCP)', () => {
   test('an HTTP-MCP tool call observes the verified caller, and a REST call made from inside it observes the same caller; forged sessionId/userId/principal arguments and identity headers are ignored', async () => {
     const { token } = mintStationControlMcpToken('session-a', 'url-token');
@@ -486,9 +482,7 @@ describe('station-control verified caller (HTTP MCP)', () => {
     });
   });
 
-  test('the MCP route refuses stdio-env and in-process tokens: neither channel ever dials it', async () => {
-    const stdio = stdioToken('session-a');
-    expect((await mcp(stdio, 1, 'initialize')).status).toBe(401);
+  test('the MCP route refuses in-process tokens: that channel never dials it', async () => {
     const inProcess = mintStationControlMcpToken('session-b', 'sdk-in-process');
     expect((await mcp(inProcess.token, 1, 'initialize')).status).toBe(401);
   });
@@ -638,12 +632,11 @@ describe('station-control verified caller (REST side)', () => {
     expect(response.caller).toBeNull();
   });
 
-  test('assurance comes from the mint channel: header and in-process tokens are bound, url and stdio tokens are bearer-exposed', async () => {
+  test('assurance comes from the mint channel: in-process tokens are bound, header tokens delegated-custody, url tokens bearer-exposed', async () => {
     const cases = [
       ['http-header-token', 'delegated-custody'],
       ['sdk-in-process', 'bound'],
       ['url-token', 'bearer-exposed'],
-      ['stdio-env-token', 'bearer-exposed'],
     ] as const;
     for (const [channel, assurance] of cases) {
       const { token } = mintStationControlMcpToken('session-a', channel);
@@ -653,6 +646,22 @@ describe('station-control verified caller (REST side)', () => {
       });
       expect(response.caller, channel).toMatchObject({ assurance });
     }
+  });
+
+  test('a live token whose channel has no assurance yields no caller (fails closed, never an unranked assurance)', async () => {
+    // The retired stdio channel stands in for any value outside the union.
+    expect(() =>
+      stationControlTokenAssurance('stdio-env-token' as never),
+    ).toThrow(/Unknown station-control token channel/);
+    const { token } = mintStationControlMcpToken(
+      'session-a',
+      'stdio-env-token' as never,
+    );
+    const response = await callerRoute({
+      ...internalHeaders(),
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+    });
+    expect(response.caller).toBeNull();
   });
 
   test('a tenant header that disagrees with the token tenant yields no caller', async () => {
@@ -683,48 +692,31 @@ describe('station-control verified caller (REST side)', () => {
   });
 });
 
-describe('station-control verified caller (stdio child path)', () => {
-  test('a stdio child holding its spawn-env credential resolves its caller through the REST projection, and the credential leaves process.env', async () => {
-    // Runs the exact module code a stdio child runs: no AsyncLocalStorage
-    // context, credential installed from the spawn env.
+describe('station-control verified caller (stdio child path: always caller-less)', () => {
+  test('a stdio child (pooled, no credential) has no caller and fails closed, even with a live token left in its env', async () => {
     process.env.STATION_API_BASE = baseUrl;
-    const token = stdioToken('session-b');
-    const env: NodeJS.ProcessEnv = {
-      [STATION_CONTROL_CALLER_TOKEN_ENV]: token,
-    };
-    installStationControlStdioCallerCredential(env);
-    expect(env[STATION_CONTROL_CALLER_TOKEN_ENV]).toBeUndefined();
-
-    await expect(requireStationControlCaller()).resolves.toEqual({
-      sessionId: 'session-b',
-      assurance: 'bearer-exposed',
-      principal: {
-        id: 'human:test:bob',
-        source: 'session-owner',
-        elevationEligible: true,
-      },
-      localProjectId: 'local-project-b',
-      projectIdSource: 'slug-lookup',
-      projectSlug: 'project-b',
-      conversationId: 'conversation-b',
-    });
-
-    revokeStationControlMcpToken('session-b');
-    await expect(getStationControlCaller()).resolves.toBeNull();
-  });
-
-  test('a stdio child with no credential (a pooled child) has no caller and fails closed', async () => {
-    process.env.STATION_API_BASE = baseUrl;
-    installStationControlStdioCallerCredential({});
-    await expect(getStationControlCaller()).resolves.toBeNull();
-    await expect(requireStationControlCaller()).rejects.toBeInstanceOf(
-      StationControlCallerRequiredError,
-    );
+    // The retired spawn-env key holding a LIVE credential: nothing adopts it.
+    const { token } = mintStationControlMcpToken('session-a', 'url-token');
+    process.env[STATION_CONTROL_CALLER_TOKEN_ENV] = token;
+    try {
+      installStationControlStdioEntry();
+      await expect(getStationControlCaller()).resolves.toBeNull();
+      await expect(requireStationControlCaller()).rejects.toBeInstanceOf(
+        StationControlCallerRequiredError,
+      );
+      // Nor does it reach Station's REST side as a forwarded credential.
+      expect(await api(ORIGIN_PROBE_PATH)).toEqual({
+        agentOriginated: true,
+        caller: null,
+      });
+    } finally {
+      delete process.env[STATION_CONTROL_CALLER_TOKEN_ENV];
+    }
   });
 
   test('a pooled child (no credential) is still agent-originated, with no caller', async () => {
     process.env.STATION_API_BASE = baseUrl;
-    installStationControlStdioCallerCredential({});
+    installStationControlStdioEntry();
     expect(await api(ORIGIN_PROBE_PATH)).toEqual({
       agentOriginated: true,
       caller: null,
@@ -755,28 +747,6 @@ describe('isAgentOriginatedRequest', () => {
         [STATION_CONTROL_CALLER_TOKEN_HEADER]: 'forged',
       }),
     ).toEqual({ agentOriginated: true, caller: null });
-  });
-});
-
-describe('stdio caller token lifetime', () => {
-  test('the stdio token stops resolving once its TTL has elapsed', async () => {
-    process.env.STATION_API_BASE = baseUrl;
-    const minted = Date.now();
-    const now = vi.spyOn(Date, 'now').mockReturnValue(minted);
-    try {
-      const token = stdioToken('session-a');
-      installStationControlStdioCallerCredential({
-        [STATION_CONTROL_CALLER_TOKEN_ENV]: token,
-      });
-      now.mockReturnValue(minted + DEFAULT_TTL_MS - 1);
-      await expect(getStationControlCaller()).resolves.toMatchObject({
-        sessionId: 'session-a',
-      });
-      now.mockReturnValue(minted + DEFAULT_TTL_MS);
-      await expect(getStationControlCaller()).resolves.toBeNull();
-    } finally {
-      now.mockRestore();
-    }
   });
 });
 
@@ -1062,21 +1032,6 @@ describe('agent-started child sessions (security review B2, D1, D2, D3)', () => 
     },
   );
 
-  test('D1: a stdio-env-token caller for the same owner is unattributed', async () => {
-    process.env.STATION_API_BASE = baseUrl;
-    installStationControlStdioCallerCredential({
-      [STATION_CONTROL_CALLER_TOKEN_ENV]: stdioToken('session-a'),
-    });
-    await api('/api/orchestration/delegations', {
-      method: 'POST',
-      body: JSON.stringify(DELEGATION_BODY),
-    });
-    expect(delegatedInput()).toMatchObject({
-      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
-      ownerAttribution: 'unattributed-agent',
-    });
-  });
-
   test('a bound caller of an ownerless session acts for no one: unattributed', async () => {
     await inProcessCall('session-c', { delegate: true });
     expect(delegatedInput()).toMatchObject({
@@ -1087,7 +1042,7 @@ describe('agent-started child sessions (security review B2, D1, D2, D3)', () => 
 
   test('a pooled child (origin marker, no credential) and a forged credential both mark the child unattributed', async () => {
     process.env.STATION_API_BASE = baseUrl;
-    installStationControlStdioCallerCredential({});
+    installStationControlStdioEntry();
     await api('/api/orchestration/delegations', {
       method: 'POST',
       body: JSON.stringify(DELEGATION_BODY),

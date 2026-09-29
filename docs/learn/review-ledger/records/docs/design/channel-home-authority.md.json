@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
 
-  "document": {"digest":"387b42540ce048dee2916d05a642668ddf8e86c308c4c1fc587c4e6254b81542","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+  "document": {"digest":"aa39bc064688fccf3f629a6e580045609975fd690762a8fae41393f8eb0ffeed","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
   "sources": [
     {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
@@ -20,7 +20,7 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/execution-target/execution-target-execution.ts","digest":"5ee6a8baa53de3eaca3d5e9cdb0fbd5311e0442368da99a7174e9375df410b3d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-server/services/execution-target/execution-target-execution.ts","digest":"c94ea32c0e391978d340cbfab4e5d9ee37fea207aac329580b68f2125a640c90","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/orchestration/completed-task-dispatch-recovery.ts","digest":"d546e29721fb4338c50d2d661d9e09da9cdc2562022c32cbed2b1bbdc0a158b2","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -28,7 +28,7 @@
 
     {"path":"src-server/services/orchestration/home-transfer-room-probe.ts","digest":"452280720043dd06eabfa63058e4ae10bd65db403adf427ccc7b64061c102129","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/orchestration/paired-home-transfer-authority.ts","digest":"085a90751ac616c54bca77ce48112a951334d1d644fdb4fa3287e6aed72f503f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-server/services/orchestration/planned-home-transfer-coordinator.ts","digest":"e4e93a19400d17d54295d0dac64c4d8977a13ca0a10c6c9787d3607b45de1307","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/orchestration/planned-home-transfer-store.ts","digest":"05d51752c9cb9463217037e7fe5f788ab02d1414fde0b177ae0d02e824cebaa7","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-server/services/orchestration/planned-home-transfer-store.ts","digest":"7af2e74857cfc5af2e968831708daf50d5d4e19751d450044bca9bfc145f6e66","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/orchestration/project-task-room-history-worker.ts","digest":"6c8f8684aadb16162fdf999f692e82b554773e9edbf17d0b4b36a00aba0d1736","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 

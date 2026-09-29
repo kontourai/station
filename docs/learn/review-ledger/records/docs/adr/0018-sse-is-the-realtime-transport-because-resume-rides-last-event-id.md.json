@@ -48,7 +48,7 @@
 
     {"path":"src-server/services/browser/browser-agent-authority.ts","digest":"e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/browser-automation.ts","digest":"16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/browser/browser-automation.ts","digest":"d24c0f5ae869c2f83866647af0c38066bac77184dc6a2724fdf4bded4d7fecd4","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/browser/browser-egress-proxy.ts","digest":"87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -62,17 +62,17 @@
 
     {"path":"src-server/services/browser/browser-service.ts","digest":"1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"2021e106a5e8148732ecebf92f8872632f27fd318b36aaa48e9f6b403ef29be5","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/browser/chromium-acquisition.ts","digest":"baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"6b6f45100304b04049f432aff93a46a71d457398db5aacebdf554c8d33fce0b4","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/browser/egress-policy.ts","digest":"34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/browser/hosts/chromium-server-host.ts","digest":"f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/station-listeners.ts","digest":"01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/browser/station-listeners.ts","digest":"09c20a6a69a1fd7da1cc0e958a6d775c2a21f5d295a9811dd46cfce1f99b9720","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/browser/url-policy.ts","digest":"46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -80,7 +80,7 @@
 
     {"path":"src-server/services/devices/device-hub-endpoint.ts","digest":"1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/devices/device-live-surface-producer.ts","digest":"c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/devices/device-live-surface-producer.ts","digest":"a12a892c21125c0baf162e09e8c0a0abf2b30dcfc5e8f9aa0f9dc6c2897af1b3","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/devices/device-session-service.ts","digest":"b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -98,7 +98,7 @@
 
     {"path":"src-server/services/live-surface/surface-hub.ts","digest":"ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/mobile-device/mobile-device-host.ts","digest":"370a00a92efbadd03eb73855a99c95474ea4c785b40c5284f0f8db35f7d71c0a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/mobile-device/mobile-device-host.ts","digest":"c88b2dceb6d09d7054a758b75ec2ddd9f51aa781a05237fb36fbbce8d2229e13","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/tools/station-browser-mcp-server.ts","digest":"52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

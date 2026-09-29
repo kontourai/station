@@ -71,7 +71,7 @@ function inertText(value: unknown): string | undefined {
  * published vocabulary spells `unknown` — the same fact under the other
  * schema's name, not a different claim. Every other status crosses verbatim.
  */
-export function projectToolCompletedEvent(
+function projectToolCompletedEvent(
   event: Pick<
     ToolCompletedEvent,
     | 'eventId'

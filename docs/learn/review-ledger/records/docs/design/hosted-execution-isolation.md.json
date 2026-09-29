@@ -16,7 +16,7 @@
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"c53f7ddcd9f98e70c6a3ad0085fa0cbc2d4e2cb7e7ac0885c80f6a8728248e41","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
-    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"779654779ddbec3c1d2d2d54987779832ac18bbc2f3a2f491c1a90b46b6fe344","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"fe55098b43fd10dd3117e8099d38cc2ab6aad097dae79cfa81be328832be7189","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"}
   ],
 
   "checks": [

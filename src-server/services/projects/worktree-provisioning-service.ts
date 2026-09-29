@@ -55,13 +55,13 @@ export interface GitCommandRunner {
 const DEFAULT_BRANCH_PREFIX = 'station/session';
 const DEFAULT_BASE_REF = 'HEAD';
 
-export function shouldUseWorktreeIsolation(
+function shouldUseWorktreeIsolation(
   isolation?: WorkspaceIsolationConfig,
 ): isolation is WorkspaceIsolationConfig & { mode: 'worktree' } {
   return isolation?.mode === 'worktree';
 }
 
-export function validateWorktreePolicy(policy: WorktreeIsolationPolicy = {}) {
+function validateWorktreePolicy(policy: WorktreeIsolationPolicy = {}) {
   const branchPrefix = normalizeBranchPrefix(policy.branchPrefix);
   const baseRef =
     typeof policy.baseRef === 'string' && policy.baseRef.trim()
@@ -83,7 +83,7 @@ export function validateWorktreePolicy(policy: WorktreeIsolationPolicy = {}) {
   };
 }
 
-export function buildWorktreeBranchName(input: {
+function buildWorktreeBranchName(input: {
   threadId: string;
   branchPrefix?: string;
 }): string {

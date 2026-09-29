@@ -9,7 +9,7 @@
 
   "limits": "Local tests cover development boundary, registry/permission decisions, MCP, server modules and durable-event fixtures. No fresh full installed-provider/native journey, live enterprise integration, remote npm availability or performance benchmark. Build dependency preparation may fail or time out; an attempted dev install is not readiness. Source review is complete for published guide claims, not every private security path.",
 
-  "document": {"digest":"168d3d4847dfdd234f3bbaa6b6f57190a96a3ca03612642b9f3808386633f8cd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"2430fc55758bda39ede194cd3a818763ae4890fad69c5ff2b27daa8f4fdf33c5","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
   "sources": [
     {"path":"config/plugin-scaffold-dependencies.json","digest":"e74f1f4028077bdd56e52057f43561d4cc4e790c42d8f600e04d1a1115f6da74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -44,7 +44,7 @@
 
     {"path":"src-server/providers/plugin-provider-loader.ts","digest":"7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/provider-interfaces.ts","digest":"1c3a3edc4fffe6d3d4c3a15c7647c9f25f380534f6ce804fc3e318c4468e9d7d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/provider-interfaces.ts","digest":"0dbb094dc01d4666b52c5d116205b8d8941bfc80f998d88c59a72c367ab46064","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"74f114c17b97532029176c2c2d6cf9279f9620193297f2ba7a74dae62a262c80","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -64,13 +64,13 @@
 
     {"path":"src-server/services/operational-events/operational-event-subscriptions.ts","digest":"e535fc6100ad5d56430e59e2a13598f96edc6329bf8adbddf63d34f36d4e21a5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/mcp-service.ts","digest":"b78e6cab9e9fa8ca2418d5a7a697c355866447e2466ea28d607e5049084a6619","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/plugins/mcp-ui-permissions.ts","digest":"e6d70163c93fc6022e028276043c7f2a718b95265b80b1a21eab5b64c908acb6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/plugins/package-mcp-admission.ts","digest":"992e39f0f0acc7e9d779fcb742308db8cb4e66b9c3559ceb51e91106c757a110","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"2ffb49b139b202cc8dfe6b7819cda5111a4a8f3fa6299a5b66405a3adb802a9b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/plugins/plugin-installation-generation-fence.ts","digest":"7a5b3eca67a7accb179a918ac78c3572e13d5df0644205f9ef589f4bc6bdd5ed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -78,11 +78,11 @@
 
     {"path":"src-server/services/plugins/plugin-installation-service.ts","digest":"50b9f54d4c3a5c179ca58439aeea4cf2e9880e110ced910454678425717cca0a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"1f005f042138d70be5eddbfce2bd5df406c15f5b084cdad286c973a6df1916bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"779654779ddbec3c1d2d2d54987779832ac18bbc2f3a2f491c1a90b46b6fe344","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"fe55098b43fd10dd3117e8099d38cc2ab6aad097dae79cfa81be328832be7189","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"src-server/services/plugins/plugin-source.ts","digest":"215bdad26df4a2b1449614498eceaf7364a3c7baac31d5f3163222fd6b2639c9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-source.ts","digest":"91c0bbfe6769f4c6848d20fd041422abef549bdb37dfd8ce908210fe7a7a9c0e","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/plugins/registry-acquisition.ts","digest":"a1f479cfd9a97bc253278d33407d7c58e780ea7cc87bc07765253932c1570432","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

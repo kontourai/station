@@ -317,6 +317,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
   },
   parallelSafe: [
+    'tests/branding-theme-boot.spec.ts',
     'tests/buffered-answer-delivery.spec.ts',
     'tests/agents-pane.spec.ts',
     'tests/toolbar-reachability.spec.ts',
@@ -688,6 +689,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'station#4287: exercises the shell CSP rather than asserting its header string. Serves the production-built UI through the lifecycle static server with the real bootstrap derivation, proves no nonce carrier is reachable from page code (window global, script .nonce IDL, nonce attribute), and proves a remote script minted from what page code CAN scrape is refused by script-src — paired with a control that lifts the nonce out of the response header and shows the same remote script then executes, so the refusal is the leak being closed and not a URL the policy would have refused anyway. Also proves the API-base bootstrap both runs and removes its own nonce-bearing element. jsdom enforces no CSP and never loads an external script, so this is only falsifiable in a real browser.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/branding-theme-boot.spec.ts',
+    bucket: 'product',
+    surface: 'Shell',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#2836: the white-label branding theme's first paint. Both server answers are held — GET /api/branding, and the branding section of GET /api/boot, answered as an error section so its seed cannot stand in. The built app must carry the cached, re-validated theme inline on <html> from before the first render (main.tsx pre-render path), keep it until the live answer is released, then apply that answer (BrandingThemeBridge); a hostile cached copy must never write anything. An in-page MutationObserver records every inline value, so an early clear is an observed failure rather than a timing window. Unit tests cover the helpers; only the built app proves main.tsx calls them.",
     exceptions: [],
   },
   {

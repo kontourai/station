@@ -24,7 +24,7 @@
 
     {"path":"src-server/services/plugins/__tests__/registry-trust-policy.test.ts","digest":"c39ee84969bbf59215050bec068c4b032b6c94db71443ec9774eb48a3b6a05f4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"2ffb49b139b202cc8dfe6b7819cda5111a4a8f3fa6299a5b66405a3adb802a9b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/plugins/plugin-installation-service.ts","digest":"50b9f54d4c3a5c179ca58439aeea4cf2e9880e110ced910454678425717cca0a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

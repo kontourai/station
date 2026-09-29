@@ -50,7 +50,7 @@
 
     {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"91dd9928c383d1db4197a5c2e4cf7f80bcbcfb15a6ffad5ffeb1d27362d9c5b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/plugins/mcp-service.ts","digest":"b78e6cab9e9fa8ca2418d5a7a697c355866447e2466ea28d607e5049084a6619","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/plugins/plugin-activation-composition.ts","digest":"273fb2e4a6343624321647ef4e9e10962e57ba6c6776bf0aacc87e3ecc277770","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -58,13 +58,13 @@
 
     {"path":"src-server/services/plugins/plugin-incarnation.ts","digest":"01f16d8ae5b0bba70ed14fa906f312ec5281a4ae6f8b4380f929493ad414b626","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"2ffb49b139b202cc8dfe6b7819cda5111a4a8f3fa6299a5b66405a3adb802a9b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-server/services/plugins/plugin-installation-local.ts","digest":"5becd37c9b513ca607765046ee7314e7adbeddd4c1955905c85e8254963455d6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-server/services/plugins/plugin-manifest-loader.ts","digest":"ad125ed75cbb1bed948db758bded2ab2407b02f4f8b56bfbb6a03a0e80dad0df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/plugins/reserved-plugin-identities.ts","digest":"968bbf2ec02e12c19299863c303c1ea7097444345e3f8ed8da60b9ab51cbde19","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/plugins/reserved-plugin-identities.ts","digest":"d852c2c072b6d34d2d73572b011c06ebb9e5ea3626679eda66e9e59c0a431ad1","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
     {"path":"src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx","digest":"fcc06701bb9ca810d7f3021cb18d5eb184c1999b064c5827ad2fb212c4703e0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

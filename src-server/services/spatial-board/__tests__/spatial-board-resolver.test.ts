@@ -33,13 +33,13 @@ describe('SpatialBoardResolver', () => {
     const resolver = new SpatialBoardResolver({
       project: { resolve: resolveProjects },
     });
-    const result = await resolver.resolve(
-      board([
-        { kind: 'project', id: 'project-a' },
-        { kind: 'project', id: 'project-b' },
-        { kind: 'agent', id: 'station' },
-      ]),
-    );
+    const stored = board([
+      { kind: 'project', id: 'project-a' },
+      { kind: 'project', id: 'project-b' },
+      { kind: 'agent', id: 'station' },
+    ]);
+    const storedBefore = structuredClone(stored);
+    const result = await resolver.resolve(stored);
     expect(resolveProjects).toHaveBeenCalledTimes(1);
     expect(resolveProjects).toHaveBeenCalledWith([
       { kind: 'project', id: 'project-a' },
@@ -50,6 +50,17 @@ describe('SpatialBoardResolver', () => {
       pins: [
         { state: 'current', title: 'Project A', href: '/projects/project-a' },
         { state: 'current', title: 'Project A' },
+        { state: 'NOT_VERIFIED' },
+      ],
+    });
+    // Ephemeral: owner data is neither written into the stored board nor
+    // retained for the next read, which observes the owner afresh.
+    expect(stored).toEqual(storedBefore);
+    resolveProjects.mockRejectedValueOnce(new Error('offline'));
+    await expect(resolver.resolve(stored)).resolves.toMatchObject({
+      pins: [
+        { state: 'unavailable' },
+        { state: 'unavailable' },
         { state: 'NOT_VERIFIED' },
       ],
     });

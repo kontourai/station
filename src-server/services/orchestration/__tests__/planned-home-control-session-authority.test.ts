@@ -25,7 +25,7 @@ import {
   MAX_PLANNED_HOME_CONTROL_SESSIONS,
   type PlannedHomeControlSessionRecord,
 } from '../planned-home-control-session-schema.js';
-import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
+import { createAuthorizedSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 
 const roots: string[] = [];
 const databases: DatabaseSync[] = [];
@@ -124,7 +124,10 @@ async function fixture() {
     return paired;
   };
   const initializeOwner = (deviceId: string) => {
-    const store = createSqlitePlannedHomeTransferStore(database);
+    const store = createAuthorizedSqlitePlannedHomeTransferStore(
+      database,
+      () => true,
+    );
     expect(
       store.initialize({
         tenantId: `personal-controller:${controller.environmentId}`,

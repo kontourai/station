@@ -12,11 +12,11 @@
   "document": {"digest":"b57c8e11f45a7a52030614f2ef963a169b8b7be5b4e004becd5a8f483075ff06","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/reference/sdk.md","digest":"444262f3adffa8bbce3486cd1873be08e8dc5bed1b0e295cd72681f7eac27592","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"docs/reference/sdk.md","digest":"a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"packages/sdk/package.json","digest":"efcbeb1cf58acd8b9cab21a98044292b901b5fca14667336b77619454e36a761","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/src/query-core.ts","digest":"3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {"path":"packages/sdk/src/query-core.ts","digest":"fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"}
   ],
 
   "checks": [

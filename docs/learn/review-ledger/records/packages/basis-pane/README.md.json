@@ -9,7 +9,7 @@
 
   "limits": "No full protected-reader/server lifecycle audit, live MCP host, provider execution, physical native display, accessibility/visual proof or public package release. Protected authority belongs to the host; package source and tests are not grants.",
 
-  "document": {"digest":"4424b387758f31609154e0c02ec47f10e350ec1d3f6b3b34f8807bc392ac90fa","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+  "document": {"digest":"83177b816737b1d535d7517bedde776aa9f593694ce80ac9c534193620f12134","revision":"3d607908cd1b34cbb6f3ac4331150c9e1080477f"},
 
   "sources": [
     {"path":"packages/basis-pane/package.json","digest":"315d779b3824c25c75d359878d51ca711b708fe0b5b7ce3cb925478f8d6a9e44","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},

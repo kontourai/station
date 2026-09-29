@@ -142,8 +142,8 @@ export class InternalStopSuppression {
    * `listEvents`. Narrowing to this method list is not a truncation like the
    * bounded projection was: `nextActiveTurnId` treats every OTHER canonical
    * method as a pass-through no-op, so the fold is bit-identical to folding
-   * the full log (pinned by a differential test against all 27 canonical
-   * methods), at a fraction of the read cost — fewer rows returned by the
+   * the full log (pinned by a differential test against every canonical
+   * method), at a fraction of the read cost — fewer rows returned by the
    * SQL query plus skipping `JSON.parse` of every excluded row's payload
    * (archive#3559 fix round: NOT attachment-blob hydration, which fires only
    * on `turn.started` and is retained by this list either way, so is paid

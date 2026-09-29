@@ -13,8 +13,6 @@ import type { SessionAnswerabilityObservation } from '../open-requests.js';
 import {
   buildAgentRunSummary,
   buildOrchestrationSessionSummary,
-  classifyAgentRunFailure,
-  isAgentRunRetryEligible,
   projectOrchestrationEventToReadModel,
   type RecoveredSessionStartOptions,
   recoverOrchestrationSessions,
@@ -613,14 +611,23 @@ describe('orchestration-session-state', () => {
       );
     });
 
-    test('classifies as a retryable recovery failure rather than an opaque one', () => {
-      const kind = classifyAgentRunFailure({
-        method: 'runtime.error',
-        code: SESSION_RECOVERY_FAILED_CODE,
-        message: 'This conversation could not be reopened: …',
-      } as any);
-      expect(kind).toBe('runtime_recovery');
-      expect(isAgentRunRetryEligible(kind)).toBe(true);
+    test('the run it leaves behind reads as a retryable recovery failure rather than an opaque one', async () => {
+      const { adapter, eventStore, session } = failingRecovery();
+
+      await run(adapter, eventStore, session);
+
+      const recorded = eventStore.appendEventIfAbsent.mock.calls[0][0];
+      expect(
+        buildAgentRunSummary({
+          answerability: OBSERVATION,
+          persisted: { ...session, status: 'error' },
+          events: [recorded],
+        }),
+      ).toMatchObject({
+        status: 'failed',
+        failureKind: 'runtime_recovery',
+        retryEligible: true,
+      });
     });
 
     test('records the same failure under one stable event id across restarts', async () => {
@@ -3498,51 +3505,56 @@ describe('orchestration-session-state', () => {
     });
   });
 
-  test('classifyAgentRunFailure centralizes retry eligibility', () => {
-    expect(
-      isAgentRunRetryEligible(
-        classifyAgentRunFailure({
-          method: 'runtime.error',
+  test.each([
+    {
+      name: 'a timeout is retryable',
+      error: { message: 'operation timeout', code: 'timeout' },
+      failureKind: 'timeout',
+      retryEligible: true,
+    },
+    {
+      name: 'an agent error is not retryable',
+      error: { message: 'agent failed', code: 'agent_error', retriable: false },
+      failureKind: 'agent_error',
+      retryEligible: false,
+    },
+    {
+      name: 'an uncoded error the runtime marked retriable is a recovery failure',
+      error: { message: 'Codex runtime error', retriable: true },
+      failureKind: 'runtime_recovery',
+      retryEligible: true,
+    },
+  ])(
+    'buildAgentRunSummary classifies the failing runtime.error: $name',
+    ({ error, failureKind, retryEligible }) => {
+      const run = buildAgentRunSummary({
+        answerability: OBSERVATION,
+        loaded: {
           provider: 'codex',
-          threadId: 'thread-timeout',
-          eventId: 'evt-timeout',
+          threadId: 'thread-classified',
+          status: 'running',
           createdAt: '2026-04-11T00:00:00.000Z',
-          severity: 'error',
-          message: 'operation timeout',
-          code: 'timeout',
-        }),
-      ),
-    ).toBe(true);
-
-    expect(
-      isAgentRunRetryEligible(
-        classifyAgentRunFailure({
-          method: 'runtime.error',
-          provider: 'codex',
-          threadId: 'thread-agent-error',
-          eventId: 'evt-agent-error',
-          createdAt: '2026-04-11T00:00:00.000Z',
-          severity: 'error',
-          message: 'agent failed',
-          code: 'agent_error',
-          retriable: false,
-        }),
-      ),
-    ).toBe(false);
-
-    expect(
-      classifyAgentRunFailure({
-        method: 'runtime.error',
-        provider: 'codex',
-        threadId: 'thread-retry',
-        eventId: 'evt-retry',
-        createdAt: '2026-04-11T00:00:00.000Z',
-        severity: 'error',
-        message: 'Codex runtime error',
-        retriable: true,
-      }),
-    ).toBe('runtime_recovery');
-  });
+          updatedAt: '2026-04-11T00:00:01.000Z',
+        },
+        events: [
+          {
+            provider: 'codex',
+            threadId: 'thread-classified',
+            eventId: 'evt-error',
+            createdAt: '2026-04-11T00:00:02.000Z',
+            method: 'runtime.error',
+            severity: 'error',
+            ...error,
+          } as CanonicalRuntimeEvent,
+        ],
+      });
+      expect(run).toMatchObject({
+        status: 'failed',
+        failureKind,
+        retryEligible,
+      });
+    },
+  );
 
   // archive#1867 review round: the `eventCount` override is the ONLY thing
   // keeping the reported total honest once a caller reads a bounded tail

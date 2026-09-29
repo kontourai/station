@@ -211,7 +211,7 @@ export function plan(input: PlanInput): PlanStep[] {
 }
 
 /** `[start, end)` in the zone's wall clock; a window may wrap midnight. */
-export function isWithinQuietHours(
+function isWithinQuietHours(
   quietHours: NotificationQuietHours,
   now: number,
   timeZone?: string,

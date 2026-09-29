@@ -12,7 +12,7 @@
   "document": {"digest":"bc2aca88d170022d9dbce1f604dcd9d6d7e52e3fa635b4e701bf49bc59efffb5","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
 
   "sources": [
-    {"path":"packages/sdk/src/query-core.ts","digest":"3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
+    {"path":"packages/sdk/src/query-core.ts","digest":"fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"packages/sdk/src/spatial-board.ts","digest":"0f4daca0da74286a06d4df956d9dd91ddcedfaccc49fa0343a4f04b85e54ece0","revision":"8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1"},
 
