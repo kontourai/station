@@ -3079,6 +3079,28 @@ describe('ClaudeAdapter', () => {
         await adapter.stopSession('thread-override-grant');
       });
 
+      test('a sandbox-disabled call prompts under a Bash grant when another check raised the ask', async () => {
+        // The engine's Bash `checkPermissions` returns an earlier check's ask
+        // before its own sandboxOverride one, so the input flag can arrive
+        // with a different reason. The flag alone must keep the prompt.
+        const { adapter, ask } = await grantHarness('thread-override-input');
+        const mint = await ask('Bash', { command: 'git status' });
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
+
+        const override = await ask(
+          'Bash',
+          {
+            command: 'curl https://example.com',
+            dangerouslyDisableSandbox: true,
+          },
+          { decisionReason: 'Command contains a network request' },
+        );
+        expect(override.kind).toBe('prompted');
+        if (override.kind === 'prompted') await override.answer('decline');
+        await adapter.stopSession('thread-override-input');
+      });
+
       test('the org-ceiling MCP ask prompts under a grant for that tool', async () => {
         const { adapter, ask } = await grantHarness('thread-org-grant');
         const mint = await ask('mcp__github__create_issue', { title: 'a' });
