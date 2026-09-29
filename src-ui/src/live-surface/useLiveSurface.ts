@@ -131,6 +131,12 @@ export interface UseLiveSurfaceResult {
   inputNotice: LiveSurfaceInputNotice;
   sendInput: (events: LiveSurfaceInput[]) => void;
   claimControl: () => Promise<void>;
+  /**
+   * Give control up explicitly (a hand-back): the server records the
+   * release, and an agent may claim at once instead of waiting out this
+   * person's hold. Only the holder's release is accepted.
+   */
+  releaseControl: () => Promise<void>;
   retry: () => void;
 }
 
@@ -575,6 +581,36 @@ export function useLiveSurface(
     }
   }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
 
+  const leaseRef = useRef(lease);
+  leaseRef.current = lease;
+  const releaseControl = useCallback(async () => {
+    const current = leaseRef.current;
+    if (!current) return;
+    try {
+      const response = await transportRef.current(
+        `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'release', epoch: current.epoch }),
+        },
+      );
+      const envelope = (await response.json().catch(() => null)) as {
+        data?: LiveSurfaceLeaseResult;
+      } | null;
+      if (isSurfaceBusy(response, envelope)) {
+        showHostBusy();
+        return;
+      }
+      const nextLease = envelope?.data
+        ? parseLiveSurfaceControlLease(envelope.data.lease)
+        : null;
+      if (nextLease) adoptLease(nextLease);
+    } catch {
+      setInputNotice('input-failed');
+    }
+  }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
+
   const retry = useCallback(() => setRetryToken((value) => value + 1), []);
 
   return {
@@ -589,6 +625,7 @@ export function useLiveSurface(
     inputNotice,
     sendInput,
     claimControl,
+    releaseControl,
     retry,
   };
 }

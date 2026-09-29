@@ -36,7 +36,6 @@ import {
 import { useFeatureSettings } from '../hooks/useFeatureSettings';
 import {
   LiveSurfaceCanvas,
-  type LiveSurfaceControllerTone,
   type LiveSurfaceControlState,
 } from '../live-surface/LiveSurfaceCanvas';
 import {
@@ -85,6 +84,7 @@ import {
 } from './floatStore';
 import {
   agentInputOf,
+  DRIVER_TEXT,
   type RecentAgentInput,
   useRecentDriver,
 } from './recentDriver';
@@ -734,13 +734,6 @@ function chosenWidth(width: number): number {
   return Math.max(width, FLOAT_MIN_SIZE.width);
 }
 
-const CONTROLLER_TEXT: Record<LiveSurfaceControllerTone, string> = {
-  agent: 'An agent is driving',
-  you: 'You are in control',
-  other: 'Someone else is in control',
-  none: 'No one is in control',
-};
-
 /** Invisible grab zones straddling each edge; the cursor is the only affordance. */
 const RESIZE_ZONES: readonly FloatResizeDirection[] = [
   'north',
@@ -1284,7 +1277,7 @@ function FloatPlayer({
     dotRef.current?.focus();
   };
 
-  const status = control ? CONTROLLER_TEXT[tone] : 'Connecting…';
+  const status = control ? DRIVER_TEXT[tone] : 'Connecting…';
   return (
     <section
       className="float-over-chat__player"

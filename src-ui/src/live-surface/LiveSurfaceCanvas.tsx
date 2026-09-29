@@ -164,6 +164,8 @@ export interface LiveSurfaceControlState {
   status: UseLiveSurfaceResult['status'];
   tone: LiveSurfaceControllerTone;
   claimControl: () => Promise<void>;
+  /** Give control up explicitly (only meaningful while `tone` is `you`). */
+  releaseControl: () => Promise<void>;
 }
 
 export type LiveSurfaceControllerTone = 'you' | 'agent' | 'other' | 'none';
@@ -674,11 +676,11 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
 
   const controller = controllerLine(surface);
   const { onControlState } = props;
-  const { status, claimControl } = surface;
+  const { status, claimControl, releaseControl } = surface;
   const tone = controller.tone;
   useEffect(() => {
-    onControlState?.({ status, tone, claimControl });
-  }, [onControlState, status, tone, claimControl]);
+    onControlState?.({ status, tone, claimControl, releaseControl });
+  }, [onControlState, status, tone, claimControl, releaseControl]);
   const recordAge = secondsAgo(clock, surface.lastActivityAt);
   const frameAge = secondsAgo(clock, surface.lastFrameAt);
   let statusText: string | null = null;

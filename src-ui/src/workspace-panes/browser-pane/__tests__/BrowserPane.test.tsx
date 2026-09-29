@@ -701,7 +701,7 @@ describe('BrowserPane wave 2 fix round', () => {
     expect(
       (await screen.findByText(/The page showed a dialog/)).textContent,
     ).toBe(
-      "The page showed a dialog: “Delete everything?”. Station dismissed it. Pages that need you to confirm or answer a prompt can't be completed here yet.",
+      'The page showed a dialog: “Delete everything?”. Station dismissed it automatically because no person was in control. Take control before the page asks, and you can answer it yourself.',
     );
   });
 

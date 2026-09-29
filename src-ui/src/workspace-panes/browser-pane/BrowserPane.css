@@ -200,3 +200,196 @@
   min-height: 0;
   position: relative;
 }
+
+/* --- Control line, page tools, narrow fold (#90) ------------------------ */
+
+/* The pane's own width decides the fold, not the window's: a Browser pane
+   docked beside a wide chat is as narrow as a phone. */
+.browser-pane {
+  container-name: browser-pane;
+  container-type: inline-size;
+}
+
+.browser-pane__driving,
+.browser-pane__tools,
+.browser-pane__secondary {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.browser-pane__driving {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* On a wide pane the secondary controls sit inline in the bar. */
+.browser-pane__secondary {
+  display: contents;
+}
+
+.browser-pane__more {
+  display: none;
+}
+
+.browser-pane__driver {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.browser-pane__driver[data-tone="agent"] {
+  color: var(--accent-warning, var(--text-primary));
+  font-weight: 600;
+}
+
+.browser-pane__driver[data-tone="you"] {
+  font-weight: 600;
+}
+
+@container browser-pane (max-width: 559px) {
+  .browser-pane__more {
+    display: inline-flex;
+  }
+
+  .browser-pane__secondary {
+    display: none;
+  }
+
+  .browser-pane__secondary--open {
+    display: flex;
+    flex: 1 1 100%;
+  }
+
+  .browser-pane__driving {
+    flex-basis: 100%;
+  }
+}
+
+.browser-pane__console {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.browser-pane__console-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.browser-pane__console-bar h3 {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.browser-pane__console-list {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  list-style: none;
+  margin: 0;
+  max-height: 16rem;
+  overflow: auto;
+  padding: 0;
+}
+
+.browser-pane__console-entry {
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2, 8px);
+  padding: var(--space-1, 4px) 0;
+}
+
+.browser-pane__console-entry[data-level="error"] {
+  color: var(--accent-danger, var(--text-primary));
+}
+
+.browser-pane__console-entry[data-level="warning"] {
+  color: var(--accent-warning, var(--text-primary));
+}
+
+.browser-pane__console-entry[data-level="debug"] {
+  color: var(--text-secondary);
+}
+
+.browser-pane__console-level {
+  flex: 0 0 auto;
+  font-weight: 600;
+  min-width: 4.5rem;
+}
+
+.browser-pane__console-text {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.browser-pane__console-where {
+  color: var(--text-secondary);
+  flex: 1 1 100%;
+  overflow-wrap: anywhere;
+}
+
+.browser-pane__dialog-layer {
+  display: flex;
+  justify-content: center;
+  left: var(--space-2, 8px);
+  position: absolute;
+  right: var(--space-2, 8px);
+  top: var(--space-2, 8px);
+  z-index: 2;
+}
+
+.browser-pane__page-dialog {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--shadow-md, 0 2px 8px rgb(0 0 0 / 0.2));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  max-height: 70%;
+  max-width: 28rem;
+  overflow: auto;
+  padding: var(--space-3, 12px);
+  width: 100%;
+}
+
+.browser-pane__page-dialog-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.browser-pane__page-dialog-message {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.browser-pane__page-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  justify-content: flex-end;
+}
+
+.browser-pane__screenshot-thumb {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm, 4px);
+  max-height: 64px;
+  max-width: 96px;
+  object-fit: contain;
+}
+
+/* An anchor dressed as a button still gets the 44px target. */
+.browser-pane__link-button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  text-decoration: none;
+}
