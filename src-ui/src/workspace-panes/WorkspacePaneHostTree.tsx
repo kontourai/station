@@ -19,6 +19,10 @@ import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { builtinWorkspacePaneName } from './builtinWorkspacePaneCanonical';
 import { projectCompactWorkspacePaneHost } from './compactWorkspacePaneProjection';
+import {
+  WorkspacePaneFailure,
+  type WorkspacePaneFailureContext,
+} from './WorkspacePaneFailure';
 import { WorkspacePaneFrame } from './WorkspacePaneFrame';
 import type {
   WorkspacePaneHostCatalogRequest,
@@ -118,6 +122,14 @@ export interface WorkspacePaneHostTreeProps {
   operationalAvailability?(
     instance: WorkspacePaneInstance,
   ): WorkspacePaneAvailability | undefined;
+  /**
+   * What only the pane's owner knows about a failed renderer: the thing
+   * inside it that failed and a way back from it (chromeless and dock
+   * presentations, where the pane's own header is gone with the pane).
+   */
+  paneFailureContext?(
+    instance: WorkspacePaneInstance,
+  ): WorkspacePaneFailureContext | undefined;
 }
 
 const RESIZE_STEP = 0.05;
@@ -175,6 +187,7 @@ export function WorkspacePaneHostTree({
   operationalEventSink,
   operationalEventContext,
   operationalAvailability,
+  paneFailureContext,
 }: WorkspacePaneHostTreeProps) {
   const visualViewport = useMobileVisualViewport();
   const compactHostRef = useRef<HTMLElement | null>(null);
@@ -375,6 +388,27 @@ export function WorkspacePaneHostTree({
     const occupant = paneById.get(state.document.activeInstanceId);
     const failed =
       occupant && controller.state.rendererFailures[occupant.instanceId];
+    // Read for the occupant whether or not the host has recorded a failure
+    // yet: the frame's own boundary renders the same failure state first,
+    // and keeps it if a hydration restore clears the host's record.
+    const occupantFailureContext = occupant
+      ? paneFailureContext?.(occupant)
+      : undefined;
+    // A pane-supplied Back changes what the pane opens, then remounts it on
+    // that state: the retry is what makes the new state visible.
+    const failureContext: WorkspacePaneFailureContext | undefined =
+      occupant && occupantFailureContext?.back
+        ? {
+            ...occupantFailureContext,
+            back: {
+              label: occupantFailureContext.back.label,
+              onBack: () => {
+                occupantFailureContext.back?.onBack();
+                void controller.retry(occupant.instanceId);
+              },
+            },
+          }
+        : occupantFailureContext;
     const groupId =
       dockGroupId ??
       (state.document.root.type === 'tabs'
@@ -417,18 +451,13 @@ export function WorkspacePaneHostTree({
             // unavailable pane is a message and a message needs a box.
             wrapPanel(
               occupant.instanceId,
-              <section
+              <WorkspacePaneFailure
                 className="workspace-pane-host workspace-pane-host--chromeless-failure"
-                aria-label={`${paneLabel(occupant)} unavailable`}
-              >
-                <p>{paneLabel(occupant)} could not open.</p>
-                <button
-                  type="button"
-                  onClick={() => void controller.retry(occupant.instanceId)}
-                >
-                  Retry pane
-                </button>
-              </section>,
+                paneName={paneLabel(occupant)}
+                detail={controller.rendererFailureDetails[occupant.instanceId]}
+                context={failureContext}
+                onRetry={() => void controller.retry(occupant.instanceId)}
+              />,
             )
           : null}
         {occupant && !failed
@@ -438,6 +467,7 @@ export function WorkspacePaneHostTree({
                 elementless
                 instanceId={occupant.instanceId}
                 paneName={paneLabel(occupant)}
+                failureContext={occupantFailureContext}
                 runtime={runtime}
                 onFailure={controller.fail}
                 onRetry={controller.retry}

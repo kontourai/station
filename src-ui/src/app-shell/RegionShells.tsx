@@ -10,6 +10,7 @@ import {
   ChatDock,
   renderAmbientChatPane,
 } from '../components/chat-dock/ChatDock';
+import { ambientChatPaneFailureContext } from '../components/chat-dock/chatPaneFailureContext';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
@@ -146,6 +147,7 @@ function DockRegionHost({ regionId }: { regionId: DockRegionId }) {
       componentProps={{
         regionId,
         renderChatPane: renderAmbientChatPane,
+        chatPaneFailureContext: ambientChatPaneFailureContext,
         renderActivityPane: renderActivityDockPane,
       }}
       pending={null}

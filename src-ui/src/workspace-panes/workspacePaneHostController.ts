@@ -22,6 +22,7 @@ import {
   projectCompactWorkspacePaneHost,
   visibleWorkspacePaneHostInstanceIds,
 } from './compactWorkspacePaneProjection';
+import type { WorkspacePaneFailureDetail } from './WorkspacePaneFailure';
 import type {
   WorkspacePaneHostOpenPlacement,
   WorkspacePaneHostOpenPreparation,
@@ -127,7 +128,16 @@ export interface WorkspacePaneHostController {
   reorder(instanceId: WorkspacePaneInstanceId, toIndex: number): void;
   collapse(splitId: string, collapsed: 'first' | 'second' | undefined): void;
   maximize(instanceId: WorkspacePaneInstanceId | undefined): void;
-  fail(instanceId: WorkspacePaneInstanceId): void;
+  fail(
+    instanceId: WorkspacePaneInstanceId,
+    detail?: WorkspacePaneFailureDetail,
+  ): void;
+  /**
+   * What each failed renderer threw, by instance id — display-only, beside
+   * the reducer's `rendererFailures` (which stays the authority on WHETHER a
+   * pane failed). Absent for a failure that carried no error.
+   */
+  rendererFailureDetails: Readonly<Record<string, WorkspacePaneFailureDetail>>;
   retry(instanceId: WorkspacePaneInstanceId): Promise<boolean>;
   /** Replaces the sole ambient-slot occupant through this host's persistence lease. */
   replace(instance: WorkspacePaneInstance): boolean;
@@ -168,6 +178,9 @@ export function useWorkspacePaneHostController({
   const [closeConfirmation, setCloseConfirmation] =
     useState<WorkspacePaneHostController['closeConfirmation']>(null);
   const [authorityCleanupRevision, setAuthorityCleanupRevision] = useState(0);
+  const [rendererFailureDetails, setRendererFailureDetails] = useState<
+    Readonly<Record<string, WorkspacePaneFailureDetail>>
+  >({});
   const [persistenceStatus, setPersistenceStatus] =
     useState<WorkspacePaneHostPersistenceStatus>('unavailable');
   const navigationSnapshot = useSyncExternalStore(
@@ -838,7 +851,16 @@ export function useWorkspacePaneHostController({
     [hasPersistenceLease, writeSelection],
   );
   const fail = useCallback(
-    (instanceId: WorkspacePaneInstanceId) => {
+    (
+      instanceId: WorkspacePaneInstanceId,
+      detail?: WorkspacePaneFailureDetail,
+    ) => {
+      if (detail) {
+        setRendererFailureDetails((current) => ({
+          ...current,
+          [instanceId]: detail,
+        }));
+      }
       dispatch({ type: 'renderer-failed', instanceId, code: 'render-crash' });
       const instance = stateRef.current.document.instances.find(
         (candidate) => candidate.instanceId === instanceId,
@@ -923,6 +945,7 @@ export function useWorkspacePaneHostController({
       applyHostAction({ type: 'collapse', splitId, collapsed }),
     maximize: (instanceId) => applyHostAction({ type: 'maximize', instanceId }),
     fail,
+    rendererFailureDetails,
     retry,
     replace,
     open,

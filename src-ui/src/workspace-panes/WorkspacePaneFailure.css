@@ -1,0 +1,64 @@
+/* A pane whose renderer threw. In the dock this box sits directly inside the
+   dock shell with the pane's own header gone, so it carries its own gutter
+   and clears the shell's resize grip rather than rendering flush to the
+   screen edge under it. */
+.workspace-pane-failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  min-width: 0;
+  padding: calc(var(--k-space-4) + var(--k-space-3)) var(--k-space-4)
+    var(--k-space-4);
+  overflow-y: auto;
+}
+
+.workspace-pane-failure__subject {
+  display: block;
+  margin-bottom: var(--k-space-1);
+  color: var(--k-text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.workspace-pane-failure__reason {
+  display: block;
+}
+
+.workspace-pane-failure__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--k-space-2);
+}
+
+.workspace-pane-failure__details {
+  align-self: stretch;
+  max-width: 40rem;
+  width: 100%;
+  margin-inline: auto;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.workspace-pane-failure__details summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.workspace-pane-failure__detail-text {
+  margin: 0 0 var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  max-height: 12rem;
+  overflow: auto;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}

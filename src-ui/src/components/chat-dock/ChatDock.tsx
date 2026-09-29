@@ -129,6 +129,7 @@ import {
   routeToOpenChatsCollection,
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
+import { ambientChatPaneFailureContext } from './chatPaneFailureContext';
 import { submitCommandLauncherIntent } from './command-launcher-model';
 import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
@@ -3181,6 +3182,7 @@ export function ChatDock({
       componentProps={{
         onRequestAuth,
         renderChatPane: renderAmbientChatPane,
+        chatPaneFailureContext: ambientChatPaneFailureContext,
         regionId,
       }}
       pending={null}

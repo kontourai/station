@@ -8,6 +8,12 @@ import {
   useState,
 } from 'react';
 import {
+  WorkspacePaneFailure,
+  type WorkspacePaneFailureContext,
+  type WorkspacePaneFailureDetail,
+  workspacePaneFailureDetail,
+} from './WorkspacePaneFailure';
+import {
   WorkspacePaneHostRuntime,
   type WorkspacePaneRuntimeCallbacks,
 } from './workspacePaneHostRuntime';
@@ -16,42 +22,59 @@ class WorkspacePaneErrorBoundary extends Component<
   {
     children: ReactNode;
     paneName: string;
-    onFailure?: () => void;
+    failureContext?: WorkspacePaneFailureContext;
+    onFailure?: (detail: WorkspacePaneFailureDetail) => void;
     onRetry: () => boolean | Promise<boolean>;
   },
-  { error: boolean }
+  { error: WorkspacePaneFailureDetail | null }
 > {
-  state = { error: false };
+  state: { error: WorkspacePaneFailureDetail | null } = { error: null };
 
-  static getDerivedStateFromError() {
-    return { error: true };
+  static getDerivedStateFromError(error: unknown) {
+    return { error: workspacePaneFailureDetail(error) };
   }
 
-  componentDidCatch(_error: Error, _info: ErrorInfo) {
-    // Pane failures are intentionally contained to this occurrence. The host
-    // has no reason to expose renderer details or let one pane unmount a
-    // Project surface. Runtime ownership is optional because direct routes
-    // deliberately retain their lightweight local boundary.
-    this.props.onFailure?.();
+  componentDidCatch(error: Error, _info: ErrorInfo) {
+    // Pane failures are contained to this occurrence: one pane must not
+    // unmount a Project surface. The error itself is handed to the host so
+    // its failure state can show what failed instead of discarding it (React
+    // also reports it to the console). Runtime ownership is optional because
+    // direct routes deliberately retain their lightweight local boundary.
+    this.props.onFailure?.(workspacePaneFailureDetail(error));
   }
+
+  private retry = () => {
+    void Promise.resolve(this.props.onRetry()).then((recovered) => {
+      if (recovered) this.setState({ error: null });
+    });
+  };
 
   render() {
     if (this.state.error) {
+      const context = this.props.failureContext;
+      const back = context?.back;
       return (
-        <section aria-label={`${this.props.paneName} unavailable`}>
-          <h3>{this.props.paneName} could not open</h3>
-          <p>This pane encountered a local rendering problem.</p>
-          <button
-            type="button"
-            onClick={() => {
-              void Promise.resolve(this.props.onRetry()).then((recovered) => {
-                if (recovered) this.setState({ error: false });
-              });
-            }}
-          >
-            Retry pane
-          </button>
-        </section>
+        <WorkspacePaneFailure
+          paneName={this.props.paneName}
+          detail={this.state.error}
+          context={
+            back
+              ? {
+                  ...context,
+                  back: {
+                    label: back.label,
+                    // Back changes what the pane opens; the retry remounts
+                    // it on that state.
+                    onBack: () => {
+                      back.onBack();
+                      this.retry();
+                    },
+                  },
+                }
+              : context
+          }
+          onRetry={this.retry}
+        />
       );
     }
     return this.props.children;
@@ -71,6 +94,7 @@ export function WorkspacePaneFrame({
   onRetry,
   runtime,
   elementless,
+  failureContext,
 }: {
   instanceId: WorkspacePaneInstanceId;
   paneName: string;
@@ -94,7 +118,12 @@ export function WorkspacePaneFrame({
    * that can switch between panes.
    */
   elementless?: boolean;
-  onFailure?: (instanceId: WorkspacePaneInstanceId) => void;
+  /** Pane-owned failure context (see `WorkspacePaneFailureContext`). */
+  failureContext?: WorkspacePaneFailureContext;
+  onFailure?: (
+    instanceId: WorkspacePaneInstanceId,
+    detail: WorkspacePaneFailureDetail,
+  ) => void;
   onRetry?: (instanceId: WorkspacePaneInstanceId) => boolean | Promise<boolean>;
   /** The host runtime invokes these callbacks only after this renderer frame exists. */
   runtime?: WorkspacePaneHostRuntime;
@@ -123,7 +152,8 @@ export function WorkspacePaneFrame({
     <WorkspacePaneErrorBoundary
       key={`${instanceId}:${retry}`}
       paneName={paneName}
-      onFailure={() => onFailure?.(instanceId)}
+      failureContext={failureContext}
+      onFailure={(detail) => onFailure?.(instanceId, detail)}
       onRetry={async () => {
         const recovered = (await onRetry?.(instanceId)) ?? true;
         if (recovered) setRetry((current) => current + 1);
