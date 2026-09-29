@@ -154,10 +154,14 @@ Claude Code these always reach a person:
 
 - a path outside the session's working directories (a `Read` pattern means
   reading the workspace, not reading anywhere), or a suggestion to widen them;
-- a call forced to ask by a `permissions.ask` rule;
+- a call forced to ask by a `permissions.ask` rule, when the engine reports
+  the rule that matched;
 - a read or file-edit safety check the engine raises and Station can tell
   apart from a plain call (the engine allows reads inside the working
   directories itself, so any Read, Glob, Grep or LSP ask it raises prompts);
+- a sandbox network-host ask (each new host prompts), a call that disables
+  the sandbox, a tool whose approval is the user's own interaction, and an
+  MCP tool the organization requires approval for (#2932);
 - `ExitPlanMode`, so a plan is always reviewed.
 
 On ACP engines a plan exit (a `switch_mode` tool call, or `ExitPlanMode`)
@@ -165,7 +169,9 @@ always prompts, and answering it "for this session" allows that one exit
 only. ACP reports no other escalation signal. Codex and Muse do not
 honour `autoApprove`. A sensitive-file edit the engine asks about in its
 default mode carries the same signal as a plain edit, so a matching pattern
-still allows it ([delivery boundary](../conformance/tool-policy-delivery.md)).
+still allows it. So does a Bash safety check, or a plain `permissions.ask`
+rule the engine reports with no matched rule: neither carries a signal Station
+receives ([delivery boundary](../conformance/tool-policy-delivery.md)).
 
 ### Unattended runs
 
