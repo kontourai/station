@@ -403,10 +403,13 @@ profile home directly.
 If a saved overlay is invalid (for example after hand-editing
 `config/app.json`), or the connection's active profile cannot otherwise be
 prepared, the session start fails instead of running on the global engine
-configuration. Station keeps an invalid saved overlay as written, so other
-profile changes cannot quietly erase it; `station connections profiles` shows
-such a profile with `envInvalid` and the offending variable names, and the
-server log names them too. Replace the overlay with `profile-env` to repair
+configuration. Station does not keep the invalid values: the next profile
+change rewrites the overlay as an `envInvalid` marker that holds only the
+offending variable names, and `GET /config/app` never returns them. The
+marker keeps the profile refused, so other profile changes cannot quietly
+un-route it. `station connections profiles` shows such a profile with
+`envInvalid` and the offending variable names, and the server log names them
+too. Replace the overlay with `profile-env` to repair
 it. Automatic credential recovery only switches to an enrolled
 profile whose overlay is identical to the active profile's; when every
 enrolled candidate differs, it refuses with `environment_mismatch`. Choosing

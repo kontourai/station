@@ -919,8 +919,10 @@ credential. An empty string is allowed under any name so a profile can mask an
 inherited credential. Error details name the variable, never its value.
 
 A body larger than 2 MiB + 64 KiB is refused with 413 before it is parsed.
-That admits every ASCII overlay at the entry and value caps; a near-cap overlay
-of mostly multi-byte or escaped text can exceed it.
+That admits an overlay at the entry and value caps (64 values of 32,768
+characters) when every value is printable ASCII needing no JSON escaping and
+the names total at most 65,143 bytes in compact JSON; a near-cap overlay of
+multi-byte or escaped text can exceed it.
 
 An unknown profile returns 404, and an Agent App without credential recovery
 returns 404. A 409 means the registry did not end up holding the requested
@@ -938,8 +940,9 @@ overlay is not secret: it is also readable at `orchestration:read` through the
 connection listings and `GET /config/app`, and the whole credential-recovery
 registry, overlay included, can be written through `PUT /config/app` at
 `orchestration:operate`, which does not apply these rules. A saved overlay that
-breaks them is kept as written and makes sessions under that profile fail
-closed.
+breaks them makes sessions under that profile fail closed; `GET /config/app`
+and the `PUT /config/app` response show it only as `envInvalid` with variable
+names, and the next registry write persists only that marker, not the values.
 
 `POST /api/connections/agent/:id/credential-recovery/profiles` (profile upsert)
 manages the ref and label only; a body that includes `env` is refused with 400
