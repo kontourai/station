@@ -1493,18 +1493,38 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
     for (const lane of DOCS_TRUTH_GATE_LANES) {
       expect(root.scripts).toHaveProperty(lane.script);
     }
-    // Each node lane must run its script in CHECK form. Repointing a lane at
-    // a generator (docs-index.mjs without --check regenerates files and
-    // exits 0), adding --write, or passing a path (check-markdown-links.mjs
-    // narrows to that file) is what a pin of the exact command caught; these
-    // invariants catch the same without copying every command here.
+    // Which program each node lane runs is intent, pinned per lane: a lane
+    // repointed at another script (docs:links:check at any other checker)
+    // still passes every derived invariant below, so the derived checks alone
+    // did not catch it. A new node lane must be added here on purpose.
+    const LANE_PROGRAM: Record<string, string> = {
+      'contribution:gate': 'scripts/public-contribution-surfaces.mjs',
+      'labels:check': 'scripts/label-manifest.mjs',
+      'docs:issue-lifecycle:check':
+        'scripts/generate-issue-lifecycle-reference.mjs',
+      'docs:contributor-commands:check': 'scripts/just-interface.mjs',
+      'docs:public:hygiene': 'scripts/public-docs-hygiene.mjs',
+      'docs:hygiene:repo': 'scripts/repo-docs-hygiene.mjs',
+      'docs:index:check': 'scripts/docs-index.mjs',
+      'docs:cli-parity:check': 'scripts/cli-doc-parity.mjs',
+      'docs:metrics:check': 'scripts/generate-metric-reference.mjs',
+      'docs:public:contract-examples':
+        'scripts/public-doc-contract-examples.mjs',
+      'docs:links:check': 'scripts/check-markdown-links.mjs',
+    };
+    // Flags stay derived: each node lane runs its script in CHECK form, with
+    // no path argument (check-markdown-links.mjs would narrow to that file)
+    // and no --write. These do not pin the exact command, so a new check-only
+    // flag passes; the program pin above is what holds each lane's identity.
     const nodeLanes = DOCS_TRUTH_GATE_LANES.filter((lane) =>
       root.scripts[lane.script].startsWith('node '),
     );
-    expect(nodeLanes.length).toBeGreaterThan(0);
+    expect(nodeLanes.map((lane) => lane.id).sort()).toEqual(
+      Object.keys(LANE_PROGRAM).sort(),
+    );
     for (const lane of nodeLanes) {
       const [, script, ...args] = root.scripts[lane.script].split(/\s+/);
-      expect(script, lane.id).toMatch(/^scripts\/[a-z0-9-]+\.mjs$/);
+      expect(script, lane.id).toBe(LANE_PROGRAM[lane.id]);
       expect(
         args.filter((arg: string) => !arg.startsWith('--')),
         `${lane.id} passes a positional argument`,
