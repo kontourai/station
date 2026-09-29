@@ -25,6 +25,7 @@ const receiptData = vi.hoisted(() => ({
  */
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useAgentsQuery: () => ({ data: [], error: null }),
   adoptOrchestrationSession: vi.fn(),
   createAdoptOrchestrationSessionIntent: () => ({
     idempotencyKey: '55555555-5555-4555-8555-555555555555',
@@ -62,6 +63,10 @@ const detailState = {
   failureText: null,
   copySessionId: vi.fn(),
   canSend: false,
+  failureNote: null,
+  acknowledgeFailure: undefined,
+  acknowledgeFailurePending: false,
+  acknowledgeFailureError: null,
   linkedFlowRun: null,
   builderRun: null,
   workflowEntries: [],
@@ -185,10 +190,10 @@ describe('session detail scroll structure (station#3305)', () => {
     );
     expect(screen.getByText('unknown')).toBeTruthy();
   });
-  // #765 D6: a completed session's actual output leads the page; the events
-  // stay collapsed below it. The answer used to be reachable only through
-  // "Details · N events".
-  test('surfaces the latest completed turn output as the primary block above the tiles', () => {
+  // Activity redesign: the conversation itself replaces the standalone
+  // "Result" card, inside the scroll region and ahead of the collapsed
+  // Details (evidence) disclosure.
+  test('renders the conversation inside the scroll region, ahead of the Details disclosure', () => {
     receiptData.value = undefined;
     withClient(
       <MutableSessionDetail
@@ -197,11 +202,12 @@ describe('session detail scroll structure (station#3305)', () => {
         onTaskChanged={vi.fn()}
         events={[
           ev({ method: 'turn.started', turnId: 't1', prompt: 'do the thing' }),
+          ev({ method: 'content.text-delta', itemId: 'i1', delta: 'Done.' }),
           ev({
             method: 'turn.completed',
             turnId: 't1',
             finishReason: 'stop',
-            outputText: 'TURN ONE OK — the thing is done.',
+            outputText: 'Done.',
           }),
         ]}
         connected
@@ -209,36 +215,23 @@ describe('session detail scroll structure (station#3305)', () => {
       />,
     );
 
-    const result = screen.getByTestId('session-final-output');
-    expect(result.textContent).toContain('the thing is done');
+    const transcript = screen.getByTestId('session-transcript');
+    expect(transcript.textContent).toContain('do the thing');
+    expect(transcript.textContent).toContain('Done.');
     const detail = screen.getByTestId('session-detail');
+    expect(transcript.parentElement).toBe(
+      detail.querySelector('.sessions-detail__scroll'),
+    );
+    const disclosure = screen.getByTestId('session-details-disclosure');
     expect(
-      detail.querySelector('.sessions-detail__scroll')?.contains(result),
-    ).toBe(true);
-    // The answer leads: it precedes the metadata tile region in the DOM.
-    const evidence = screen.getByTestId('session-evidence-region');
-    expect(
-      result.compareDocumentPosition(evidence) &
+      transcript.compareDocumentPosition(disclosure) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-  });
-
-  test('renders no result block when no completed turn reported output', () => {
-    receiptData.value = undefined;
-    withClient(
-      <MutableSessionDetail
-        apiBase="http://station.test"
-        session={session}
-        onTaskChanged={vi.fn()}
-        events={[
-          ev({ method: 'turn.started', turnId: 't1', prompt: 'do the thing' }),
-        ]}
-        connected
-        visualViewport={{ style: {} } as any}
-      />,
-    );
-
-    expect(screen.queryByTestId('session-final-output')).toBe(null);
+    // The evidence region lives inside the disclosure, collapsed by default.
+    expect(disclosure.hasAttribute('open')).toBe(false);
+    expect(
+      disclosure.contains(screen.getByTestId('session-evidence-region')),
+    ).toBe(true);
   });
 
   test('read-only detail: the transcript is inside the scroll region, the header pinned outside it', () => {
@@ -371,7 +364,8 @@ describe('session detail scroll structure (station#3305)', () => {
         />,
       );
       const mutableChildren = shrinkingChildren();
-      expect(mutableChildren.classes).toContain('sessions-detail__context');
+      expect(mutableChildren.classes).toContain('session-transcript');
+      expect(mutableChildren.classes).toContain('sessions-detail__disclosure');
       expect(mutableChildren.shrinking).toEqual([]);
       mutable.unmount();
 

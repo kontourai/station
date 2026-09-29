@@ -49,3 +49,32 @@
 .conversation-pr-links__form button {
   min-height: 44px;
 }
+.conversation-pr-links h3 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+.conversation-pr-links__empty,
+.conversation-pr-links__add p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+}
+.conversation-pr-links__add {
+  display: grid;
+  gap: 8px;
+}
+.conversation-pr-links__add summary {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.conversation-pr-links__add[open] > summary {
+  margin-bottom: 8px;
+}
+@media (pointer: coarse) {
+  .conversation-pr-links__add summary {
+    min-height: 44px;
+  }
+}

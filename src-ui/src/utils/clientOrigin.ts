@@ -22,6 +22,18 @@ const SURFACE_LABELS: Record<ClientOriginSurface, string> = {
 };
 
 /**
+ * Just the client surface ("CLI", "Web browser"), for a meta line that names
+ * where work came from without the actor kind. `null` when no origin was
+ * recorded: callers omit the clause rather than print "unknown".
+ */
+export function clientOriginSurfaceLabel(
+  origin: ClientOrigin | undefined,
+): string | null {
+  if (!origin) return null;
+  return SURFACE_LABELS[origin.reported.surface] ?? origin.reported.surface;
+}
+
+/**
  * #765 D6: the human-readable one-liner for a summary tile. The raw
  * `clientOriginDetail` string leads with a device UUID, which answers
  * nothing at a glance; this names what Station actually derived — the

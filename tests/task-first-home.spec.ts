@@ -1517,7 +1517,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await composer.fill('Continue from my phone');
       const continueButton = page
         .getByTestId('session-detail')
-        .getByRole('button', { name: 'Continue', exact: true });
+        .getByRole('button', { name: 'Send', exact: true });
       const approveButton = request.getByRole('button', { name: 'Approve' });
       const declineButton = request.getByRole('button', { name: 'Decline' });
       for (const control of [continueButton, approveButton, declineButton]) {

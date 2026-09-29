@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
  */
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useAgentsQuery: () => ({ data: [], error: null }),
   useOrchestrationCommandReceiptsQuery: () => ({
     data: [],
     isLoading: false,
@@ -52,6 +53,10 @@ const detailState = {
   failureText: null,
   copySessionId: vi.fn(),
   canSend: false,
+  failureNote: null,
+  acknowledgeFailure: undefined,
+  acknowledgeFailurePending: false,
+  acknowledgeFailureError: null,
   linkedFlowRun: null,
   builderRun: null,
   workflowEntries: [],
@@ -117,10 +122,17 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     delete (HTMLElement.prototype as any).scrollIntoView;
   });
 
-  test('honors the reveal once: scrolls and focuses the evidence region', () => {
+  test('honors the reveal once: opens Details, then scrolls and focuses the evidence region', () => {
     renderDetail({ threadId: 'station:thread-1', token: 1 });
 
+    // The evidence lives in the collapsed Details disclosure; a reveal that
+    // scrolled to a closed <details> would land on nothing.
+    const details = screen.getByTestId(
+      'session-details-disclosure',
+    ) as HTMLDetailsElement;
+    expect(details.open).toBe(true);
     const region = screen.getByTestId('session-evidence-region');
+    expect(details.contains(region)).toBe(true);
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
     expect(document.activeElement).toBe(region);
@@ -156,14 +168,24 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
   test('ignores a reveal addressed to a different session', () => {
     renderDetail({ threadId: 'station:someone-else', token: 1 });
 
+    expect(
+      (screen.getByTestId('session-details-disclosure') as HTMLDetailsElement)
+        .open,
+    ).toBe(false);
+
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(document.activeElement).not.toBe(
       screen.getByTestId('session-evidence-region'),
     );
   });
 
-  test('mounting with no reveal does nothing', () => {
+  test('mounting with no reveal does nothing: Details stays collapsed', () => {
     renderDetail(undefined);
+
+    expect(
+      (screen.getByTestId('session-details-disclosure') as HTMLDetailsElement)
+        .open,
+    ).toBe(false);
 
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(document.activeElement).not.toBe(

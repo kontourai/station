@@ -148,18 +148,22 @@ export function SessionDetail({
     );
   }
 
+  // A Station-owned session opens as its real chat from the detail's own
+  // header (`useMutableSessionDetailState`'s `openInChat`, the shared
+  // rehydrate policy), not through `onOpenInChat`: that callback shows the
+  // `chat` surface for a thread id, which for a Station-owned session is this
+  // same inspector rendered in the dock. It stays the attached-session
+  // continuation hand-off above.
   return (
-    <>
-      {historyControls}
-      <MutableSessionDetail
-        apiBase={apiBase}
-        session={session}
-        onTaskChanged={onTaskChanged}
-        events={events}
-        connected={connected}
-        visualViewport={visualViewport}
-        evidenceReveal={evidenceReveal}
-      />
-    </>
+    <MutableSessionDetail
+      apiBase={apiBase}
+      session={session}
+      onTaskChanged={onTaskChanged}
+      events={events}
+      connected={connected}
+      visualViewport={visualViewport}
+      evidenceReveal={evidenceReveal}
+      historyControls={historyControls}
+    />
   );
 }
