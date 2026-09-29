@@ -37,9 +37,10 @@
   min-width: 0;
 }
 
+/* Height is `.choice-trigger`'s, including its shared coarse-pointer 44px
+   floor (components/chat/chat.css). */
 .activity-filter__select {
   width: 100%;
-  min-height: 32px;
   padding-right: calc(var(--space-4) + 14px);
   appearance: none;
   overflow: hidden;
@@ -65,9 +66,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1) var(--space-2);
+  min-width: 0;
   margin: 0;
   padding: 0;
-  list-style: none;
+  border: 0;
 }
 
 .activity-filters__chip,
@@ -112,14 +114,6 @@
 .activity-filters__clear:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
-}
-
-@media (pointer: coarse) {
-  .activity-filter__select,
-  .activity-filters__chip,
-  .activity-filters__clear {
-    min-height: 44px;
-  }
 }
 
 /* Row line 2: state (glyph + words) first, then who / where / from what,

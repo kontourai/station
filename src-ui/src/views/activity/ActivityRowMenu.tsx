@@ -23,7 +23,7 @@ const MENU_GAP_PX = 4;
 /** Twin of `.activity-row-menu__panel`'s `min-width`. */
 const MENU_MIN_WIDTH_PX = 200;
 const VIEWPORT_GUTTER_PX = 8;
-const MENU_ROW_PX = 40;
+const MENU_ROW_PX = 44;
 const MENU_PADDING_PX = 8;
 
 /**
@@ -109,7 +109,7 @@ export function ActivityRowMenu({
         createPortal(
           <div
             ref={menuRef}
-            className="activity-row-menu__panel"
+            className="menu-surface activity-row-menu__panel"
             style={position}
             role="menu"
             aria-label={`Actions for ${itemTitle}`}
@@ -126,7 +126,7 @@ export function ActivityRowMenu({
                 key={action.id}
                 type="button"
                 role="menuitem"
-                className={`activity-row-menu__item${action.tone === 'danger' ? ' activity-row-menu__item--danger' : ''}`}
+                className={`menu-row${action.tone === 'danger' ? ' activity-row-menu__item--danger' : ''}`}
                 onClick={() => {
                   const trigger = triggerRef.current;
                   close();

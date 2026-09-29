@@ -486,7 +486,7 @@ describe('Activity list', () => {
     });
     expect(rowNames()).toEqual(['Station deploy task']);
 
-    const chips = screen.getByRole('list', { name: 'Active filters' });
+    const chips = screen.getByRole('group', { name: 'Active filters' });
     fireEvent.click(
       within(chips).getByRole('button', { name: 'Remove filter Kind: Tasks' }),
     );

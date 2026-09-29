@@ -148,30 +148,30 @@ export function ActivityFilterBar({
         />
       </fieldset>
       {showReset ? (
-        <ul className="activity-filters__chips" aria-label="Active filters">
+        // `responsive-surface-actions` is the shared action-row primitive: it
+        // wraps, and gives its direct controls the 44px touch floor.
+        <fieldset className="activity-filters__chips responsive-surface-actions">
+          <legend className="sr-only">Active filters</legend>
           {chips.map((chip) => (
-            <li key={chip.id}>
-              <button
-                type="button"
-                className="activity-filters__chip"
-                aria-label={`Remove filter ${chip.text}`}
-                onClick={chip.clear}
-              >
-                <span>{chip.text}</span>
-                <span aria-hidden="true">✕</span>
-              </button>
-            </li>
-          ))}
-          <li>
             <button
+              key={chip.id}
               type="button"
-              className="activity-filters__clear"
-              onClick={onClearAll}
+              className="activity-filters__chip"
+              aria-label={`Remove filter ${chip.text}`}
+              onClick={chip.clear}
             >
-              {resetLabel}
+              <span>{chip.text}</span>
+              <span aria-hidden="true">✕</span>
             </button>
-          </li>
-        </ul>
+          ))}
+          <button
+            type="button"
+            className="activity-filters__clear"
+            onClick={onClearAll}
+          >
+            {resetLabel}
+          </button>
+        </fieldset>
       ) : null}
     </div>
   );
