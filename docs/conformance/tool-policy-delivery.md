@@ -158,6 +158,45 @@ a file-edit safety check the engine raises while it still suggests
 auto-accept option (#2932). Answering it allows that call and switches the
 session to `acceptEdits`; the engine keeps asking for such paths.
 
+Some escalations the SDK does let Station see, and those always prompt: no
+tool grant and no agent `autoApprove` pattern answers them, even `*`
+(#2932, part 1).
+
+- The sandbox network-host ask. Claude Code 2.1.261 sends it as tool
+  `SandboxNetworkAccess` with input `{host}`, a `WebFetch(domain:<host>)`
+  allow-rule suggestion for `localSettings`, and no reason. It offers no
+  session option and forwards nothing, and its title names the host
+  ("Allow network access to <host>", an ASCII host bounded to 120 characters,
+  otherwise "an unrecognised host"). The engine remembers a host it was
+  allowed for its own session, so each new host prompts.
+- A sandbox override: a call whose input sets `dangerouslyDisableSandbox:
+  true`. The engine's own override ask carries no suggestion, so without this
+  a Bash tool grant answered it.
+- A `decisionReason` that is exactly `dangerouslyDisableSandbox`,
+  `requiresUserInteraction`, or the MCP organization ceiling `Your
+  organization requires approval for this tool`. These are literals in the
+  engine. Nothing else in the reason text is matched.
+- The ask flags `suppressAlwaysAllowRule`, `defaultToNo` and
+  `requiresUserInteraction`. The CLI sends them, but Agent SDK 0.3.261 drops
+  them; 0.3.284 forwards them, and the adapter reads them when present. A
+  request flagged `suppressAlwaysAllowRule` also offers no session option.
+
+The adapter copies `decisionReason` and any flag that is set onto
+`request.opened`, so the surfaces compute the same grant.
+
+What this does not cover: a Bash or PowerShell safety check (its reason is
+prose whose wording is not a stable contract) and a plain `permissions.ask`
+rule, which arrives with no `matchedAskRule` and no reason. Neither carries a
+signal the SDK forwards, so a Bash tool grant or pattern can still answer
+them, as can an Edit grant for a sensitive-file check above. Reading the
+engine's structured reason for those is later work (#2932, part 2).
+
+A session answer never writes the engine's settings files. Every suggestion
+a session answer forwards is sent with `destination: 'session'`
+(`mapClaudeDecisionToPermissionResult`), whatever the engine proposed, and
+Claude Code 2.1.261 persists an update only for a `localSettings`,
+`userSettings` or `projectSettings` destination.
+
 Both surfaces read the payload through the same `toolRequestPreviewFromPayload`,
 whose `TOOL_REQUEST_ARGS_FIELDS` is the one list of the names the adapters publish
 arguments under — `toolInput` (Claude's `canUseTool`), `toolArgs` (station-agent,
