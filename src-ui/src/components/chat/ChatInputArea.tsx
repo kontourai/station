@@ -732,6 +732,37 @@ export function ChatInputArea({
               />
             </React.Suspense>
           )}
+          {/* Attachment state sits right under the chips it is about, above
+              the draft: in a short dock the draft is what shrinks, so the
+              reason Send is blocked (and its fix) stays visible. */}
+          {attachmentError && (
+            <div className="chat-input__attachment-error" role="alert">
+              {attachmentError}
+            </div>
+          )}
+          {sendBlockedReason && !attachmentError && (
+            <div
+              id={`composer-attachment-send-gate-${sessionId}`}
+              className="chat-input__attachment-error"
+              role="status"
+            >
+              {sendBlockedReason}
+              {removalUnblocksSend && (
+                <button
+                  type="button"
+                  className="chat-input__blocked-action"
+                  onClick={onClearAttachments}
+                >
+                  Remove attachments
+                </button>
+              )}
+            </div>
+          )}
+          {attachmentNotice && !sendBlockedReason && !attachmentError && (
+            <div className="chat-input__attachment-notice" role="status">
+              {attachmentNotice}
+            </div>
+          )}
           {composerTokens.length > 0 && (
             <React.Suspense
               fallback={
@@ -1052,34 +1083,6 @@ export function ChatInputArea({
             <div className="chat-input__attachment-error" role="alert">
               {overLimitBy.toLocaleString('en-US')} characters over the limit
               &mdash; remove that many to send
-            </div>
-          )}
-          {attachmentError && (
-            <div className="chat-input__attachment-error" role="alert">
-              {attachmentError}
-            </div>
-          )}
-          {sendBlockedReason && !attachmentError && (
-            <div
-              id={`composer-attachment-send-gate-${sessionId}`}
-              className="chat-input__attachment-error"
-              role="status"
-            >
-              {sendBlockedReason}
-              {removalUnblocksSend && (
-                <button
-                  type="button"
-                  className="chat-input__blocked-action"
-                  onClick={onClearAttachments}
-                >
-                  Remove attachments
-                </button>
-              )}
-            </div>
-          )}
-          {attachmentNotice && !sendBlockedReason && !attachmentError && (
-            <div className="chat-input__attachment-notice" role="status">
-              {attachmentNotice}
             </div>
           )}
           {voiceState === 'error' && voiceError && (

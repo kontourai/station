@@ -1131,6 +1131,10 @@
     min-height: 44px;
     padding-inline: var(--space-2);
   }
+  /* Two chips per row on a phone, so two screenshots take one row. */
+  .composer-attachments__chip {
+    max-width: calc(50% - var(--space-1));
+  }
 }
 
 /* #1552 D4: `.menu-row` is now EVERY menu's row — the dock's placement and More
