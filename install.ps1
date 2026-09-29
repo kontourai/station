@@ -31,7 +31,10 @@
 # under iex the caller's arguments are not ours, and exiting would end the
 # caller.
 $stationInstallFromFile = [bool]({}).File
-$stationInstallArguments = if ($stationInstallFromFile) { @($args) } else { @() }
+# Assigned, not taken from an `if` expression: PowerShell unrolls a
+# one-element array returned that way into a scalar, which then splats wrong.
+[object[]]$stationInstallArguments = @()
+if ($stationInstallFromFile) { $stationInstallArguments = $args }
 
 $stationInstallStatus = & {
   Set-StrictMode -Version 2.0
