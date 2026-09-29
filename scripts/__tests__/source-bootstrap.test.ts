@@ -112,13 +112,12 @@ describe('source Station bootstrap', () => {
   });
 
   test.each(['development', 'nightly'])(
-    'hands a CLI-run installer none of the %s launch facts it wrote, except the ones every installer run replaces (#2675)',
+    'hands a CLI-run installer none of the %s launch facts the bootstrap derived, except the ones every installer run replaces (#2675)',
     (channel) => {
-      const env = sourceEnv({
-        STATION_CHANNEL: channel,
-        STATION_CONSENT_PORT: '47144',
-        KEEP_ME: 'yes',
-      });
+      // No caller launch facts: everything port- or instance-shaped in the
+      // result is the bootstrap's own, so a fact it starts deriving later and
+      // the filter does not know shows up here.
+      const env = sourceEnv({ STATION_CHANNEL: channel, KEEP_ME: 'yes' });
       const before = { ...env };
       initializeSourceBootstrap({ env, wrapperUrl });
       const installerSet = new Set([
@@ -138,6 +137,31 @@ describe('source Station bootstrap', () => {
       expect(installerInheritedEnv(env).KEEP_ME).toBe('yes');
     },
   );
+
+  test("drops the caller's own launch facts too, which the bootstrap re-exports unchanged (#2675)", () => {
+    // Once the bootstrap has run, a caller-set fact is indistinguishable from
+    // a derived one, and the derivation guard above cannot see it (its value
+    // did not change). The consent port is exported only in this case.
+    const callerFacts = {
+      STATION_SERVER_PORT: '47141',
+      STATION_PORT: '47141',
+      STATION_UI_PORT: '47000',
+      STATION_CONSENT_PORT: '47144',
+      STATION_INSTANCE_ID: 'caller-instance',
+    };
+    const env = sourceEnv({
+      STATION_CHANNEL: 'nightly',
+      ...callerFacts,
+      STATION_INSTALL_SERVER_PORT: '47141',
+    });
+    initializeSourceBootstrap({ env, wrapperUrl });
+    expect(env.STATION_CONSENT_PORT).toBe('47144');
+    const inherited = installerInheritedEnv(env);
+    for (const key of Object.keys(callerFacts)) {
+      expect(inherited, key).not.toHaveProperty(key);
+    }
+    expect(inherited.STATION_INSTALL_SERVER_PORT).toBe('47141');
+  });
 
   test('leaves implicit consent for the lifecycle parser to derive from an overridden API port', async () => {
     const env = sourceEnv({ STATION_SERVER_PORT: '5000' });

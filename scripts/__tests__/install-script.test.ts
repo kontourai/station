@@ -2621,6 +2621,36 @@ describe('archive installs with a Station user service (#2675 slice C)', {
     });
   });
 
+  it('station upgrade of an install with no service starts the new version on the recorded custom ports', () => {
+    const harness = archiveHarness(tempDir('station-cli-upgrade-no-service-'));
+    const first = buildPrebuiltArchive(harness.root, '1.2.3');
+    const installed = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, first),
+      [],
+      customPorts,
+    );
+    expect(installed.status, installed.stderr).toBe(0);
+    const installRoot = realpathSync(harness.installRoot);
+    const firstVersion = join(installRoot, 'versions', '1.2.3');
+    const nextVersion = join(installRoot, 'versions', '1.2.4');
+    const statePath = join(installRoot, '.station-release-state.json');
+    rmSync(harness.cliLog, { force: true });
+
+    const result = stationUpgrade(harness, firstVersion);
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(nextVersion);
+    const home = realpathSync(harness.stationHome);
+    expect(cliCalls(harness).at(-1)).toBe(
+      `${nextVersion}|start --base=${home} --port=43141 --ui-port=43000`,
+    );
+    expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject({
+      serverPort: 43141,
+      uiPort: 43000,
+    });
+    expect(result.stdout).toContain('Open http://localhost:43000');
+  });
+
   it("station upgrade still hands the installer the caller's own install port", () => {
     const { harness, installRoot, firstVersion } = installedWithService(
       'station-cli-upgrade-port-change-',
