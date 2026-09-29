@@ -20528,7 +20528,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "6957212df287b51011420a3f6f46a696a701c5e48fd92e277f82800ff6cc21ac",
-      "sourceRevision": "998b7be07c2298ead61e8cffa39dab7583d8b6f3",
+      "sourceRevision": "88464e1e39103095a2ecf1642a4ecd0a199d234a",
       "summary": "Reviewed navigation, immutable source snapshots, lazy loading, diagram controls, capture admission, review freshness, impact/catch-up and shared MCP inputs against their actual implementation.",
       "limits": "Local contributor reader. No public Pages deployment, remote physical device, or semantic certification follows from a structural check. Media playback has a separate browser check.",
       "sources": [
@@ -20542,7 +20542,7 @@
         },
         {
           "path": "scripts/__tests__/learning-atlas.browser.test.ts",
-          "digest": "fc5fde7dcd68bccfa3cff2069f2efca59acfa73040214ec7a22d78188cdbff5b"
+          "digest": "5b91e1d4645debe4adf3c1ab4467eb53b70c1cf4c151c108b8e80e53a7a9f85f"
         },
         {
           "path": "scripts/build-learning-guide.mjs",
@@ -20607,7 +20607,9 @@
         "Reviewed the freshness and capture paragraphs against the shared policy (build-learning-guide check mode now resolves it; stale entries outside the change print as advisory) and the capture refresh path in record-documentation-review.mjs (reviewedRevision, source digests, reviewNotes; refuses changed image bytes). learning-media.mjs gained captureInputs, the requireFresh predicate and reviewNotes validation. Executed learning-media.test.ts and documentation-freshness.test.ts.",
         "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
         "Reviewed the fix-round delta: the check reports untracked capture and review sources as stale (advisory in the queue, blocking when the change deletes them), the builder skips snapshots for them, and the record command digests reviews over the media.json it writes and lists manifest dependents. The freshness and capture paragraphs remain accurate. Executed learning-media.test.ts.",
-        "Reviewed: documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The freshness and capture paragraphs remain accurate."
+        "Reviewed: documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The freshness and capture paragraphs remain accurate.",
+        "Source review through 285b42cae: learning-atlas.browser.test.ts now derives the expected review-status label from the module map's recorded state instead of assuming it is fresh; the README's browser-check list and its 'Review out of date' description remain accurate. Source review is separate from executed test evidence.",
+        "Source review through 88464e1e3: the atlas browser test's state-derived status map gained an explicit index type for tsc; behaviour and the README's browser-check claims are unchanged. Source review is separate from executed test evidence."
       ]
     },
     {
