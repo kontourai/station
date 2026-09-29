@@ -207,6 +207,40 @@ describe('ChatDockInboxPanel', () => {
       expect(document.activeElement).toBe(document.body);
     });
 
+    it('still restores after a window/tab switch (focusout with the row still focused)', async () => {
+      const running = item('moving', 'Running', NOW - 60_000);
+      const other = item('other', 'Ready', NOW - 5 * 60_000);
+      const view = renderPanel({
+        items: [running, other],
+        openChatSessionIds: [],
+      });
+      const rowName = 'moving title, moving project';
+      const row = screen.getByRole('button', { name: rowName });
+      row.focus();
+      // What a window/tab switch looks like: focusout to nowhere, but the
+      // element stays connected and stays document.activeElement.
+      row.dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, relatedTarget: null }),
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(document.activeElement).toBe(row);
+
+      view.rerender(
+        <ChatDockInboxPanel
+          {...view.props}
+          items={[{ ...running, lifecycleLabel: 'Ready' }, other]}
+        />,
+      );
+      expect(document.activeElement).toBe(
+        within(screen.getByRole('region', { name: 'Idle' })).getByRole(
+          'button',
+          { name: rowName },
+        ),
+      );
+    });
+
     it('falls back to the next row when the focused row disappears', () => {
       const a = item('a', 'Running', NOW - 60_000);
       const b = item('b', 'Running', NOW - 2 * 60_000);

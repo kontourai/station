@@ -22,7 +22,8 @@ import { type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
  * Deliberately inert when focus left the rows on purpose. Focusing anything
  * that is not a row inside `root` clears the record, and so does a blur to
  * nowhere (`focusout` with no `relatedTarget`, e.g. clicking empty space)
- * whose element is still connected afterwards. That connectedness check is
+ * whose element is still connected, and no longer focused, afterwards (a
+ * window or tab switch fires the same event but leaves the element focused). That connectedness check is
  * what separates a deliberate blur from a removal: some engines fire
  * `focusout` on removal and some (Chrome) fire nothing, so the decision is
  * deferred to a microtask — after React's commit and this hook's restore —
@@ -69,7 +70,14 @@ export function useRowFocusPreservation(
         return;
       }
       queueMicrotask(() => {
-        if (left?.isConnected && lastRef.current?.element === left) {
+        // Still connected AND no longer focused = the user left. A window or
+        // tab switch also fires focusout with no relatedTarget, but the
+        // element stays document.activeElement; keep the record for it.
+        if (
+          left?.isConnected &&
+          document.activeElement !== left &&
+          lastRef.current?.element === left
+        ) {
           lastRef.current = null;
         }
       });
