@@ -408,4 +408,61 @@ describe('ACP (OpenCode) tool rows', () => {
       /^Run cd \/tmp && gh api/,
     );
   });
+
+  test("Claude's approval in the open turn is one actionable card too", async () => {
+    // claude-adapter.ts `canUseTool`: the payload names the tool and the
+    // SDK's tool_use id, which `tool.started` carries as its toolCallId.
+    windowEvents.current = [
+      runtimeEvent({ method: 'turn.started', turnId: 't3', prompt: 'Edit' }),
+      runtimeEvent({
+        method: 'tool.started',
+        provider: 'claude',
+        turnId: 't3',
+        itemId: 'toolu_1',
+        toolCallId: 'toolu_1',
+        toolName: 'Edit',
+        arguments: {
+          file_path: '/repo/approved.txt',
+          old_string: 'a',
+          new_string: 'b',
+        },
+      }),
+      runtimeEvent({
+        method: 'request.opened',
+        provider: 'claude',
+        requestId: 'req-claude',
+        requestType: 'approval',
+        title: 'Allow Edit',
+        payload: {
+          toolName: 'Edit',
+          toolCallId: 'toolu_1',
+          toolInput: {
+            file_path: '/repo/approved.txt',
+            old_string: 'a',
+            new_string: 'b',
+          },
+        },
+      }),
+    ];
+    renderTranscript(
+      chatSession({
+        status: 'sending',
+        orchestrationTurnOpen: true,
+        openTurnId: 't3',
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole('button', { name: 'Allow Once' }),
+      ).toHaveLength(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Allow Edit for this session' }),
+    ).toBeTruthy();
+    expect(screen.getAllByText(/^Edit approved\.txt/)).toHaveLength(1);
+  });
 });
