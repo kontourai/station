@@ -112,7 +112,7 @@
         }
       ],
       "checks": [
-        "npm run changesets:check — 71 retained changesets form a valid release plan.",
+        "npm run changesets:check \u2014 71 retained changesets form a valid release plan.",
         "Reviewed source changes: Reviewed the hosted statics scope addition: local default still runs selector plus statics; hosted plan/shards own the selection and statics omits only that duplicated selector. Changeset validation remains in the static command list.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope.",
         "Reviewed landing deltas through 111744681: Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
@@ -5626,7 +5626,7 @@
         "Reviewed comment-only owner correction; emitted JavaScript is unchanged and the existing behavioral review scope is preserved.",
         "Source-reviewed policy-construction and host callers; synthetic intercepted Chromium probe is not live remote exfiltration or broad containment proof.",
         "Native renewal section: independent source/caller review and prior focused 24-test renewal receipt; renderer supervision is distinct from host credential custody and application access.",
-        "Reviewed integration deltas: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged. src-server/providers/registries/json-manifest-registry.ts: Uses shared endsAsGitName folding for local source admission; registry additionally scans top-level names for Git metadata variants. Plugin source Git metadata reads use explicit own repository arguments. Current plugins guide343/1147 describes this restriction; no generic filesystem sandbox claim. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged. src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+        "Reviewed integration deltas: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged. src-server/providers/registries/json-manifest-registry.ts: Uses shared endsAsGitName folding for local source admission; registry additionally scans top-level names for Git metadata variants. Plugin source Git metadata reads use explicit own repository arguments. Current plugins guide343/1147 describes this restriction; no generic filesystem sandbox claim. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Binding-description helper loses only its export; real private callers remain unchanged. Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
         "Landing review through d0d9d33f7: Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
@@ -6347,7 +6347,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full documented-claim review from management/view callers through token store, owner reauthorization, rate budgets, content/channel arbitration and standalone UI. Corrected token-memory/reload limits, network-origin admission, restricted contextInjection, block clipping disclosure, fourteen projected fields and store downgrade pruning. Corrected two matching source comments without changing parsed programs.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "packages/contracts/src/answer-share-channel.ts",
@@ -6924,7 +6924,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full documented-claim review, building on the nine-guide controller review: paired identity/preparation/advance and private control authority, guarded durable SQLite, room source seals, snapshot digests, session-start/task-dispatch barriers and completed-dispatch recovery. Current narrower operations remain distinct from required distributed leases, target activation, cross-host writer fencing and provider continuation. No prose correction required.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "packages/contracts/src/environment-security.ts",
@@ -7181,7 +7181,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full preparation, template, enrollment and target-observation claim review through shared provider composition, CLI/SDK callers and SSH worker probe. Checked bounded non-atomic inventory, explicit false transfer/resume flags, AWS template resource/access/persistence choices and GCP inventory-only scope. Clarified existing deployment authentication versus unimplemented Cloud IAM enrollment and template credential passing.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "packages/cli/src/commands/cloud-target.ts",
@@ -7396,7 +7396,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "src-server/domain/config-loader-app.ts",
@@ -7792,7 +7792,7 @@
         "Relevant frozen upstream source deltas independently reviewed; classification scope and historical/runtime evidence limits retained.",
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
         "Integration source review through d1e0facc2: Dispatch helpers and observer deadline are private; selection and timing behavior are unchanged. Completion validation is private and still runs before provider admission. Existing prose remains accurate. Source review is separate from executed test evidence.",
-        "Integration source review through e0314c727: the unwired OpenRouter pricing consumer and the direct Bearing/Forage dependencies were removed, and the document already records that. Corrected the §2.6/§3 claims that Datum has zero imports and is not a Station dependency: packages/contracts declares Datum and re-exports its secret-reference seam, which secret bindings use, though fleet routing does not. Also replaced the 'Conduit remains on its older host-hook contract' clause, which contradicted the adjacent paragraph. The historical dependency table is unchanged. Source review is separate from executed test evidence.",
+        "Integration source review through e0314c727: the unwired OpenRouter pricing consumer and the direct Bearing/Forage dependencies were removed, and the document already records that. Corrected the \u00a72.6/\u00a73 claims that Datum has zero imports and is not a Station dependency: packages/contracts declares Datum and re-exports its secret-reference seam, which secret bindings use, though fleet routing does not. Also replaced the 'Conduit remains on its older host-hook contract' clause, which contradicted the adjacent paragraph. The historical dependency table is unchanged. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) pairing-route-scopes.ts adds one inherited /api/system leaf, GET /api/system/core-update/service-update, near line 3084. The doc's /api/connections leaf-override claims and cited line anchors (:94, :143, :518) come before the insertion and are unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
@@ -7805,7 +7805,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed schema/read/publish/lock and production producer/consumer claim review. Distinguished minimal optional metadata validation, adoption/protected-type ordering, atomic rename versus writer locking and post-rename failure, Windows ACL/fsync limits and exact two-child test scope. Corrected Desktop service ownership reporting without automatic attachment; retained separate CLI state and conservative liveness boundaries.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
@@ -8340,7 +8340,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current capability, permission, platform-adapter and host-caller claims. Corrected extra typed host subscriptions, dev pairing schemes, distinct closed open-browser route, second-launch background exception and updater ownership. Added Desktop native-grant maintenance boundary while preserving disabled native application transport and dated external platform survey.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "scripts/native-platform-boundary.mjs",
@@ -8444,7 +8444,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full documented protocol/caller review of registration, per-principal projection, sealed payloads and phone pinning, FCM/APNs lifecycle, bounded retry/queue/replay behavior, native tap routes and desktop feed ownership. Corrected gateway state/kinds, iOS18 implementation floor, soft queue cap, scoped sweep recovery, historical Rust/watch conclusions and implemented Kotlin CI. All provisioning and physical delivery receipts remain historical.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": ".github/workflows/desktop-rust.yml",
@@ -9092,7 +9092,7 @@
       "checks": [
         "Entire original document read; actual owner/caller inspection for named corrections. Classification does not certify every body claim.",
         "289 tests across 9 focused files passed; expected negative fixtures emitted errors without test failure.",
-        "Reviewed integration deltas: src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
+        "Reviewed integration deltas: src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-permissions.test.ts (restore-helper tests dropped); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); claims unaffected."
       ]
     },
@@ -10010,7 +10010,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full coordination/deadline/lock/outcome claim review against module and actual service adapter/status callers. Checked same/opposing desired state, initial versus post-effect timeout custody and cleanup failure. Corrected service status additional scheduling/PATH observations without changing lifecycle authority.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "packages/cli/src/__tests__/station-instance-reconciler.test.ts",
@@ -10045,7 +10045,7 @@
     {
       "path": "docs/design/station-peer-pairing.md",
       "documentDigest": "52cb07412cb45ae4d82fd9e47ba27bc6537ee76f746937e1dd858eb38415ea22",
-      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
+      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
       "kind": "historical",
       "state": "classified",
       "summary": "Historical peer design and supersession log linked to actual credential/delegation/scope owners; original proposal body preserved.",
@@ -10061,7 +10061,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
+          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
         }
       ],
       "checks": [
@@ -10072,8 +10072,7 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Reviewed landing deltas through 111744681: Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 adds PAIRING_SCOPE_DESCRIPTIONS (insertion at line 472) and FullAccessRevocationReport types (from line 1125) to contracts environment-security.ts. It changes no peer, delegation-preset or PairedDeviceKind semantics, and the lines the dated supersession table cites (174, 393, 414) have identical content before and after. That table's :393/:414 references to PairedDeviceKind were already offset before #2904 (702 at base, now 779); this is dated history and #2904 did not cause it. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c inserted decision-delivery code in station-control-delegation.ts at line 1196 and later. The doc's cited ranges (:87-93, :100, :335-356, :643-648, :716-760) and its target-resolution claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
+        "Integration source review through 84d56b9a8: e1af43c2c inserted decision-delivery code in station-control-delegation.ts at line 1196 and later. The doc's cited ranges (:87-93, :100, :335-356, :643-648, :716-760) and its target-resolution claims are unaffected; prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -12289,7 +12288,7 @@
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged; HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain; reviewed explicit nativeClient opt-in and server-owned native provenance; existing browser/diagnostic paths and physical/deployment evidence limits remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts, src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts, src-server/runtime/bootstrap/self-hosted-broker-runtime.ts, src-server/runtime/bootstrap/self-hosted-connector-config.ts, src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: the Claude adapter dropped the stdio mintStationControlCallerToken fallback; native-engine-adoption inlined its suppression check with the same behavior; runtime-startup un-exported two helpers; the broker native client gained a comment saying only tests and the echo lab use it; ApiBaseContext and lib.rs lost the retired notification-watch comments and commands. Startup adoption, the 'ordinary native client does not call' signaling claim and the stdio MCP binding claims still hold, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904 makes `requestJson` in core-api.ts keep the envelope's code, status and details on errors. It also adds the full-access grantor to coding-authority, records the actor on approval-posture decisions, wires `isFullAccessGrantorCurrent` in runtime-initialize, and adds `resetFullAccessGrantedBy` to orchestration-service. None of this touches the saved-profile, key ceremony, relay, HTTP/WS scope or CLI refusal claims. One sentence was wrong: 'Revoke and pair again with the intended grant when changing a Device's access.' `setDeviceScope` already allowed in-place changes before #2904 (every token except `access:manage`), and #2904 adds the host command. I corrected it to the in-place Paired devices → Change access path or `station environment access scope`, and checked both UI labels in packages/connect. Source review is separate from executed test evidence.",
+        "Integration source review through d72f79b08: #2904 makes `requestJson` in core-api.ts keep the envelope's code, status and details on errors. It also adds the full-access grantor to coding-authority, records the actor on approval-posture decisions, wires `isFullAccessGrantorCurrent` in runtime-initialize, and adds `resetFullAccessGrantedBy` to orchestration-service. None of this touches the saved-profile, key ceremony, relay, HTTP/WS scope or CLI refusal claims. One sentence was wrong: 'Revoke and pair again with the intended grant when changing a Device's access.' `setDeviceScope` already allowed in-place changes before #2904 (every token except `access:manage`), and #2904 adds the host command. I corrected it to the in-place Paired devices \u2192 Change access path or `station environment access scope`, and checked both UI labels in packages/connect. Source review is separate from executed test evidence.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) makes runtime-http.ts answer 403 insufficient_scope, not 401, to a recognized but unadmitted credential, through the new optional recognizeCredential hook in runtime-request-security.ts. The guide's pairing-scope, loopback terminal/voice and CLI refusal claims state no 401 or 403 outcome for this case, and they remain true. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement metadata to the ACP, Claude and Codex adapters and adds Codex replyToApproval and acknowledgement watching in codex-adapter-transport. It also adds lastDecision folding in station-control-delegation. 7cd4892e5 touches only codex-adapter-events, which is not an input here. The guide makes no claim about engine approval delivery or delegation status, and its Engine and connection configuration prose is unaffected. Prose accurate. Source review is separate from executed test evidence.",
@@ -12316,7 +12315,7 @@
     {
       "path": "docs/guides/delegation-attempt-claims.md",
       "documentDigest": "34c8d048c03a6f1c6baf4382ccd8f45e30bcec42e8f82a32b503e86223e4e07d",
-      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
+      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Opt-in receiver-side portable delegation duplicate suppression and lookup. Full57-line baseline read. Followed actual route schema/lookup currentness, SDK lookup, forwarding capability check, receiver reservation/dedup path and store capacity/state definitions; route fixtures passed.",
@@ -12464,7 +12463,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
+          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -12513,8 +12512,7 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports. The guide's receiver claim/lookup claims do not depend on them; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
       ]
     },
     {
@@ -15136,7 +15134,7 @@
     {
       "path": "docs/guides/machine-relationships.md",
       "documentDigest": "6b6c076e7fff46673e339e0a4188705c45a5ab10db2d8ed95593da00f6c2a1d9",
-      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
+      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented direction/authority/persistence distinctions across paired Devices, server-owned SSH, remote visibility, fleet inference and account/Project sharing. Traced the shared-work and guest administration boundaries; archived issue references corrected. No behavioral prose correction was otherwise needed.",
@@ -15260,7 +15258,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
+          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -15332,8 +15330,7 @@
         "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain; native account continuation is additive and separately admitted; existing browser/provider, Device and Project claims retain their documented scope. Changed inputs reviewed: src-server/routes/system/application-session-routes.ts, src-server/runtime/bootstrap/runtime-http.ts, src-server/services/identity/application-session-service.ts, src-server/services/identity/deployment-authentication-service.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through d72f79b08: #2904 adds main's 'What a paired device may do, and full access' section, the config route's structured refusal, and the runtime-routes scope/revoke reset (fullAccessRevocation, resetFullAccess, device-revoked cause). Checked the section against resetFullAccessGrantedBy: Ask for the device's never, a Default that reaches full access, Auto on a host session it unconfined, and host starts it granted; re-confinement versus engine-restart; the listed exceptions with the 50-entry cap; and account sessions getting no grant. Also checked it against PAIRING_SCOPE_DESCRIPTIONS and the refusal module. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) returns 403 rather than 401 when an ordinary device credential is recognized but not admitted (e.g. /api/pairing device inventory), so the browser session is not revoked; prose accurate: the guide describes scoped, revocable device credentials and named refusals without claiming a status code or that an out-of-scope request ends the session. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c added lastDecision/earlierUnacknowledgedDecisions and request.delivery projection to station-control-delegation.ts. Remote target admission and authenticated forwarding are unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
+        "Integration source review through 84d56b9a8: e1af43c2c added lastDecision/earlierUnacknowledgedDecisions and request.delivery projection to station-control-delegation.ts. Remote target admission and authenticated forwarding are unchanged; prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -16932,7 +16929,7 @@
     {
       "path": "docs/guides/private-runner-partition.md",
       "documentDigest": "3a71d00a2de396d6ec7ccf680c41e99d9e7afd1f07e0217bdef00f41042ce8b9",
-      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
+      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Conditional operator plan for separating fleet listeners, with current routing context. Full59-line baseline read. Checked current hosted CI, persistent Linux container-smoke and Windows diagnostic/performance workflow labels, capacity step and actionlint routing policy.",
@@ -17080,7 +17077,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
+          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -17129,14 +17126,13 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused re-exports of canonical descriptor predicates; the doc cites none of them; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
       ]
     },
     {
       "path": "docs/guides/product-law-authoring.md",
       "documentDigest": "e73cd5b9a92cfe8795d643d6c583b120b486366eea57f015ff412f35524336c6",
-      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
+      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Normative authoring and interpretation of selected executable product laws. Full29-line baseline read. Traced manifest bounds, path dispositions, exact structured observation and timeout/infrastructure result classification; focused owner tests passed.",
@@ -17284,7 +17280,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
+          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -17334,8 +17330,7 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) trims unused re-exports from builtinWorkspacePaneRegistry. The guide makes no claim about those exports; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
       ]
     },
     {
@@ -17886,7 +17881,7 @@
     {
       "path": "docs/guides/repository-layout.md",
       "documentDigest": "9db07997f2440ee4cf5062fd805657beb7baffc40831f1f31625089695e7c021",
-      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
+      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
       "kind": "policy",
       "state": "classified",
       "summary": "Repository navigation, ownership conventions and contributor routing. Full69-line baseline read. Current directories and links checked; root instructions and module-map routing retain their normative purpose. No stale text requiring edit found.",
@@ -18034,7 +18029,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
+          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -18083,8 +18078,7 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) only dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry.tsx. The file and its role are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
       ]
     },
     {
@@ -20026,7 +20020,7 @@
     {
       "path": "docs/guides/work-board-security.md",
       "documentDigest": "ec519bd0a32aefd4172f8fe3d20068ccc480ae9236d16fe9797eba4570fc7cc2",
-      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
+      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Trusted Work Board rendering, Home eligibility and owner-resolved reference storage boundaries. Full16-line baseline read. Checked builtin registry/Pane frame React error boundary, actual plugin-only Home eligibility and granted-Home recovery, closed store/reference shape, request-bound resolved route and owner projection tests.",
@@ -20174,7 +20168,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
+          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -20223,14 +20217,13 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx removes unused canonical-descriptor re-exports only. It is still the built-in registry that selects the trusted Work Board renderer; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
       ]
     },
     {
       "path": "docs/guides/workspace-packages.md",
       "documentDigest": "01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c",
-      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
+      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented AES envelope, Git snapshot/content/path/expansion limits, source rechecks, fresh destination and cleanup, read-only verification, and import-project durable intent/create/readback caller semantics. Current prose accurately distinguishes metadata verification from target filesystem and execution authority.",
@@ -20390,7 +20383,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
+          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -20444,8 +20437,7 @@
         "Integration source review through 5731eba07: #2919 trims unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports from builtinWorkspacePaneRegistry. The guide does not reference those exports; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
       ]
     },
     {
@@ -21462,7 +21454,7 @@
         "agent-plugin:validators:gate passes byte reproduction, exit 0; 407 Markdown local paths/rendered anchors pass; git diff --check passes.",
         "Veritas readiness veritas-1790521820225: 0 failures, 0 warnings. One Markdown file committed; no runtime or shared-ledger mutation.",
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
-        "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
+        "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged.",
         "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
         "Integration source review through e0314c727: the install transaction now carries excludeGitMetadata for proposal-named local sources (#2719), and package.json dropped bearing/forage. The reference's directory/git install path, managed retention and data-directory claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata in its install consent. This reference makes no claim about how the CLI builds consent or about git metadata staging. Prose accurate. Source review is separate from executed test evidence.",
@@ -22291,7 +22283,7 @@
         "Full API:37 JSON/JSONC/TS fences parse;12 verbatim request examples pass actual exported request schemas, including Agent/Board/plugin/job/invoke/review bodies. No request dispatched.",
         "Final API links:407 Markdown files pass. Veritas1790527139317:0 failures0 warnings.37 syntax fences pass;12 request examples pass actual schemas using node --import tsx. Plain node invocation first failed import resolution before schema execution; no endpoint dispatched. git diff --check passed.",
         "Removed orphaned compatibility comment after source search confirmed the execution-mode normalization helper is absent; type declarations unchanged.",
-        "Reviewed integration deltas: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged. src-server/services/plugins/plugin-update-check.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
+        "Reviewed integration deltas: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-server/services/plugins/plugin-update-check.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: UTC date stepping fixes streak counts across DST; API docs contain no contradictory local-day guarantee. Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Landing review through d0d9d33f7: Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
@@ -27382,7 +27374,7 @@
       ],
       "checks": [
         "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
-        "Reviewed integration deltas: src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
+        "Reviewed integration deltas: src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged.",
         "Integration source review through 5731eba07: #2881 adds requestServiceUpdateProgress to systemRuntimeRequests.ts and a serviceUpdate {requestId} result to applyCoreUpdate. The branding request's data.name to appName mapping is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Added a Theme bullet and a Theme overrides section (shape, accepted properties and thresholds, all-or-nothing, flat expansion, device accent and focus precedence) on top of the main audit text. branding.js now returns a per-mode theme; fetchBranding rejects non-OK or unsuccessful answers while still mapping data.name to appName. Thresholds checked against checkModeOverrides in src-ui/src/lib/branding-theme.ts (added as a source); the example theme passes resolveBrandingTheme in unit tests. Installation and rendered provider branding remain NOT_VERIFIED. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); claims unaffected."
@@ -29025,7 +29017,7 @@
         }
       ],
       "checks": [
-        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Added explicit ./ to valid local links so the separate source-path scanner does not misread them as repository-root paths; destinations unchanged."
       ]
     },
@@ -29044,7 +29036,7 @@
         }
       ],
       "checks": [
-        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Reviewed integration deltas: src-server/services/connections/pion-peer/README.md: Reviewed native-contract corrections to Go toolchain admission, local lab TURN scope, application message bounds, provenance and per-channel failure; no production transport qualification inferred."
       ]
     },
@@ -29063,7 +29055,7 @@
         }
       ],
       "checks": [
-        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation."
+        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation."
       ]
     },
     {
@@ -29864,7 +29856,7 @@
         }
       ],
       "checks": [
-        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Root upstream delta review: ELF floor reader extracted to elf-symbol-floor.mjs; no install-time libc selection was added.",
         "Root upstream delta review: Removed unused npm resolver test; Linux prebuild compatibility claim remains source-only.",
         "Preserved the full ancillary correction and the independently reviewed #2813 follow-up link.",
@@ -29919,7 +29911,7 @@
         }
       ],
       "checks": [
-        "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
         "Executed at merged frozen source: 24 tests/3 files PASS in 8.92s: nativeRelayGrantRenewalAdapter, nativeRelayGrantRenewalSupervisor, RelayRouteProfiles. Injected native boundaries; no native shell.",
         "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
@@ -30299,7 +30291,7 @@
         }
       ],
       "checks": [
-        "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Prior review receipt (not rerun here): Root upstream delta review: Added Notification Service signing/validation; icon generation/copy steps remain owned by the same helpers.",
         "Prior review receipt (not rerun here): Root upstream delta review: Intel macOS pnpm setup fallback changed, not icon-generation ownership.",
         "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
@@ -30490,7 +30482,7 @@
         }
       ],
       "checks": [
-        "Prior accepted evidence, not rerun in this tranche: At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "Prior accepted evidence, not rerun in this tranche: At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "REASONED: full document read and remaining documented protocol/admission/recovery claims traced through the listed production owners and callers; existing source hashes matched the prior accepted records before scoped corrections.",
         "EXECUTED: docs links passed 412 Markdown files; reference gate passed 266 maintained documents; MCP check passed 99 shipped topics; safe lab --help output and focused Biome passed.",
         "EXECUTED: docs:truth:gate ran all 13 lanes; 12 passed, foundations had 163 tests pass and one inherited stale ledger failure at .agents/skills/deslop/SKILL.md. No unreviewed metadata was refreshed to conceal it. Root owns combined ledger integration and final check.",
