@@ -1103,6 +1103,67 @@ describe('AcpAdapter', () => {
       );
     });
 
+    test.each([
+      ['with the shared staged policy', true],
+      ['without a staged policy', false],
+    ])(
+      '#2933: an autoApprove pattern of * never answers a plan exit (%s)',
+      async (_label, withPolicy) => {
+        const autoApprove = ['*'];
+        const { adapter, processes } = createAdapter(
+          withPolicy
+            ? { resolvePreToolPolicy: async () => sharedPolicy(autoApprove) }
+            : {},
+        );
+        const threadId = `thread-plan-exit-${withPolicy}`;
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+        await adapter.startSession({
+          provider: 'acp',
+          threadId,
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'kiro' },
+          agent: { slug: 'engine-lab', autoApprove },
+        });
+        await nextEvent(iterator, 'session.started');
+        await nextEvent(iterator, 'session.configured');
+        const client = processes[0].client;
+
+        // Positive control: a plain call is still auto-approved.
+        await expect(
+          requestPermission(client, 'plain', 'mcp__tools__write'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'allow-once' },
+        });
+
+        // ACP marks leaving plan mode with the `switch_mode` tool kind.
+        for (const [toolCallId, toolCall] of [
+          ['switch', { name: 'mcp__tools__exit', kind: 'switch_mode' }],
+          ['exit-plan', { name: 'ExitPlanMode' }],
+        ] as const) {
+          const pending = client.requestPermission({
+            sessionId: 'ignored-by-adapter',
+            toolCall: {
+              toolCallId,
+              title: 'Ready to code?',
+              rawInput: { plan: 'Step 1' },
+              ...toolCall,
+            },
+            options: PERMISSION_OPTIONS,
+          } as RequestPermissionRequest);
+          const opened = await nextEvent(iterator, 'request.opened');
+          await adapter.respondToRequest(
+            threadId,
+            String(opened.requestId),
+            'decline',
+          );
+          await expect(pending).resolves.toEqual({
+            outcome: { outcome: 'selected', optionId: 'reject-once' },
+          });
+          await nextEvent(iterator, 'request.resolved');
+        }
+      },
+    );
+
     test('fails closed when staged-policy preparation rejects', async () => {
       const { adapter, processes } = createAdapter({
         resolvePreToolPolicy: async () => {

@@ -408,12 +408,23 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
   );
 }
 
+/**
+ * #2916, #2933: whether the tool leaves plan mode (Claude's `ExitPlanMode`,
+ * matched in any casing or separator). A plan exit is a request for a
+ * person's review of the plan, so no tool-level allowance answers it.
+ */
+export function toolRequestIsPlanExit(
+  toolName: string | null | undefined,
+): boolean {
+  const trimmed = toolName?.trim();
+  return !!trimmed && TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(trimmed));
+}
+
 export function toolRequestSessionGrant(
   request: ToolRequestGrantInput,
 ): ToolRequestSessionGrant {
   const toolName = request.toolName?.trim();
-  if (toolName && TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(toolName)))
-    return 'none';
+  if (toolRequestIsPlanExit(toolName)) return 'none';
   const readOnly =
     toolName !== undefined && CLAUDE_READ_ONLY_TOOLS.has(toolName);
   const escalates = toolRequestEscalates(request);
@@ -436,6 +447,26 @@ export function toolRequestSessionGrant(
     .filter((kind) => kind !== undefined);
   if (kinds.length === 0) return 'none';
   return kinds.every((kind) => kind === 'read') ? 'read-folder' : 'folder';
+}
+
+/**
+ * #2933: whether a tool-level allowance, such as an agent's
+ * `tools.autoApprove` pattern, may answer this request without a person. It
+ * covers a plain call to the tool (`tool`, or a plain file edit's
+ * `edit-mode`), never an escalation or a plan exit: the rule #2911 and #2915
+ * set for session grants. So an escalation (`toolRequestEscalates`), any
+ * Claude Read, Glob, Grep or LSP ask (the engine allows reads inside the
+ * working directories itself), `ExitPlanMode`, and a file edit asked in plan
+ * mode, under full access or with no `acceptEdits` suggestion (a safety
+ * check once the session is in `acceptEdits`) all reach a person. A
+ * sensitive-file safety check asked in default mode carries the same
+ * suggestion as a plain edit, so it cannot be told apart (#2932).
+ */
+export function toolRequestIsPlainCall(
+  request: ToolRequestGrantInput,
+): boolean {
+  const grant = toolRequestSessionGrant(request);
+  return grant === 'tool' || grant === 'edit-mode';
 }
 
 /** `toolRequestSessionGrant` over a whole `request.opened` payload. */

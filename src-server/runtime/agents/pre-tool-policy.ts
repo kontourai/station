@@ -34,7 +34,19 @@ type ToolDenialReason =
  * or to no opinion at all.
  */
 export type PreToolPolicyDecision =
-  | { behavior: 'allow' }
+  | {
+      behavior: 'allow';
+      /**
+       * #2933: the allow came from a tool-level grant (`isGranted`: the
+       * agent's `tools.autoApprove` patterns or an intrinsic grant). Such a
+       * grant covers plain calls to the tool, never an escalation or a plan
+       * exit, and it is decided from the tool name alone, before the engine
+       * has said whether this call escalates. An external adapter must
+       * therefore not let it answer a request the engine marks as one; see
+       * the Claude and ACP adapters.
+       */
+      toolGrant?: true;
+    }
   | { behavior: 'deny'; denial: ToolCallDenial }
   | { behavior: 'ask' }
   | { behavior: 'defer' };
@@ -384,7 +396,7 @@ export function createStagedPreToolPolicyEvaluator(
       }
     }
 
-    if (deps.isGranted(tool)) return { behavior: 'allow' };
+    if (deps.isGranted(tool)) return { behavior: 'allow', toolGrant: true };
 
     const guardian = await reviewWithGuardian(deps, tool, invocation);
     if (guardian.kind === 'decided') return guardian.decision;

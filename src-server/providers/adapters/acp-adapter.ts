@@ -44,6 +44,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
+import { toolRequestIsPlanExit } from '@kontourai/station-shared/tool-request-preview';
 import type { StagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
@@ -1956,6 +1957,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       params: RequestPermissionRequest,
     ): Promise<RequestPermissionResponse> => {
       const toolName = params.toolCall?.name;
+      // #2933: a tool-level grant (`tools.autoApprove`, matched by name)
+      // covers plain calls to the tool, never a plan exit. ACP marks a mode
+      // switch such as leaving plan mode with the `switch_mode` tool kind;
+      // it reports no other escalation signal on a permission request.
+      const planExit =
+        params.toolCall?.kind === 'switch_mode' ||
+        toolRequestIsPlanExit(toolName);
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {
@@ -1976,7 +1984,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             identity: externalPreToolPolicyIdentity(toolName),
           },
         );
-        if (decision.behavior === 'allow') {
+        if (
+          decision.behavior === 'allow' &&
+          !(decision.toolGrant && planExit)
+        ) {
           return {
             outcome: mapAcpDecisionToOutcome('accept', params.options),
           };
@@ -1990,6 +2001,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // flow below; Station never opens a second prompt.
       } else if (
         toolName &&
+        !planExit &&
         isAutoApprovedExternalTool(
           toolName,
           record.agent?.autoApprove,

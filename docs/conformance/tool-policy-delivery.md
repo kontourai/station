@@ -14,7 +14,17 @@ claim that post-hoc configuration, quality, or uniform-stop gates are absent.
 The managed Station engine delivers its full pre-tool chain through
 `beforeToolCall`. Claude Code is partial. For a session with a resolved Agent
 and its evaluator, `PreToolUse` runs Station's staged evaluator before the call.
-`canUseTool` also honors that Agent's matching `tools.autoApprove` patterns.
+`canUseTool` also honors that Agent's matching `tools.autoApprove` patterns,
+for plain calls only (#2933). A pattern never answers an escalation or a plan
+exit, even `*`: it is allowed only where `toolRequestIsPlainCall` holds, the
+`tool` or `edit-mode` case of the session-grant computation below. An
+autoApprove match in the staged evaluator (`toolGrant`) is therefore not
+returned as a `PreToolUse` allow. Claude Code 2.1.261 re-checks only deny
+rules, ask rules, safety checks and user-interaction tools after a hook allow,
+so the allow would have skipped its working-directory check. The hook states no
+opinion, and the engine asks `canUseTool` for anything it does not allow
+itself. On ACP, a `toolGrant` allow or pattern match never answers a plan exit
+(`switch_mode` kind or `ExitPlanMode`).
 Stale-generation, delegated-tool, config-protection and approval-guardian
 decisions therefore have a pre-tool delivery path. What it still
 does not deliver is the unattended-grant chain: the staged evaluator hands
