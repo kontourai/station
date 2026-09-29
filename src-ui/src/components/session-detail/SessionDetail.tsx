@@ -70,33 +70,29 @@ export function SessionDetail({
     </p>
   ) : null;
   const visualViewport = useMobileVisualViewport();
-  const historyControls = (
-    <div className="session-history-controls">
-      {hasMore && (
-        <button
-          type="button"
-          className="button button--secondary session-history-controls__more"
-          onClick={() => void loadOlder()}
-        >
-          Show older messages
-        </button>
-      )}
-      {upgradeRequired && (
-        <p role="alert">Update Station to view this session history.</p>
-      )}
-      {elidedHistoryNotice}
-      {error && !upgradeRequired && (
-        <p role="alert">
-          {/* archive#3378: the two outcomes read identically before this —
-              a history read that is coming back and one that has stopped
-              both printed the raw cause and nothing else. */}
-          {historyRetrying
-            ? `${error.message} Retrying session history…`
-            : error.message}
-        </p>
-      )}
-    </div>
-  );
+  // The Station-owned detail's conversation pages its own durable window
+  // (`SessionTranscript`), so only these notices about THIS feed's history
+  // read are handed down; its "Show older messages" would page a feed the
+  // transcript no longer reads.
+  const historyNotices =
+    upgradeRequired || elidedHistoryNotice || error ? (
+      <>
+        {upgradeRequired && (
+          <p role="alert">Update Station to view this session history.</p>
+        )}
+        {elidedHistoryNotice}
+        {error && !upgradeRequired && (
+          <p role="alert">
+            {/* archive#3378: the two outcomes read identically before this —
+                a history read that is coming back and one that has stopped
+                both printed the raw cause and nothing else. */}
+            {historyRetrying
+              ? `${error.message} Retrying session history…`
+              : error.message}
+          </p>
+        )}
+      </>
+    ) : null;
 
   if (session.controlMode === 'read-only-attached') {
     return (
@@ -163,7 +159,7 @@ export function SessionDetail({
       connected={connected}
       visualViewport={visualViewport}
       evidenceReveal={evidenceReveal}
-      historyControls={historyControls}
+      historyNotices={historyNotices}
     />
   );
 }

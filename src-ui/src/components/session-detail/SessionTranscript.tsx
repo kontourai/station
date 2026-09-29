@@ -1,53 +1,67 @@
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
-import { type ReactNode, useMemo } from 'react';
-import type { OrchestrationEvent } from '../../hooks/orchestration/types';
-import type { ChatMessage } from '../../types';
+import { memo, type ReactNode, useEffect, useMemo } from 'react';
+import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
+import { useSessionTranscriptEvents } from '../../hooks/orchestration/useSessionTranscriptEvents';
+import { Button } from '../Button';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
-import { Empty } from '../state';
-
-/**
- * Only durable events carry an `eventId`; the projection is defined over
- * canonical events and keys its output on them. Same filter the read-only
- * attached transcript applies.
- */
-function hasCanonicalEventId(
-  event: OrchestrationEvent,
-): event is CanonicalRuntimeEvent {
-  return typeof event.eventId === 'string' && event.eventId.length > 0;
-}
+import { Empty, SkeletonBlock } from '../state';
 
 /**
  * The read-only conversation of a Station-owned session: the user's prompts,
- * the agent's answers and its tool calls, projected from the session's own
- * event feed by the ONE projection every chat surface uses
- * (`projectRuntimeEventsToMessages`). An open turn is emitted as it stands,
- * so a running session shows its answer as it streams instead of nothing
- * until `turn.completed`.
+ * the agent's answers and its tool calls, projected by the ONE projection
+ * every chat surface uses (`projectRuntimeEventsToMessages`) over the chat
+ * dock's own event source (`useSessionTranscriptEvents`), and mapped to
+ * renderer parts by chat's own mapping (`conversationPartToContentParts`).
+ * An open turn is emitted as it stands, so a running session shows its answer
+ * as it streams.
  *
  * This is a record, not a chat: it renders no per-message actions. Replying
  * happens in the detail's composer or, for the full conversation, in chat.
+ *
+ * Memoised: the detail re-renders on every composer keystroke, and nothing
+ * here depends on the draft.
  */
-export function SessionTranscript({
-  events,
+export const SessionTranscript = memo(function SessionTranscript({
+  apiBase,
+  session,
   agentLabel,
   isStreaming,
-  controls,
+  notices,
+  onSettledChange,
 }: {
-  events: OrchestrationEvent[];
+  apiBase: string;
+  session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>;
   /** What the assistant rows are labelled with ("Code Reviewer", "Codex"). */
   agentLabel: string;
   /** A turn is in flight: the last assistant row is still being written. */
   isStreaming: boolean;
-  /** Bounded-history controls ("Show older messages", elision notice). */
-  controls?: ReactNode;
+  /** History notices owned by the caller (upgrade, retry, elision). */
+  notices?: ReactNode;
+  /** Whether the first window read has landed; content above may grow then. */
+  onSettledChange?: (settled: boolean) => void;
 }) {
-  const messages = useMemo(
-    () => projectRuntimeEventsToMessages(events.filter(hasCanonicalEventId)),
+  const { events, hasMore, loadOlder, settled } = useSessionTranscriptEvents(
+    apiBase,
+    session,
+    isStreaming,
+  );
+  useEffect(() => {
+    onSettledChange?.(settled);
+  }, [onSettledChange, settled]);
+  const rows = useMemo(
+    () =>
+      projectRuntimeEventsToMessages(events, { stableIds: true }).map(
+        (message) => ({
+          id: message.id,
+          role: message.role,
+          contentParts: message.parts.flatMap(conversationPartToContentParts),
+        }),
+      ),
     [events],
   );
-  const lastIndex = messages.length - 1;
-  const lastIsAssistant = messages[lastIndex]?.role === 'assistant';
+  const lastIndex = rows.length - 1;
+  const lastIsAssistant = rows[lastIndex]?.role === 'assistant';
 
   return (
     <section
@@ -55,27 +69,34 @@ export function SessionTranscript({
       aria-label="Conversation"
       data-testid="session-transcript"
     >
-      {controls}
-      {messages.length === 0 ? (
-        <Empty
-          label={
-            isStreaming
-              ? 'Waiting for the first message…'
-              : 'No messages in this session yet.'
-          }
-        />
+      {(hasMore || notices) && (
+        <div className="session-history-controls">
+          {hasMore && (
+            <Button
+              variant="secondary"
+              className="session-history-controls__more"
+              onClick={() => void loadOlder()}
+            >
+              Show older messages
+            </Button>
+          )}
+          {notices}
+        </div>
+      )}
+      {rows.length === 0 ? (
+        !settled ? (
+          <SkeletonBlock label="Reading the conversation" count={2} />
+        ) : (
+          <Empty
+            label={
+              isStreaming
+                ? 'Waiting for the first message…'
+                : 'No messages in this session yet.'
+            }
+          />
+        )
       ) : (
-        messages.map((message, index) => {
-          const contentParts = message.parts.map((part) => ({
-            type: part.type,
-            content: part.text,
-            toolCallId: part.toolCallId,
-            toolName: part.toolName,
-            args: part.args,
-            result: part.result,
-            state: part.state,
-            isError: part.isError,
-          }));
+        rows.map((message, index) => {
           const streaming =
             isStreaming && index === lastIndex && message.role === 'assistant';
           return (
@@ -90,7 +111,7 @@ export function SessionTranscript({
                 {message.role === 'user' ? 'You' : agentLabel}
               </p>
               <MessageContent
-                contentParts={contentParts as ChatMessage['contentParts']}
+                contentParts={message.contentParts}
                 textContent=""
                 chatFontSize={14}
                 showReasoning={false}
@@ -101,11 +122,11 @@ export function SessionTranscript({
           );
         })
       )}
-      {isStreaming && !lastIsAssistant && messages.length > 0 && (
+      {isStreaming && !lastIsAssistant && rows.length > 0 && (
         <p className="session-transcript__working" role="status">
           {agentLabel} is working…
         </p>
       )}
     </section>
   );
-}
+});

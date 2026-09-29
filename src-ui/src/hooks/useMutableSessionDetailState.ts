@@ -1,3 +1,4 @@
+import { isPendingAttentionItem } from '@kontourai/station-contracts/attention';
 import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateAtRest,
@@ -366,7 +367,9 @@ export function useMutableSessionDetailState({
     ? sessionAttentionItems.find(
         (item) =>
           item.kind === 'session-failed' &&
-          isAcknowledgeableAttentionItem(item),
+          isAcknowledgeableAttentionItem(item) &&
+          // Already acknowledged: history, nothing left to dismiss.
+          isPendingAttentionItem(item),
       )
     : undefined;
   const visibleAttentionItems = sessionAttentionItems.filter(
@@ -489,16 +492,27 @@ export function useMutableSessionDetailState({
   const hasTaskBinding = Boolean(session.delegation?.taskId);
   const { data: workflowTasks = [] } =
     useWorkflowTasksQuery(workflowProjectSlug);
-  const { data: linkedFlowRun } = useSessionFlowRunQuery(threadId, apiBase, {
+  // A finished (`completed`) session's run bindings no longer move under it:
+  // read once, do not poll. A live one keeps the SDK's cadence, including its
+  // slow re-probe of a "no run yet" answer, so a late bind still appears.
+  const runProbeConfig = {
     enabled: hasTaskBinding,
-  });
+    ...(isTerminal ? { refetchInterval: 0 } : {}),
+  };
+  const { data: linkedFlowRun } = useSessionFlowRunQuery(
+    threadId,
+    apiBase,
+    runProbeConfig,
+  );
   // Its own query, rendered as its own row. The auto-attached
   // `station-delivery` run above and this Builder run are different runs with
   // different lifecycles; merging them into one progress figure is the exact
   // misreading archive#189 exists to remove.
-  const { data: builderRun } = useSessionBuilderRunQuery(threadId, apiBase, {
-    enabled: hasTaskBinding,
-  });
+  const { data: builderRun } = useSessionBuilderRunQuery(
+    threadId,
+    apiBase,
+    runProbeConfig,
+  );
   const activeWorkflowTasks = workflowTasks.filter(
     (task) => !TERMINAL_WORKFLOW_STATUSES.has(task.status),
   );

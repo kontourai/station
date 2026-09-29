@@ -70,7 +70,7 @@ async function advance(ms: number) {
   });
 }
 
-describe('session run probes stop after a definitive "no run"', () => {
+describe('session run probes slow down after a definitive "no run"', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: false });
     getSessionFlowRun.mockReset();
@@ -80,7 +80,7 @@ describe('session run probes stop after a definitive "no run"', () => {
     vi.useRealTimers();
   });
 
-  it('Flow run: a null answer is asked once, not every 2s', async () => {
+  it('Flow run: a null answer is re-asked only at the slow cadence, not every 2s', async () => {
     getSessionFlowRun.mockResolvedValue(null);
     const { result } = renderHook(
       () => useSessionFlowRunQuery('thread-1', 'http://station.test'),
@@ -91,8 +91,47 @@ describe('session run probes stop after a definitive "no run"', () => {
     expect(result.current.data).toBeNull();
     expect(getSessionFlowRun).toHaveBeenCalledTimes(1);
 
-    await advance(10_000);
+    await advance(29_000);
     expect(getSessionFlowRun).toHaveBeenCalledTimes(1);
+    await advance(1_100);
+    expect(getSessionFlowRun).toHaveBeenCalledTimes(2);
+  });
+
+  it('Flow run: a run joined after the first 404 appears while the detail stays open', async () => {
+    getSessionFlowRun
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(boundFlowRun);
+    const { result } = renderHook(
+      () => useSessionFlowRunQuery('thread-1', 'http://station.test'),
+      { wrapper: wrapperFor(newClient()) },
+    );
+    await settle();
+    expect(result.current.data).toBeNull();
+    await advance(30_100);
+    expect(result.current.data).toEqual(boundFlowRun);
+    // Bound again: back to the 2s cadence.
+    await advance(2_000);
+    expect(getSessionFlowRun).toHaveBeenCalledTimes(3);
+  });
+
+  it('refetchInterval 0 (a finished session) polls neither a bound nor an absent run', async () => {
+    getSessionFlowRun.mockResolvedValue(boundFlowRun);
+    getSessionBuilderRun.mockResolvedValue(null);
+    renderHook(
+      () => {
+        useSessionFlowRunQuery('thread-1', 'http://station.test', {
+          refetchInterval: 0,
+        });
+        useSessionBuilderRunQuery('thread-1', 'http://station.test', {
+          refetchInterval: 0,
+        });
+      },
+      { wrapper: wrapperFor(newClient()) },
+    );
+    await settle();
+    await advance(120_000);
+    expect(getSessionFlowRun).toHaveBeenCalledTimes(1);
+    expect(getSessionBuilderRun).toHaveBeenCalledTimes(1);
   });
 
   it('Flow run: a bound run keeps polling every 2s (control)', async () => {
@@ -121,7 +160,7 @@ describe('session run probes stop after a definitive "no run"', () => {
     expect(getSessionFlowRun).toHaveBeenCalledTimes(3);
   });
 
-  it('Flow run: a run that goes away stops the poll on the null that says so', async () => {
+  it('Flow run: a run that goes away slows the poll on the null that says so', async () => {
     getSessionFlowRun
       .mockResolvedValueOnce(boundFlowRun)
       .mockResolvedValue(null);
@@ -138,7 +177,7 @@ describe('session run probes stop after a definitive "no run"', () => {
     expect(getSessionFlowRun).toHaveBeenCalledTimes(2);
   });
 
-  it('Builder run: a null answer is asked once, not every 10s', async () => {
+  it('Builder run: a null answer is re-asked every 30s, not every 10s', async () => {
     getSessionBuilderRun.mockResolvedValue(null);
     const { result } = renderHook(
       () => useSessionBuilderRunQuery('thread-1', 'http://station.test'),
@@ -146,10 +185,10 @@ describe('session run probes stop after a definitive "no run"', () => {
     );
     await settle();
     expect(result.current.isSuccess).toBe(true);
+    await advance(29_000);
     expect(getSessionBuilderRun).toHaveBeenCalledTimes(1);
-
-    await advance(35_000);
-    expect(getSessionBuilderRun).toHaveBeenCalledTimes(1);
+    await advance(1_100);
+    expect(getSessionBuilderRun).toHaveBeenCalledTimes(2);
   });
 
   it('Builder run: a joined run keeps polling every 10s (control)', async () => {

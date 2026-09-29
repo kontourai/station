@@ -24,12 +24,13 @@ const SURFACE_LABELS: Record<ClientOriginSurface, string> = {
 /**
  * Just the client surface ("CLI", "Web browser"), for a meta line that names
  * where work came from without the actor kind. `null` when no origin was
- * recorded: callers omit the clause rather than print "unknown".
+ * recorded, or the client reported an unknown surface: callers omit the
+ * clause rather than print "from Unknown surface".
  */
 export function clientOriginSurfaceLabel(
   origin: ClientOrigin | undefined,
 ): string | null {
-  if (!origin) return null;
+  if (!origin || origin.reported.surface === 'unknown') return null;
   return SURFACE_LABELS[origin.reported.surface] ?? origin.reported.surface;
 }
 

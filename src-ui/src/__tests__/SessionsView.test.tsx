@@ -296,6 +296,19 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   };
 });
 
+// The Station-owned detail's conversation reads its own durable window
+// (useSessionTranscriptEvents, covered by SessionTranscript.test.tsx).
+const transcriptLoadOlder = vi.hoisted(() => vi.fn());
+const transcriptHistory = vi.hoisted(() => ({ hasMore: false }));
+vi.mock('../hooks/orchestration/useSessionTranscriptEvents', () => ({
+  useSessionTranscriptEvents: () => ({
+    events: [],
+    hasMore: transcriptHistory.hasMore,
+    loadOlder: transcriptLoadOlder,
+    settled: true,
+  }),
+}));
+
 vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
   useSessionEventStream: () => ({
     events: feedEvents,
@@ -395,6 +408,8 @@ describe('SessionsView', () => {
     acknowledgeAttentionItem.mockReset();
     acknowledgeAttentionItem.mockResolvedValue(undefined);
     loadOlder.mockClear();
+    transcriptLoadOlder.mockClear();
+    transcriptHistory.hasMore = false;
     historyState = {
       hasMore: false,
       upgradeRequired: false,
@@ -905,6 +920,8 @@ describe('SessionsView', () => {
       historyRetrying: false,
       elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
     };
+    // The Station-owned detail pages its conversation's own window.
+    transcriptHistory.hasMore = true;
     renderView();
 
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
@@ -912,7 +929,8 @@ describe('SessionsView', () => {
       screen.getByRole('button', { name: 'Show older messages' }),
     );
 
-    expect(loadOlder).toHaveBeenCalledOnce();
+    expect(transcriptLoadOlder).toHaveBeenCalledOnce();
+    transcriptHistory.hasMore = false;
 
     // It shipped as a bare <button> with no className, inside a wrapper class
     // that has no CSS rule anywhere in the repo — so it rendered as raw

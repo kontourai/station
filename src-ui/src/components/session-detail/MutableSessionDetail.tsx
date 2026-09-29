@@ -3,7 +3,13 @@ import {
   type OrchestrationSessionSummary,
   useOrchestrationCommandReceiptsQuery,
 } from '@kontourai/station-sdk';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
@@ -36,6 +42,8 @@ import { SessionDetailErrors } from './SessionDetailErrors';
 import { SessionDetailHeader } from './SessionDetailHeader';
 import { SessionTranscript } from './SessionTranscript';
 import {
+  isPeerDelegationRecord,
+  PEER_TRANSCRIPT_ELSEWHERE,
   sessionAgentLabel,
   sessionChatOpenTarget,
 } from './sessionDetailPresentation';
@@ -82,7 +90,7 @@ export function MutableSessionDetail({
   connected,
   visualViewport,
   evidenceReveal,
-  historyControls,
+  historyNotices,
 }: {
   apiBase: string;
   session: OrchestrationSessionSummary;
@@ -91,8 +99,8 @@ export function MutableSessionDetail({
   connected: boolean;
   visualViewport: ReturnType<typeof useMobileVisualViewport>;
   evidenceReveal?: SessionEvidenceReveal | null;
-  /** Bounded-history controls, rendered at the head of the conversation. */
-  historyControls?: ReactNode;
+  /** History-read notices, rendered at the head of the conversation. */
+  historyNotices?: ReactNode;
 }) {
   const {
     input,
@@ -140,7 +148,13 @@ export function MutableSessionDetail({
   // Open in chat goes through the shared open-chat focus (archive#1297), the
   // seam Home and the project page use: the chat dock rehydrates the real
   // conversation. Absent when there is no chat to rehydrate.
-  const chatOpenTarget = sessionChatOpenTarget(session);
+  // A delegated task running on a PAIRED Station: this Station only records
+  // its lifecycle. The stored agent slug and conversation id are the PEER's,
+  // so opening, stopping, replying or delegating from here would act on a
+  // local id that names nothing (or something else). None are offered; the
+  // detail says where the transcript lives instead.
+  const isPeerRecord = isPeerDelegationRecord(session);
+  const chatOpenTarget = isPeerRecord ? null : sessionChatOpenTarget(session);
   const openInChat = chatOpenTarget
     ? () => openChatsStore.focus(chatOpenTarget)
     : undefined;
@@ -153,6 +167,8 @@ export function MutableSessionDetail({
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const evidenceRegionRef = useRef<HTMLDListElement | null>(null);
   const revealedEvidenceTokenRef = useRef<number | null>(null);
+  const transcriptSettledRef = useRef(false);
+  const revealAwaitsTranscriptRef = useRef(false);
   useEffect(() => {
     if (!evidenceReveal || evidenceReveal.threadId !== threadId) return;
     if (revealedEvidenceTokenRef.current === evidenceReveal.token) return;
@@ -173,10 +189,31 @@ export function MutableSessionDetail({
       region.scrollIntoView({ block: 'start' });
     }
     region.focus({ preventScroll: true });
+    // The conversation above is usually still being read when a reveal lands
+    // on mount. When it arrives the content above grows, and a WebView with
+    // no scroll anchoring (WKWebView) pushes the region off-screen. Re-assert
+    // the scroll ONCE when that read settles — never the focus again.
+    revealAwaitsTranscriptRef.current = !transcriptSettledRef.current;
   }, [evidenceReveal, threadId]);
+  const onTranscriptSettledChange = useCallback((settled: boolean) => {
+    transcriptSettledRef.current = settled;
+    if (!settled || !revealAwaitsTranscriptRef.current) return;
+    revealAwaitsTranscriptRef.current = false;
+    const region = evidenceRegionRef.current;
+    if (region && typeof region.scrollIntoView === 'function') {
+      region.scrollIntoView({ block: 'start' });
+    }
+  }, []);
 
   const [confirmStop, setConfirmStop] = useState(false);
   const [delegating, setDelegating] = useState(false);
+  const canStop = !isPeerRecord && !isStopped && isStreaming;
+  // The turn ended while the confirmation was open: there is nothing left to
+  // stop, so the question is withdrawn rather than answered against a turn
+  // that already finished.
+  useEffect(() => {
+    if (confirmStop && !canStop && !stopTask.isPending) setConfirmStop(false);
+  }, [confirmStop, canStop, stopTask.isPending]);
 
   const receipts = useOrchestrationCommandReceiptsQuery(threadId, {
     enabled: threadId.length > 0,
@@ -227,7 +264,7 @@ export function MutableSessionDetail({
     session.delegation?.projectSlug ?? session.projectSlug;
   const menuActions = [
     { key: 'copy-id', label: 'Copy session ID', onSelect: copySessionId },
-    ...(isDelegated
+    ...(isDelegated && !isPeerRecord
       ? [
           {
             key: 'delegate',
@@ -249,7 +286,7 @@ export function MutableSessionDetail({
         title={title}
         meta={meta}
         isStopped={isStopped}
-        isStreaming={isStreaming}
+        isStreaming={canStop}
         connected={connected}
         stopTaskPending={stopTask.isPending}
         onRequestStop={() => setConfirmStop(true)}
@@ -299,12 +336,23 @@ export function MutableSessionDetail({
           items={visibleAttentionItems}
         />
 
-        <SessionTranscript
-          events={events}
-          agentLabel={agentLabel}
-          isStreaming={isStreaming}
-          controls={historyControls}
-        />
+        {isPeerRecord ? (
+          <p
+            className="sessions-detail__peer-note"
+            data-testid="session-peer-transcript-note"
+          >
+            {PEER_TRANSCRIPT_ELSEWHERE}
+          </p>
+        ) : (
+          <SessionTranscript
+            apiBase={apiBase}
+            session={session}
+            agentLabel={agentLabel}
+            isStreaming={isStreaming}
+            notices={historyNotices}
+            onSettledChange={onTranscriptSettledChange}
+          />
+        )}
 
         <details
           ref={detailsRef}
@@ -437,6 +485,7 @@ export function MutableSessionDetail({
               // a conversation id, and the links belong to the conversation.
               componentProps={{
                 conversationId: session.conversationId ?? threadId,
+                linkFormCollapsed: true,
               }}
               pending={
                 <SkeletonBlock label="Reading linked pull requests" count={1} />
@@ -469,58 +518,64 @@ export function MutableSessionDetail({
           Pinned outside the scroll region rather than at the top of it: it is
           the one decision the session is blocked on, and it must stay
           reachable above an open keyboard without scrolling. */}
-      {!isStopped && pendingRequest && pendingRequestPresentation && (
-        <div className="sessions-detail__request" data-testid="session-request">
-          <div className="sessions-detail__request-copy">
-            <span className="sessions-detail__request-label">
-              {pendingRequestPresentation.label}
-            </span>
-            <strong>{pendingRequest.title}</strong>
-          </div>
-          {/* archive#1781: the card RENDERS for an unanswerable session —
+      {!isPeerRecord &&
+        !isStopped &&
+        pendingRequest &&
+        pendingRequestPresentation && (
+          <div
+            className="sessions-detail__request"
+            data-testid="session-request"
+          >
+            <div className="sessions-detail__request-copy">
+              <span className="sessions-detail__request-label">
+                {pendingRequestPresentation.label}
+              </span>
+              <strong>{pendingRequest.title}</strong>
+            </div>
+            {/* archive#1781: the card RENDERS for an unanswerable session —
               deleting it would be the silent filtering ADR 0012 forbids, and
               the request really is still open. What it must not do is offer
               Approve/Deny that dispatch into nothing, so the buttons are
               disabled and the observation that disabled them is named. */}
-          {sessionUnanswerableNotice && (
-            <p
-              id="session-request-answerability-note"
-              className="sessions-detail__request-note"
-              data-testid="session-request-answerability"
-            >
-              {sessionUnanswerableNotice}
-            </p>
-          )}
-          <div className="sessions-detail__request-actions">
-            <Button
-              variant="primary"
-              disabled={respond.isPending || sessionUnanswerable}
-              aria-describedby={
-                sessionUnanswerable
-                  ? 'session-request-answerability-note'
-                  : undefined
-              }
-              onClick={() => respond.mutate('accept')}
-            >
-              {pendingRequestPresentation.accept}
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={respond.isPending || sessionUnanswerable}
-              aria-describedby={
-                sessionUnanswerable
-                  ? 'session-request-answerability-note'
-                  : undefined
-              }
-              onClick={() => respond.mutate('decline')}
-            >
-              {pendingRequestPresentation.decline}
-            </Button>
+            {sessionUnanswerableNotice && (
+              <p
+                id="session-request-answerability-note"
+                className="sessions-detail__request-note"
+                data-testid="session-request-answerability"
+              >
+                {sessionUnanswerableNotice}
+              </p>
+            )}
+            <div className="sessions-detail__request-actions">
+              <Button
+                variant="primary"
+                disabled={respond.isPending || sessionUnanswerable}
+                aria-describedby={
+                  sessionUnanswerable
+                    ? 'session-request-answerability-note'
+                    : undefined
+                }
+                onClick={() => respond.mutate('accept')}
+              >
+                {pendingRequestPresentation.accept}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={respond.isPending || sessionUnanswerable}
+                aria-describedby={
+                  sessionUnanswerable
+                    ? 'session-request-answerability-note'
+                    : undefined
+                }
+                onClick={() => respond.mutate('decline')}
+              >
+                {pendingRequestPresentation.decline}
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {!hideGenericCompose && (
+      {!hideGenericCompose && !isPeerRecord && (
         <>
           <div className="sessions-detail__compose">
             <textarea
@@ -577,14 +632,16 @@ export function MutableSessionDetail({
             : null
         }
         onCancel={() => setConfirmStop(false)}
-        onConfirm={() =>
+        confirmDisabled={!canStop}
+        onConfirm={() => {
+          if (!canStop) return;
           stopTask.mutate(undefined, {
             onSuccess: () => setConfirmStop(false),
-          })
-        }
+          });
+        }}
       />
 
-      {isDelegated && (
+      {isDelegated && !isPeerRecord && (
         <DelegationLauncher
           isOpen={delegating}
           apiBase={apiBase}

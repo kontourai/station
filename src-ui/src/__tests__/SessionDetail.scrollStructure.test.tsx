@@ -73,6 +73,18 @@ const detailState = {
   workflowMoreCount: 0,
 };
 
+// The conversation's source has its own suite (SessionTranscript.test.tsx);
+// here it is a settled read of the events each test names.
+const transcriptEvents = vi.hoisted(() => ({ value: [] as unknown[] }));
+vi.mock('../hooks/orchestration/useSessionTranscriptEvents', () => ({
+  useSessionTranscriptEvents: () => ({
+    events: transcriptEvents.value,
+    hasMore: false,
+    loadOlder: vi.fn(),
+    settled: true,
+  }),
+}));
+
 vi.mock('../hooks/useMutableSessionDetailState', () => ({
   useMutableSessionDetailState: () => detailState,
 }));
@@ -195,6 +207,16 @@ describe('session detail scroll structure (station#3305)', () => {
   // Details (evidence) disclosure.
   test('renders the conversation inside the scroll region, ahead of the Details disclosure', () => {
     receiptData.value = undefined;
+    transcriptEvents.value = [
+      ev({ method: 'turn.started', turnId: 't1', prompt: 'do the thing' }),
+      ev({ method: 'content.text-delta', itemId: 'i1', delta: 'Done.' }),
+      ev({
+        method: 'turn.completed',
+        turnId: 't1',
+        finishReason: 'stop',
+        outputText: 'Done.',
+      }),
+    ];
     withClient(
       <MutableSessionDetail
         apiBase="http://station.test"

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -63,6 +63,23 @@ const detailState = {
   workflowMoreCount: 0,
 };
 
+const transcript = vi.hoisted(() => ({
+  settled: true,
+  set: (_settled: boolean) => {},
+}));
+// The read settles inside the transcript (its own state), exactly as the real
+// window read does — not through a prop the parent re-renders with.
+vi.mock('../hooks/orchestration/useSessionTranscriptEvents', async () => {
+  const { useState } = await import('react');
+  return {
+    useSessionTranscriptEvents: () => {
+      const [settled, setSettled] = useState(transcript.settled);
+      transcript.set = setSettled;
+      return { events: [], hasMore: false, loadOlder: vi.fn(), settled };
+    },
+  };
+});
+
 vi.mock('../hooks/useMutableSessionDetailState', () => ({
   useMutableSessionDetailState: () => detailState,
 }));
@@ -110,6 +127,7 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
   const scrollIntoView = vi.fn();
 
   beforeEach(() => {
+    transcript.settled = true;
     scrollIntoView.mockClear();
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
@@ -136,6 +154,29 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
     expect(document.activeElement).toBe(region);
+  });
+
+  test('re-asserts the scroll once when the conversation read settles after the reveal, without taking focus back', () => {
+    transcript.settled = false;
+    const view = renderDetail({ threadId: 'station:thread-1', token: 1 });
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    const region = screen.getByTestId('session-evidence-region');
+    region.blur();
+
+    act(() => transcript.set(true));
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    expect(document.activeElement).not.toBe(region);
+
+    // Once only: later renders leave the reader where they are.
+    view.rerenderReveal({ threadId: 'station:thread-1', token: 1 });
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  test('a reveal after the conversation already settled scrolls once only', () => {
+    transcript.settled = true;
+    const view = renderDetail({ threadId: 'station:thread-1', token: 1 });
+    view.rerenderReveal({ threadId: 'station:thread-1', token: 1 });
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
   test('does not re-fire on later renders with the same token', () => {

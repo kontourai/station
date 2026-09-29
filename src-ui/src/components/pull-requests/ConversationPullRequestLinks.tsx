@@ -35,8 +35,15 @@ export function ConversationPullRequestLinks({
   suggested,
   derived = [],
   onOpen,
+  linkFormCollapsed = false,
 }: {
   conversationId: string;
+  /**
+   * Start the manual link form closed behind its "Link a pull request"
+   * disclosure. The pull requests panel keeps it open (linking is that
+   * panel's job); a session's Details, where it is a rare action, collapses it.
+   */
+  linkFormCollapsed?: boolean;
   suggested?: Partial<PullRequestLinkIdentity>;
   derived?: ConversationPullRequestLinkObservation[];
   onOpen?: (link: ConversationPullRequestLinkObservation) => void;
@@ -183,10 +190,13 @@ export function ConversationPullRequestLinks({
           ))}
         </ul>
       )}
-      {/* The manual link form is a rare action: collapsed behind its own
-          disclosure so the section leads with what IS linked, not with five
-          empty fields. */}
-      <details className="conversation-pr-links__add">
+      {/* The manual link form sits in its own disclosure: open where linking
+          is the surface's job, collapsed where it is a rare action so the
+          section leads with what IS linked, not with five empty fields. */}
+      <details
+        className="conversation-pr-links__add"
+        open={!linkFormCollapsed || undefined}
+      >
         <summary>Link a pull request</summary>
         <p>
           A link you add here is for navigating this conversation. Matches

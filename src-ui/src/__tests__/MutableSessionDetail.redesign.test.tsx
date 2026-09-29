@@ -25,6 +25,7 @@ const interruptOrchestrationTurn = vi.hoisted(() =>
 );
 const acknowledge = vi.hoisted(() => vi.fn());
 const attention = vi.hoisted(() => ({ items: [] as unknown[] }));
+const receipts = vi.hoisted(() => ({ data: [] as unknown[] }));
 const agents = vi.hoisted(() => ({
   list: [{ slug: 'reviewer', name: 'Code Reviewer' }] as unknown[],
 }));
@@ -41,7 +42,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useSessionFlowRunQuery: () => ({ data: null }),
   useSessionBuilderRunQuery: () => ({ data: null }),
   useOrchestrationCommandReceiptsQuery: () => ({
-    data: [],
+    data: receipts.data,
     isLoading: false,
     isError: false,
   }),
@@ -57,6 +58,24 @@ vi.mock('@kontourai/station-sdk', () => ({
   interruptOrchestrationTurn,
 }));
 
+// The conversation's own source is covered by SessionTranscript.test.tsx;
+// here the durable window is an empty, settled read.
+vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
+  useSessionEventWindow: () => ({
+    events: [],
+    watermark: 0,
+    handoffs: [],
+    contextBoundaries: [],
+    hasMore: false,
+    loadOlder: vi.fn(),
+    reload: vi.fn(),
+    upgradeRequired: false,
+    loading: false,
+    settled: true,
+    catchingUp: false,
+  }),
+}));
+
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
@@ -64,7 +83,12 @@ vi.mock('../contexts/ToastContext', () => ({
 // Lazily mounted inside Details; its own contract is covered by
 // tests/conversation-pull-request-links.spec.ts.
 vi.mock('../components/pull-requests/ConversationPullRequestLinks', () => ({
-  ConversationPullRequestLinks: () => null,
+  ConversationPullRequestLinks: (props: { linkFormCollapsed?: boolean }) => (
+    <div
+      data-testid="pr-links-stub"
+      data-link-form-collapsed={String(props.linkFormCollapsed)}
+    />
+  ),
 }));
 
 // The attention card's own actions are covered by SessionsView.test.tsx; here
@@ -155,6 +179,7 @@ function renderDetail(session: any, events: CanonicalRuntimeEvent[] = []) {
 
 beforeEach(() => {
   attention.items = [];
+  receipts.data = [];
   interruptOrchestrationTurn.mockClear();
   acknowledge.mockClear();
 });
@@ -163,56 +188,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('conversation (replaces the Result card)', () => {
-  test('shows the user prompt and the answer as it streams, before any turn.completed', () => {
-    const started = ev({
-      method: 'turn.started',
-      turnId: 't1',
-      prompt: 'Summarise the release notes',
-    });
-    const first = ev({
-      method: 'content.text-delta',
-      turnId: 't1',
-      itemId: 'i1',
-      delta: 'The release adds ',
-    });
-    const view = renderDetail(baseSession(), [started, first]);
-
-    const transcript = screen.getByTestId('session-transcript');
-    const rows = within(transcript).getAllByTestId(
-      'session-transcript-message',
-    );
-    expect(rows.map((row) => row.getAttribute('data-role'))).toEqual([
-      'user',
-      'assistant',
-    ]);
-    expect(rows[0].textContent).toContain('You');
-    expect(rows[0].textContent).toContain('Summarise the release notes');
-    expect(rows[1].textContent).toContain('Code Reviewer');
-    expect(rows[1].textContent).toContain('The release adds');
-    expect(rows[1].getAttribute('aria-busy')).toBe('true');
-
-    // More of the same turn arrives: the same row grows, live.
-    view.rerenderEvents([
-      started,
-      first,
-      ev({
-        method: 'content.text-delta',
-        turnId: 't1',
-        itemId: 'i1',
-        delta: 'a new dock.',
-      }),
-    ]);
-    const grown = within(
-      screen.getByTestId('session-transcript'),
-    ).getAllByTestId('session-transcript-message');
-    expect(grown).toHaveLength(2);
-    expect(grown[1].textContent).toContain('The release adds a new dock.');
-    // The retired standalone card is gone for good.
-    expect(screen.queryByTestId('session-final-output')).toBeNull();
-    expect(screen.queryByText('Result')).toBeNull();
-  });
-
+describe('composer', () => {
   test('the reply composer names the agent and says why it is disabled only while a turn runs', () => {
     const view = renderDetail(baseSession());
     const box = screen.getByLabelText('Send input to session');
@@ -396,5 +372,139 @@ describe('needs you: one failure card', () => {
     );
     expect(screen.getByTestId('session-failure')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+  });
+});
+
+describe('fix round', () => {
+  test('Details mounts linked pull requests with the manual link form collapsed', async () => {
+    renderDetail(baseSession());
+    const stub = await screen.findByTestId('pr-links-stub');
+    expect(stub.getAttribute('data-link-form-collapsed')).toBe('true');
+  });
+
+  test('a peer (paired-Station) record offers no local controls and says where its transcript lives', () => {
+    const focus = vi.fn();
+    const unregister = openChatsStore.registerNavigation({
+      focus,
+      openCollection: vi.fn(),
+    });
+    try {
+      renderDetail(
+        baseSession({
+          delegation: {
+            taskId: 'task:peer-1',
+            environmentKind: 'peer',
+            mode: 'isolated-child',
+          },
+        }),
+      );
+      expect(screen.queryByRole('button', { name: 'Open in chat' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
+      expect(screen.queryByLabelText('Continue delegated task')).toBeNull();
+      expect(screen.queryByTestId('session-transcript')).toBeNull();
+      expect(
+        screen.getByTestId('session-peer-transcript-note').textContent,
+      ).toContain('remain on the paired Station');
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More session actions' }),
+      );
+      expect(
+        screen.getAllByRole('menuitem').map((item) => item.textContent),
+      ).toEqual(['Copy session ID']);
+      expect(focus).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
+  test('an already-acknowledged failure offers no Dismiss', () => {
+    attention.items = [
+      {
+        id: `session-failed:${THREAD}`,
+        kind: 'session-failed',
+        title: 'Failed',
+        createdAt: '2026-09-28T00:00:02.000Z',
+        updatedAt: '2026-09-28T00:00:02.000Z',
+        acknowledgedAt: '2026-09-28T00:00:03.000Z',
+        sessionId: THREAD,
+        source: { threadId: THREAD },
+      },
+    ];
+    renderDetail(
+      baseSession({ lifecycleState: 'failed', hasActiveTurn: false }),
+    );
+    expect(screen.getByTestId('session-failure')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+  });
+
+  test('a turn that ends while Stop is being confirmed withdraws the question and never interrupts', () => {
+    const queryClient = new QueryClient();
+    const tree = (session: any) => (
+      <QueryClientProvider client={queryClient}>
+        <MutableSessionDetail
+          apiBase="http://station.test"
+          session={session}
+          onTaskChanged={vi.fn()}
+          events={[]}
+          connected
+          visualViewport={{ style: {}, height: 900 } as any}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(tree(baseSession()));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop…' }));
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    view.rerender(
+      tree(baseSession({ lifecycleState: 'idle', hasActiveTurn: false })),
+    );
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(interruptOrchestrationTurn).not.toHaveBeenCalled();
+  });
+
+  test('when Stop… goes away with focus on nothing, focus lands on Open in chat, not <body>', () => {
+    const queryClient = new QueryClient();
+    const tree = (session: any) => (
+      <QueryClientProvider client={queryClient}>
+        <MutableSessionDetail
+          apiBase="http://station.test"
+          session={session}
+          onTaskChanged={vi.fn()}
+          events={[]}
+          connected
+          visualViewport={{ style: {}, height: 900 } as any}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(tree(baseSession()));
+    const stop = screen.getByRole('button', { name: 'Stop…' });
+    stop.focus();
+    view.rerender(
+      tree(baseSession({ lifecycleState: 'idle', hasActiveTurn: false })),
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Open in chat' }),
+    );
+  });
+
+  test('an unknown client surface is left out of the meta line (a known one is named)', () => {
+    const origin = (surface: string) => [
+      {
+        createdAt: '2026-09-28T00:00:00.000Z',
+        clientOrigin: { actor: { kind: 'operator' }, reported: { surface } },
+      },
+    ];
+    const metaText = () =>
+      (
+        screen
+          .getByTestId('session-detail')
+          .querySelector('.sessions-detail__meta-line') as HTMLElement
+      ).textContent;
+    receipts.data = origin('cli');
+    const known = renderDetail(baseSession());
+    expect(metaText()).toContain('from CLI');
+    known.unmount();
+    receipts.data = origin('unknown');
+    renderDetail(baseSession());
+    expect(metaText()).not.toMatch(/Unknown surface|from /);
   });
 });

@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import '../header/HeaderMenu.css';
@@ -11,9 +11,6 @@ export interface SessionDetailMenuAction {
 }
 
 const MENU_GAP_PX = 6;
-/** `.menu-row`'s fine-pointer height and `.menu-surface`'s block padding. */
-const MENU_ROW_PX = 32;
-const MENU_PADDING_PX = 12;
 
 /**
  * The session detail header's secondary commands (Copy session ID, and for a
@@ -46,6 +43,23 @@ export function SessionDetailMoreMenu({
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [open]);
 
+  useLayoutEffect(() => {
+    if (!open) return;
+    const menu = menuRef.current;
+    const trigger = triggerRef.current;
+    if (!menu || !trigger) return;
+    const menuRect = menu.getBoundingClientRect();
+    const triggerRect = trigger.getBoundingClientRect();
+    const overflowsBelow = menuRect.bottom > window.innerHeight;
+    const fitsAbove = triggerRect.top - MENU_GAP_PX >= menuRect.height;
+    if (overflowsBelow && fitsAbove) {
+      setPosition({
+        bottom: `${window.innerHeight - triggerRect.top + MENU_GAP_PX}px`,
+        right: `${Math.max(0, window.innerWidth - triggerRect.right)}px`,
+      });
+    }
+  }, [open, menuRef]);
+
   if (actions.length === 0) return null;
 
   return (
@@ -60,20 +74,12 @@ export function SessionDetailMoreMenu({
         aria-expanded={open}
         onClick={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
-          const below = window.innerHeight - rect.bottom;
-          const needed =
-            actions.length * MENU_ROW_PX + MENU_PADDING_PX + MENU_GAP_PX;
-          setPosition(
-            below < needed
-              ? {
-                  bottom: `${window.innerHeight - rect.top + MENU_GAP_PX}px`,
-                  right: `${Math.max(0, window.innerWidth - rect.right)}px`,
-                }
-              : {
-                  top: `${rect.bottom + MENU_GAP_PX}px`,
-                  right: `${Math.max(0, window.innerWidth - rect.right)}px`,
-                },
-          );
+          // Opens below; the layout effect flips it above once the menu's
+          // real height is known (a coarse pointer's 44px rows included).
+          setPosition({
+            top: `${rect.bottom + MENU_GAP_PX}px`,
+            right: `${Math.max(0, window.innerWidth - rect.right)}px`,
+          });
           setOpen((wasOpen) => !wasOpen);
         }}
       >

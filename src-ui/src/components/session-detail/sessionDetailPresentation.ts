@@ -42,3 +42,18 @@ export function sessionChatOpenTarget(session: OrchestrationSessionSummary) {
     ? focusChatEventDetailForAction(action)
     : null;
 }
+
+/**
+ * A delegated task placed on a PAIRED Station. This Station keeps a lifecycle
+ * record of it, but the transcript, the agent and the conversation live on the
+ * peer — the record's agent slug and conversation id are the peer's own.
+ */
+export function isPeerDelegationRecord(
+  session: Pick<OrchestrationSessionSummary, 'delegation'>,
+): boolean {
+  return session.delegation?.environmentKind === 'peer';
+}
+
+/** Same sentence the delegated-work coordinator shows for a peer record. */
+export const PEER_TRANSCRIPT_ELSEWHERE =
+  "Station tracks this peer task's lifecycle here. Its transcript and final answer remain on the paired Station.";

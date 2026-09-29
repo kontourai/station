@@ -1,6 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { StatusBadge } from '@kontourai/ui/react';
-import { Fragment } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import {
   orchestrationLifecycleLabel,
   sessionStatusWord,
@@ -57,11 +57,28 @@ export function SessionDetailHeader({
   menuActions: readonly SessionDetailMenuAction[];
 }) {
   const state = orchestrationLifecycleLabel(session);
+  const headerRef = useRef<HTMLElement | null>(null);
+  const openInChatRef = useRef<HTMLButtonElement | null>(null);
+  // Stop… leaves once the turn has actually stopped — usually after its
+  // confirmation has already handed focus back to it — and focus would fall
+  // to <body>. Land it on the header's primary action (or the header itself).
+  const showStop = !isStopped && isStreaming;
+  const stopWasShown = useRef(showStop);
+  useEffect(() => {
+    const lost = stopWasShown.current && !showStop;
+    stopWasShown.current = showStop;
+    if (!lost) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected) return;
+    (openInChatRef.current ?? headerRef.current)?.focus({
+      preventScroll: true,
+    });
+  }, [showStop]);
   const clauses = meta.filter((clause): clause is string =>
     Boolean(clause?.trim()),
   );
   return (
-    <header className="sessions-detail__header">
+    <header className="sessions-detail__header" ref={headerRef} tabIndex={-1}>
       <div className="sessions-detail__identity">
         <p className="sessions-detail__eyebrow">{sessionKindLabel(session)}</p>
         <h2>{title}</h2>
@@ -90,11 +107,11 @@ export function SessionDetailHeader({
       </div>
       <div className="sessions-detail__actions">
         {onOpenInChat && (
-          <Button variant="primary" onClick={onOpenInChat}>
+          <Button variant="primary" ref={openInChatRef} onClick={onOpenInChat}>
             Open in chat
           </Button>
         )}
-        {!isStopped && isStreaming && (
+        {showStop && (
           <Button
             variant="secondary"
             className="sessions-detail__stop-task"
