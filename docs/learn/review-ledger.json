@@ -2633,7 +2633,7 @@
     },
     {
       "path": "docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "design",
       "state": "classified",
       "summary": "A status note bounds the historical branch/review counts and routes readers to current open-requests and required wire fields. Current code preserves process/observation qualifiers and separates answerability from dispatch authority.",
@@ -2658,7 +2658,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         }
       ],
       "checks": [
@@ -2668,7 +2668,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: #2904 added the ApprovalFullAccessRefusalDetails and requester types, a sanitizer and a details parser to contracts/orchestration.ts, and the full-access reset logic to orchestration-service. Nothing changes read-time answerability decoration, open-request projection or the dispatch-authority separation that the status note routes readers to. Prose accurate. Source review is separate from executed test evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. The ADR decides that answerability is a read-time decoration and that respondToRequest enforcement is unchanged by it; the respond path still checks the same answerability before any adapter effect. Classification unchanged.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by session-answerability-decoration.test.ts (per-read stamp checked with a faked clock); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by session-answerability-decoration.test.ts (per-read stamp checked with a faked clock); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. The ADR's claims (answerability decorated at read time; respondToRequest still checks it before any adapter effect) hold with both. Classification unchanged."
       ]
     },
     {
@@ -3519,7 +3520,7 @@
     {
       "path": "docs/architecture.md",
       "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
@@ -3655,7 +3656,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/plugins/plugin-install-transaction.ts",
@@ -3708,13 +3709,14 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. The overview names OrchestrationService as the coordinator of sessions and approvals at diagram level; no claim covers answer scope or posture recording. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. The overview's diagram-level claims (API routes into orchestration, OrchestrationService coordinating sessions and approvals) are unchanged by either. Prose accurate.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by execution-target-execution.ts (canonicalHandoffEffectDigest unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its diagram-level claim that OrchestrationService coordinates sessions and approvals is unchanged. Prose accurate."
       ]
     },
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -3846,7 +3848,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -3893,13 +3895,14 @@
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its one approval mention is a dated review finding about an orchestration approval at a pinned revision; the finding and its owners are unaffected. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Its findings and owners do not cite either helper or the respond route's context. Prose accurate.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); orchestration-decomposition-map.md (branch prose edit (T7 wiring-test note)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); orchestration-decomposition-map.md (branch prose edit (T7 wiring-test note)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its findings cite neither the respond path's new steps nor the start-unavailability helper. Prose accurate."
       ]
     },
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4975,7 +4978,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/planned-home-admission-reconciliation.ts",
@@ -5649,7 +5652,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval mentions are Device/pairing approval and module ownership; the OrchestrationService section's ownership (commands, receipts, projection) is unchanged by a new step inside respondToRequest. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. The orchestration route section's ownership (commands, receipts, SSE streams) is unchanged; no section documents the de-exported helpers as API. Prose accurate.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. The OrchestrationService section's ownership (commands, receipts, projection, session start) is unchanged; the start-unavailability helper stays provider-independent, as the map implies. Prose accurate."
       ]
     },
     {
@@ -5798,7 +5802,7 @@
     {
       "path": "docs/contexts/agent-runtime/CONTEXT.md",
       "documentDigest": "65e814615ee79543753261e413d46c6eef26dd2ac6f8d664fc37daaa70908164",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Agent identity and engine ownership; startup adoption policy; start-session vs turn boundary; Task/command/provider/event distinctions; lifecycle/continuation; capability delivery limitations.",
@@ -5822,7 +5826,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -5836,13 +5840,14 @@
         "Integration source review through d72f79b08: #2904 wires isFullAccessGrantorCurrent in runtime-initialize, records clientOrigin on the startSession receipt, and adds grantor stamping and revocation reset in orchestration-service. The context's identity, adoption-policy, start-versus-turn, Task/command/receipt and delegation distinctions are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It defines delegation as carrying approval policy and the start-session/turn boundary; neither definition changes. Prose accurate.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its start-session/turn boundary and delegation approval-policy definitions are unchanged. Prose accurate."
       ]
     },
     {
       "path": "docs/contexts/evidence-governance/CONTEXT.md",
       "documentDigest": "976207569e04724170b807f2585f4b93359a37107399fd0f81072217384b153c",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Definitions reconciled with actual storage, scheduling, notification, telemetry, review and governance interfaces; receipts and declarations distinguished from evaluated proof.",
@@ -5926,7 +5931,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -5957,7 +5962,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the service update-home action, a launcher install step and a service-update status line to service.ts. None of that bears on the evidence-governance glossary terms, which do not describe service commands; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval terms are gate-deviation vocabulary, not engine request answers. Prose accurate.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its approval terms are gate-deviation vocabulary, unrelated to either change. Prose accurate."
       ]
     },
     {
@@ -6036,7 +6042,7 @@
     {
       "path": "docs/contexts/operations/CONTEXT.md",
       "documentDigest": "ecec943113be3307ec644a418883c4ea8a172cd156a57ba0bb58c8b21f3cd73b",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Definitions reconciled with actual storage, scheduling, notification, telemetry, review and governance interfaces; receipts and declarations distinguished from evaluated proof.",
@@ -6120,7 +6126,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -6151,7 +6157,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds launcher install, a hidden update-home action and status `update` rendering. This context names no CLI service or upgrade behavior (its owner table covers server services); prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It defines a notification/approval request as a user decision; the inbox card still carries that request and its Allow Once/Deny actions. Prose accurate.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its notification/approval-request definition still matches the inbox card, which keeps Allow Once and Deny. Prose accurate."
       ]
     },
     {
@@ -6460,7 +6467,7 @@
     {
       "path": "docs/design/approval-posture-server-ordered.md",
       "documentDigest": "6767409c3bf2e0638d516e4870763553e274985dda6bdebcc05c7bb57505be54",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "design",
       "state": "classified",
       "summary": "Accepted design with dated baseline, implementation history, authority decisions, and recorded tests.",
@@ -6476,7 +6483,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         }
       ],
       "checks": [
@@ -6485,7 +6492,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: #2904 adds grantor-bearing FullAccessGrant with UnattributedFullAccessGrantError (coding-authority), decision actor and threadId plus fullAccessDefaultSource (approval-posture), and resetFullAccessGrantedBy, live grantor re-confinement and the grantor-stamp respawn carry-forward (orchestration-service). Main's merged prose on the structured refusal, granting and revoking, and revocation reset matches the code, including: the reset outcomes; the unattributed host-start cap of 50 plus a total; sanitized titles (256 characters); resetFullAccess re-runs; and an idempotent DELETE on an already revoked device, since revokeDevice returns without error when revokedAt is already set. Prose accurate. Source review is separate from executed test evidence.",
         "Integration review for #2915 on d0ca944c5: rewrote the dated 'Later addition' bullet in section 4.8 to match the code: command-route authority, the pre-answer basis plus the unchanged-decision check (the compare-and-set alone admits Auto over a newer never), and the one-call accept on the delegated and inbox paths. The rest stays implementation history; classification unchanged.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Re-checked section 4.8's dated addition against the merged respond path: command-route authority, pre-answer basis with the unchanged-decision check, and the one-call accept elsewhere all still hold. Classification unchanged."
       ]
     },
     {
@@ -6951,7 +6959,7 @@
     {
       "path": "docs/design/channel-home-authority.md",
       "documentDigest": "aa39bc064688fccf3f629a6e580045609975fd690762a8fae41393f8eb0ffeed",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full documented-claim review, building on the nine-guide controller review: paired identity/preparation/advance and private control authority, guarded durable SQLite, room source seals, snapshot digests, session-start/task-dispatch barriers and completed-dispatch recovery. Current narrower operations remain distinct from required distributed leases, target activation, cross-host writer fencing and provider continuation. No prose correction required.",
@@ -6991,7 +6999,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/paired-home-transfer-authority.ts",
@@ -7071,7 +7079,8 @@
         "Integration source review through d72f79b08: #2904 added scope descriptions and the revocation report type to environment-security. The runtime-routes changes are a middleware that binds full-access refusal identity, plus revoke and scope-change responses that include the full-access reset. It added deviceHoldsScope to device-pairing-service and the approval-posture grantor and reset logic to orchestration-service. None of these touch the home-authority channel/transfer routes, the transfer-scoped credentials, the SQLite decision guards, the room seals or the session-start/task-dispatch barriers. The new access:manage description ('held only by older default grants') matches the doc's historical-scope wording. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential to runtime-routes.ts. As a result, an ordinary Device credential on operator-only peer registration now gets 403 insufficient_scope at ingress instead of 401 (home-authority-routes.test.ts updated). This is consistent with the document's 403-for-insufficient-authority mapping. It does not change the operator-only offer/registration path or the other route statuses. Prose accurate. Source review is separate from executed test evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval mentions are pairing owner approval for channel homes; unrelated to engine request answers. Prose accurate.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by execution-target-execution.ts (canonicalHandoffEffectDigest unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); claims corrected (branch edit): the guarded store entry is the only constructor."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by execution-target-execution.ts (canonicalHandoffEffectDigest unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); claims corrected (branch edit): the guarded store entry is the only constructor.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Channel-home pairing approval is unrelated to either change. Prose accurate."
       ]
     },
     {
@@ -7425,7 +7434,7 @@
     {
       "path": "docs/design/connections-onboarding.md",
       "documentDigest": "dc33fe48b286ac9111bfb09c095a1c85ac62665eb89ec9e77a8637d28c3126ed",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7509,7 +7518,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-ui/src/components/first-run/FirstRunFlow.tsx",
@@ -7550,7 +7559,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its app-home claim (appHome reported on the start's session.configured) still holds: the adapter's mode report is a sparse session.configured like the CLI init's, and firstStartedMetadataOfThread reads the start. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Its Codex claims are app-home and adoption wiring (getAppHomeEnv, processFactory), which neither change touches; the Claude app-home claim holds as recorded under #2915. Prose accurate.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its app-home and session-start claims hold: session start's agent resolution and its unavailable reasons are unchanged in behaviour. Prose accurate."
       ]
     },
     {
@@ -7652,7 +7662,7 @@
     {
       "path": "docs/design/event-store-ledger-migration.md",
       "documentDigest": "6aff5fb02eed6dbab5e770c36852398841c1b0d6eab95bb7a9f00ad5fc6f0452",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed extraction dispositions, durable turn/recovery/credential owners and their actual EventStore/module composition. Added reserved/commit-pending states and the startup-scan unavailable-as-empty limitation tracked in #2823.",
@@ -7684,7 +7694,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/recovery-ledger.ts",
@@ -7713,7 +7723,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It covers EventStore extraction and durable turn/recovery owners; the new decision is an ordinary session.approval-mode-set append through the existing path. Prose accurate.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. EventStore extraction owners are untouched; the Auto decision is an ordinary session.approval-mode-set append. Prose accurate."
       ]
     },
     {
@@ -8687,7 +8698,7 @@
     {
       "path": "docs/design/orchestration-decomposition-map.md",
       "documentDigest": "862b155a3e78daace7b97c0fd5d1005d47c892b99328349d6a8b583378f857d6",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "historical",
       "state": "classified",
       "summary": "Both dated decomposition maps preserved; current service composition includes extracted provenance, Flow policy, stop, retirement and smoke owners; current source route added.",
@@ -8703,7 +8714,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/turn-provenance-sidecar.ts",
@@ -8717,7 +8728,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: #2904 added about 400 lines to orchestration-service, including resetFullAccessGrantedBy, the live isFullAccessGrantorCurrent option and grantor stamping in starts. The document's two maps and their line numbers are explicitly dated snapshots, and its current-source route still points at the live service, so no current claim is contradicted. Prose accurate. Source review is separate from executed test evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its line-numbered dispatch and approval-inbox call maps are dated history; the respondToRequest arm gained one read and one record call, which does not change the recorded decomposition. Classification unchanged.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims corrected (branch edit): T7 note names the service-owner wiring test."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims corrected (branch edit): T7 note names the service-owner wiring test.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its dated call maps stay history; main's comment rewrites concern the forgetThreadState seam table, which this map does not reproduce. Classification unchanged."
       ]
     },
     {
@@ -9395,7 +9407,7 @@
     {
       "path": "docs/design/portable-project-identity.md",
       "documentDigest": "bacc03693d6fef3d2e6105609dd6f17a9e934ef32e8095484b91c7cc06537b98",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "design",
       "state": "classified",
       "summary": "Full staged identity/migration/contribution design classified; current resolver and receiver-owned offer interfaces inspected; Station instance distinguished from physical machine.",
@@ -9411,7 +9423,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/projects/project-resource-resolver.ts",
@@ -9431,7 +9443,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: #2904 added confinement-grantor, approval-decision and revocation code to orchestration-service. resolveStartSessionCwd, resolveAdoptionProject and the project-identity resolver behavior are unchanged. The orchestration-service line references sit in the dated migration inventory the doc marks as historical; import additions shifted them, but they are not current-state claims. Design classification stands. Source review is separate from executed test evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It covers portable identity and receiver-owned offers; the respond path's portable admission recheck is unchanged and runs before the new steps. Classification unchanged.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. The respond path's portable admission recheck still runs before both new steps; session start is unchanged in behaviour. Classification unchanged."
       ]
     },
     {
@@ -10595,7 +10608,7 @@
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "8d66f17c9ab72933cf26109e5b989a9d5c1669d0e64f89d77786d45ed79b3fe1",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10815,7 +10828,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -10920,7 +10933,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its Tool Approval Flow section describes the Station-engine route and points orchestration clients at respondToRequest; it does not describe Claude session grants or posture recording. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. Its Tool Approval Flow describes the Station-engine route and points orchestration clients at respondToRequest; no claim covers Codex permission replies, delegated title length, Claude session grants or the recorded Auto decision. Prose accurate.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); attention-projection.ts (comment only); claims unaffected.",
-        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its Tool Approval Flow (Station-engine route, respondToRequest for orchestration clients) and Agent start guidance are unchanged. Prose accurate."
       ]
     },
     {
@@ -11832,7 +11846,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11840,7 +11854,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "4856d78318fabce080a1c6c1c60ce280812fad1623d8903fa9b1dab47023890f"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -12152,7 +12166,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/terminal/terminal-ws-server.ts",
@@ -12344,7 +12358,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/orchestration/orchestration.ts, src-server/runtime/mcp/mcp-manager.ts, covered by its notes above; this branch changed docs/learn/media.json, src-ui/src/index.css, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
-        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks. Scope, loopback terminal and Device statements remain accurate; no stdio caller-token claim is made. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks. Scope, loopback terminal and Device statements remain accurate; no stdio caller-token claim is made. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its approval mentions are signing-key and route approval; unrelated to either change. Prose accurate."
       ]
     },
     {
@@ -14680,7 +14695,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14688,7 +14703,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "4856d78318fabce080a1c6c1c60ce280812fad1623d8903fa9b1dab47023890f"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14839,7 +14854,8 @@
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): docs/learn/media.json changed in this merge only for the two inspect-request captures (re-recorded against the merged orchestration-service.ts) and main's index.css digests. This guide's Knowledge Library claims and captures are unaffected by either. Prose accurate."
       ]
     },
     {
@@ -18303,7 +18319,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "897111efa688f89ef5dfa4fbedbbf3dddc9fa65b00bee53bcaacacb5b9b6b2b2",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18503,7 +18519,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/tools/station-control-catalog-tools.ts",
@@ -18599,7 +18615,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It lists respond_to_task_request for an open approval or permission request from a delegated worker; that still answers the request, now as a one-call accept for an edit-mode session answer, which the guide's wording does not contradict. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. It lists respond_to_task_request for an open request from a delegated worker (now answered as a one-call accept for an edit-mode session answer under #2915) and says delegated activity retains bounded request titles, which main's code-point bound with an ellipsis still satisfies. Prose accurate.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. respond_to_task_request still answers a delegated worker's open request (a one-call accept for an edit-mode session answer). Prose accurate."
       ]
     },
     {
@@ -18844,7 +18861,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18852,7 +18869,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "4856d78318fabce080a1c6c1c60ce280812fad1623d8903fa9b1dab47023890f"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -18912,7 +18929,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/project-task-room-runtime.ts",
@@ -19089,7 +19106,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its inspect-approval flow opens a request without deciding it; the answer path's new steps are not reached. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Its inspect-approval flow opens a request without deciding it, so neither Codex's reply change nor #2915's answer path is reached. Prose accurate.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its inspect-approval flow opens a request without deciding it, so neither change is reached. Prose accurate."
       ]
     },
     {
@@ -20656,7 +20674,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20664,7 +20682,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "4856d78318fabce080a1c6c1c60ce280812fad1623d8903fa9b1dab47023890f"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20752,7 +20770,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/project-task-room-runtime.ts",
@@ -20877,7 +20895,8 @@
         "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. The request-inspection scene shows a request opened and closed without a decision, so the answer path's new steps are not reached. Prose accurate.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). Media delta review: all eight captures are of the release web app with no channel class, where accent and focus values are unchanged, so each capture's index.css digest is refreshed without recapture. Prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. The request-inspection scene inspects and closes a request without a decision; neither change is reached. Prose accurate."
       ]
     },
     {
@@ -21531,7 +21550,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21539,7 +21558,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "4856d78318fabce080a1c6c1c60ce280812fad1623d8903fa9b1dab47023890f"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21626,7 +21645,8 @@
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): docs/learn/media.json changed in this merge only for the two inspect-request captures (re-recorded against the merged orchestration-service.ts) and main's index.css digests. Its smoke-confidence evidence does not cite the inspect-request captures. Prose accurate."
       ]
     },
     {
@@ -21657,7 +21677,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -22182,7 +22202,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/orchestration-session-state.ts",
@@ -22368,7 +22388,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Added a theme paragraph under Get Branding Config: flat and per-mode shape, the route passes it through unvalidated, and the UI applies it only when every key is allowlisted, every value hex and every contrast check passes in both modes. Checked against src-server/routes/system/branding.ts and src-ui/src/lib/branding-theme.ts (added as a source). Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/chat/chat.ts, src-server/routes/orchestration/orchestration.ts, src-server/routes/system/install-provenance.ts, src-server/routes/system/system-update-routes.ts, covered by its notes above; this branch changed the document, src-ui/src/lib/branding-theme.ts (added), covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
-        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Request routes and the respond command keep their shapes and status codes. Prose accurate."
       ]
     },
     {
@@ -22793,7 +22814,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23002,7 +23023,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/scheduling/builtin-scheduler-execution.ts",
@@ -23071,7 +23092,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. defaultApprovalMode still applies at session start below the chat's recorded pick, which a command-route edit-mode answer can now record. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. defaultApprovalMode still applies at session start below the chat's recorded pick, which a command-route edit-mode answer can record; neither helper is configuration. Prose accurate.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected.",
-        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. defaultApprovalMode still applies at session start below a recorded pick; session start's behaviour is unchanged. Prose accurate."
       ]
     },
     {
@@ -23295,7 +23317,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -23476,7 +23498,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/orchestration-session-state.ts",
@@ -23537,7 +23559,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It lists the attention request-reference exports and approval-mode contract types; no contract type changed (the grant helpers are in station-shared). Prose accurate.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. No contract type changed on either side; the delegated task event's title stays an optional string. Prose accurate.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. No contract type changed on either side. Prose accurate."
       ]
     },
     {
@@ -23641,7 +23664,7 @@
     },
     {
       "path": "docs/reference/env-vars.md",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed every current table and setup claim against configuration resolvers and their runtime/CLI/frontend callers. Corrected root/home derivation, development instance paths, control-client base/port precedence, exact browser origin admission, hosted registry file requirements, AWS region precedence, inert DEBUG_STREAMING behavior, production Vite override, OTLP versus disclosed product usage telemetry, and incomplete IAM example. Added operator scope and feature-specific navigation instead of claiming an exhaustive environment inventory. Corrected matching .env.example comments without changing values.",
@@ -23734,7 +23757,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/usage-telemetry-service.ts",
@@ -23772,7 +23795,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. No environment variable is added or read by the change. Prose accurate.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. VITE_API_BASE resolution is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). STATION_API_BASE/STATION_PORT resolution in station-control-shared.ts is unchanged; STATION_CONTROL_CALLER_TOKEN was never documented here and is not a supported variable. Prose remains accurate. Source review only."
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). STATION_API_BASE/STATION_PORT resolution in station-control-shared.ts is unchanged; STATION_CONTROL_CALLER_TOKEN was never documented here and is not a supported variable. Prose remains accurate. Source review only.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. No environment variable is added or read by either change. Prose accurate."
       ]
     },
     {
@@ -23988,7 +24012,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -23996,7 +24020,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "4856d78318fabce080a1c6c1c60ce280812fad1623d8903fa9b1dab47023890f"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -24077,12 +24101,13 @@
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): docs/learn/media.json changed in this merge only for the two inspect-request captures (re-recorded against the merged orchestration-service.ts) and main's index.css digests. Its Project/Task room acceptance evidence does not cite the inspect-request captures. Prose accurate."
       ]
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24783,7 +24808,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/orchestration-session-state.ts",
@@ -25084,7 +25109,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/orchestration/orchestration.ts, covered by its notes above; this branch changed the document, packages/sdk/src/query-domains/systemRuntime.ts, packages/sdk/src/query-domains/systemRuntimeRequests.ts, src-ui/src/main.tsx, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. The SDK's respondToRequest example and error shape are unchanged. Prose accurate."
       ]
     },
     {
@@ -25503,7 +25529,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25647,7 +25673,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/orchestration-session-state.ts",
@@ -25751,7 +25777,8 @@
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval-policy and plugin-approval topics stay at their explanatory scope and do not describe session answers. Prose accurate.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); session-agent-resolution.ts (never-read provider input removed); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); station-docs-content.ts (regenerated module-map scheduler paragraph); claims unaffected. 2026-09-28 test-audit follow-up: removed the sentence 'Other scheduler providers have their own capabilities.' because addProvider was deleted and only the built-in provider can exist; station-docs-content.ts regenerated with npm run docs:mcp:generate. Source review only; no new executed evidence.",
-        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). station-control still needs an instance credential over reviewed channels and remains subject to caller authority; the prose remains accurate. Source review only."
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). station-control still needs an instance credential over reviewed channels and remains subject to caller authority; the prose remains accurate. Source review only.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its approval-policy topics stay at explanatory scope and name neither change. Prose accurate."
       ]
     },
     {
@@ -25813,7 +25840,7 @@
     {
       "path": "docs/reference/usage-telemetry.md",
       "documentDigest": "34b601ece3b7647bf54b64ad183e7d78f57e819eb0f4b4946fd7ad164f453e55",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Actual activation, precedence, caller order, persistence repair, queue and shutdown semantics traced; generated inventory preserved exactly. Captured premature station_started description as separate recommendation.",
@@ -25829,7 +25856,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/persisted-random-identifier.ts",
@@ -25856,7 +25883,8 @@
         "Integration source review through d72f79b08: #2904's orchestration-service changes cover approval-posture confinement, the grantor and the revocation reset, with no telemetry emission, activation, precedence, queue or shutdown changes. The documented caller order and generated inventory still hold. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: the page itself changed only its test-evidence link; claims corrected: dead link to the deleted usage-telemetry-disclosure.routes.test.ts now points to runtime-routes-usage-telemetry-late-binding.test.ts, which owns the disclosure route envelope and call. Source review only; no new executed evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. No telemetry instrument, attribute or queue is added. Prose accurate.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. No telemetry instrument or attribute is added by either change. Prose accurate."
       ]
     },
     {
@@ -26839,7 +26867,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26860,7 +26888,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "4856d78318fabce080a1c6c1c60ce280812fad1623d8903fa9b1dab47023890f"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -26908,7 +26936,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -27034,7 +27062,8 @@
         "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It tells users to choose Approve once or Deny after reviewing a request; both actions behave as before. Prose accurate.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Approve once and Deny behave as before. Prose accurate."
       ]
     },
     {
@@ -27197,7 +27226,7 @@
     {
       "path": "docs/user/workspace-checkpoints.md",
       "documentDigest": "283e1c7e932c678bfc114407ffe72c9398b498020cb5a125426c5f7a4562a35a",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced queued capture, snapshot scope, settle-only chat visibility, preview truncation, caller/workspace/target checks, uncertain effects, and the separate CLI authentication/preview gaps.",
@@ -27237,7 +27266,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/services/orchestration/workspace-identity.ts",
@@ -27263,7 +27292,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Checkpoint capture and restore do not touch request answers or the approval posture. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Checkpoint capture and restore touch neither the respond route nor the resume cursor. Prose accurate.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Checkpoint capture and restore touch neither the respond path nor session start. Prose accurate."
       ]
     },
     {
@@ -27908,7 +27938,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -27916,7 +27946,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "4856d78318fabce080a1c6c1c60ce280812fad1623d8903fa9b1dab47023890f"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -28021,7 +28051,8 @@
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): docs/learn/media.json changed in this merge only for the two inspect-request captures (re-recorded against the merged orchestration-service.ts) and main's index.css digests. The example's Knowledge Library claims do not cite the inspect-request captures. Prose accurate."
       ]
     },
     {
@@ -28529,7 +28560,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ef607dc451a15dcc904901a986167c98309bc8b6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28729,7 +28760,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-server/tools/station-control-catalog-tools.ts",
@@ -28825,7 +28856,8 @@
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It states four metadata reads are auto-approved and the rest remain subject to approval and the caller's authority; still true. Prose accurate.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. It states four metadata reads are auto-approved and the rest remain subject to approval and the caller's authority; still true with both. Prose accurate.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its statement that non-metadata calls remain subject to approval and the caller's authority still holds. Prose accurate."
       ]
     },
     {
