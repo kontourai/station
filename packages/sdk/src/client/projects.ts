@@ -25,6 +25,8 @@ import {
 } from '@kontourai/station-contracts/project-identity';
 import { PROJECT_MEMBER_ACTIONS } from '@kontourai/station-contracts/project-membership';
 import type {
+  WorkspaceFileChanges,
+  WorkspaceFileChangesRequest,
   WorkspaceFilePreview,
   WorkspaceFilePreviewRequest,
 } from '@kontourai/station-contracts/workspace-file-preview';
@@ -259,6 +261,31 @@ export async function previewProjectWorkspaceFile(
   return unwrapOrThrow<WorkspaceFilePreview>(
     response,
     'Failed to preview file',
+  );
+}
+
+/**
+ * `POST /api/projects/:slug/file-preview/changes`: one previewed file's
+ * changes against HEAD, read with the preview's path and session rules. The
+ * path travels in the body for the same reason the preview's does.
+ */
+export async function readProjectWorkspaceFileChanges(
+  apiBase: string,
+  projectSlug: string,
+  request: WorkspaceFileChangesRequest,
+  opts?: ClientRequestOptions,
+): Promise<WorkspaceFileChanges> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/file-preview/changes`,
+    'POST',
+    opts,
+    request.thread
+      ? { path: request.path, thread: request.thread }
+      : { path: request.path },
+  );
+  return unwrapOrThrow<WorkspaceFileChanges>(
+    response,
+    'Failed to read file changes',
   );
 }
 

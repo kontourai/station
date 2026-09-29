@@ -50,9 +50,6 @@
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
 }
-.file-preview__changes-toggle {
-  display: inline-flex;
-}
 
 /* Touch-target floor: the (pointer: coarse) question, as the entry sheet
    documents for every member of this family. */
@@ -68,5 +65,33 @@
   .file-preview__toolbar label {
     display: inline-flex;
     align-items: center;
+  }
+}
+
+.file-preview__view {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+}
+.file-preview__visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+/* The diff surface sizes to its container; give it the pane's height. */
+.file-preview__changes {
+  height: 100%;
+  min-height: 240px;
+}
+@media (pointer: coarse) {
+  .file-preview__view .button {
+    min-height: 44px;
+    min-width: 44px;
   }
 }

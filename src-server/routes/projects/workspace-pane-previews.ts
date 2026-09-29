@@ -11,6 +11,7 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { assertSafeLayoutPathSegment } from '../../domain/storage-adapter.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
+import { WorkspaceFileChangesService } from '../../services/projects/workspace-file-changes-service.js';
 import { WorkspaceFilePreviewService } from '../../services/projects/workspace-file-preview-service.js';
 import { expandTilde } from '../../utils/paths.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
@@ -39,6 +40,12 @@ const workspaceFilePreviewSchema = z
 // Keep this leaf narrower than the regular preview request: line ranges have
 // no meaning for an attachment handoff.
 const workspaceFilePreviewDownloadSchema = z
+  .object({ path: z.string(), thread: threadField })
+  .strict();
+
+// One file's changes against HEAD: the same path and session fields as a
+// download handoff, and nothing that could name a revision or a pathspec.
+const workspaceFileChangesSchema = z
   .object({ path: z.string(), thread: threadField })
   .strict();
 
@@ -82,6 +89,7 @@ export function createWorkspacePanePreviewRoutes(
   projectService: Pick<ProjectService, 'getProject'>,
   previewService = new WorkspaceFilePreviewService(),
   sessionWorkspaceDirectory?: SessionWorkspaceDirectory,
+  changesService = new WorkspaceFileChangesService(previewService),
 ) {
   const app = new Hono();
 
@@ -156,6 +164,59 @@ export function createWorkspacePanePreviewRoutes(
         'Cross-Origin-Resource-Policy': 'same-origin',
         'Content-Security-Policy': 'sandbox',
       });
+    },
+  );
+
+  app.post(
+    '/changes',
+    validate(workspaceFileChangesSchema, { maxBodyBytes: 4096 }),
+    async (c) => {
+      const slug = slugOf(c);
+      if (typeof slug !== 'string') return slug;
+      const { path, thread } = getBody(c) as { path: string; thread?: string };
+      const workingDirectory = await directoryFor(c, slug, thread);
+      if (!workingDirectory) {
+        return c.json(
+          { success: false, error: 'Project workspace is unavailable' },
+          404,
+        );
+      }
+      let changes: Awaited<ReturnType<typeof changesService.changes>>;
+      try {
+        changes = await changesService.changes(workingDirectory, path);
+      } catch (error) {
+        const failure = error as { killed?: unknown; signal?: unknown };
+        if (
+          error instanceof Error &&
+          /workspace|symlink|relative|name a file/.test(error.message)
+        ) {
+          // The preview's own refusal; never mirror the rejected input.
+          return c.json(
+            { success: false, error: 'Invalid file preview path' },
+            400,
+          );
+        }
+        return failure?.killed === true || failure?.signal === 'SIGTERM'
+          ? c.json(
+              {
+                success: false,
+                error: 'git did not answer in time and was stopped.',
+                code: 'git-timeout',
+              },
+              504,
+            )
+          : c.json(
+              { success: false, error: 'git could not read this file.' },
+              502,
+            );
+      }
+      if (!changes) {
+        return c.json(
+          { success: false, error: 'Project workspace is unavailable' },
+          404,
+        );
+      }
+      return c.json({ success: true, data: changes });
     },
   );
 

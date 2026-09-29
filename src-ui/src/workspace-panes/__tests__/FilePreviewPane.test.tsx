@@ -12,6 +12,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -19,6 +20,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 afterEach(() => vi.unstubAllGlobals());
 
 const previewQuery = vi.hoisted(() => vi.fn());
+const changesQuery = vi.hoisted(() => vi.fn());
 const addFileMock = vi.hoisted(() => vi.fn(() => true));
 const hasFileMock = vi.hoisted(() => vi.fn(() => false));
 const removeFileMock = vi.hoisted(() => vi.fn());
@@ -26,6 +28,7 @@ const downloadFilePreviewMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk/workspace-file-preview', () => ({
   useProjectWorkspaceFilePreviewQuery: previewQuery,
+  useProjectWorkspaceFileChangesQuery: changesQuery,
   WORKSPACE_FILE_PREVIEW_MAX_BYTES: 512 * 1024,
   isWorkspaceFilePreviewImageDataUrl: (value: unknown, mimeType: unknown) =>
     typeof value === 'string' &&
@@ -1421,5 +1424,169 @@ describe('FilePreviewPane', () => {
         'This browser refused clipboard access. Select the path above to copy it.',
       ),
     ).toBeTruthy();
+  });
+
+  describe('Changes vs HEAD', () => {
+    // A real `git diff HEAD -- src/example.ts` patch, the shape the server
+    // returns verbatim in `patch`.
+    const PATCH = `diff --git a/src/example.ts b/src/example.ts
+index 3b18e51..a0423896 100644
+--- a/src/example.ts
++++ b/src/example.ts
+@@ -1,2 +1,2 @@
+ const a = 1;
+-const b = 2;
++const b = 3;
+`;
+    function readySource() {
+      previewQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: {
+          path: 'src/example.ts',
+          status: 'ready',
+          renderKind: 'source',
+          content: 'const a = 1;\nconst b = 3;',
+        },
+      });
+    }
+    function renderWithClient() {
+      if (typeof globalThis.ResizeObserver === 'undefined') {
+        vi.stubGlobal(
+          'ResizeObserver',
+          class {
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+          },
+        );
+      }
+      return render(
+        <QueryClientProvider client={new QueryClient()}>
+          {pane({
+            projectSlug: 'demo',
+            stateKey: 'file-preview:test',
+            state: {
+              version: '1.0',
+              projectSlug: 'demo',
+              path: 'src/example.ts',
+              wrap: true,
+              thread: 'thread-7',
+            },
+          })}
+        </QueryClientProvider>,
+      );
+    }
+
+    test('reads nothing until opened, then renders this file patch in the diff surface', async () => {
+      readySource();
+      changesQuery.mockReset();
+      changesQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: { state: 'changed', base: 'HEAD', patch: PATCH },
+      });
+      renderWithClient();
+      expect(changesQuery).not.toHaveBeenCalled();
+      expect(
+        screen
+          .getByRole('button', { name: 'File' })
+          .getAttribute('aria-pressed'),
+      ).toBe('true');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Changes vs HEAD' }));
+
+      // Same path and session as the preview: a worktree session's file is
+      // diffed in that worktree.
+      expect(changesQuery).toHaveBeenCalledWith('demo', {
+        path: 'src/example.ts',
+        thread: 'thread-7',
+      });
+      const region = await screen.findByRole('region', {
+        name: 'src/example.ts changes against HEAD',
+      });
+      // The diff surface parsed the patch: one file, one line in, one out.
+      await waitFor(() =>
+        expect(within(region).getByText('1 file')).toBeTruthy(),
+      );
+      // Total and per-file stat both read +1/−1.
+      expect(within(region).getAllByText('+1').length).toBeGreaterThan(0);
+      expect(within(region).getAllByText('−1').length).toBeGreaterThan(0);
+      expect(
+        screen.queryByRole('region', { name: 'src/example.ts source' }),
+      ).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: 'File' }));
+      expect(
+        screen.getByRole('region', { name: 'src/example.ts source' }),
+      ).toBeTruthy();
+    });
+
+    test.each([
+      [
+        { state: 'unchanged', base: 'HEAD' },
+        /matches the last commit \(HEAD\)/,
+      ],
+      [{ state: 'untracked' }, /not tracked by git/],
+      [{ state: 'no-commits' }, /no commits yet/],
+      [{ state: 'not-a-repository' }, /not inside a git repository/],
+      [
+        { state: 'oversized', limitBytes: 262_144 },
+        /exceed the 256 KB in-app limit/,
+      ],
+      [
+        {
+          state: 'refused',
+          reason: 'This repository defines programs git diff would run.',
+        },
+        /defines programs git diff would run/,
+      ],
+    ])(
+      'says what %o means instead of showing an empty diff',
+      async (data, text) => {
+        readySource();
+        changesQuery.mockReturnValue({
+          isLoading: false,
+          isError: false,
+          data,
+        });
+        renderWithClient();
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Changes vs HEAD' }),
+        );
+        expect(await screen.findByText(text)).toBeTruthy();
+        expect(screen.queryByText('No changes')).toBeNull();
+      },
+    );
+
+    test('offers a retry when the changes read fails', () => {
+      readySource();
+      const refetch = vi.fn();
+      changesQuery.mockReturnValue({
+        isLoading: false,
+        isError: true,
+        data: undefined,
+        refetch,
+      });
+      renderWithClient();
+      fireEvent.click(screen.getByRole('button', { name: 'Changes vs HEAD' }));
+      expect(screen.getByRole('alert').textContent).toContain(
+        "could not read this file's changes",
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Retry changes' }));
+      expect(refetch).toHaveBeenCalled();
+    });
+
+    test('is not offered for a preview that is not text', () => {
+      previewQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: { path: 'x.bin', status: 'binary', renderKind: 'unknown' },
+      });
+      renderWithClient();
+      expect(
+        screen.queryByRole('button', { name: 'Changes vs HEAD' }),
+      ).toBeNull();
+    });
   });
 });

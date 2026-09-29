@@ -3,6 +3,7 @@ import { parseWorkspaceOpenFilePreviewIntent } from '@kontourai/station-contract
 import {
   downloadProjectWorkspaceFilePreview,
   isWorkspaceFilePreviewImageDataUrl,
+  useProjectWorkspaceFileChangesQuery,
   useProjectWorkspaceFilePreviewQuery,
   WORKSPACE_FILE_PREVIEW_MAX_BYTES,
   type WorkspaceFilePreview,
@@ -23,7 +24,8 @@ import {
 } from 'react';
 import { Button } from '../components/Button';
 import { ImageInspector } from '../components/ImageInspector';
-import { Empty, SkeletonBlock } from '../components/state';
+import { LazyBoundary } from '../components/LazyBoundary';
+import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { langFromFilePath } from '../highlight/langFromFilePath';
 import type { PreviewTokenLine } from '../highlight/preview-tokens';
@@ -1022,6 +1024,102 @@ function PreviewContent(props: {
   );
 }
 
+const loadObservedDiff = () =>
+  import('../components/coding-layout/DiffPanel').then((module) => ({
+    default: module.ObservedDiffPanel,
+  }));
+
+/**
+ * This file's changes against HEAD, rendered by the same diff surface as the
+ * Diff pane. Read only while the view is open (it runs `git diff` on the
+ * host), and every state the server distinguishes is said in words; none is
+ * shown as an empty diff.
+ */
+function FilePreviewChanges({
+  projectSlug,
+  path,
+  thread,
+}: {
+  projectSlug: string;
+  path: string;
+  thread?: string;
+}) {
+  const query = useProjectWorkspaceFileChangesQuery(projectSlug, {
+    path,
+    ...(thread ? { thread } : {}),
+  });
+  if (query.isLoading)
+    return <SkeletonBlock count={3} label="Reading changes against HEAD" />;
+  if (query.isError || !query.data)
+    return (
+      <div role="alert">
+        <p>Station could not read this file's changes.</p>
+        <Button size="sm" onClick={() => void query.refetch()}>
+          Retry changes
+        </Button>
+      </div>
+    );
+  const changes = query.data;
+  switch (changes.state) {
+    case 'changed':
+      return (
+        <section
+          aria-label={`${path} changes against HEAD`}
+          className="file-preview__changes"
+        >
+          <LazyBoundary
+            load={loadObservedDiff}
+            componentProps={{
+              diff: changes.patch,
+              observationKey: `file-changes:${projectSlug}:${thread ?? ''}:${path}`,
+            }}
+            pending={<SkeletonBlock label="Preparing changes" />}
+          />
+        </section>
+      );
+    case 'unchanged':
+      return (
+        <p role="status">
+          No changes: this file matches the last commit (HEAD).
+        </p>
+      );
+    case 'untracked':
+      return (
+        <p role="status">
+          This file is not tracked by git, so there is no committed version to
+          compare it with.
+        </p>
+      );
+    case 'no-commits':
+      return (
+        <p role="status">
+          This repository has no commits yet, so there is no HEAD to compare
+          with.
+        </p>
+      );
+    case 'not-a-repository':
+      return <p role="status">This file is not inside a git repository.</p>;
+    case 'oversized':
+      return (
+        <ErrorState
+          variant="compact"
+          title="Changes too large"
+          description={`This file's changes exceed the ${Math.round(changes.limitBytes / 1024)} KB in-app limit. Use the Diff pane or git to review them.`}
+        />
+      );
+    case 'refused':
+      return (
+        <ErrorState
+          variant="compact"
+          title="Changes not read"
+          description={changes.reason}
+        />
+      );
+  }
+}
+
+type FilePreviewView = 'file' | 'changes';
+
 /** A data-only, project-bound source/text renderer. Host chrome owns close and tabs. */
 export function FilePreviewPane({
   projectSlug,
@@ -1044,6 +1142,12 @@ export function FilePreviewPane({
   const { addFile, has, removeFile } = useCodingFilesContext();
   const catalog = useResolvedWorkspacePaneCatalog(projectSlug);
   const [contextNotice, setContextNotice] = useState<string | null>(null);
+  // Per path: a different file opens on its content, not a stale Changes view.
+  const [viewFor, setViewFor] = useState<{
+    path: string;
+    view: FilePreviewView;
+  }>({ path: state.path, view: 'file' });
+  const view = viewFor.path === state.path ? viewFor.view : 'file';
   const previewRequest = {
     path: state.path,
     ...(state.lineRange ? { lineRange: state.lineRange } : {}),
@@ -1218,6 +1322,25 @@ export function FilePreviewPane({
           </Button>
         </div>
         {contextNotice && <p role="status">{contextNotice}</p>}
+        {query.data?.status === 'ready' &&
+          ['source', 'text', 'markdown'].includes(query.data.renderKind) && (
+            <fieldset className="file-preview__view">
+              <legend className="file-preview__visually-hidden">
+                Preview view
+              </legend>
+              {(['file', 'changes'] as const).map((option) => (
+                <Button
+                  key={option}
+                  size="sm"
+                  variant={view === option ? 'primary' : 'secondary'}
+                  aria-pressed={view === option}
+                  onClick={() => setViewFor({ path: state.path, view: option })}
+                >
+                  {option === 'file' ? 'File' : 'Changes vs HEAD'}
+                </Button>
+              ))}
+            </fieldset>
+          )}
       </div>
       <div
         ref={performanceSurfaceRef}
@@ -1269,6 +1392,12 @@ export function FilePreviewPane({
               Retry preview
             </button>
           </div>
+        ) : query.data && view === 'changes' ? (
+          <FilePreviewChanges
+            projectSlug={projectSlug}
+            path={state.path}
+            thread={state.thread}
+          />
         ) : query.data ? (
           <PreviewContent
             preview={query.data}

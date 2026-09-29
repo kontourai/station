@@ -6,6 +6,8 @@ import type {
   ProjectResourceBindOutcome,
 } from '@kontourai/station-contracts/project-identity';
 import type {
+  WorkspaceFileChanges,
+  WorkspaceFileChangesRequest,
   WorkspaceFilePreview,
   WorkspaceFilePreviewRequest,
 } from '@kontourai/station-contracts/workspace-file-preview';
@@ -48,6 +50,7 @@ import {
   listProjectWorkspacePanes,
   type ProjectWorkspacePaneCatalog,
   previewProjectWorkspaceFile,
+  readProjectWorkspaceFileChanges,
   reorderProjects as reorderProjectsRaw,
   updateProject as updateProjectRaw,
 } from '../client/projects';
@@ -448,6 +451,31 @@ export function useProjectWorkspaceFilePreviewQuery(
     async (signal) => {
       const apiBase = await _getApiBase();
       return previewProjectWorkspaceFile(apiBase, projectSlug, request!, {
+        signal,
+      });
+    },
+    {
+      ...config,
+      enabled: !!projectSlug && !!request?.path && (config?.enabled ?? true),
+      cancelWhenInactive: config?.cancelWhenInactive ?? true,
+    },
+  );
+}
+
+/**
+ * One previewed file's changes against HEAD. Enabled by the caller only
+ * while its Changes view is open: the read runs `git diff` on the host.
+ */
+export function useProjectWorkspaceFileChangesQuery(
+  projectSlug: string,
+  request: WorkspaceFileChangesRequest | undefined,
+  config?: QueryConfig<WorkspaceFileChanges>,
+) {
+  return useApiQuery(
+    ['projects', projectSlug, 'file-changes', request ?? {}],
+    async (signal) => {
+      const apiBase = await _getApiBase();
+      return readProjectWorkspaceFileChanges(apiBase, projectSlug, request!, {
         signal,
       });
     },
