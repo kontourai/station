@@ -202,8 +202,14 @@ describe('printing the token', () => {
         requests += 1;
         throw new Error('no request expected');
       }) as typeof fetch,
-      stdout: (text: string) => printed.push(text),
-      stderr: (text: string) => errors.push(text),
+      stdout: (text: string) => {
+        printed.push(text);
+        return true;
+      },
+      stderr: (text: string) => {
+        errors.push(text);
+        return true;
+      },
       run: (() => {
         throw new Error('no Keychain read expected');
       }) as any,
