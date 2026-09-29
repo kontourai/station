@@ -3514,7 +3514,7 @@
     {
       "path": "docs/architecture.md",
       "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
@@ -3546,7 +3546,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/voice/registry.ts",
@@ -3700,7 +3700,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage module-private in packages/cli/src/distribution.ts, and cf43e14d0 (#2731) adds recognizeCredential (runtime-routes.ts) plus a 403 insufficient_scope answer for a live but unadmitted credential (runtime-http.ts); prose accurate: distribution.ts still defines the published-CLI versus checkout boundary, and the HTTP-composition and credential/scope admission descriptions don't name a refusal status. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery and shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the doc defers the surface to package exports and explicit subpaths; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by execution-target-execution.ts (canonicalHandoffEffectDigest unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by execution-target-execution.ts (canonicalHandoffEffectDigest unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -7986,7 +7987,7 @@
     {
       "path": "docs/design/knowledge-recall-ui.md",
       "documentDigest": "6d02bb684296fcd35a2705e593fa6e8ac6b028dd1ef3e6c7552178fb2767abd4",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete recall decision against SDK exports, canonical record queries, metadata-key revalidation, selection/link/provenance rendering and caller-owned graph/shell/Neo4j behavior. Updated Library composition to reflect its actual list plus scroll/focus shell; distinguished fixture and installed-browser evidence.",
@@ -8018,7 +8019,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/query-domains/knowledgeStores.ts",
@@ -8042,7 +8043,8 @@
         "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
         "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
-        "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery exports to the SDK index. The knowledge-recall exports the design names are unchanged; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery exports to the SDK index. The knowledge-recall exports the design names are unchanged; prose accurate. Source review is separate from executed test evidence.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -8678,7 +8680,7 @@
     {
       "path": "docs/design/pane-host-contract.md",
       "documentDigest": "620f783a5b956c3789d15c2f36c87ef11eb3adcf9e21b145cdf157e4bbc2f77c",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "design",
       "state": "classified",
       "summary": "Pane-host design and extraction history, routed to the implemented shared contract and both adapters.",
@@ -8690,7 +8692,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "src-ui/src/components/plugins/PluginFrameHost.tsx",
@@ -8708,7 +8710,8 @@
       "checks": [
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Entire original body byte-identical after removing reading banner.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery only; pane host contract claims unaffected; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery only; pane host contract claims unaffected; prose accurate. Source review is separate from executed test evidence.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -10215,7 +10218,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10231,7 +10234,7 @@
         },
         {
           "path": "docs/reference/contracts.md",
-          "digest": "39945706aa08160f17fba22fc9bbb715899dd21b0661688c96ad6ebb8767a232"
+          "digest": "31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e"
         },
         {
           "path": "packages/contracts/src/agent-identity.ts",
@@ -10495,7 +10498,8 @@
         "Integration source review through d9aea82e4: docs/reference/contracts.md changed only its Muse serve approval-resolution sentence (#2912 request.delivery acknowledgement). This document names neither Muse nor approval resolution, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports layout constants and helpers; behavior and the glossary's terms are unchanged and the glossary cites none of the removed exports; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -14469,7 +14473,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14513,11 +14517,11 @@
         },
         {
           "path": "docs/reference/contracts.md",
-          "digest": "39945706aa08160f17fba22fc9bbb715899dd21b0661688c96ad6ebb8767a232"
+          "digest": "31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e"
         },
         {
           "path": "docs/reference/sdk.md",
-          "digest": "61c64931d1dfd92ef8b73f19ad92d657cf379c01687aab6380cbef7c57dc17b8"
+          "digest": "a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf"
         },
         {
           "path": "packages/contracts/src/deployment-authentication.ts",
@@ -14561,7 +14565,8 @@
         "The documentation maintenance link remains valid after the mode wording change.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Linked documents changed only in branding entries: plugins.md getTheme comment, api.md theme paragraph, sdk.md useBrandingQuery entry. SDK BrandingData.theme became unknown and fetchBranding rejects non-OK or unsuccessful answers; provider-interfaces adds the BrandingTheme type; main.tsx adds the branding pre-render apply. This guide makes no branding claim; its routing remains accurate. Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed docs/guides/documentation.md, covered by its notes above; this branch changed docs/guides/plugins.md, docs/reference/api.md, docs/reference/sdk.md, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by api.md (legacy-provider receipt sentence removed); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by api.md (legacy-provider receipt sentence removed); claims unaffected.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -18071,7 +18076,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18091,7 +18096,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/queries.ts",
@@ -18099,7 +18104,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/query-domains/agentAdmin.ts",
@@ -18225,7 +18230,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 adds a 403 insufficient_scope branch in runtime-http.ts for recognized but unadmitted credentials. The guide's Dialog, layer and viewport claims do not touch HTTP authentication. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) responsive-action-surfaces.txt's Dialog entry now also cites Dialog.chrome.geometry.test.tsx (the file exists). #2881 adds SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery, shared prebuilt-archive/service-launcher-protocol exports and a /api/system/core-update/service-update pairing leaf, none of which touch the guide's Dialog/inventory/ratchet claims; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. The visual-viewport publisher is still installed by main.tsx; dialog, focus and viewport contracts are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -19661,7 +19667,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "95efeeef707ab2d72e422c1abc7ca33ad2a39e7b7c6b752fc513b61ca2547ce8",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19681,7 +19687,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/queries.ts",
@@ -19689,7 +19695,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/query-domains/agentAdmin.ts",
@@ -19831,7 +19837,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds a 403 insufficient_scope branch for recognized but unadmitted credentials in runtime-http.ts; prose accurate: the theme selection, UI exports and contrast claims don't touch HTTP auth. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds SDK service-update exports, the shared prebuilt-archive and service-launcher-protocol subpaths, and a pairing-scope leaf. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. None changes token, shared-package or station-dialog chrome guidance; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Updated the channel-override paragraph for the interaction roles and their fallbacks, noted the accent hex refusal, and added a White-label branding theme section (inline brand-slot properties on the document element, all-or-nothing validation, pre-render cached apply and BrandingThemeBridge replacement). branding-theme.ts, BrandingThemeBridge.tsx and branding-role-cascade.test.ts added as sources; branding-theme unit tests and tests/branding-theme-boot.spec.ts EXECUTED (10/10 runs). Source review is separate from executed test evidence.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -20825,7 +20832,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -20845,7 +20852,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/queries.ts",
@@ -20853,7 +20860,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/query-domains/agentAdmin.ts",
@@ -20980,13 +20987,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read to the /api/system read tier in pairing-route-scopes.ts, the SDK exports requestServiceUpdateProgress and useServiceUpdateProgressQuery, and the shared subpaths prebuilt-archive and service-launcher-protocol. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. The doc's claims still hold: one route-scope table that does not replace object-level checks, and explicit shared helper subpaths. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. No backend pattern depends on these. Classification unchanged. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): page edited only; claims corrected (branch edit): Scheduler Service no longer lists addProvider or legacy output; every manual run returns a receipt.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
-      "documentDigest": "1b78efc57356ebb65549f9d1488d01371bf47adfb7939f06229268082b5d5523",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21006,7 +21014,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/queries.ts",
@@ -21014,7 +21022,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/query-domains/agentAdmin.ts",
@@ -21144,7 +21152,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401 in runtime-http.ts, so the browser keeps its device session; prose accurate: the query/context and ApiRequestScope patterns make no claim about which status drops the session. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d responsive-action-surfaces.txt adds the Dialog geometry test (#2919); SDK adds service-update progress exports and shared package.json adds prebuilt-archive/service-launcher-protocol subpaths plus a pairing read leaf (#2881); the doc's generic Dialog/ResponsiveDialogSurface and package-boundary guidance is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. The --k-* token guidance still holds. Classification unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -23204,12 +23213,12 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
       "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
-      "documentDigest": "39945706aa08160f17fba22fc9bbb715899dd21b0661688c96ad6ebb8767a232",
+      "documentDigest": "31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e",
       "sources": [
         {
           "path": "packages/cli/src/commands/delegate.ts",
@@ -23273,7 +23282,7 @@
         },
         {
           "path": "packages/contracts/src/pull-request-provider.ts",
-          "digest": "1bc819d5161a622cd295ea95ac7a8af87fba68235d9eac2d3eecc306f4cc5b95"
+          "digest": "569c14c5c749af1ec770131b795657c124297c7e89911dc37a7889173c5cfc34"
         },
         {
           "path": "packages/contracts/src/relay-enrollment.ts",
@@ -23443,7 +23452,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) makes muse-serve-session publish request.resolved (acknowledgement 'engine') when Station records a decision, and Muse's approval/resolved now publishes request.delivery acknowledged with engineStatus. It also adds the ApprovalAcknowledgement and RequestDeliveryEvent contracts and adds lastDecision and earlierUnacknowledgedDecisions to DelegatedTaskSnapshot and to the CLI status formatter. Corrected the Muse serve sentence that said approvals are 'resolved from Muse's own approval/resolved': a decision Station records now resolves on record and is acknowledged through request.delivery, and only requests Muse closes before Station decides still resolve from approval/resolved. The expiry, stall-watchdog and supervision/reason/transitionReason surface prose is still accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -23986,12 +23996,12 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
       "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
-      "documentDigest": "61c64931d1dfd92ef8b73f19ad92d657cf379c01687aab6380cbef7c57dc17b8",
+      "documentDigest": "a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf",
       "sources": [
         {
           "path": "docs/design/mcp-ui-host.md",
@@ -24259,7 +24269,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/layout/context.tsx",
@@ -24287,7 +24297,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/query-domains/agentAdmin.ts",
@@ -24985,7 +24995,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Added a useBrandingQuery entry: theme is unknown and unvalidated, and an error answer rejects. Checked against systemRuntime.ts (BrandingData.theme: unknown) and systemRuntimeRequests.ts (fetchBranding throws StationHttpError on non-OK and Error on success:false). main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/orchestration/orchestration.ts, covered by its notes above; this branch changed the document, packages/sdk/src/query-domains/systemRuntime.ts, packages/sdk/src/query-domains/systemRuntimeRequests.ts, src-ui/src/main.tsx, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
-        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -27029,7 +27040,7 @@
     {
       "path": "docs/user/work-board.md",
       "documentDigest": "bc2aca88d170022d9dbce1f604dcd9d6d7e52e3fa635b4e701bf49bc59efffb5",
-      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced pin identity/scope, pointer/keyboard handlers, narrow/coarse-pointer CSS, revision checks, one-snapshot Undo, cache/refresh behavior, and cleanup caller/store boundaries.",
@@ -27037,7 +27048,7 @@
       "sources": [
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/spatial-board.ts",
@@ -27083,7 +27094,8 @@
       "checks": [
         "Independent final source/wording delta accepted.",
         "Work Board/checkpoint selection: 64 tests across 5 files passed, including mounted Board, store and routes.",
-        "Reviewed evidence routing through the architecture module to preserve the public user-guide content policy."
+        "Reviewed evidence routing through the architecture module to preserve the public user-guide content policy.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -28069,7 +28081,7 @@
     {
       "path": "examples/meeting-transcription/README.md",
       "documentDigest": "06fb42eacb528cd10258b19e2edf0f7aa1ccdc267faaa8cdef40366280d20f1c",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: declared Pane/component entry, first supported voice-registry provider versus host preference, server placeholders, incremental/cumulative transcript handling, Station Agent chat handoff and lack of delivery acknowledgement, and no Knowledge record persistence. Documented a reproduced public-build containment gap.",
@@ -28105,7 +28117,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/voice/registry.ts",
@@ -28137,7 +28149,8 @@
         "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
         "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
         "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) only adds requestServiceUpdateProgress and useServiceUpdateProgressQuery to the SDK root exports. The example's SDK packaging and chat claims are unaffected; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) only adds requestServiceUpdateProgress and useServiceUpdateProgressQuery to the SDK root exports. The example's SDK packaging and chat claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -29308,7 +29321,7 @@
     },
     {
       "path": "packages/contracts/AGENTS.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to the contracts reference and requires domain-specific imports, explicit compatibility, and focused consumer checks. The prohibition on runtime helpers/parsers is normative, not a claim that the existing package contains none.",
@@ -29317,7 +29330,7 @@
       "sources": [
         {
           "path": "docs/reference/contracts.md",
-          "digest": "39945706aa08160f17fba22fc9bbb715899dd21b0661688c96ad6ebb8767a232"
+          "digest": "31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e"
         },
         {
           "path": "packages/contracts/package.json",
@@ -29332,7 +29345,8 @@
         "Full public-contract claim review imported separately; scoped instruction still routes to this owner.",
         "Integration source review through e0314c727: contracts.md only gained a note that plugin-foreground-work is published ahead of any server implementation, plus orchestration/knowledge owner links. The policy's routing to that reference and its domain-import and compatibility rules are unaffected. Source review is separate from executed test evidence.",
         "Integration source review through d9aea82e4: docs/reference/contracts.md changed only its Muse serve approval-resolution sentence (#2912 request.delivery acknowledgement). This document names neither Muse nor approval resolution, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 2ef40ae83: docs/reference/contracts.md now names the ServiceUpdateProgress system-status shape. This policy routes to that reference and duplicates none of its shape list, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through 2ef40ae83: docs/reference/contracts.md now names the ServiceUpdateProgress system-status shape. This policy routes to that reference and duplicates none of its shape list, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -29406,7 +29420,7 @@
     },
     {
       "path": "packages/sdk/AGENTS.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to the SDK reference, forbids app-internal imports by plugins, and requires both cache and waiting-caller observations for cancellation/authority races.",
@@ -29415,7 +29429,7 @@
       "sources": [
         {
           "path": "docs/reference/sdk.md",
-          "digest": "61c64931d1dfd92ef8b73f19ad92d657cf379c01687aab6380cbef7c57dc17b8"
+          "digest": "a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf"
         },
         {
           "path": "packages/sdk/package.json",
@@ -29423,7 +29437,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         }
       ],
       "checks": [
@@ -29440,7 +29454,8 @@
         "Integration source review through ed05e6f6c: docs/reference/sdk.md extended the gitMetadata consent echo to recorded proposal-staged sources. This policy only routes to that reference and duplicates none of its API prose, so it is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) rewrites the boot paragraph in docs/reference/sdk.md. fetchBootPayloadAt and seedBootPayloadGuarded are now described as coming from the SDK's internal boot module, not a published @kontourai/station-sdk/boot export, and the ambient legacy boot helper sentence is removed. The AGENTS.md routes to that reference, forbids app-internal imports by plugins and keeps its cache-plus-waiting-caller race guidance. It names no boot export, so it stays consistent. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) docs/reference/sdk.md gains one paragraph on archive/archive-service status, serviceUpdate and requestServiceUpdateProgress/useServiceUpdateProgressQuery. It auto-merged once, with no duplicate. AGENTS.md only routes to that reference and asks for public changes to be documented there, which #2881 did; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Linked sdk.md gained only the useBrandingQuery entry. Classification unchanged. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Linked sdk.md gained only the useBrandingQuery entry. Classification unchanged. Source review is separate from executed test evidence.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -29475,7 +29490,7 @@
     },
     {
       "path": "packages/sdk/README.md",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements. Follow-up: Directory-source paragraph traced through install helper and actual target-source resolver. Final wording explicitly names automatic source categories and refuses explicit/saved localhost targets.",
@@ -29520,7 +29535,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/providers.tsx",
@@ -29595,7 +29610,8 @@
         "Integration source review through d72f79b08: #2904 makes `requestJson` in core-api.ts and the SDK's `DelegationApiError` keep the envelope's `details`. tasks.ts answers the dispatch full-access refusal with the structured `fullAccessRefusal` body, and useActiveChatSessionMessaging renders a refusal card. The README does not document DelegationApiError fields or the refusal shape. Its `TaskToolResultRequestError` claims and 'a send may be queued or refused' are still true. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through abfc7a889: #2864's install.ts now also carries the preview's optional gitMetadata into the install consent. Corrected the list of fields the install command carries so it includes any gitMetadata: \"excluded\". Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery root exports. The README defers the detailed API to docs/reference/sdk.md and makes no exhaustive export claim; prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -29925,7 +29941,7 @@
     },
     {
       "path": "scripts/AGENTS.md",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
       "kind": "policy",
       "state": "classified",
       "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
@@ -29954,7 +29970,7 @@
         },
         {
           "path": "scripts/vitest-resource-manifest.mjs",
-          "digest": "f0bd2e4975bc5ab08e5ef91a3f242b7ac44e360eaeead1f48c268b97acdf50cc"
+          "digest": "9e5ec42efb02239ca3f1f122935882909c0a662c2c766d8b081800bbcf6536ee"
         }
       ],
       "checks": [
@@ -29974,7 +29990,8 @@
         "Integration source review through e0314c727: vitest-resource-manifest.mjs dropped the deleted literal-swap-gate test and classified macos-signing-identity.test.mjs and ProjectSidebarBoards.coarseGeometry.test.tsx. The rule that new child-process tests are classified there still holds, and the routed paths and scripts (owned-process.mjs, code-health-gate.mjs, verification-lanes.mjs, lint:check, verification:policy:gate, ci:fast) resolve, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) removes the deleted longrunning-fixture-child.abnormal-exit test entry from PROCESS_HEAVY_VITEST_FILES in scripts/vitest-resource-manifest.mjs; prose accurate: the rule that new child-process tests must be classified in that manifest still holds, and the file still exists. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881), 8b48e2b35 (#2914) and a290454b4 (#2919) add process-heavy entries to vitest-resource-manifest.mjs: service-launcher, tauri-context, bounded-fixture-process and the Chromium geometry tests. That is consistent with the rule that new child-process tests must be classified there; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the vitest-resource-manifest delta (documentation-freshness.test.ts classified as a bounded child-process file) and code-quality.md freshness wording; the routed rules here are unchanged."
+        "Reviewed the vitest-resource-manifest delta (documentation-freshness.test.ts classified as a bounded child-process file) and code-quality.md freshness wording; the routed rules here are unchanged.",
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {

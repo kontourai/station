@@ -128,6 +128,16 @@ export interface PullRequest {
   nativeId: string;
   mergeability: 'mergeable' | 'conflicting' | 'unknown';
 }
+/**
+ * One open pull request's source branch and whether it merges cleanly: what
+ * a conflict indicator needs, and nothing a review needs (#2937). A provider
+ * answers it with a narrow forge read, never the full pull-request list.
+ */
+export interface PullRequestBranchMergeability {
+  ref: string;
+  sourceBranch: string;
+  mergeability: PullRequest['mergeability'];
+}
 export interface PullRequestListQuery {
   state?: string;
   limit?: number;
@@ -222,6 +232,10 @@ export interface IPullRequestProvider {
     context: PullRequestRepositoryContext,
     ref: string,
   ): Promise<PullRequestResult<PullRequest>>;
+  /** The repository's open pull requests, narrowed to branch mergeability. */
+  listOpenPullRequestMergeability?(
+    context: PullRequestRepositoryContext,
+  ): Promise<PullRequestResult<PullRequestBranchMergeability[]>>;
   /** Exact owner read for declared outputs; avoids branch/base derivation. */
   getPullRequestByIdentity?(
     context: PullRequestRepositoryIdentityContext,

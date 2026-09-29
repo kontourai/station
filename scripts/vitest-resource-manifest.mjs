@@ -946,6 +946,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // development-only pseudo-locale module cannot ship, so it owns one bounded
   // child process and must not contend with ordinary UI tests.
   'src-ui/src/i18n/__tests__/LocaleContext.test.tsx',
+  // #2937: builds a disposable git checkout (fetch and push remotes differ)
+  // and resolves it through the real pull-request context resolver.
+  'src-ui/src/__tests__/SessionPullRequestConflictChip.pushurl.test.tsx',
   // station#2928: executes vite.config.ts (including its git child probe)
   // and a real Vite middleware server against a per-suite temporary cache.
   'src-ui/src/__tests__/vite-sdk-client-alias.test.ts',
