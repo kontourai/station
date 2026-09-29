@@ -234,7 +234,15 @@ export function classifyToolCallRun<P extends ToolCallLike>(
   const inProgress = calls.some((c) => c.inProgress);
   const unresolvedCount = calls.filter((c) => c.unresolved).length;
   const awaitingApprovalCount = calls.filter((c) => c.awaitingApproval).length;
-  const pending = calls.some((c) => isToolCallBatchPending(c.part));
+  // A call with no observed outcome at all (started, no terminal — the
+  // durable projection's `state: 'call'`, e.g. the open turn's running call
+  // when the transcript window renders it) cannot take the past tense
+  // either: "Ran 2 commands" claimed a command that was still running. A
+  // plain failure keeps the past tense; its badge is the disclosure.
+  const pending = calls.some(
+    (c) =>
+      isToolCallBatchPending(c.part) || (c.phase === 'unresolved' && !c.failed),
+  );
   const aggregateSummary = summarizeCalls(calls, inProgress, pending);
   // A live multi-call run updates to the current tool only when every
   // sibling is still allowed to claim flight. A proposed or unresolved

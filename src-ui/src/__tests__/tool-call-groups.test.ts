@@ -192,6 +192,35 @@ describe('classifyToolCallRun', () => {
     expect(group.summary).toBe('Ran npm run docs:check');
   });
 
+  test('a call started with no outcome yet never makes the batch read as done', () => {
+    // The projection's shape for the open turn's running call.
+    const group = classifyFirstRun([
+      toolCall({ toolCallId: 'a', toolName: 'Bash', args: { command: 'a' } }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'b' },
+        state: 'call',
+      }),
+    ]);
+    expect(group.summary).toBe('2 commands');
+  });
+
+  test('a plain failure keeps the past tense; its badge discloses it', () => {
+    const group = classifyFirstRun([
+      toolCall({ toolCallId: 'a', toolName: 'Bash', args: { command: 'a' } }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'b' },
+        state: 'error',
+        error: 'exit 1',
+      }),
+    ]);
+    expect(group.summary).toBe('Ran 2 commands');
+    expect(group.failedCount).toBe(1);
+  });
+
   test('a finished batch with a cancelled call is an inventory, not an instruction', () => {
     const group = classifyFirstRun([
       toolCall({ toolCallId: 'a', toolName: 'Bash', args: { command: 'a' } }),
