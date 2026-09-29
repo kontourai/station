@@ -258,7 +258,7 @@ describe('ComposerAttachmentStrip', () => {
         imagesRefused
       />,
     );
-    expect(screen.getByText("Not accepted here")).toBeTruthy();
+    expect(screen.getByText('Not accepted here')).toBeTruthy();
     expect(screen.queryByText('Ready')).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Remove screenshot.webp' }),
