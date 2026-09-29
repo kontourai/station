@@ -200,6 +200,36 @@ describe('SessionTranscript source', () => {
     expect(windowState.revisions.at(-1)).toBe((before ?? 0) + 1);
   });
 
+  test('a window page that stops partway through a long turn keeps the rest from the live store', () => {
+    const frames = [
+      ev({ method: 'turn.started', turnId: 'p', prompt: 'Long one' }),
+      ...Array.from({ length: 9 }, (_, i) =>
+        ev({
+          method: 'content.text-delta',
+          turnId: 'p',
+          itemId: 'p',
+          delta: `p${i + 1} `,
+        }),
+      ),
+      ev({ method: 'turn.completed', turnId: 'p', finishReason: 'stop' }),
+    ];
+    renderTranscript(false);
+    live(frames);
+    // The durable read returns only the first four frames of the turn, but
+    // reports the log head (11) as its watermark.
+    windowState.events = frames
+      .slice(0, 4)
+      .map((event, index) => ({ sequence: index + 1, event }));
+    windowState.watermark = 11;
+    renderTranscript(false);
+    const [, answer] = screen
+      .getAllByTestId('session-transcript')
+      .at(-1)!
+      .querySelectorAll('[data-testid="session-transcript-message"]');
+    expect(answer.textContent).toContain('p3');
+    expect(answer.textContent).toContain('p9');
+  });
+
   test('live frames already in the window are not rendered twice, and frames at or below its watermark are ignored', () => {
     const started = ev({ method: 'turn.started', turnId: 'w', prompt: 'Once' });
     windowState.events = [{ sequence: 5, event: started }];
