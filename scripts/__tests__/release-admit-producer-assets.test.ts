@@ -139,9 +139,7 @@ function producerLayout(tag: string, channel: 'preview' | 'stable'): Layout {
 /** Every producer-made asset release-artifacts.mjs requires for the tag. */
 function requiredProducerAssets(tag: string, channel: 'preview' | 'stable') {
   return [
-    ...releaseVariants(tag).flatMap(
-      (variant: { files: string[] }) => variant.files,
-    ),
+    ...releaseVariants(tag).flatMap((variant) => variant.files as string[]),
     'station-portable.tar.gz.sha256',
     `station-release-ring-${channel}.json`,
     'station-container-release.json',
@@ -199,6 +197,30 @@ async function runAdmitStep(layout: Layout, channel: 'preview' | 'stable') {
     admitted = undefined;
   }
   return { ...result, admitted, ws };
+}
+
+type Source = { artifact: string; directory: string };
+
+function stableSources(): Source[] {
+  return producerArtifactSources({
+    channel: 'stable',
+    iosBundleVersion: IOS_BUNDLE_VERSION,
+  });
+}
+
+/** Artifact names a job uploads with `path: release-assets`. */
+function releaseAssetUploads(job: Job | undefined): string[] {
+  const names: string[] = [];
+  const matrix = job?.strategy?.matrix?.include ?? [];
+  for (const step of job?.steps ?? []) {
+    if (!step.uses?.startsWith('actions/upload-artifact@')) continue;
+    if (step.with?.path !== 'release-assets') continue;
+    const name = String(step.with?.name);
+    if (name === expression('matrix.artifact'))
+      names.push(...matrix.map((entry) => String(entry.artifact)));
+    else names.push(name);
+  }
+  return names;
 }
 
 describe('assemble-draft producer asset admission (#2977)', () => {
@@ -309,35 +331,20 @@ describe('assemble-draft producer asset admission (#2977)', () => {
   );
 
   it('allowlists exactly the release-assets uploads of the jobs assemble-draft needs', () => {
-    const assemble = release.jobs['assemble-draft'];
-    const uploaded = new Set<string>();
-    for (const jobName of assemble?.needs ?? []) {
-      const job = release.jobs[jobName];
-      for (const step of job?.steps ?? []) {
-        if (!step.uses?.startsWith('actions/upload-artifact@')) continue;
-        if (step.with?.path !== 'release-assets') continue;
-        const name = String(step.with?.name);
-        if (name === expression('matrix.artifact'))
-          for (const entry of job?.strategy?.matrix?.include ?? [])
-            uploaded.add(String(entry.artifact));
-        else uploaded.add(name);
-      }
-    }
-    const stable = producerArtifactSources({
-      channel: 'stable',
-      iosBundleVersion: IOS_BUNDLE_VERSION,
-    });
-    const flat = stable
-      .filter((source: { directory: string }) => source.directory === '.')
-      .map((source: { artifact: string }) => source.artifact)
+    const uploaded = (release.jobs['assemble-draft']?.needs ?? [])
+      .flatMap((jobName) => releaseAssetUploads(release.jobs[jobName]))
       .sort();
-    expect(flat).toEqual([...uploaded].sort());
+    const flat = stableSources()
+      .filter((source) => source.directory === '.')
+      .map((source) => source.artifact)
+      .sort();
+    expect(flat).toEqual(uploaded);
+  });
 
+  it('reads the stable iOS device IPA from the staged TestFlight artifact', () => {
     // The iOS device IPA comes from the reusable TestFlight workflow's staged
     // multi-path upload, which keeps its `release-assets/` directory.
-    const nested = stable.filter(
-      (source: { directory: string }) => source.directory !== '.',
-    );
+    const nested = stableSources().filter((source) => source.directory !== '.');
     expect(nested).toEqual([
       {
         artifact: `station-stable-ios-staged-${IOS_BUNDLE_VERSION}`,
@@ -345,7 +352,7 @@ describe('assemble-draft producer asset admission (#2977)', () => {
       },
     ]);
     const iosDevice = release.jobs['ios-device'];
-    expect(assemble?.needs).toContain('ios-device');
+    expect(release.jobs['assemble-draft']?.needs).toContain('ios-device');
     expect(iosDevice?.uses).toBe('./.github/workflows/testflight-delivery.yml');
     expect(iosDevice?.with?.bundle_version).toBe(
       expression('needs.preflight.outputs.ios_bundle_version'),
