@@ -4958,7 +4958,9 @@ button.tool-call__line:hover {
 .tool-call-batch__summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  /* The single row's gap: a run that grows from one call to two keeps its
+     glyph and label where they were. */
+  gap: 6px;
   width: 100%;
   padding: 2px 4px;
   border: 0;

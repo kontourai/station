@@ -86,7 +86,7 @@ interface ToolCallDisplayProps {
   showDetails?: boolean;
 }
 
-const KIND_GLYPH: Record<
+export const KIND_GLYPH: Record<
   ToolCallKind,
   React.ComponentType<{ className?: string }>
 > = {

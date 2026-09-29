@@ -16,7 +16,10 @@ import { FilePartPreview } from './FilePartPreview';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
-import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
+import {
+  ToolCallBatchBoundary,
+  usePreloadToolCallBatch,
+} from './ToolCallBatchBoundary';
 import { TurnActivityProgress } from './TurnActivityProgress';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
@@ -157,6 +160,9 @@ export function StreamingMessageView({
   // of its calls is still `running`, so the collapsed summary never
   // claims a batch is done before it is.
   const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
+  usePreloadToolCallBatch(
+    blocks.some((block) => block.type === 'tool-call-run'),
+  );
   useEffect(() => {
     // The numeric revision is intentionally read here: it is the O(1)
     // dependency that replaces rebuilding the complete transcript string.
