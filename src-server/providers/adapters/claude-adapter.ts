@@ -112,6 +112,8 @@ import {
 import {
   type ClaudeActiveTask,
   type ClaudeMessageState,
+  claudeAskFlags,
+  claudeSandboxNetworkTitle,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   reportClaudePermissionMode,
@@ -2746,12 +2748,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       }),
       canUseTool: async (toolName, toolInput, options) => {
         const record = this.requireSession(input.threadId);
+        // #2932: the ask flags a later Agent SDK forwards (0.3.284); the
+        // pinned 0.3.261 drops them, so they are read only when present.
+        const askFlags = claudeAskFlags(options);
         const request: ToolRequestGrantInput = {
           toolName,
           suggestions: options.suggestions,
           blockedPath: options.blockedPath,
           matchedAskRule: options.matchedAskRule,
           permissionMode: record.currentPermissionMode,
+          toolInput,
+          decisionReason: options.decisionReason,
+          ...askFlags,
         };
         // Fix (external autoApprove parity): match Station's own
         // engine — which honors the session agent's
@@ -2767,6 +2775,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // that reaches beyond it (a path outside the session's directories,
         // a directory widening, a rule-forced ask, a read or edit safety
         // check) or a plan exit: those always reach a person, even for `*`.
+        // #2932 adds a sandbox override, a sandbox network-host ask, the
+        // engine's literal escalation reasons and its ask flags.
         if (
           toolRequestIsPlainCall(request) &&
           isAutoApprovedExternalTool(
@@ -2789,6 +2799,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // #2915: the grant covers calls to the tool, never a request that
         // reaches beyond it (a path outside the session's directories, a
         // directory widening, a rule-forced ask): that one always prompts.
+        // #2932: nor a sandbox network ask, whose grant is 'none': the
+        // engine remembers each allowed host itself, so each new host asks.
         const sessionGrant = toolRequestSessionGrant(request);
         if (record.approvedTools.has(toolName) && sessionGrant === 'tool') {
           return { behavior: 'allow', updatedInput: toolInput };
@@ -2815,7 +2827,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           requestId,
           method: 'request.opened',
           requestType: 'approval',
-          title: options.title ?? `Allow ${toolName}`,
+          title:
+            options.title ??
+            claudeSandboxNetworkTitle(toolName, toolInput) ??
+            `Allow ${toolName}`,
           description: options.description,
           payload: {
             toolName,
@@ -2833,6 +2848,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             ...(options.matchedAskRule
               ? { matchedAskRule: options.matchedAskRule }
               : {}),
+            // #2932: the escalation signals the grant reads besides the
+            // input; the raw reason text, never rendered by the surfaces.
+            ...(options.decisionReason !== undefined
+              ? { decisionReason: options.decisionReason }
+              : {}),
+            ...askFlags,
             ...(record.currentPermissionMode
               ? { permissionMode: record.currentPermissionMode }
               : {}),

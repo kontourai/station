@@ -7,6 +7,7 @@ import type {
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
+import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
@@ -1498,6 +1499,70 @@ export function withdrawnSubagentPermissionResult(): PermissionResult {
     message:
       'The permission request was withdrawn before it was answered. Request it again if the call is still needed.',
   };
+}
+
+/**
+ * #2932: the ask flags the Claude CLI sends on `can_use_tool`
+ * (`suppress_always_allow_rule`, `default_to_no`,
+ * `requires_user_interaction`). Agent SDK 0.3.261, the pinned one, does not
+ * forward them to `canUseTool`; 0.3.284 does, under these names. Each is
+ * copied only when it is `true`, so a later SDK bump is read with no change
+ * here and the request payload stays as it was until then.
+ */
+export function claudeAskFlags(options: object): {
+  suppressAlwaysAllowRule?: true;
+  defaultToNo?: true;
+  requiresUserInteraction?: true;
+} {
+  const record = options as Record<string, unknown>;
+  return {
+    ...(record.suppressAlwaysAllowRule === true
+      ? { suppressAlwaysAllowRule: true }
+      : {}),
+    ...(record.defaultToNo === true ? { defaultToNo: true } : {}),
+    ...(record.requiresUserInteraction === true
+      ? { requiresUserInteraction: true }
+      : {}),
+  };
+}
+
+/** Claude Code's sandbox network-access ask; its input is `{host}`. */
+export const CLAUDE_SANDBOX_NETWORK_TOOL = 'SandboxNetworkAccess';
+/**
+ * Room for the host in a network title. A longer host keeps its end, where
+ * the registrable domain is, behind a leading "…" (#2911's Codex bound).
+ */
+const MAX_NETWORK_TITLE_HOST_LENGTH = 120;
+/**
+ * An ASCII host: dot-separated labels of letters, digits, hyphen and
+ * underscore (IPv4 and punycode included), or a bracketed IPv6 address.
+ * Nothing in it can be invisible or pass for the title's own words.
+ */
+const NETWORK_TITLE_HOST_SYNTAX =
+  /^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.?)$/;
+
+/**
+ * #2932: the title of a sandbox network ask, which the engine sends with no
+ * title of its own: "Allow network access to <host>", so every surface names
+ * the host being allowed. The host is engine-supplied text: it is shown only
+ * when it is a plain ASCII host (cut from the left past 120 code points),
+ * and otherwise as "an unrecognised host". Undefined for any other tool.
+ */
+export function claudeSandboxNetworkTitle(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+): string | undefined {
+  if (toolName !== CLAUDE_SANDBOX_NETWORK_TOOL) return undefined;
+  const raw = typeof toolInput.host === 'string' ? toolInput.host : '';
+  const host = sanitizeUntrustedDisplayText(raw, Number.POSITIVE_INFINITY);
+  if (!host) return 'Allow network access to an unnamed host';
+  if (!NETWORK_TITLE_HOST_SYNTAX.test(host))
+    return 'Allow network access to an unrecognised host';
+  const shown =
+    host.length <= MAX_NETWORK_TITLE_HOST_LENGTH
+      ? host
+      : `\u2026${host.slice(host.length - (MAX_NETWORK_TITLE_HOST_LENGTH - 1))}`;
+  return `Allow network access to ${shown}`;
 }
 
 /**
