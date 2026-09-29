@@ -20,13 +20,18 @@ export interface CodingStackLocation {
  * Which page the URL names. There is no page parameter of its own: a drill-in
  * IS the pane host's selection (`?pane=` + `?paneScope=`, a history entry the
  * host already writes), and the Chat page is its absence. A `?pane=` for
- * another host's scope, or for a pane this host no longer holds, is the Chat
- * page too — the URL cannot strand the reader on a page with nothing on it.
+ * another host's scope is the Chat page too, and so is any `?pane=` when the
+ * layout has no pane host at all (`instances` empty) — the URL cannot strand
+ * the reader on a page with nothing on it.
  *
- * `instances` is the host's live pane set when known. Before the host has
- * reported one (it reports only once it holds its persistence lease), the URL
- * is trusted, so a reload on a pane the host is still restoring (a File
- * Preview) lands on that pane instead of flashing the Chat page.
+ * A pane id the host's live set does not (yet) list is still a drill-in. The
+ * host reports its set only after it commits, so a pane it has just opened —
+ * a File Preview a click in Files opened — is named in the URL a render
+ * before it is listed; treating that render as the Chat page flashed the
+ * conversation and let the Chat page's deep-link consumer open the same file
+ * a second time. A pane the host closed is renamed by the host itself (its
+ * successor, `navigationSelection="explicit"`), and one it never held shows
+ * the host's own selection under this drill-in.
  */
 export function resolveCodingStackLocation(
   scope: WorkspacePaneHostScope,
@@ -36,7 +41,7 @@ export function resolveCodingStackLocation(
 ): CodingStackLocation {
   if (!pane || paneScope !== workspacePaneHostScopeKey(scope))
     return { page: 'chat', paneId: null };
-  if (instances && !instances.some((instance) => instance.instanceId === pane))
+  if (instances && instances.length === 0)
     return { page: 'chat', paneId: null };
   return { page: 'drill-in', paneId: pane };
 }

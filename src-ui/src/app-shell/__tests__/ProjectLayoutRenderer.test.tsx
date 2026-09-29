@@ -32,11 +32,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
 import { flushSync } from 'react-dom';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { navigationStore } from '../../contexts/navigation-store';
 import { createBrowserPreviewPaneInstance } from '../../workspace-panes/browserPreviewPaneInstance';
 import { writeBrowserPreviewPaneState } from '../../workspace-panes/browserPreviewPaneStateStorage';
 import { createFilePreviewPaneInstance } from '../../workspace-panes/filePreviewPaneInstance';
 import { writeFilePreviewPaneState } from '../../workspace-panes/filePreviewPaneStateStorage';
+import { workspacePaneHostScopeKey } from '../../workspace-panes/workspacePaneHostNavigation';
 import { WORKSPACE_PANE_OPENED } from '../../workspace-panes/workspacePaneHostOpenOutcome';
 import { WorkspacePaneHostRuntime } from '../../workspace-panes/workspacePaneHostRuntime';
 
@@ -404,7 +406,27 @@ import {
   resolveBuiltinCodingPanePopOut,
 } from '../ProjectLayoutRenderer';
 
+/**
+ * Drill the Coding stack into one of the host's panes, as its Views list
+ * does: the host's panes render only once the reader has drilled in.
+ */
+function drillIntoHostPane(instanceId?: string) {
+  const document = hostMock.mock.lastCall?.[0].document as {
+    instances: { instanceId: string }[];
+    scope: Parameters<typeof workspacePaneHostScopeKey>[0];
+  };
+  act(() =>
+    navigationStore.setActiveWorkspacePane(
+      instanceId ?? document.instances[0]!.instanceId,
+      workspacePaneHostScopeKey(document.scope),
+    ),
+  );
+}
+
 describe('ProjectLayoutRenderer', () => {
+  afterEach(() => {
+    navigationStore.navigate('/', { pane: null, paneScope: null });
+  });
   test('keeps a catalog-missing Coding workspace unavailable instead of mounting another shell', () => {
     catalogMock.mockReturnValue({ entries: [] });
     layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
@@ -956,6 +978,7 @@ describe('ProjectLayoutRenderer', () => {
       <ProjectLayoutRenderer projectSlug="kontour-ai" layoutSlug="coding" />,
     );
 
+    drillIntoHostPane();
     expect(screen.getByText(/Hosted 3008a697/)).toBeTruthy();
     // Six panes: the Coding occurrence is the Chat page, not a pane.
     expect(screen.getByText(/instances 6/)).toBeTruthy();
@@ -964,6 +987,54 @@ describe('ProjectLayoutRenderer', () => {
       screen.getByText(/Choose a Git repository before opening this pane/),
     ).toBeTruthy();
     expect(screen.getByText(/Next: Select Git repository/)).toBeTruthy();
+  });
+
+  test('renders no pane behind the Chat page until the reader drills in, then keeps it', () => {
+    const coding = paneAdaptationFromLayoutTab(
+      {
+        id: 'coding',
+        label: 'Coding',
+        component: { kind: 'builtin-component', name: 'coding' },
+      },
+      {
+        layoutSlug: 'coding',
+        instanceScope: 'project:project-uuid:source:builtin:coding',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: { projectId: 'project-uuid', sourceId: 'builtin:coding' },
+      },
+    )!;
+    catalogMock.mockReturnValue({
+      projectId: 'project-uuid',
+      projectSlug: 'project-route',
+      entries: [
+        {
+          instance: coding.instance,
+          availability: { state: 'available' },
+          descriptor: coding.descriptor,
+        },
+        {
+          instance: createWorkspaceCodingDiffPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+        },
+      ],
+    });
+    mobileMock.mockReturnValue(false);
+    layoutQueryMock.mockReturnValue({
+      data: { type: 'coding', config: { workingDirectory: '/repo/workspace' } },
+    });
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="coding" />,
+    );
+    expect(screen.getByText(/instances 1/)).toBeTruthy();
+    expect(screen.queryByText('Diff pane /repo/workspace')).toBeNull();
+
+    drillIntoHostPane();
+    expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
+
+    // Back on the Chat page, the pane stays mounted (hidden) with its state.
+    act(() => navigationStore.navigate('/', { pane: null, paneScope: null }));
+    expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
   });
 
   test('hosts exact builtin panels with the selected layout identity', () => {
@@ -1147,11 +1218,21 @@ describe('ProjectLayoutRenderer', () => {
         />,
       ),
     );
+    drillIntoHostPane();
     expect(screen.getByText(/Hosted project-uuid/)).toBeTruthy();
     // Six panes: the Coding occurrence is the Chat page, not a pane.
     expect(screen.getByText(/instances 6/)).toBeTruthy();
     expect(screen.queryByText('Coding chat pane')).toBeNull();
     expect(screen.getByTestId('coding-center-chat')).toBeTruthy();
+    // The dock's Chat, in the centre: the dock's conversation scope, and no
+    // maximize chord for a page that has nothing to maximize.
+    expect(chatWorkspacePaneMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        placement: 'fullscreen',
+        conversationScope: 'ambient',
+        ownsDockShortcuts: false,
+      }),
+    );
     const label = hostMock.mock.lastCall?.[0].presentationLabel;
     expect(label(coding.instance)).toBe('Coding');
     expect(
@@ -1802,6 +1883,7 @@ describe('ProjectLayoutRenderer', () => {
         ],
       });
     });
+    drillIntoHostPane(WORKSPACE_DEVICE_PANE_INSTANCE.instanceId);
     const hostProps = hostMock.mock.lastCall?.[0];
     const slot = within(
       render(<>{hostProps.renderPane(WORKSPACE_DEVICE_PANE_INSTANCE)}</>)

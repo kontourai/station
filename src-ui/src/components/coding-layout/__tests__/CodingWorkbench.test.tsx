@@ -12,7 +12,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { requestCenterChatPage } from '../../../app-shell/chat-placement';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
+import type { WorkspacePaneHostOpenAction } from '../../../workspace-panes/WorkspacePaneHostOpenContext';
 import { workspacePaneHostScopeKey } from '../../../workspace-panes/workspacePaneHostNavigation';
+import { WORKSPACE_PANE_OPENED } from '../../../workspace-panes/workspacePaneHostOpenOutcome';
 import { CodingWorkbench } from '../CodingWorkbench';
 import {
   resolveCodingStackLocation,
@@ -27,16 +29,17 @@ const harness = vi.hoisted(() => ({
     { key: string; modifiers: string[]; handler: () => void }
   >(),
   showSurface: vi.fn(),
+  chatProps: null as null | Record<string, unknown>,
 }));
 
 // Station's one Chat controller is its own subject; here it is the page's
 // occupant, with the composer textarea the stack focuses on request.
 vi.mock('../../chat-dock/ChatDock', () => ({
-  ChatWorkspacePane: ({
-    onPresentationTitleChange,
-  }: {
+  ChatWorkspacePane: (props: {
     onPresentationTitleChange?: (title: string) => void;
   }) => {
+    const { onPresentationTitleChange } = props;
+    harness.chatProps = props;
     useEffect(() => {
       onPresentationTitleChange?.(harness.chatTitle);
     }, [onPresentationTitleChange]);
@@ -92,7 +95,13 @@ const document = createWorkspacePaneHostBaselineDocument(
 const label = (instance: WorkspacePaneInstance) =>
   instance.instanceId === files.instanceId ? 'Files' : 'Diff';
 
-function Stack({ centerChat = true }: { centerChat?: boolean }) {
+function Stack({
+  centerChat = true,
+  hostOpen = null,
+}: {
+  centerChat?: boolean;
+  hostOpen?: WorkspacePaneHostOpenAction | null;
+}) {
   const selection = useCodingStackSelection();
   const location = resolveCodingStackLocation(
     scope,
@@ -104,14 +113,13 @@ function Stack({ centerChat = true }: { centerChat?: boolean }) {
     <CodingWorkbench
       projectId="project-uuid"
       projectSlug="demo"
-      layoutSlug="coding"
       centerChat={centerChat}
       location={location}
       scope={scope}
       instances={instances}
       hostDocument={() => document}
       paneLabel={label}
-      hostOpen={null}
+      hostOpen={hostOpen}
       onOpenCatalog={vi.fn()}
     >
       <div data-testid="pane-host">pane host</div>
@@ -119,7 +127,10 @@ function Stack({ centerChat = true }: { centerChat?: boolean }) {
   );
 }
 
-function renderStack(props?: { centerChat?: boolean }) {
+function renderStack(props?: {
+  centerChat?: boolean;
+  hostOpen?: WorkspacePaneHostOpenAction | null;
+}) {
   return render(
     <NavigationProvider>
       <Stack {...props} />
@@ -204,6 +215,9 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     );
     expect(drillInPage().getAttribute('data-active')).toBe('true');
     expect(drillInPage().getAttribute('data-enter')).toBe('push');
+    // Hidden behind the pane, the conversation is not in the foreground:
+    // its toasts must reach the reader.
+    expect(harness.chatProps).toMatchObject({ onScreen: false });
     expect(chatPage().hasAttribute('inert')).toBe(true);
     expect(crumbs()).toEqual([harness.chatTitle, 'Diff']);
     // The conversation stays mounted behind the pane (its draft, its scroll).
@@ -218,6 +232,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     expect(navigationStore.getHistoryIndex()).toBe(chatIndex);
     expect(chatPage().getAttribute('data-active')).toBe('true');
     expect(chatPage().getAttribute('data-enter')).toBe('pop');
+    expect(harness.chatProps).toMatchObject({ onScreen: true });
     expect(crumbs()).toEqual([harness.chatTitle]);
     expect(forwardButton().disabled).toBe(false);
 
@@ -313,15 +328,18 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     }
   });
 
-  test('a pane URL for another host, or for a pane this host does not hold, is the Chat page', () => {
+  test('a pane URL for another host, or for a layout with no pane host, is the Chat page', () => {
     expect(
       resolveCodingStackLocation(scope, instances, diff.instanceId, 'other'),
     ).toEqual({ page: 'chat', paneId: null });
     expect(
-      resolveCodingStackLocation(scope, instances, 'gone', scopeKey),
+      resolveCodingStackLocation(scope, [], diff.instanceId, scopeKey),
     ).toEqual({ page: 'chat', paneId: null });
-    // Before the host reports its live set, the URL is trusted (a reload on a
-    // pane still being restored).
+    // A pane the host has opened but not yet reported (a File Preview a click
+    // just opened) is the drill-in it names, not a flash of the Chat page.
+    expect(
+      resolveCodingStackLocation(scope, instances, 'just-opened', scopeKey),
+    ).toEqual({ page: 'drill-in', paneId: 'just-opened' });
     expect(
       resolveCodingStackLocation(scope, undefined, 'restoring', scopeKey),
     ).toEqual({ page: 'drill-in', paneId: 'restoring' });
@@ -341,5 +359,34 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
 
     await drillInto('Files');
     expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+  });
+
+  test('a File Preview deep link opens from the Chat page, and not again from a drill-in that wrote it', async () => {
+    const open = vi.fn(() => WORKSPACE_PANE_OPENED);
+    // A deep link landing on the Chat page.
+    navigationStore.navigate(ROUTE, {
+      previewPath: 'src/app.ts',
+      previewLineStart: null,
+      previewLineEnd: null,
+    });
+    const view = renderStack({ hostOpen: { open } });
+    await act(async () => undefined);
+    expect(open).toHaveBeenCalledOnce();
+    expect(new URLSearchParams(window.location.search).has('previewPath')).toBe(
+      false,
+    );
+    view.unmount();
+
+    // The Files pane on a drill-in writes the same intent for its own row
+    // and opens its preview itself.
+    open.mockClear();
+    navigationStore.navigate(ROUTE, {
+      pane: files.instanceId,
+      paneScope: scopeKey,
+      previewPath: 'src/app.ts',
+    });
+    renderStack({ hostOpen: { open } });
+    await act(async () => undefined);
+    expect(open).not.toHaveBeenCalled();
   });
 });

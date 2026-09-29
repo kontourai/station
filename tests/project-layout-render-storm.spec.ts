@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { selectCodingPane } from './helpers/coding-stack';
 import {
   dismissSetupLauncher,
   seedActiveChats,
@@ -95,8 +96,12 @@ test.describe('Project layout render storm', () => {
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
     await dismissSetupLauncher(page);
 
-    // The detector only means something if the surface it detects is mounted.
+    // The detector only means something if the surface it detects is mounted:
+    // the pane host behind a drill-in, with the conversation kept mounted
+    // (hidden) on the Chat page beside it (#928 coding stack).
+    await selectCodingPane(page, 'Files');
     await expect(page.locator('.workspace-pane-host')).toBeVisible();
+    await expect(page.locator('#chat-workspace-pane')).toHaveCount(1);
     await expect(page.locator('.file-tree-panel__search-input')).toHaveCount(1);
 
     const records = await sampleSteadyStateMutations(page);
@@ -120,7 +125,10 @@ test.describe('Project layout render storm', () => {
       await page.goto('/projects/dev/layouts/code?chat=conv-1');
       await dismissSetupLauncher(page);
 
-      await expect(page.locator('.workspace-pane-host')).toBeVisible();
+      // A phone lands on the Coding stack's Chat page, which is its
+      // (maximized) dock; the pane host is mounted behind it.
+      await expect(page.locator('#chat-dock')).toBeVisible();
+      await expect(page.locator('.workspace-pane-host')).toHaveCount(1);
 
       const records = await sampleSteadyStateMutations(page);
       console.log(

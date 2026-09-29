@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { selectCodingPane } from './helpers/coding-stack';
 import { contrastRatio } from './helpers/color-contrast';
 import {
   emitMockOrchestrationEvent,
@@ -152,13 +153,7 @@ async function seedCommonRoutes(page: Page, opts: { withChat?: boolean } = {}) {
   );
 }
 
-async function selectWorkspacePane(page: Page, tabName: string) {
-  const tab = page
-    .getByRole('region', { name: 'Workspace panes', exact: true })
-    .getByRole('tab', { name: tabName, exact: true });
-  await tab.click();
-  await expect(tab).toHaveAttribute('aria-selected', 'true');
-}
+const selectWorkspacePane = selectCodingPane;
 
 test.describe('Coding Layout Inspector — a tool configured', () => {
   test.beforeEach(async ({ page }) => {
@@ -197,11 +192,14 @@ test.describe('Coding Layout Inspector — a tool configured', () => {
   test('switches between inspector panes without duplicating either surface', async ({
     page,
   }) => {
+    // The layout lands on the conversation; no pane is drilled into yet,
+    // and the Coding occurrence is the Chat page rather than a tab.
     await expect(
-      page
-        .getByRole('region', { name: 'Workspace panes', exact: true })
-        .getByRole('tab', { name: 'Coding', exact: true }),
-    ).toHaveAttribute('aria-selected', 'true');
+      page.getByRole('region', { name: 'Chat', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('tab', { name: 'Coding', exact: true }),
+    ).toHaveCount(0);
     await selectWorkspacePane(page, 'Plan');
     await expect(page.locator('.workflow-plan-panel')).toBeVisible();
     await selectWorkspacePane(page, 'Readiness');
@@ -339,8 +337,9 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
       name: 'Workspace panes',
       exact: true,
     });
-    await expect(surfaces).toBeVisible();
+    // A phone lands on the Chat page, which is its maximized dock.
     const dock = page.locator('#chat-dock');
+    await expect(dock).toBeVisible();
     if (
       await dock.evaluate((element) =>
         element.classList.contains('is-maximized'),
@@ -353,23 +352,16 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
         .click();
       await expect(dock).not.toHaveClass(/is-maximized/);
     }
-    const work = surfaces.getByRole('tab', {
-      name: 'Coding',
-      exact: true,
-    });
-    await expect(work).toHaveAttribute('aria-selected', 'true');
+    await selectWorkspacePane(page, 'Files');
+    await expect(surfaces).toBeVisible();
+    await expect(
+      surfaces.getByRole('tab', { name: 'Coding', exact: true }),
+    ).toHaveCount(0);
 
     for (const tab of await surfaces.getByRole('tab').all()) {
       const bounds = await tab.boundingBox();
       expect(bounds?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     }
-
-    await surfaces
-      .getByRole('tab', {
-        name: 'Files',
-        exact: true,
-      })
-      .click();
     await expect(page.getByText('README.md', { exact: true })).toBeVisible();
     const readme = page
       .getByRole('region', { name: 'File tree', exact: true })

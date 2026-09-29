@@ -1,5 +1,6 @@
 import { expect, type Locator } from '@playwright/test';
 import { monitorBrowserHealth } from './helpers/browser-health';
+import { openCodingView } from './helpers/coding-stack';
 import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
 import { test } from './helpers/fixture-audit';
 import {
@@ -196,6 +197,9 @@ test.describe('Orchestration Chat Flow', () => {
       window.localStorage.setItem(key, JSON.stringify(document));
     }, persistedKey!);
     await page.reload();
+    // The Coding layout lands on its Chat page; the restored pane is a
+    // drill-in of it (#928 coding stack).
+    await openCodingView(page, /Basis/);
     await expect(page.locator('.station-basis-pane')).toBeVisible();
     await expect(page.getByRole('dialog', { name: 'Basis' })).toHaveCount(0);
     await expect
@@ -358,6 +362,10 @@ test.describe('Orchestration Chat Flow', () => {
       page.getByRole('button', { name: 'Running ls' }),
     ).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
+    // On a phone the Coding layout's Chat is the dock again (the wide
+    // centre's Chat unmounts); the approval arrives once it is on screen.
+    await expect(page.locator('#chat-dock')).toBeVisible();
+    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {
         provider: 'codex',
@@ -835,9 +843,9 @@ test.describe('Orchestration Chat Flow', () => {
     // than overflow it with buttons squeezed into vertical letters.
     answer = 'refuse';
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(
-      '/projects/dev/layouts/code?chat=conv-1&dock=open&dockSlotPlacement=right',
-    );
+    // A route whose Chat is the dock: the Coding layout's centre owns Chat on
+    // a wide screen (#928 coding stack), so the narrow right dock is Home's.
+    await page.goto('/?chat=conv-1&dock=open&dockSlotPlacement=right');
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
     await page.addStyleTag({
       content:

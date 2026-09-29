@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
+import { selectCodingPane } from './helpers/coding-stack';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { installPluginWithConsent } from './helpers/install-plugin';
 
@@ -262,14 +263,10 @@ test.describe('direct plugin Pane SDK context', () => {
       baseURL,
     );
     await page.goto(expectedHost.href);
-    // Coding is the initial catalog-issued tab; Files is the intended placement
-    // origin, not an implicit fallback after invalid context records are lost.
-    await expect(
-      page.getByRole('tab', { name: 'Coding', exact: true }),
-    ).toBeVisible({ timeout: 20_000 });
-    await page
-      .getByRole('tab', { name: 'Files', exact: true })
-      .click({ timeout: 20_000 });
+    // The layout lands on its Chat page (#928 coding stack); Files is the
+    // intended placement origin, reached as a drill-in, not an implicit
+    // fallback after invalid context records are lost.
+    await selectCodingPane(page, 'Files');
     await page
       .getByRole('button', { name: /Pane actions for Files/i })
       .click({ timeout: 20_000 });

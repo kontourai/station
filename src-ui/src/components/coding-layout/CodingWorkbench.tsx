@@ -25,6 +25,7 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { BrowserPreviewPaneLauncher } from '../../workspace-panes/BrowserPreviewPaneLauncher';
 import { useCodingChatPositionEffects } from '../../workspace-panes/CodingChatPane';
+import { clearOpenFilePreviewIntent } from '../../workspace-panes/openFilePreviewIntent';
 import type { WorkspacePaneHostCatalogRequest } from '../../workspace-panes/WorkspacePaneHostCommands';
 import type { WorkspacePaneHostOpenAction } from '../../workspace-panes/WorkspacePaneHostOpenContext';
 import { workspacePaneHostScopeKey } from '../../workspace-panes/workspacePaneHostNavigation';
@@ -56,7 +57,6 @@ const readHistoryIndex = () => navigationStore.getHistoryIndex();
 export interface CodingWorkbenchProps {
   projectId: string;
   projectSlug: string;
-  layoutSlug: string;
   /**
    * Whether this layout's centre shows Chat (`resolveLayoutChatPlacement`'s
    * `center`). False on a bottom-only device, whose Chat is the dock: the
@@ -100,7 +100,6 @@ export interface CodingWorkbenchProps {
 export function CodingWorkbench({
   projectId,
   projectSlug,
-  layoutSlug,
   centerChat,
   location,
   scope,
@@ -129,7 +128,11 @@ export function CodingWorkbench({
   useCodingChatPositionEffects({
     projectId,
     projectSlug,
-    paneHostOpen: hostOpen,
+    // A File Preview deep link is the Chat position's to open, as it was the
+    // Coding tab's: on a drill-in the Files pane that wrote the intent has
+    // already opened its own preview, and opening it here too would open it
+    // twice.
+    paneHostOpen: page === 'chat' ? hostOpen : null,
     // A phone's Chat is the dock, maximized while the Chat page is the page.
     ownsMobileDock: page === 'chat',
   });
@@ -163,9 +166,13 @@ export function CodingWorkbench({
   const canGoBack = backIsOurs || page === 'drill-in';
   const canGoForward = forwardIsOurs;
   const goToChatPage = useCallback(() => {
+    // The Files pane keeps its selected file in the URL (a File Preview
+    // intent) for its own return trip; the Chat page must not carry it, or
+    // arriving there would open that file again.
     navigationStore.navigate(window.location.pathname, {
       pane: null,
       paneScope: null,
+      ...clearOpenFilePreviewIntent(),
     });
   }, []);
   const goBack = useCallback(() => {
@@ -366,8 +373,10 @@ export function CodingWorkbench({
           {centerChat ? (
             <ChatWorkspacePane
               placement="fullscreen"
-              projectSlug={projectSlug}
-              layoutSlug={layoutSlug}
+              // The dock's Chat, moved to the centre: the dock's scope (every
+              // conversation), not the Chat layout's Project-bound one.
+              conversationScope="ambient"
+              onScreen={page === 'chat'}
               ownsDockShortcuts={false}
               onPresentationTitleChange={setChatTitle}
             />

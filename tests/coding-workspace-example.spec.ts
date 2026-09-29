@@ -18,6 +18,7 @@ import {
   authenticatedE2EFetch,
   createAuthenticatedE2ERequest,
 } from './helpers/authenticated-request';
+import { selectCodingPane } from './helpers/coding-stack';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { test } from './helpers/fixture-audit';
 import { installPluginWithConsent } from './helpers/install-plugin';
@@ -245,7 +246,7 @@ test('coding example preserves both Panes and its authored native Agent in a rea
     }
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/projects/${slug}/layouts/coding`);
-    await page.getByRole('tab', { name: 'Files', exact: true }).click();
+    await selectCodingPane(page, 'Files');
     await page.getByRole('button', { name: /Pane actions for Files/i }).click();
     await page.getByRole('menuitem', { name: 'Open pane catalog' }).click();
     await page

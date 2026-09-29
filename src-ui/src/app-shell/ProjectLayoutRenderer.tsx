@@ -466,6 +466,15 @@ function BuiltinCodingLayoutHost({
   const centerChat =
     resolveLayoutChatPlacement({ type: 'coding' }, { bottomOnly }) === 'center';
   /**
+   * The host's panes render once the reader has drilled in during this mount,
+   * and stay mounted (hidden) after, so a pane keeps its state across the
+   * round trip. Before that nothing renders behind the Chat page: the host's
+   * remembered selection — Files on a fresh layout — would otherwise fetch
+   * on every visit to a page that never shows it, which the Coding tab this
+   * page replaced never did.
+   */
+  const [drillInVisited, setDrillInVisited] = useState(false);
+  /**
    * archive#3794: these five are host-effect dependencies
    * (`workspacePaneHostController.ts` — the availability sweep, the
    * lifecycle-context capture, and the authoritative-catalog replacement all
@@ -1133,6 +1142,8 @@ function BuiltinCodingLayoutHost({
     stackSelection.pane,
     stackSelection.paneScope,
   );
+  if (location.page === 'drill-in' && !drillInVisited) setDrillInVisited(true);
+  const renderPanes = drillInVisited || location.page === 'drill-in';
   const stackPaneLabel = (instance: WorkspacePaneInstance) =>
     presentationLabel(instance) ??
     builtinWorkspacePaneName(instance.descriptorId) ??
@@ -1141,7 +1152,6 @@ function BuiltinCodingLayoutHost({
     <CodingWorkbench
       projectId={projectId}
       projectSlug={projectSlug}
-      layoutSlug={layoutSlug}
       centerChat={centerChat}
       location={location}
       scope={hostScope}
@@ -1190,6 +1200,7 @@ function BuiltinCodingLayoutHost({
           onInstanceRemoved={onInstanceRemoved}
           presentationLabel={presentationLabel}
           renderPane={(instance, presentation) => {
+            if (!renderPanes) return null;
             // #2465: a dock-only pane (the host-global Device pane) is not
             // another Project's — it is no Project's. Say where it lives. The
             // same predicate keeps the picker from offering it.
