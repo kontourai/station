@@ -1,9 +1,9 @@
-.file-preview__header {
+.workspace-file-preview__header {
   padding: 6px 12px 4px;
   flex-shrink: 0;
   min-width: 0;
 }
-.file-preview__path {
+.workspace-file-preview__path {
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-muted);
@@ -11,18 +11,18 @@
 }
 /* Wraps rather than overflowing: at phone width four actions do not fit one
    row, and a clipped row hides actions without saying so. */
-.file-preview__actions {
+.workspace-file-preview__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 6px;
 }
-.file-preview__notice {
+.workspace-file-preview__notice {
   margin: 0 0 6px;
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
-.file-preview__goto {
+.workspace-file-preview__goto {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -30,16 +30,15 @@
   margin: 0 0 6px;
   font-size: var(--text-sm);
 }
-.file-preview__goto label {
+.workspace-file-preview__goto label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-.file-preview__goto input {
+.workspace-file-preview__goto input {
   width: 7ch;
-  min-height: 28px;
 }
-.file-preview__code {
+.workspace-file-preview__code {
   margin: 0;
   font-family: var(--font-mono, monospace);
   font-size: var(--text-sm);
@@ -51,24 +50,7 @@
   -webkit-overflow-scrolling: touch;
 }
 
-/* Touch-target floor: the (pointer: coarse) question, as the entry sheet
-   documents for every member of this family. */
-@media (pointer: coarse) {
-  .file-preview__actions .button,
-  .file-preview__goto .button,
-  .file-preview__goto input,
-  .file-preview__toolbar button,
-  .file-preview__toolbar label {
-    min-height: 44px;
-    min-width: 44px;
-  }
-  .file-preview__toolbar label {
-    display: inline-flex;
-    align-items: center;
-  }
-}
-
-.file-preview__view {
+.workspace-file-preview__view {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -76,7 +58,7 @@
   padding: 0;
   border: 0;
 }
-.file-preview__visually-hidden {
+.workspace-file-preview__visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -85,13 +67,24 @@
   white-space: nowrap;
 }
 /* The diff surface sizes to its container; give it the pane's height. */
-.file-preview__changes {
+.workspace-file-preview__changes {
   height: 100%;
   min-height: 240px;
 }
-@media (pointer: coarse) {
-  .file-preview__view .button {
-    min-height: 44px;
-    min-width: 44px;
-  }
+
+/* The 44px floor at every width, as the review pane's and code block's
+   actions hold it: these rows wrap, so the floor costs height, never
+   overflow, and needs no page-local breakpoint (mobile-css-ratchet). */
+.workspace-file-preview__actions .button,
+.workspace-file-preview__view .button,
+.workspace-file-preview__goto .button,
+.workspace-file-preview__goto input,
+.workspace-file-preview__toolbar button,
+.workspace-file-preview__toolbar label {
+  min-height: 44px;
+  min-width: 44px;
+}
+.workspace-file-preview__toolbar label {
+  display: inline-flex;
+  align-items: center;
 }

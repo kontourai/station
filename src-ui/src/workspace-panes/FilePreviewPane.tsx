@@ -544,7 +544,7 @@ function FilePreviewToolbar({
 }) {
   return (
     <div
-      className="file-preview__toolbar"
+      className="workspace-file-preview__toolbar"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -586,7 +586,7 @@ function RenderedLineCapNotice({
   const first = lines[0].number;
   const last = lines.at(-1)?.number ?? first;
   return (
-    <p role="status" className="file-preview__notice">
+    <p role="status" className="workspace-file-preview__notice">
       Showing lines {first.toLocaleString()}–{last.toLocaleString()} of{' '}
       {totalLines.toLocaleString()}. This bounded preview renders at most{' '}
       {MAX_RENDERED_LINES.toLocaleString()} lines; the rest of the file is not
@@ -632,7 +632,7 @@ function FilePreviewGoToLine({
   return (
     // noValidate: the refusal below names the rendered range; the browser's
     // own range bubble would pre-empt it with a message that does not.
-    <form className="file-preview__goto" onSubmit={submit} noValidate>
+    <form className="workspace-file-preview__goto" onSubmit={submit} noValidate>
       <label>
         Go to line
         <input
@@ -689,7 +689,7 @@ function FilePreviewSourceLines({
     <>
       <RenderedLineCapNotice lines={lines} totalLines={totalLines} />
       {syntax.status === 'plain' && (
-        <p role="status" className="file-preview__notice">
+        <p role="status" className="workspace-file-preview__notice">
           {syntax.reason}
         </p>
       )}
@@ -700,7 +700,7 @@ function FilePreviewSourceLines({
         data-file-preview-syntax={syntax.status}
       >
         <pre
-          className="file-preview__code"
+          className="workspace-file-preview__code"
           style={{ whiteSpace: wrap ? 'pre-wrap' : 'pre' }}
         >
           <code>
@@ -762,7 +762,7 @@ function MarkdownPreviewToolbar({
 }) {
   return (
     <div
-      className="file-preview__toolbar"
+      className="workspace-file-preview__toolbar"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -1065,7 +1065,7 @@ function FilePreviewChanges({
       return (
         <section
           aria-label={`${path} changes against HEAD`}
-          className="file-preview__changes"
+          className="workspace-file-preview__changes"
         >
           <LazyBoundary
             load={loadObservedDiff}
@@ -1278,15 +1278,15 @@ export function FilePreviewPane({
           completed={setCompletedRefresh}
         />
       ) : null}
-      <div className="file-preview__header">
-        <div className="file-preview__path">
+      <div className="workspace-file-preview__header">
+        <div className="workspace-file-preview__path">
           {state.projectSlug} / {state.path}
         </div>
         <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
           {fileName} ·{' '}
           {query.data?.mimeType ?? langFromFilePath(state.path) ?? 'text'}
         </div>
-        <div className="file-preview__actions">
+        <div className="workspace-file-preview__actions">
           <Button
             size="sm"
             onClick={() => {
@@ -1324,8 +1324,8 @@ export function FilePreviewPane({
         {contextNotice && <p role="status">{contextNotice}</p>}
         {query.data?.status === 'ready' &&
           ['source', 'text', 'markdown'].includes(query.data.renderKind) && (
-            <fieldset className="file-preview__view">
-              <legend className="file-preview__visually-hidden">
+            <fieldset className="workspace-file-preview__view">
+              <legend className="workspace-file-preview__visually-hidden">
                 Preview view
               </legend>
               {(['file', 'changes'] as const).map((option) => (

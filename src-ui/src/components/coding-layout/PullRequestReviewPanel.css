@@ -101,11 +101,9 @@
   align-items: center;
   cursor: pointer;
 }
-@media (pointer: coarse) {
-  .pull-request-review__checks .button {
-    min-height: 44px;
-    min-width: 44px;
-  }
+.pull-request-review__checks .button {
+  min-height: 44px;
+  min-width: 44px;
 }
 .pull-request-review__settled summary {
   min-height: 44px;
