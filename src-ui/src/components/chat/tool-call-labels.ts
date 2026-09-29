@@ -290,19 +290,22 @@ const LITERAL_ENV_ASSIGNMENT =
   /^([A-Za-z_][A-Za-z0-9_]*)=([A-Za-z0-9_@%+,.:/-]*)\s+/;
 
 /**
- * Variables that change WHAT runs or how it loads, not just how it is
- * configured. Hiding one hides the part of the command that matters
- * (`LD_PRELOAD=/tmp/evil.so ls` is not "ls").
+ * The only variables a collapsed row may drop: ones that change how output
+ * looks or how much is logged, never what runs, what it loads, where it
+ * connects or which credentials it uses. An allow-list, not a deny-list —
+ * the set of variables that change what a command does (`LD_PRELOAD`,
+ * `JAVA_TOOL_OPTIONS`, `npm_config_script_shell`, `EDITOR`, `HTTPS_PROXY`,
+ * `KUBECONFIG`, …) is open-ended, so anything not named here stays visible.
  */
-const SECURITY_RELEVANT_ENV =
-  /^(?:LD_\w*|DYLD_\w*|PATH|IFS|ENV|BASH_ENV|SHELLOPTS|BASHOPTS|PS4|PROMPT_COMMAND|NODE_OPTIONS|NODE_PATH|PYTHONPATH|PYTHONSTARTUP|PYTHONHOME|PERL5LIB|PERL5OPT|RUBYOPT|RUBYLIB|GIT_\w*|SSH_\w*|HOME|TMPDIR)$/;
+const INERT_ENV =
+  /^(?:CI|FORCE_COLOR|NO_COLOR|CLICOLOR|CLICOLOR_FORCE|NODE_ENV|DEBUG|VERBOSE|LANG|LANGUAGE|LC_[A-Z]+|TZ|TERM|COLUMNS|LINES|RUST_LOG|RUST_BACKTRACE|PYTHONUNBUFFERED|PYTHONDONTWRITEBYTECODE|STATION_DOCS_[A-Z0-9_]+)$/;
 
 /**
  * The collapsed row's form of a shell command: its first line. For a call
  * that already ran, leading environment assignments are dropped so the
  * command itself is what fits (`STATION_DOCS_FRESHNESS=scoped npm run
  * docs:check` → `npm run docs:check`) — but only when every one of them is a
- * plain literal and none is security-relevant; anything else keeps the whole
+ * plain literal of an inert variable (`INERT_ENV`); anything else keeps the whole
  * line. A call awaiting approval is never trimmed: what the user is asked to
  * allow is the whole command. The expanded row prints it verbatim.
  */
@@ -313,7 +316,7 @@ function commandTarget(command: string, trimEnv: boolean): string {
   for (;;) {
     const match = LITERAL_ENV_ASSIGNMENT.exec(rest);
     if (!match) break;
-    if (SECURITY_RELEVANT_ENV.test(match[1]!)) return truncate(line);
+    if (!INERT_ENV.test(match[1]!)) return truncate(line);
     rest = rest.slice(match[0].length);
   }
   // Something still looks like an assignment: it was not a plain literal

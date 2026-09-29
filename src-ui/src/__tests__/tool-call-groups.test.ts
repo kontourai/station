@@ -184,7 +184,8 @@ describe('classifyToolCallRun', () => {
     const group = classifyFirstRun([
       toolCall({
         toolCallId: 'a',
-        toolName: 'STATION_DOCS_FRESHNESS=scoped MODE=full npm run docs:check',
+        toolName:
+          'STATION_DOCS_FRESHNESS=scoped STATION_DOCS_MODE=full npm run docs:check',
         toolKind: 'execute',
         args: undefined,
       }),
@@ -251,13 +252,43 @@ describe('classifyToolCallRun', () => {
       ['FOO=$(rm -rf /) ls', 'Ran FOO=$(rm -rf /) ls'],
       ['A=1 FOO="x y" npm test', 'Ran A=1 FOO="x y" npm test'],
       ['A=`id` ls', 'Ran A=`id` ls'],
-      ['A=1 B=scoped npm test', 'Ran npm test'],
+      ['A=1 B=scoped npm test', 'Ran A=1 B=scoped npm test'],
+      ['CI=1 NO_COLOR=1 LC_ALL=C npm test', 'Ran npm test'],
     ])(
       'a settled %s trims only plain, harmless literals',
       (command, expected) => {
         expect(label(command, 'completed')).toBe(expected);
       },
     );
+  });
+
+  test.each([
+    'JAVA_TOOL_OPTIONS',
+    'npm_config_script_shell',
+    'EDITOR',
+    'PAGER',
+    'SHELL',
+    'CC',
+    'RUSTC_WRAPPER',
+    'DOTNET_STARTUP_HOOKS',
+    'CLASSPATH',
+    'GCONV_PATH',
+    'ZDOTDIR',
+    'HTTPS_PROXY',
+    'NODE_EXTRA_CA_CERTS',
+    'PIP_INDEX_URL',
+    'DOCKER_HOST',
+    'KUBECONFIG',
+    'AWS_PROFILE',
+    'XDG_CONFIG_HOME',
+    'BROWSER',
+  ])('a settled command never hides %s', (name) => {
+    const command = `CI=1 ${name}=/tmp/x npm test`;
+    expect(
+      classifyFirstRun([
+        toolCall({ toolCallId: 'a', toolName: 'Bash', args: { command } }),
+      ]).summary,
+    ).toBe(`Ran ${command}`);
   });
 
   test.each([
