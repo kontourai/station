@@ -58,6 +58,7 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
 } from '../adapter-shape.js';
+import { CredentialProfileEnvUnavailableError } from '../app-home/credential-profile-env.js';
 import {
   buildCliRuntimePrerequisites,
   type CliCommandResult,
@@ -134,10 +135,12 @@ interface CodexAdapterOptions {
   /**
    * App-home profile env (archive#896 wave 2, agent-engine-unification.md §6.1's
    * overlay model, channel 2) — `undefined` when the codex
-   * connection has not opted in (`config.useAppHome`) or on any resolution
-   * failure; the caller degrades to `undefined` rather than throwing.
-   * Applied at `startSession` only — model discovery deliberately keeps
-   * today's byte-identical global env (Ambiguity C).
+   * connection has not opted in (`config.useAppHome`). For a selected
+   * credential profile it is the profile's env overlay under its `CODEX_HOME`
+   * (#2966), and a failure throws `CredentialProfileEnvUnavailableError`,
+   * which `resolveAppHomeEnv` never degrades. Applied at `startSession` and
+   * quota reads only — model discovery deliberately keeps today's
+   * byte-identical global env (Ambiguity C).
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
@@ -2211,10 +2214,15 @@ export class CodexAdapter implements ProviderAdapterShape {
     try {
       return await this.options.getAppHomeEnv?.(credentialProfileRef);
     } catch (error) {
-      if (credentialProfileRef) {
-        throw new Error(
-          'Credential profile environment could not be prepared.',
-        );
+      // #2966: the resolver's typed error marks a failure AFTER a profile
+      // was selected — including the connection's configured active profile,
+      // which carries no explicit ref here. Degrading that to global would
+      // run on credentials (and routing) nobody selected.
+      if (
+        credentialProfileRef ||
+        error instanceof CredentialProfileEnvUnavailableError
+      ) {
+        throw new CredentialProfileEnvUnavailableError();
       }
       (this.options.logger ?? console).warn?.(
         `Codex app-home profile lookup failed; continuing with the global Codex config: ${errorMessage(error)}`,

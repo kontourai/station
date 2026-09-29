@@ -96,15 +96,7 @@ import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
-import {
-  claudeAppHomeEnv,
-  codexAppHomeEnv,
-  ensureAppHomeProfile,
-} from '../../providers/app-home/app-home-profiles.js';
-import {
-  ensureCredentialProfileAppHome,
-  normalizeCredentialProfileRegistry,
-} from '../../providers/app-home/credential-profile-registry.js';
+import { createCredentialProfileAppHomeEnvResolver } from '../../providers/app-home/credential-profile-env.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
@@ -117,10 +109,7 @@ import { makeUnattendedGrantResolver } from '../../services/agents/unattended-gr
 import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
-import {
-  appHomeActive,
-  connectionSpawnEnv,
-} from '../../services/connections/connection-env.js';
+import { connectionSpawnEnv } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import { readVerifiedNativePionApplicationRequest } from '../../services/connections/native-v2-pion-application-adapter.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
@@ -768,42 +757,17 @@ export class StationRuntime {
     // Legacy no-ref lookup failures degrade to the global config. An explicit
     // or configured credential profile fails closed so a successful turn can
     // never be attributed to credentials that were not actually applied.
-    getAppHomeEnv: async (credentialProfileRef) => {
-      let selectedProfileRef = credentialProfileRef;
-      try {
-        const appConfig = await this.configLoader.loadAppConfig();
-        const configuredRef = normalizeCredentialProfileRegistry(
-          appConfig.agentConnections?.claude?.credentialRecovery,
-        ).activeProfileRef;
-        const profileRef =
-          credentialProfileRef ??
-          (typeof configuredRef === 'string' ? configuredRef : undefined);
-        selectedProfileRef = profileRef;
-        if (profileRef) {
-          const { dir } = await ensureCredentialProfileAppHome(
-            'claude',
-            profileRef,
-          );
-          return claudeAppHomeEnv(dir);
-        }
-        const useAppHome = appHomeActive(
-          appConfig.agentConnections?.claude?.config,
-        );
-        if (!useAppHome) return undefined;
-        const { dir } = await ensureAppHomeProfile('claude');
-        return claudeAppHomeEnv(dir);
-      } catch (error) {
-        if (selectedProfileRef) {
-          throw new Error(
-            'Credential profile environment could not be prepared.',
-          );
-        }
+    // #2966: a selected profile's env overlay joins its home key here
+    // (`credential-profile-env.ts` owns the merge and its exclusions).
+    getAppHomeEnv: createCredentialProfileAppHomeEnvResolver({
+      engine: 'claude',
+      loadConnectionSettings: async () =>
+        (await this.configLoader.loadAppConfig()).agentConnections?.claude,
+      warn: (message) =>
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the claude app-home env; continuing with the global Claude Code config: ${errorMessage(error)}`,
-        );
-        return undefined;
-      }
-    },
+          message,
+        ),
+    }),
     // station#2072: per-connection env overrides + explicit config home
     // (`config.env`, `config.configHome`) — re-sanitized and tilde-expanded
     // by `connectionSpawnEnv`, so a hand-edited config file meets the same
@@ -874,42 +838,15 @@ export class StationRuntime {
     // getAppHomeEnv closure above; codex has no `getProvideSkills` analog
     // (skills stay claude/workspace-channel only this wave). As above,
     // selected-profile failures block the spawn instead of falling back.
-    getAppHomeEnv: async (credentialProfileRef) => {
-      let selectedProfileRef = credentialProfileRef;
-      try {
-        const appConfig = await this.configLoader.loadAppConfig();
-        const configuredRef = normalizeCredentialProfileRegistry(
-          appConfig.agentConnections?.codex?.credentialRecovery,
-        ).activeProfileRef;
-        const profileRef =
-          credentialProfileRef ??
-          (typeof configuredRef === 'string' ? configuredRef : undefined);
-        selectedProfileRef = profileRef;
-        if (profileRef) {
-          const { dir } = await ensureCredentialProfileAppHome(
-            'codex',
-            profileRef,
-          );
-          return codexAppHomeEnv(dir);
-        }
-        const useAppHome = appHomeActive(
-          appConfig.agentConnections?.codex?.config,
-        );
-        if (!useAppHome) return undefined;
-        const { dir } = await ensureAppHomeProfile('codex');
-        return codexAppHomeEnv(dir);
-      } catch (error) {
-        if (selectedProfileRef) {
-          throw new Error(
-            'Credential profile environment could not be prepared.',
-          );
-        }
+    getAppHomeEnv: createCredentialProfileAppHomeEnvResolver({
+      engine: 'codex',
+      loadConnectionSettings: async () =>
+        (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+      warn: (message) =>
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the codex app-home env; continuing with the global Codex config: ${errorMessage(error)}`,
-        );
-        return undefined;
-      }
-    },
+          message,
+        ),
+    }),
     // station#2072: codex counterpart of claudeAdapter's getConnectionEnv
     // closure above — same sanitization, same lazy capture, `CODEX_HOME`
     // as the config-home key.

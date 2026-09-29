@@ -46,12 +46,14 @@ import {
   engineIdForAdapter,
 } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import { credentialProfilesRouteAlike } from '../../providers/app-home/credential-profile-env.js';
 import type { LegacyCredentialProfileRegistryState } from '../../providers/app-home/credential-profile-registry.js';
 import {
   deleteCredentialProfile,
   normalizeCredentialProfileRegistry,
   projectCredentialProfileRegistry,
   setCredentialProfileEnrollment,
+  setCredentialProfileEnv,
   setCredentialRecoveryAutomaticPolicy,
   upsertCredentialProfile,
 } from '../../providers/app-home/credential-profile-registry.js';
@@ -2136,6 +2138,18 @@ export class ConnectionService {
     });
   }
 
+  /** Replaces a profile's non-secret env overlay; `{}` clears it. */
+  async setCredentialProfileEnv(
+    connectionId: string,
+    ref: string,
+    env: Record<string, string>,
+  ): Promise<CredentialRecoveryGroupProjection> {
+    return this.mutateCredentialRecovery(
+      connectionId,
+      (state) => setCredentialProfileEnv(state, ref, env).state,
+    );
+  }
+
   async setCredentialProfileEnrollment(
     connectionId: string,
     ref: string,
@@ -2401,9 +2415,19 @@ export class ConnectionService {
     attemptId: ReturnType<typeof randomUUID>,
   ): Promise<AutomaticCredentialProfileStageResult> {
     const state = await this.readCredentialRecoveryState(connectionId);
-    const candidateProfileRef = state.group?.enrolledProfileRefs.find(
+    const candidates = (state.group?.enrolledProfileRefs ?? []).filter(
       (ref) => ref !== state.activeProfileRef,
     );
+    // #2966: prefer the first enrolled candidate that routes like the active
+    // profile. When none does, offer the first anyway so the selector refuses
+    // it as `environment_mismatch` rather than reporting "not enrolled".
+    const profileOf = (ref: string | undefined) =>
+      state.profiles.find((profile) => profile.ref === ref);
+    const active = profileOf(state.activeProfileRef);
+    const candidateProfileRef =
+      candidates.find((ref) =>
+        credentialProfilesRouteAlike(profileOf(ref), active),
+      ) ?? candidates[0];
     const selection = selectCredentialRecoveryCandidate({
       capability:
         this.credentialRecoveryAdapter(connectionId)?.metadata.recovery,
@@ -2412,6 +2436,7 @@ export class ConnectionService {
       group: state.group,
       activeProfileRef: state.activeProfileRef,
       candidateProfileRef,
+      profiles: state.profiles,
     });
     if (selection.outcome !== 'selected')
       return { refusalReason: selection.reason };

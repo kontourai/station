@@ -11,6 +11,7 @@ import {
   chatInputSize,
   collectChatInputFileParts,
 } from '../../../../src-shared/chat-input-limits.js';
+import { validateCredentialProfileEnv } from '../../../services/connections/connection-env.js';
 import { chatInputLimitRefusals } from '../../../telemetry/metrics.js';
 
 // ACP
@@ -153,10 +154,43 @@ export const credentialProfileRefSchema = credentialProfileText('ref').refine(
 export const credentialProfileUpsertRequestSchema = z.object({
   ref: credentialProfileRefSchema,
   label: credentialProfileText('label').optional(),
+  // #2966: upsert manages ref/label only. An `env` here would otherwise be
+  // stripped silently; refuse it and name the route that owns the overlay.
+  env: z
+    .undefined({
+      errorMap: () => ({
+        message:
+          'env is not accepted here; set it with PUT /api/connections/agent/:id/credential-recovery/profiles/:ref/env (station connections profile-env)',
+      }),
+    })
+    .optional(),
 });
 
 export const credentialProfileEnrollmentRequestSchema = z.object({
   enrolled: z.boolean(),
+});
+
+// #2966: the overlay is refused whole (never trimmed) when any entry breaks
+// the profile-env rules, so the 400 names every offending variable.
+//
+// Body bound: a valid overlay holds at most 64 values of at most 32,768
+// code units each (2 MiB of value text). Compact `{"env":{...}}` JSON adds
+// 393 bytes of syntax at 64 entries plus the names, so the 64 KiB headroom
+// admits a full-cap overlay only when every value is printable ASCII that
+// needs no JSON escaping (no `"`, `\`, or control characters) and the names
+// total at most 65,143 bytes. Multi-byte or escaped value text, or pretty-
+// printed JSON, can push a near-cap overlay past the bound; it gets a 413
+// rather than being read whole. Names have no length cap of their own.
+export const CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES =
+  64 * 32 * 1024 + 64 * 1024;
+export const credentialProfileEnvRequestSchema = z.object({
+  env: z.record(z.string(), z.string()).superRefine((env, ctx) => {
+    const validation = validateCredentialProfileEnv(env);
+    if (validation.ok) return;
+    for (const message of validation.violations) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+    }
+  }),
 });
 
 export const credentialRecoveryPolicyRequestSchema = z.object({
