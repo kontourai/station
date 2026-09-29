@@ -53,3 +53,57 @@
 .pull-request-review__diff {
   flex-shrink: 0;
 }
+.pull-request-review__muted {
+  color: var(--text-muted);
+}
+.pull-request-review__checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.pull-request-review__checks li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pull-request-review__check-name {
+  flex: 1 1 12ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* The state word carries the meaning; the tone only reinforces it. */
+.pull-request-review__check-state {
+  flex: 0 0 auto;
+  min-width: 9ch;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.pull-request-review__check-state--failure {
+  color: var(--error-text);
+}
+.pull-request-review__check-state--success {
+  color: var(--success-text);
+}
+.pull-request-review__check-state--pending {
+  color: var(--warning-text);
+}
+.pull-request-review__mergeability[data-mergeability="conflicting"] {
+  color: var(--error-text);
+  font-weight: 600;
+}
+.pull-request-review__unplaced summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+@media (pointer: coarse) {
+  .pull-request-review__checks .button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
