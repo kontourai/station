@@ -10173,7 +10173,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "bbc8418a2ce5ecad41bca2d751da662788294e91",
+      "sourceRevision": "e5d86647106b4afcd2b7b0c56cdf8c6f92c9fb61",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10189,7 +10189,7 @@
         },
         {
           "path": "docs/reference/contracts.md",
-          "digest": "4d672f0564535c5b732d30a0956e8946f2dcb589f7a81de24565a33009b7d17d"
+          "digest": "31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e"
         },
         {
           "path": "packages/contracts/src/agent-identity.ts",
@@ -10455,7 +10455,8 @@
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Cites contracts/SDK reference only by link; the #2937 additions (branch-mergeability read, refetchOnWindowFocus) change no statement here.",
         "Cites the contracts reference only by link; the #2937 review round (100-row bound, sourceOwner, context head) changes no statement here.",
-        "Cites the contracts reference only by link; the #2937 delta (head owner compared only when explicit) changes no statement here."
+        "Cites the contracts reference only by link; the #2937 delta (head owner compared only when explicit) changes no statement here.",
+        "Cites the contracts reference only by link; removing the #2937 fork-owner fields changes no statement here."
       ]
     },
     {
@@ -14415,7 +14416,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "bbc8418a2ce5ecad41bca2d751da662788294e91",
+      "sourceRevision": "e5d86647106b4afcd2b7b0c56cdf8c6f92c9fb61",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14459,7 +14460,7 @@
         },
         {
           "path": "docs/reference/contracts.md",
-          "digest": "4d672f0564535c5b732d30a0956e8946f2dcb589f7a81de24565a33009b7d17d"
+          "digest": "31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e"
         },
         {
           "path": "docs/reference/sdk.md",
@@ -14507,7 +14508,8 @@
         "The documentation maintenance link remains valid after the mode wording change.",
         "Cites contracts/SDK reference only by link; the #2937 additions (branch-mergeability read, refetchOnWindowFocus) change no statement here.",
         "Cites the contracts reference only by link; the #2937 review round (100-row bound, sourceOwner, context head) changes no statement here.",
-        "Cites the contracts reference only by link; the #2937 delta (head owner compared only when explicit) changes no statement here."
+        "Cites the contracts reference only by link; the #2937 delta (head owner compared only when explicit) changes no statement here.",
+        "Cites the contracts reference only by link; removing the #2937 fork-owner fields changes no statement here."
       ]
     },
     {
@@ -23094,12 +23096,12 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "bbc8418a2ce5ecad41bca2d751da662788294e91",
+      "sourceRevision": "e5d86647106b4afcd2b7b0c56cdf8c6f92c9fb61",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
       "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
-      "documentDigest": "4d672f0564535c5b732d30a0956e8946f2dcb589f7a81de24565a33009b7d17d",
+      "documentDigest": "31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e",
       "sources": [
         {
           "path": "packages/cli/src/commands/delegate.ts",
@@ -23163,7 +23165,7 @@
         },
         {
           "path": "packages/contracts/src/pull-request-provider.ts",
-          "digest": "ec921f4058648481bad53c15f23ce6b8dfb0825f664efd9bba2ffaef70d9c666"
+          "digest": "569c14c5c749af1ec770131b795657c124297c7e89911dc37a7889173c5cfc34"
         },
         {
           "path": "packages/contracts/src/relay-enrollment.ts",
@@ -23335,7 +23337,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Added PullRequestBranchMergeability and the optional listOpenPullRequestMergeability; checked against the contract, the GitHub/GitLab adapters and the route refusal for a provider without it (#2937).",
         "Checked the added 100-row refusal, sourceOwner and PullRequestClientContext.head against the contract, the GitHub adapter and the /context route (#2937 review round).",
-        "Rechecked PullRequestClientContext.head against the /context route (branch and owner only) and the chip: an absent owner is not a push-target claim (pushurl layout, #2937 delta)."
+        "Rechecked PullRequestClientContext.head against the /context route (branch and owner only) and the chip: an absent owner is not a push-target claim (pushurl layout, #2937 delta).",
+        "Rechecked after dropping PullRequestClientContext.head and sourceOwner: the paragraph now states only ref, source branch, mergeability and the 100-row refusal, matching the contract and GitHub adapter (#2937)."
       ]
     },
     {
@@ -29162,7 +29165,7 @@
     },
     {
       "path": "packages/contracts/AGENTS.md",
-      "sourceRevision": "bbc8418a2ce5ecad41bca2d751da662788294e91",
+      "sourceRevision": "e5d86647106b4afcd2b7b0c56cdf8c6f92c9fb61",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to the contracts reference and requires domain-specific imports, explicit compatibility, and focused consumer checks. The prohibition on runtime helpers/parsers is normative, not a claim that the existing package contains none.",
@@ -29171,7 +29174,7 @@
       "sources": [
         {
           "path": "docs/reference/contracts.md",
-          "digest": "4d672f0564535c5b732d30a0956e8946f2dcb589f7a81de24565a33009b7d17d"
+          "digest": "31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e"
         },
         {
           "path": "packages/contracts/package.json",
@@ -29189,7 +29192,8 @@
         "Integration source review through 2ef40ae83: docs/reference/contracts.md now names the ServiceUpdateProgress system-status shape. This policy routes to that reference and duplicates none of its shape list, so the prose is accurate. Source review is separate from executed test evidence.",
         "Cites contracts/SDK reference only by link; the #2937 additions (branch-mergeability read, refetchOnWindowFocus) change no statement here.",
         "Cites the contracts reference only by link; the #2937 review round (100-row bound, sourceOwner, context head) changes no statement here.",
-        "Cites the contracts reference only by link; the #2937 delta (head owner compared only when explicit) changes no statement here."
+        "Cites the contracts reference only by link; the #2937 delta (head owner compared only when explicit) changes no statement here.",
+        "Cites the contracts reference only by link; removing the #2937 fork-owner fields changes no statement here."
       ]
     },
     {
