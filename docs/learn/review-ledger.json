@@ -1584,7 +1584,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1616,7 +1616,7 @@
         },
         {
           "path": "docs/reference/cli.md",
-          "digest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817"
+          "digest": "39b4a7977a7fdfc2bf85baf1ae8dfdea6e49d23a92e184b786acbb600e3664c8"
         },
         {
           "path": "install.sh",
@@ -1679,7 +1679,8 @@
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed.",
-        "#2966 delta: CLI reference gained credential-profile commands and runtime app-home resolution moved to a resolver; README makes no connections-profile or app-home claims. No change."
+        "#2966 delta: CLI reference gained credential-profile commands and runtime app-home resolution moved to a resolver; README makes no connections-profile or app-home claims. No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
@@ -2773,7 +2774,7 @@
     },
     {
       "path": "docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "design",
       "state": "classified",
       "summary": "The existing owner-decision supersession remains intact. A small current-route note explains that the one-shot migration helper requires the repository ./station launcher; the standalone CLI refuses without its injected server migration dependency. Lower flag/alias sections remain dated design history.",
@@ -2786,7 +2787,7 @@
         },
         {
           "path": "packages/cli/src/help.ts",
-          "digest": "5ca1e255931a822b2bd15f06d138c10b8246f8a8eb076d12fdfa119e197d9b4c"
+          "digest": "51456a7f2b99aac5d147edb6088dfd25c79d316910c09509d648dbd873561d97"
         },
         {
           "path": "src-server/routes/schemas/schema-definitions/content.ts",
@@ -2806,7 +2807,8 @@
         "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
         "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
         "Integration source review through d72f79b08: #2904's cli.ts change only routes describeCliError through explainFullAccessRefusal first. The migration-helper route note (repository ./station launcher; the standalone CLI refuses without the server migration dependency) is unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "#2966 delta: help.ts changed only the connections usage/detail lines; ADR concerns playbook/skills help and is unaffected. No change."
+        "#2966 delta: help.ts changed only the connections usage/detail lines; ADR concerns playbook/skills help and is unaffected. No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
@@ -3724,7 +3726,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -3776,7 +3778,7 @@
         },
         {
           "path": "docs/reference/cli.md",
-          "digest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817"
+          "digest": "39b4a7977a7fdfc2bf85baf1ae8dfdea6e49d23a92e184b786acbb600e3664c8"
         },
         {
           "path": "docs/reference/config.md",
@@ -3903,13 +3905,14 @@
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); orchestration-decomposition-map.md (branch prose edit (T7 wiring-test note)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "Re-read 'Abstraction review' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
-        "#2966 delta: checked for CLI connections, credential-profile and runtime app-home claims; none (proxy mentions are ingress). No change."
+        "#2966 delta: checked for CLI connections, credential-profile and runtime app-home claims; none (proxy mentions are ingress). No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4649,7 +4652,7 @@
         },
         {
           "path": "src-server/services/connections/connection-service.ts",
-          "digest": "d452e410c257a57b6a74e09d8b8c72870285c0fea77f0f44768a7814ae7d50eb"
+          "digest": "2850a05d2a22fa9366d2a9d721f1ebff480c3702dfed6e7689328a245974d4ae"
         },
         {
           "path": "src-server/services/connections/runtime-auth-health-monitor.ts",
@@ -5659,7 +5662,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked StationControlDispatchScope (scope decided before contacting another Station, which C2b's route refusals reinforce) and the SDK/http module rows; no claim names the removed caller-delegation route or the tool-side peer path. After merging main 91472e665, re-read main's edit here (the scheduler paragraph drops addProvider and the legacy-provider receipt wording); it names no station-control forwarding, caller-delegation or SDK body-read behaviour, so the above still holds.",
-        "#2966 delta: checked RecoveryLedger/CredentialRecoveryModule and ConnectionService sections; candidate selection criteria are not described there (connection-service stageAutomaticCredentialProfileTransition now prefers a same-overlay candidate), and no app-home spawn-env claims exist. No prose change."
+        "#2966 delta: checked RecoveryLedger/CredentialRecoveryModule and ConnectionService sections; candidate selection criteria are not described there (connection-service stageAutomaticCredentialProfileTransition now prefers a same-overlay candidate), and no app-home spawn-env claims exist. No prose change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
@@ -7151,7 +7155,7 @@
     {
       "path": "docs/design/cli-triage.md",
       "documentDigest": "b064c8f2e26b8250bf675fac1277b9674b87ce0483d62bed32072950b536887d",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed every command-design claim against CLI dispatch, source-doctor injection, authenticated diagnostics selection, artifact redaction and actual child-launch implementation. Corrected model-service sharing and terminal-output limits.",
@@ -7159,7 +7163,7 @@
       "sources": [
         {
           "path": "docs/reference/cli.md",
-          "digest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817"
+          "digest": "39b4a7977a7fdfc2bf85baf1ae8dfdea6e49d23a92e184b786acbb600e3664c8"
         },
         {
           "path": "packages/cli/src/__tests__/triage.test.ts",
@@ -7199,7 +7203,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 changes only packages/cli/src/__tests__/triage.test.ts. The invalid-remote-diagnostics rejection now runs unconditionally instead of only when this machine observed remote as unavailable. No triage product behavior changed. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the delegate decision-delivery subsection to docs/reference/cli.md, and the auto-merged cli.md is coherent. The triage design (bundle collection, agent launch flags, artifact policy) does not touch delegation decisions. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) changed only the service and upgrade sections of docs/reference/cli.md (fixed launcher, supervised update, Check for server updates). The triage command's reference text and this design's claims are untouched. Prose accurate. Source review is separate from executed test evidence.",
-        "#2966 delta: cli.md/surfaces.ts gained connections profile-env; triage design has no connections-command claims. No change."
+        "#2966 delta: cli.md/surfaces.ts gained connections profile-env; triage design has no connections-command claims. No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
@@ -7423,8 +7428,8 @@
     },
     {
       "path": "docs/design/connections-onboarding.md",
-      "documentDigest": "6e0fcf7e140e011f55842e3975b7a1edb13df45bd8ea8c73a4fc8eaaba0fac07",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "documentDigest": "10a4ddced17c22eb158c9ef4ce34a0cf40397860c8e86dfd27e94701822c2ce8",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7460,7 +7465,7 @@
         },
         {
           "path": "src-server/providers/app-home/credential-profile-registry.ts",
-          "digest": "bad8b935cbd17a6de300244d1911ab413525bd2bdd3638b5c0f6a6a0e0a733b9"
+          "digest": "3122ee3ad94ce6df625ee0f4a493afed3b1e1cde98b4cffb75f3cf6247c46d8c"
         },
         {
           "path": "src-server/providers/auth/claude-auth.ts",
@@ -7480,7 +7485,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "50a4c6b484e185b1fee200d9ac4ff9394e42dbcdbaa5bb16ae04a1f59aaea764"
+          "digest": "9dd337ab9ead12f3a6e524094cb2522255b64106012e3ce33c8fa04bba569633"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
@@ -7492,7 +7497,7 @@
         },
         {
           "path": "src-server/services/connections/connection-recovery-policy.ts",
-          "digest": "5f4391d4584a9edc34f9876d492500ec6bea6d10e32dcb283c9d771de0127634"
+          "digest": "55070ec158da460d0b2ca6d63c5e2f0f26d901672d307fde6f27a0bffc8b6caa"
         },
         {
           "path": "src-server/services/orchestration/credential-application-ledger.ts",
@@ -7536,7 +7541,7 @@
         },
         {
           "path": "packages/contracts/src/connection-recovery.ts",
-          "digest": "d35938c2191430abf9312e0a697621ad003d2e37cc1e7ff95bf8f3388925970e"
+          "digest": "5a43005204c6f3c7ea0323a5c0d8f16db1f9d253b7be3034d1a0673fe524bc4d"
         }
       ],
       "checks": [
@@ -7553,7 +7558,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "Re-read 'Design: Connections onboarding & capability passthrough' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
-        "Updated §1.2: persisted record may carry a non-secret env overlay; selected-profile failure (explicit ref or active profile, incl. invalid persisted overlay) fails closed; automatic selection refuses environment_mismatch. Re-checked §1.1 spawn-env table and adoption/discovery exclusions against claude-adapter/codex-adapter: unchanged and still accurate."
+        "Updated §1.2: persisted record may carry a non-secret env overlay; selected-profile failure (explicit ref or active profile, incl. invalid persisted overlay) fails closed; automatic selection refuses environment_mismatch. Re-checked §1.1 spawn-env table and adoption/discovery exclusions against claude-adapter/codex-adapter: unchanged and still accurate.",
+        "Updated §1.2 for heuristic wording and invalid-overlay preservation/envInvalid projection; checked against credential-profile-registry.ts profileRecord/projectProfile and connection-recovery-policy credentialProfilesRouteAlike (invalid never alike). Contract CredentialProfileRecord/CredentialProfileProjection match."
       ]
     },
     {
@@ -10641,7 +10647,7 @@
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "7d865d177cd57a733bba5caad0e3c575dcb98ae752733dc26194bba6af92ba3f",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10753,7 +10759,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "50a4c6b484e185b1fee200d9ac4ff9394e42dbcdbaa5bb16ae04a1f59aaea764"
+          "digest": "9dd337ab9ead12f3a6e524094cb2522255b64106012e3ce33c8fa04bba569633"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -10825,7 +10831,7 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "f3cb529b5f04200b5dcc3782f9ca7823491d7e3a1a097ac6d12186cce1f2688f"
+          "digest": "42c3b86c849ae4c01fcb36d98fb641dd4350601b2dcf1a9e07b38bd8fbcf4a1a"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
@@ -10971,7 +10977,8 @@
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "#2862: rewrote Theming & Colors; the only other change to this record is the added source station-tones.ts. Checked against installed @kontourai/ui 1.12.0: tokens.css defines --k-positive/--k-caution/--k-negative/--k-active/--k-neutral and --k-positive-soft/--k-caution-soft/--k-negative-soft/--k-active-soft (no neutral soft fill), and no --k-status-contrast, --k-trust-*, --k-action or --k-focus; Badge and StatusBadge take a tone and render their label; station-tones.ts is Station's domain-to-tone mapping; index.css restyles .tone-positive/caution/negative/active (positive-status-contrast.test.ts checks AA). DESIGN.md is linked upstream because 1.12.0 does not ship it. The rest of the guide is unchanged.",
         "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines.",
-        "#2966 delta: checked for connection env/app-home/credential-profile claims; none present (agent credentialProfileRef semantics unchanged). No change."
+        "#2966 delta: checked for connection env/app-home/credential-profile claims; none present (agent credentialProfileRef semantics unchanged). No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
@@ -11883,8 +11890,8 @@
     },
     {
       "path": "docs/guides/connections.md",
-      "documentDigest": "762f7999696a5ca6a1214c9c22439f4e82897569bd545b72bc26ac3259e0652c",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "documentDigest": "535b4e36a514499d17b9f0c99fe2d10ed6fe14d16c178f61658a39aea84510a8",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12052,7 +12059,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "50a4c6b484e185b1fee200d9ac4ff9394e42dbcdbaa5bb16ae04a1f59aaea764"
+          "digest": "9dd337ab9ead12f3a6e524094cb2522255b64106012e3ce33c8fa04bba569633"
         },
         {
           "path": "src-server/routes/connections/self-hosted-broker.ts",
@@ -12164,7 +12171,7 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "f3cb529b5f04200b5dcc3782f9ca7823491d7e3a1a097ac6d12186cce1f2688f"
+          "digest": "42c3b86c849ae4c01fcb36d98fb641dd4350601b2dcf1a9e07b38bd8fbcf4a1a"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
@@ -12360,7 +12367,7 @@
         },
         {
           "path": "src-server/providers/app-home/credential-profile-env.ts",
-          "digest": "592eeb3cbdb81bab980bf2ce4228830920f84e2938864986f7bdf6089a5b95b8"
+          "digest": "e6ec080e44d2e2529d57d4bfadcb2937f3563ed631a21c4ca917827a29a55cf3"
         }
       ],
       "checks": [
@@ -12404,7 +12411,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
         "Re-read 'Connections Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; pairing-route-scopes.ts drops the /station-control/caller/delegation entry; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
-        "Added the credential-profile env overlay section and checked each claim against connection-env.ts (validateCredentialProfileEnv: names, 64 entries, 32,768 code units, NUL, credential-shaped non-empty refusal, TMPDIR/CLAUDE_CONFIG_DIR/CODEX_HOME/internal names), credential-profile-env.ts (overlay under home key; fail closed), claude-adapter/codex-adapter merges (ambient < connection env < overlay < home key < TMPDIR; codex TMPDIR in spawnCodexProcess), exclusions (listModelCatalog, adoption/source affinity, readiness, credential-enrolment), connection-recovery-policy environment_mismatch, and the app-home.ts PUT route. Existing proxy-section claims unchanged."
+        "Added the credential-profile env overlay section and checked each claim against connection-env.ts (validateCredentialProfileEnv: names, 64 entries, 32,768 code units, NUL, credential-shaped non-empty refusal, TMPDIR/CLAUDE_CONFIG_DIR/CODEX_HOME/internal names), credential-profile-env.ts (overlay under home key; fail closed), claude-adapter/codex-adapter merges (ambient < connection env < overlay < home key < TMPDIR; codex TMPDIR in spawnCodexProcess), exclusions (listModelCatalog, adoption/source affinity, readiness, credential-enrolment), connection-recovery-policy environment_mismatch, and the app-home.ts PUT route. Existing proxy-section claims unchanged.",
+        "Rewrote heuristic paragraph against connection-env.ts CREDENTIAL_SHAPED_ENV_NAME/VALUE_PATTERNS (KEYS/TOKENS/SECRETS/PASSWORDS/PASSWD/CREDENTIALS/AUTH/HEADERS, (^|_)PAT, URL userinfo, authorization/api-key header, bearer/basic); added credential-usage exclusion (app-home.ts reads profile home directly); envInvalid + server-log diagnostic (credential-profile-env.ts warn with storage id and names); visibility beyond access:manage verified: GET /api/connections(/agents) and GET /config/app resolve to orchestration:read, PUT /config/app to orchestration:operate via requiredPairingScope."
       ]
     },
     {
@@ -14075,7 +14083,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14119,7 +14127,7 @@
         },
         {
           "path": "src-server/services/connections/connection-service.ts",
-          "digest": "d452e410c257a57b6a74e09d8b8c72870285c0fea77f0f44768a7814ae7d50eb"
+          "digest": "2850a05d2a22fa9366d2a9d721f1ebff480c3702dfed6e7689328a245974d4ae"
         },
         {
           "path": "tests/agents-copy-existing.spec.ts",
@@ -14249,7 +14257,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): tests/e2e-manifest.mjs adds tests/branding-theme-boot.spec.ts to the product bucket (parallel-safe, surface Shell, tier full); PR_BROWSER_SMOKE_CONTRACT and suite runner behavior are unchanged. The matrix names no Shell/theming row and claims no exhaustive coverage. Prose accurate. Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
-        "#2966 delta: connection-service changes (profile env setter, automatic selection guard) add no browser journeys; matrix unaffected. No change."
+        "#2966 delta: connection-service changes (profile env setter, automatic selection guard) add no browser journeys; matrix unaffected. No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
@@ -14594,7 +14603,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14630,11 +14639,11 @@
         },
         {
           "path": "docs/reference/api.md",
-          "digest": "12a7a3bb4a74cf251f751b13494cc9b4efd97b53bfb9a91f445e3f5a0f6632c2"
+          "digest": "9fabe502d8982ea40cd3db9a017788c9198bd3f8a9f581922139d88f79dd4ca7"
         },
         {
           "path": "docs/reference/cli.md",
-          "digest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817"
+          "digest": "39b4a7977a7fdfc2bf85baf1ae8dfdea6e49d23a92e184b786acbb600e3664c8"
         },
         {
           "path": "docs/reference/contracts.md",
@@ -14689,7 +14698,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by api.md (legacy-provider receipt sentence removed); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read 'Integrating Station into your company or project' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
-        "#2966 delta: api.md/cli.md gained the profile env route/command; this guide's profile mentions are deployment profiles, not credential profiles. No change."
+        "#2966 delta: api.md/cli.md gained the profile env route/command; this guide's profile mentions are deployment profiles, not credential profiles. No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
@@ -18389,7 +18399,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "618c04635531af10ce95cda65be2bd40e5b361f98b0fde1a8ae999b125bfb6a0",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18485,7 +18495,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "50a4c6b484e185b1fee200d9ac4ff9394e42dbcdbaa5bb16ae04a1f59aaea764"
+          "digest": "9dd337ab9ead12f3a6e524094cb2522255b64106012e3ce33c8fa04bba569633"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -18545,7 +18555,7 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "f3cb529b5f04200b5dcc3782f9ca7823491d7e3a1a097ac6d12186cce1f2688f"
+          "digest": "42c3b86c849ae4c01fcb36d98fb641dd4350601b2dcf1a9e07b38bd8fbcf4a1a"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
@@ -18685,7 +18695,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Corrected: forwarding to a saved Environment now says the tool never contacts the other Station, it names the Environment to this Station's route, and remote task listings share the bound-operator restriction (C2b added it on GET /delegations).",
-        "#2966 delta: no connection env, app-home or credential-profile claims. No change."
+        "#2966 delta: no connection env, app-home or credential-profile claims. No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
@@ -21652,7 +21663,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21676,7 +21687,7 @@
         },
         {
           "path": "src-server/services/connections/connection-service.ts",
-          "digest": "d452e410c257a57b6a74e09d8b8c72870285c0fea77f0f44768a7814ae7d50eb"
+          "digest": "2850a05d2a22fa9366d2a9d721f1ebff480c3702dfed6e7689328a245974d4ae"
         },
         {
           "path": "src-server/services/connections/connection-smoke-evidence-store.ts",
@@ -21753,7 +21764,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
         "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the captures this page cites and their evidence text are unchanged, so its claims hold.",
-        "#2966 delta: connection-service changes are the profile env setter and automatic candidate selection; smoke confidence claims unaffected. No change."
+        "#2966 delta: connection-service changes are the profile env setter and automatic candidate selection; smoke confidence claims unaffected. No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
@@ -21784,12 +21796,12 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
       "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
-      "documentDigest": "12a7a3bb4a74cf251f751b13494cc9b4efd97b53bfb9a91f445e3f5a0f6632c2",
+      "documentDigest": "9fabe502d8982ea40cd3db9a017788c9198bd3f8a9f581922139d88f79dd4ca7",
       "sources": [
         {
           "path": "packages/cli/src/commands/environment.ts",
@@ -21801,7 +21813,7 @@
         },
         {
           "path": "packages/cli/src/commands/surfaces.ts",
-          "digest": "330f32f368d624ef78ba02d126724cc6cdf571542586652f49d66e0b9f7b837b"
+          "digest": "e0317ea6452b31f6ca199a0e28deb2c23d210f6f102ac1af986ef4fbe5637255"
         },
         {
           "path": "packages/connect/src/react/DevicePairingPanel.tsx",
@@ -22161,7 +22173,7 @@
         },
         {
           "path": "src-server/routes/schemas/schema-definitions/runtime.ts",
-          "digest": "9d68b3fed7d16e2a9aab009bc63230baaab28ba4b56c3587f743925109a32ab2"
+          "digest": "6e6acb23da6fab6d13d41113c512f1f4e6a5d1c94f5a8a18d6de1d6ec03b0816"
         },
         {
           "path": "src-server/routes/schemas/schema-definitions/scheduler.ts",
@@ -22265,7 +22277,7 @@
         },
         {
           "path": "src-server/services/connections/connection-service.ts",
-          "digest": "d452e410c257a57b6a74e09d8b8c72870285c0fea77f0f44768a7814ae7d50eb"
+          "digest": "2850a05d2a22fa9366d2a9d721f1ebff480c3702dfed6e7689328a245974d4ae"
         },
         {
           "path": "src-server/services/connections/launchable-model-inventory.ts",
@@ -22495,7 +22507,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked the continuation-caller paragraph (it still rebuilds the target from the binding and forwards the model choice, now via this Station's route for a saved Environment) and the pairing-scope and deadline statements; none lists the removed credential or caller-delegation routes. After merging main 91472e665, re-read main's edits (the /api/branding theme override surface, and dropping the legacy scheduler provider sentence); neither touches the continuation-caller, pairing-scope or deadline statements checked above.",
-        "Added the PUT credential-recovery profiles/:ref/env section; checked 400 via credentialProfileEnvRequestSchema + validateCredentialProfileEnv (violation text names variables only), 404 for unknown profile/unsupported connection, 409 conflict path, response projection with profiles[].env, and access:manage via the credential-recovery prefix entry in pairing-route-scopes.ts. Other sections unaffected by surfaces.ts/connection-service delta."
+        "Added the PUT credential-recovery profiles/:ref/env section; checked 400 via credentialProfileEnvRequestSchema + validateCredentialProfileEnv (violation text names variables only), 404 for unknown profile/unsupported connection, 409 conflict path, response projection with profiles[].env, and access:manage via the credential-recovery prefix entry in pairing-route-scopes.ts. Other sections unaffected by surfaces.ts/connection-service delta.",
+        "Checked the env route section against app-home.ts (404/409 paths, maxBodyBytes CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES=2MiB+64KiB -> 413 via schema-validation readRequestText), schema heuristic list against connection-env.ts, envInvalid projection in credential-profile-registry.ts, scopes via requiredPairingScope (credential-recovery access:manage; listings and GET /config/app orchestration:read; PUT /config/app orchestration:operate), and upsert env refusal in credentialProfileUpsertRequestSchema."
       ]
     },
     {
@@ -22526,8 +22539,8 @@
     },
     {
       "path": "docs/reference/cli.md",
-      "documentDigest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "documentDigest": "39b4a7977a7fdfc2bf85baf1ae8dfdea6e49d23a92e184b786acbb600e3664c8",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22583,7 +22596,7 @@
         },
         {
           "path": "packages/cli/src/__tests__/surface-http.test.ts",
-          "digest": "f4560843bcb869c4a5d6b9d074ef89c2753b102c1091b9cad3ddaae11f8cd9ae"
+          "digest": "79a840e743ce4cc5707cf27e36ccfeb80b130c9b34694d5f1ae0a31b0a762e93"
         },
         {
           "path": "packages/cli/src/__tests__/triage.test.ts",
@@ -22695,7 +22708,7 @@
         },
         {
           "path": "packages/cli/src/commands/surfaces.ts",
-          "digest": "330f32f368d624ef78ba02d126724cc6cdf571542586652f49d66e0b9f7b837b"
+          "digest": "e0317ea6452b31f6ca199a0e28deb2c23d210f6f102ac1af986ef4fbe5637255"
         },
         {
           "path": "packages/cli/src/commands/triage.ts",
@@ -22895,7 +22908,7 @@
         },
         {
           "path": "packages/cli/src/help.ts",
-          "digest": "5ca1e255931a822b2bd15f06d138c10b8246f8a8eb076d12fdfa119e197d9b4c"
+          "digest": "51456a7f2b99aac5d147edb6088dfd25c79d316910c09509d648dbd873561d97"
         }
       ],
       "checks": [
@@ -22921,7 +22934,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) main's own edit to the service section (fixed launcher at <install root>/runtime/station-launcher.mjs, 165s TimeoutStopSec, launcher-run self-update with trial/rollback/needs-operator, install.sh handoff, Check for server updates) auto-merged cleanly into the branch's text. It is not duplicated and does not contradict the branch's tier table (packaged service status|start|stop). Main left the `upgrade` section saying the installer always stops the service, switches current and restarts it; that is wrong for a running launcher-run service now that install.sh hands off. Corrected the upgrade section: the installer only stages and asks the service to switch, the launcher trials and keeps the previous version on failure, and the old stop/switch/restart applies otherwise. Source review is separate from executed test evidence.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers.",
-        "Listed the connections credential-recovery commands (recovery, profiles, profile-upsert, profile-env, profile-delete/enroll/unenroll, recovery-policy, profile-import, profile-apply) against surfaces.ts dispatch and help.ts usage; checked profile-env PUT body and that profiles/profile-env print env while recovery does not (credentialRecoveryOutput includeEnv)."
+        "Listed the connections credential-recovery commands (recovery, profiles, profile-upsert, profile-env, profile-delete/enroll/unenroll, recovery-policy, profile-import, profile-apply) against surfaces.ts dispatch and help.ts usage; checked profile-env PUT body and that profiles/profile-env print env while recovery does not (credentialRecoveryOutput includeEnv).",
+        "Checked profile-env/profile-upsert/profiles wording against surfaces.ts credentialRecoveryOutput (env + envInvalid names under includeEnv; recovery excludes both), help.ts detail line, and the upsert schema refusing env."
       ]
     },
     {
@@ -28696,7 +28710,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28792,7 +28806,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "50a4c6b484e185b1fee200d9ac4ff9394e42dbcdbaa5bb16ae04a1f59aaea764"
+          "digest": "9dd337ab9ead12f3a6e524094cb2522255b64106012e3ce33c8fa04bba569633"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -28852,7 +28866,7 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "f3cb529b5f04200b5dcc3782f9ca7823491d7e3a1a097ac6d12186cce1f2688f"
+          "digest": "42c3b86c849ae4c01fcb36d98fb641dd4350601b2dcf1a9e07b38bd8fbcf4a1a"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
@@ -28992,7 +29006,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Re-read 'Self-Configuring Agent Example' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
-        "#2966 delta: no connection env, app-home or credential-profile claims. No change."
+        "#2966 delta: no connection env, app-home or credential-profile claims. No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {
@@ -29431,7 +29446,7 @@
     {
       "path": "packages/cli/README.md",
       "documentDigest": "844966cbd66882d8e5ea0cf80fc00caed4f10183e6600ec8f77fcd3d9b268cc5",
-      "sourceRevision": "fa9b3abd349e94507635efd5eaa719b8d28280e7",
+      "sourceRevision": "13d13268fd068296aeca76841a5dec940c49391d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete package README against distribution/CLI reference and actual setup, target selection and triage callers. Corrected hosted availability implication, model-service sharing, terminal-output redaction limits and Operate stream authentication.",
@@ -29439,7 +29454,7 @@
       "sources": [
         {
           "path": "docs/reference/cli.md",
-          "digest": "b877416d8ee37b26eb0197100cbe233976d70e23519cb385f3739d7d23bab817"
+          "digest": "39b4a7977a7fdfc2bf85baf1ae8dfdea6e49d23a92e184b786acbb600e3664c8"
         },
         {
           "path": "packages/cli/bundle-externals.mjs",
@@ -29522,7 +29537,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c added the 'Recorded versus acknowledged decisions' section to cli.md. The README's links to cli.md and its claims about timeouts, streams and published-CLI boundaries are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) extended the service and upgrade sections of docs/reference/cli.md (fixed launcher, stage-and-handoff upgrade, client-started update). The merged reference is coherent. The README's claims still hold: packaged service status|start|stop, and a prebuilt archive's own lifecycle CLI installing a service and running upgrade. Prose accurate. Source review is separate from executed test evidence.",
         "Re-read '@kontourai/station-cli' against C2b: environment.ts changes only a comment naming the forwarder. The document makes no claim about those behaviours, so its statements still hold.",
-        "#2966 delta: new connections profile-env command documented in docs/reference/cli.md; this README does not enumerate connections actions (its profiles.json text describes saved Stations, unrelated). No change."
+        "#2966 delta: new connections profile-env command documented in docs/reference/cli.md; this README does not enumerate connections actions (its profiles.json text describes saved Stations, unrelated). No change.",
+        "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change."
       ]
     },
     {

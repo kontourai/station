@@ -217,7 +217,8 @@ failure mode instead of an adapter-level design choice.
 Credential profiles extend the app-home boundary without turning it into a second
 credential vault. The persisted connection record carries only an opaque profile `ref`,
 an optional **management-only** label, an optional non-secret env overlay (#2966;
-credential-shaped names may only hold an empty masking value — see the
+credential-shaped names and values are refused by a heuristic, except an empty
+masking value — see the
 [connections guide](../guides/connections.md#give-a-credential-profile-its-own-routing)),
 explicit group/enrollment metadata, default-off
 automatic policy, and the current non-secret application projection. Credential material
@@ -235,7 +236,9 @@ credential profile has precedence for ordinary future starts; only if there is n
 profile does Station use the legacy base app-home opt-in or the engine's global config.
 A selected-profile environment failure — an explicit ref or the connection's active
 profile, including an invalid persisted env overlay — fails closed rather than silently
-falling back to global credentials.
+falling back to global credentials. An invalid saved overlay is kept as written (so an
+unrelated registry write cannot erase it) and projected as `envInvalid` with variable
+names only.
 
 **Capability matrix and application.** Capability is adapter-declared, never inferred
 from a provider name. Codex currently declares `restart_resume` and does not claim
