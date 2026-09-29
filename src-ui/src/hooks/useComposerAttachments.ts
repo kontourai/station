@@ -651,5 +651,9 @@ export function useComposerAttachments(options: {
     remove,
     sendBlockedReason,
     attachmentNotice,
+    /** Removing the attachments is what unblocks this send. */
+    removalUnblocksSend:
+      imagesRefused ||
+      options.stages.some((stage) => stage.capacityFull === true),
   };
 }

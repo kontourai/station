@@ -382,6 +382,7 @@ export function ACPChatPanel({
         attachmentNotice={chatInput.attachmentNotice}
         attachUnavailableReason={chatInput.attachUnavailableReason}
         onAttachUnavailable={chatInput.setAttachmentError}
+        removalUnblocksSend={chatInput.removalUnblocksSend}
         sendBlockedReason={chatInput.sendBlockedReason}
         onRetryAttachmentStage={chatInput.retryAttachmentStage}
         onCancelAttachmentStage={chatInput.cancelAttachmentStage}

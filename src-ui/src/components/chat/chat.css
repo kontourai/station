@@ -871,17 +871,22 @@
    Send off a phone screen. */
 .composer-attachments {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin: 0 0 var(--space-2);
   padding: 0;
-  overflow-x: auto;
   list-style: none;
-  scrollbar-width: thin;
+  /* Chips wrap rather than scroll: a sideways scroller hid the second chip's
+     × off a phone's right edge with no cue that more was there. Two rows
+     show; a longer list scrolls vertically inside them. */
+  max-height: calc(2 * 50px + var(--space-2));
+  overflow-y: auto;
 }
 
 .composer-attachments__chip {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   gap: var(--space-1);
   align-items: center;
   max-width: min(260px, 80vw);
@@ -1167,13 +1172,18 @@
    made its flex basis 0, so it contributed nothing to the composer's natural
    height and received only leftover space: a three-line draft rendered in
    ~66px with its third line clipped, while the transcript above kept its
-   room. With a real basis the transcript yields first. When the dock itself
-   is too short for the whole composer (an iPhone SE's half-height dock), the
-   draft is what gives way — down to its min-height, scrolling — never the
-   controls row: `.chat-input` clips, and a clipped Send is unreachable. The
-   zero minimums let that shrink reach the textarea through its containers. */
+   room. With a real basis the transcript yields first.
+
+   When the dock is too short for the whole composer (an iPhone SE's half
+   dock, or a failure banner taking room), the DRAFT is the only thing that
+   gives way: every container between it and `.chat-input` may shrink (zero
+   minimums), the draft scrolls inside its own box, and the chips, validation
+   line and controls row do not shrink. The fieldset is not clipped — the
+   mention and command pickers open above it from inside — so the controls
+   row paints its own background over anything that still overflows. */
 .chat-input .chat-input__textarea-wrapper > textarea {
   flex: 0 1 auto;
+  min-height: 0;
 }
 
 .chat-input .chat-input__capsule,
@@ -1181,10 +1191,14 @@
   min-height: 0;
 }
 
-/* Only the draft gives way: the chip strip scrolls sideways, so as a flex
-   item it would otherwise shrink vertically under the draft. */
-.chat-input .composer-attachments {
+.chat-input .chat-input__textarea-wrapper > :not(textarea),
+.chat-input .chat-controls-row {
   flex-shrink: 0;
+}
+
+.chat-input .chat-controls-row {
+  position: relative;
+  background: var(--bg-primary);
 }
 
 /* Composer validation and attach-time notes sit in the fieldset's normal
@@ -1201,6 +1215,24 @@
 
 .chat-input__attachment-error {
   color: var(--error-text);
+}
+
+.chat-input__attachment-error .chat-input__blocked-action {
+  margin-inline-start: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  .chat-input__attachment-error .chat-input__blocked-action {
+    min-height: 44px;
+  }
 }
 
 .chat-input__attachment-notice {

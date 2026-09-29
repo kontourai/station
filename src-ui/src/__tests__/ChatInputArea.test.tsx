@@ -121,6 +121,27 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  // A short dock can scroll the transcript's error card out of view; the fix
+  // for an attachment-only block must be on the line that states it.
+  test('a send blocked only by its attachments offers their removal on the validation line', () => {
+    const props = renderChatInputArea({
+      sendBlockedReason:
+        'Grok Build reported that it cannot accept images. Remove the images to send.',
+      removalUnblocksSend: true,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove attachments' }));
+    expect(props.onClearAttachments).toHaveBeenCalledOnce();
+  });
+
+  test('a send blocked for another reason offers no removal', () => {
+    renderChatInputArea({
+      sendBlockedReason: 'Wait until every selected file finishes staging.',
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Remove attachments' }),
+    ).toBeNull();
+  });
+
   test.each([{ modifier: 'metaKey' }, { modifier: 'ctrlKey' }] as const)(
     '$modifier+S opens portable drafts; Up still recalls history',
     async ({ modifier }) => {

@@ -685,6 +685,7 @@ export function useChatInput({
     remove: removeAttachmentStage,
     sendBlockedReason,
     attachmentNotice,
+    removalUnblocksSend,
   } = useComposerAttachments({
     apiBase,
     requestScope: mentionRequestScope,
@@ -1127,6 +1128,7 @@ export function useChatInput({
       sendBlockedReason,
       attachmentNotice,
       attachUnavailableReason,
+      removalUnblocksSend,
       currentModel,
       canModelSelect,
       modelSelectionReason,
@@ -1173,6 +1175,7 @@ export function useChatInput({
       sendBlockedReason,
       attachmentNotice,
       attachUnavailableReason,
+      removalUnblocksSend,
       currentModel,
       canModelSelect,
       modelSelectionReason,

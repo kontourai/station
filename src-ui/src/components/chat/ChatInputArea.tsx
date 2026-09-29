@@ -230,6 +230,12 @@ interface ChatInputAreaProps {
   attachmentError?: string | null;
   /** Non-blocking attach-time note (e.g. image support not yet confirmed). */
   attachmentNotice?: string;
+  /**
+   * The send is blocked only by its attachments: the validation line offers to
+   * remove them, so the fix is reachable where the reason is shown (the
+   * transcript's error card can be out of view in a short dock).
+   */
+  removalUnblocksSend?: boolean;
   /** Why nothing can be attached; tapping the paperclip reports it. */
   attachUnavailableReason?: string;
   onAttachUnavailable?: (reason: string) => void;
@@ -346,6 +352,7 @@ export function ChatInputArea({
   attachmentNotice,
   attachUnavailableReason,
   onAttachUnavailable,
+  removalUnblocksSend = false,
   attachmentStages = [],
   sendBlockedReason,
   onRetryAttachmentStage,
@@ -1059,6 +1066,15 @@ export function ChatInputArea({
               role="status"
             >
               {sendBlockedReason}
+              {removalUnblocksSend && (
+                <button
+                  type="button"
+                  className="chat-input__blocked-action"
+                  onClick={onClearAttachments}
+                >
+                  Remove attachments
+                </button>
+              )}
             </div>
           )}
           {attachmentNotice && !sendBlockedReason && !attachmentError && (
