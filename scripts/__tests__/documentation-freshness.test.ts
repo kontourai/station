@@ -1357,6 +1357,11 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     // The capture-only branch: only media.json conflicts, and it folds.
     expect(merge(f.root, 'capture-only').status).toBe(1);
     expect(conflicted(f.root)).toEqual([MEDIA]);
+    // Without the merge base it stops before writing anything.
+    const baseless = run(f.root, 'migrate-review-ledger.mjs');
+    expect(baseless.status).toBe(1);
+    expect(baseless.stderr).toContain('pass --base <merge base>');
+    expect(f.read(MEDIA)).toContain('<<<<<<<');
     const folded = run(f.root, 'migrate-review-ledger.mjs', ['--base', base]);
     expect(folded.status, folded.stderr).toBe(0);
     commit(f.root, 'merge capture-only');
@@ -1374,6 +1379,7 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
       'both sides changed docs/learn/media/task.png caption',
     );
     expect(conflicted(f.root)).toEqual([MEDIA]);
+    expect(f.read(MEDIA)).toContain('<<<<<<<');
   });
 
   it('folds a branch that re-reviewed a capture in media.json, resolving that conflict too', () => {

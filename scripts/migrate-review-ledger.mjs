@@ -295,9 +295,13 @@ const reviewOf = (capture) =>
  * mergeManifests) and write the result, review fields included; they move
  * out below. Returns whether it resolved a conflict.
  */
-function resolveConflictedManifest(root) {
+function resolveConflictedManifest(root, mergeBase) {
   const stages = unmergedStages(root, LEARNING_MEDIA_MANIFEST);
   if (stages.size === 0) return false;
+  if (mergeBase === undefined)
+    throw new Error(
+      `${LEARNING_MEDIA_MANIFEST} is conflicted; pass --base <merge base> to fold it`,
+    );
   if (!['1', '2', '3'].every((stage) => stages.has(stage)))
     throw new Error(
       `${LEARNING_MEDIA_MANIFEST} was added or deleted on one side; resolve it and rerun`,
@@ -344,7 +348,7 @@ function migrateReviewLedger({
   base,
   now = new Date(),
 } = {}) {
-  const resolvedManifest = resolveConflictedManifest(root);
+  const resolvedManifest = resolveConflictedManifest(root, base);
   const reader = createLearningSourceReader(root);
   const hasLedger = reader.exists(LEGACY_REVIEW_LEDGER);
   // A branch that re-reviewed only captures left the old ledger alone, so the
