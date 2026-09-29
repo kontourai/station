@@ -12,7 +12,7 @@
   "document": {"digest":"9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b","revision":"f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079"},
+    {"path":"docs/learn/media.json","digest":"3739f46c85f8c1cf64e0ff9fbadbb7f79b041969167391d2d6f0892ce965e462","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"docs/learn/media/repository-knowledge-narrow.png","digest":"d3917f3c5e3994bb73d63decf2e7ff0b1913be20e46933f545449d739f55f1c4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
