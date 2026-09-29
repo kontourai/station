@@ -1303,6 +1303,22 @@ describe('AcpAdapter', () => {
       ).resolves.toEqual({
         outcome: { outcome: 'selected', optionId: 'allow-once' },
       });
+
+      // A grant minted for a name on an ordinary call never answers a plan
+      // exit the agent reports under the same name.
+      const exitUnderGrantedName = planExit('granted-name-exit', {
+        name: 'mcp__tools__write',
+        kind: 'switch_mode',
+      });
+      const exitOpened = await nextEvent(iterator, 'request.opened');
+      await adapter.respondToRequest(
+        threadId,
+        String(exitOpened.requestId),
+        'decline',
+      );
+      await expect(exitUnderGrantedName).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
     });
 
     test('fails closed when staged-policy preparation rejects', async () => {
