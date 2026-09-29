@@ -2553,7 +2553,7 @@
     },
     {
       "path": "docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "historical",
       "state": "classified",
       "summary": "A top status note points to ADR0014 and distinguishes the superseded flag/rollback mechanism from the retained orchestration/private-adapter/no-migration decisions. Current interactive route composition supplies the foreground orchestration seam.",
@@ -2566,7 +2566,7 @@
         },
         {
           "path": "docs/reference/session-api.md",
-          "digest": "84b66b7476f666b09161e3a4fd628b00128df5fef97f2384967c29fb2c8b4841"
+          "digest": "59b1f051bacf4b82c05e0f0ab9c0fc3039df5d98ef38f324c9479b00a35b38e3"
         },
         {
           "path": "packages/cli/src/commands/session-client.ts",
@@ -2600,7 +2600,8 @@
         "#2933 round 2: session-api.md added one sentence on ACP plan-exit acceptForSession (counts as accept, allow-once, no grant); the ADR's orchestration routing, private-adapter and flag decisions do not depend on per-engine session-grant semantics. No prose change.",
         "#2933 round 3: session-api.md gained one sentence on ACP plan-exit allow_always; the ADR's routing and adapter decisions do not depend on it. No prose change.",
         "Re-read 'Route managed-agent chat through orchestration, behind a flag' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. The ADR's retained decisions (orchestration routing, private adapters, no migration) depend on neither. Classification unchanged."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. The ADR's retained decisions (orchestration routing, private adapters, no migration) depend on neither. Classification unchanged.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b route refusals; this branch added the ACP plan-exit sentence to session-api.md, which the ADR's decisions do not depend on. No prose change."
       ]
     },
     {
@@ -3739,7 +3740,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -3795,7 +3796,7 @@
         },
         {
           "path": "docs/reference/config.md",
-          "digest": "4a1ddfbce2dc29ae26566475e56793ecdab5aa208d803f7a6c4ceaef1c41105a"
+          "digest": "f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9"
         },
         {
           "path": "docs/reference/metrics.md",
@@ -3922,7 +3923,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); orchestration-decomposition-map.md (branch prose edit (T7 wiring-test note)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its findings cite neither the respond path's new steps nor the start-unavailability helper. Prose accurate.",
         "Re-read 'Abstraction review' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its findings cite neither the forwarder nor the respond context. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its findings cite neither the forwarder nor the respond context. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b and #2918; this branch changed only config.md's autoApprove row. No prose change."
       ]
     },
     {
@@ -5712,12 +5714,12 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical. Follow-up (#2915/#2916): added the session-grant scope section (tool, edit-mode with its mode sync, read-folder/folder, none), traced from the shared toolRequestSessionGrant through the Claude adapter's canUseTool/respondToRequest and the toast, inline card and inbox card.",
       "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
-      "documentDigest": "fbbe0819439489f79758bcdafeccd9497c98e8087029e41c2c950eb85b3d7990",
+      "documentDigest": "31d734311b9269124d96f404911867f1e03fb3f094d5d246676c6b51bd90506d",
       "sources": [
         {
           "path": "package.json",
@@ -5729,7 +5731,7 @@
         },
         {
           "path": "packages/shared/src/__tests__/tool-request-preview.test.ts",
-          "digest": "ab251cd862e821122d30655014fe205ea95b77c09ce8cc33771c0112cad755a2"
+          "digest": "83fa6ba966f39e2dc5f80eff5f27f37cb5043d200a949ed38a9fe8b790f8433b"
         },
         {
           "path": "packages/shared/src/redaction.ts",
@@ -5741,7 +5743,7 @@
         },
         {
           "path": "packages/shared/src/tool-request-preview.ts",
-          "digest": "212871aeccc7f8a6d63b6f39eb757fedacd8a23bc4964da157023cc83fcd43d6"
+          "digest": "6e6496b46534d24b65bb9a49a19bfce2c2f4b3ecc7affea139b323968735efa2"
         },
         {
           "path": "pnpm-lock.yaml",
@@ -5749,7 +5751,7 @@
         },
         {
           "path": "src-server/providers/__tests__/claude-adapter.test.ts",
-          "digest": "49b2a9eea768060e47dc729bcfd0ffd1fa1878e898ea97b23218080f761c8463"
+          "digest": "5cb6514ed56188a067f87abe8bad2d83ae36f41607f508ad37b721bca31947e0"
         },
         {
           "path": "src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts",
@@ -5757,7 +5759,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter-events.ts",
@@ -5765,7 +5767,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
         },
         {
           "path": "src-server/providers/adapters/claude-approval-mode.ts",
@@ -5773,7 +5775,7 @@
         },
         {
           "path": "src-server/runtime/agents/__tests__/pre-tool-policy.test.ts",
-          "digest": "663454b035659a85aaad7dadfc6e92b316b22390c09822a13ccbf7c4efc10d43"
+          "digest": "049653b403ecca1bcc94c90431b8baa72f03d31b45213aa04c40867d229d0541"
         },
         {
           "path": "src-server/runtime/agents/agent-hooks.ts",
@@ -5781,7 +5783,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
@@ -5829,7 +5831,8 @@
         "#2933 round 2: added the ACP plan-exit session answer (one-call accept, allow-once option, no approvedTools grant; payload toolKind hides the session option for switch_mode) and the denyApprovals fail-fast deny in Claude canUseTool and ACP requestPermission via the evaluator's exported delegatedApprovalDenial. Traced respondToRequest, requestPermission and canUseTool.",
         "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Re-read the ACP plan-exit and delegated-child paragraph against the reworded comments; it still says a request either adapter would otherwise open is denied at once, which matches. No prose change.",
         "Re-read 'Pre-tool blocking and grant delivery boundary' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. This branch refined the grant-scope paragraph: a delegated answer for a task on a saved Environment reaches that Station's command route with this Station's enrolled credential and is judged there by the same rule (the forward is the SDK respondToRequest, which #2920 now runs through the selected-Station read). Main's change here is the Discord continue path's forwarder, which the page does not describe. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. This branch refined the grant-scope paragraph: a delegated answer for a task on a saved Environment reaches that Station's command route with this Station's enrolled credential and is judged there by the same rule (the forward is the SDK respondToRequest, which #2920 now runs through the selected-Station read). Main's change here is the Discord continue path's forwarder, which the page does not describe. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base changed only the Discord continue forwarder composition (C2b) that this page makes no claim about; this branch's autoApprove plain-call gate, toolGrant hook pass-through, ACP plan-exit and delegated-child paragraphs re-read against the merged claude-adapter/acp-adapter/pre-tool-policy: still accurate."
       ]
     },
     {
@@ -7484,7 +7487,7 @@
     {
       "path": "docs/design/connections-onboarding.md",
       "documentDigest": "dc33fe48b286ac9111bfb09c095a1c85ac62665eb89ec9e77a8637d28c3126ed",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7500,7 +7503,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
         },
         {
           "path": "src-server/providers/adapters/claude-skills-materialization.ts",
@@ -7615,7 +7618,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its app-home and session-start claims hold: session start's agent resolution and its unavailable reasons are unchanged in behaviour. Prose accurate.",
         "Re-read 'Design: Connections onboarding & capability passthrough' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its app-home claim holds; main's change is the Discord continue path's forwarder wiring. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its app-home claim holds; main's change is the Discord continue path's forwarder wiring. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b's forwarder composition; this branch's claude-adapter approval gating affects no onboarding claim. No prose change."
       ]
     },
     {
@@ -9893,7 +9897,7 @@
     {
       "path": "docs/design/settings-architecture.md",
       "documentDigest": "eb80eac4602bdb8376220ce11f8f5dcd4155c90315b250fa45e0a777afc068ce",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the full design, separating the dated problem inventory/target slices from current implementation. Checked registry descriptors, three Project overrides, provenance-only GET scope, independent Save writes, device migration ownership and canonical reveal behavior. Corrected the inert Knowledge flag claim and replaced the obsolete example with an actual registry entry.",
@@ -9901,7 +9905,7 @@
       "sources": [
         {
           "path": "docs/reference/config.md",
-          "digest": "4a1ddfbce2dc29ae26566475e56793ecdab5aa208d803f7a6c4ceaef1c41105a"
+          "digest": "f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9"
         },
         {
           "path": "docs/reference/settings-deep-links.md",
@@ -9960,7 +9964,8 @@
         "Reviewed integration deltas: src-ui/src/views/settings/settings-catalog.ts: Removed test-only visibleCatalogIds helper; actual Settings catalog and palette projection are unchanged; tests now own their expected-ID fixture.",
         "Integration source review through d72f79b08: #2904 added a `defaultApprovalMode` row to config.md, covering its full-access authority and the 403 approval-full-access-not-granted refusal. The CLI's parseFullEnvelope in config.ts now keeps the envelope code, status and details. The config route returns fullAccessRefusal(). The design does not describe defaultApprovalMode or refusal shapes. Its dated problem inventory, including the #175 'config set bypasses the route' item that line 309 records as closed, is still correctly framed as history. Prose accurate. Source review is separate from executed test evidence.",
         "#2933: config.md changed only the autoApprove row wording; settings ownership and layering claims unaffected. No prose change.",
-        "Re-read 'Settings Architecture: scope-first settings for Station' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Settings Architecture: scope-first settings for Station' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b's SDK deadline change; this branch changed only config.md's autoApprove row. No prose change."
       ]
     },
     {
@@ -10666,7 +10671,7 @@
     {
       "path": "docs/guides/acp.md",
       "documentDigest": "a902573fcf2c8caab6097af31941a73700df2906868bbbef1f2f13a97de5e02c",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current ACP Agent binding, canonical execution seam, guarded cursor restoration, credentials/refusal behavior, extension notifications, and current probe outcomes.",
@@ -10678,7 +10683,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -10708,13 +10713,14 @@
         "#2933 round 2: requestPermission still publishes request.opened and maps to allow_once/reject_once; new behaviour is a plan-exit session answer selecting allow_once, a toolKind payload field, and a decline without request.opened in a denyApprovals child. Described mapping remains accurate; no prose change.",
         "#2933 round 3: comment-only change in acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. The allow_once/reject_once mapping description stays accurate. No prose change.",
         "Re-read 'Agent Communication Protocol (ACP) Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. ACP's requestPermission flow is unaffected by either. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. ACP's requestPermission flow is unaffected by either. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b route refusals; this branch's requestPermission plan-exit and delegated-child decline keep the documented allow_once/reject_once mapping. No prose change."
       ]
     },
     {
       "path": "docs/guides/agents.md",
-      "documentDigest": "7d865d177cd57a733bba5caad0e3c575dcb98ae752733dc26194bba6af92ba3f",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "documentDigest": "c600b566a04068071ed71fabc55e44fb4e1e591a6a0131d666306244ebdafb00",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10770,11 +10776,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -10846,7 +10852,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/request-delegation.ts",
@@ -11051,7 +11057,8 @@
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its Tool Approval Flow (Station-engine route, respondToRequest for orchestration clients) and Agent start guidance are unchanged. Prose accurate.",
         "Merge review (origin/main 99f9520b0 into #2915/#2916): both sides changed this record. Main (#2946) rewrote only the Theming & Colors section (DESIGN.md pointer, --k-* tone tokens, station-tones.ts) and added that source; this branch's sources (claude-adapter.ts, orchestration-service.ts, routes/orchestration/orchestration.ts) carry the session-grant and approval-authority changes. Re-checked both against the merged guide: the theming section names no approval or session-grant behaviour, and the Tool Approval Flow section (Station-engine route; orchestration clients use respondToRequest) is unchanged and still accurate with this branch's respond path. Prose accurate.",
         "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its Tool Approval Flow and delegation guidance hold: delegated respond still answers the request, as a one-call accept for an edit-mode session answer on this Station. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its Tool Approval Flow and delegation guidance hold: delegated respond still answers the request, as a one-call accept for an edit-mode session answer on this Station. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base rewrote Theming & Colors (#2946) and the respond_to_task_request saved-Environment sentence (C2b); this branch's 'What autoApprove never covers' and Unattended runs paragraph are disjoint and still match the merged adapters."
       ]
     },
     {
@@ -11964,7 +11971,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12088,11 +12095,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -12160,7 +12167,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/request-delegation.ts",
@@ -12489,7 +12496,8 @@
         "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. Its captures (connections tour and models) are not approval cards, and its approval mentions are signing-key approval. Prose accurate.",
         "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Its captures (connections tour and models) show no channel text or approval card, and its approval mentions are signing-key approval. Prose accurate.",
         "Re-read 'Connections Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; pairing-route-scopes.ts drops the /station-control/caller/delegation entry; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main re-read it for C2b; its approval mentions are signing-key approval, unaffected by this branch. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main re-read it for C2b; its approval mentions are signing-key approval, unaffected by this branch. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base recorded C2b, #2917/#2944 CSS and audit follow-ups; this branch's adapter approval changes affect no connection claim. No prose change."
       ]
     },
     {
@@ -18492,7 +18500,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "618c04635531af10ce95cda65be2bd40e5b361f98b0fde1a8ae999b125bfb6a0",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18544,11 +18552,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -18608,7 +18616,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/request-delegation.ts",
@@ -18794,7 +18802,8 @@
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. respond_to_task_request still answers a delegated worker's open request (a one-call accept for an edit-mode session answer). Prose accurate.",
         "Corrected: forwarding to a saved Environment now says the tool never contacts the other Station, it names the Environment to this Station's route, and remote task listings share the bound-operator restriction (C2b added it on GET /delegations).",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main corrected the forwarding text; respond_to_task_request still answers an open request from a delegated worker (a one-call accept for an edit-mode session answer on this Station). Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main corrected the forwarding text; respond_to_task_request still answers an open request from a delegated worker (a one-call accept for an edit-mode session answer on this Station). Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base corrected saved-Environment forwarding prose (C2b); this branch's adapter changes leave the station-control_* autoApprove examples accurate (MCP calls are plain calls). No prose change here."
       ]
     },
     {
@@ -19048,7 +19057,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -19084,7 +19093,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
@@ -19306,7 +19315,8 @@
         "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. Its inspect-approval flow uses the request inspector (Approve once and Deny), whose capture was re-recorded unchanged in content; the approval card's session button is not part of it. Prose accurate.",
         "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Its inspect-approval flow uses the request inspector, whose captures were re-recorded unchanged in content. Prose accurate.",
         "Re-read 'How Starter Work connects first steps to real work' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its inspect-approval flow opens a request without deciding it. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its inspect-approval flow opens a request without deciding it. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base recorded C2b and CSS changes; this branch's Claude canUseTool changes affect no starter-work claim. No prose change."
       ]
     },
     {
@@ -21517,7 +21527,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c",
-      "sourceRevision": "3d607908cd1b34cbb6f3ac4331150c9e1080477f",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
       "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
       "sources": [
@@ -21527,7 +21537,7 @@
         },
         {
           "path": "docs/guides/agents.md",
-          "digest": "7d865d177cd57a733bba5caad0e3c575dcb98ae752733dc26194bba6af92ba3f"
+          "digest": "c600b566a04068071ed71fabc55e44fb4e1e591a6a0131d666306244ebdafb00"
         },
         {
           "path": "packages/contracts/src/agent-identity.ts",
@@ -21551,7 +21561,8 @@
         "#2933 round 2: agents.md reorganised autoApprove/unattended sections; no identity surface claim changed. No prose change.",
         "#2933 round 3: agents.md reworded the Unattended runs external-engine paragraph only; no identity surface claim affected. No prose change.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "#2862 changed only the Theming & Colors section of docs/guides/agents.md (status tokens and DESIGN.md pointer). The plan records that guide as a source but makes no claim about theming; the change adds no Agent identity text or synthetic identity literals, so its inventory claims still hold."
+        "#2862 changed only the Theming & Colors section of docs/guides/agents.md (status tokens and DESIGN.md pointer). The plan records that guide as a source but makes no claim about theming; the change adds no Agent identity text or synthetic identity literals, so its inventory claims still hold.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base changed agents.md Theming; this branch added autoApprove scope sections. Neither adds identity-surface text. No prose change."
       ]
     },
     {
@@ -21921,7 +21932,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -22098,7 +22109,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/bedrock-adapter.ts",
@@ -22638,7 +22649,8 @@
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Request routes and the respond command keep their shapes and status codes. Prose accurate.",
         "Rechecked the continuation-caller paragraph (it still rebuilds the target from the binding and forwards the model choice, now via this Station's route for a saved Environment) and the pairing-scope and deadline statements; none lists the removed credential or caller-delegation routes. After merging main 91472e665, re-read main's edits (the /api/branding theme override surface, and dropping the legacy scheduler provider sentence); neither touches the continuation-caller, pairing-scope or deadline statements checked above.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Route shapes hold: the respond command is unchanged in shape; main's continuation and pairing-scope recheck stands. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Route shapes hold: the respond command is unchanged in shape; main's continuation and pairing-scope recheck stands. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-checked continuation-caller and deadline statements (C2b); this branch adds only an optional toolKind to ACP request.opened payloads. No prose change."
       ]
     },
     {
@@ -22670,7 +22682,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22970,7 +22982,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/routes/evidence/flow-runs.ts",
@@ -23062,17 +23074,18 @@
         "#2933 round 2: no CLI behaviour depends on the ACP approval changes. No prose change.",
         "#2933 round 3: comment-only change in acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. No CLI behaviour changed. No prose change.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers."
+        "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-checked delegate routes and SDK deadlines; this branch's ACP approval change touches no CLI behaviour. No prose change."
       ]
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
       "limits": "Source trace plus actual schema/template checks and existing focused fixtures. No live model, MCP server, AWS account, native/Windows ACL, external engine bounded loop, deployment or provider/network outcome was exercised. Strands configured step caps, guardrails.maxSteps admission, retained quick prompts and template-format admission are documented limitations/draft recommendations, not repaired runtime behavior. Source hashes indicate later drift only.",
-      "documentDigest": "4a1ddfbce2dc29ae26566475e56793ecdab5aa208d803f7a6c4ceaef1c41105a",
+      "documentDigest": "f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9",
       "sources": [
         {
           "path": "packages/contracts/src/agent.ts",
@@ -23184,7 +23197,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/runtime-agent-builder.ts",
@@ -23350,7 +23363,8 @@
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. defaultApprovalMode still applies at session start below a recorded pick; session start's behaviour is unchanged. Prose accurate.",
         "Re-read 'config reference' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route; pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. defaultApprovalMode still applies at session start below a recorded pick; main's forwarder adds no config key here. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. defaultApprovalMode still applies at session start below a recorded pick; main's forwarder adds no config key here. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-reviewed C2b route refusals; this branch changed the autoApprove row and pre-tool-policy's delegatedApprovalDenial export. Both hold on the merged tree."
       ]
     },
     {
@@ -23575,7 +23589,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -23684,7 +23698,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/claude-sdk-turns.ts",
@@ -23823,7 +23837,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. No contract type changed on either side. Prose accurate.",
         "Re-read '@kontourai/station-contracts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new PullRequestBranchMergeability paragraph; it makes no claim about SDK body-read deadlines, orchestration delegation refusals or the forwarder.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. No contract type changed on either side. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. No contract type changed on either side. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b and #2938; this branch changes no contracts export. No prose change."
       ]
     },
     {
@@ -25395,8 +25410,8 @@
     },
     {
       "path": "docs/reference/session-api.md",
-      "documentDigest": "84b66b7476f666b09161e3a4fd628b00128df5fef97f2384967c29fb2c8b4841",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "documentDigest": "59b1f051bacf4b82c05e0f0ab9c0fc3039df5d98ef38f324c9479b00a35b38e3",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection. Follow-up (#2915/#2916): respondToRequest now states what acceptForSession grants in a Claude Session, including the session.configured mode report after an edit-mode answer.",
@@ -25416,11 +25431,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -25535,7 +25550,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by attached-session-adoption.ts (comment only); attention-projection.ts (comment only); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Re-read 'Session API: the programmatic chat surface' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. This branch refined the respondToRequest paragraph: the delegated-task respond route records nothing for a task on this Station, and a delegated answer for a task on a saved Environment reaches that Station as this command. Main's route refusals concern delegation listings, not respondToRequest. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. This branch refined the respondToRequest paragraph: the delegated-task respond route records nothing for a task on this Station, and a delegated answer for a task on a saved Environment reaches that Station as this command. Main's route refusals concern delegation listings, not respondToRequest. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base added that a delegated answer for a saved-Environment task reaches that Station's command route (C2b); this branch's ACP plan-exit acceptForSession sentence sits after it and still matches acp-adapter respondToRequest. The remote Station's adapter applies the same rule."
       ]
     },
     {
@@ -25815,7 +25831,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25899,7 +25915,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/routes/agents/enriched-agents.ts",
@@ -26069,7 +26085,8 @@
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). station-control still needs an instance credential over reviewed channels and remains subject to caller authority; the prose remains accurate. Source review only.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its approval-policy topics stay at explanatory scope and name neither change. Prose accurate.",
         "Re-read 'Station shipped documentation' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit (drops 'Other scheduler providers have their own capabilities'); no claim about SDK body-read deadlines.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its topics name neither change. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its topics name neither change. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b; shipped topics make no claim about autoApprove scope or ACP plan-exit grants. No prose change."
       ]
     },
     {
@@ -28888,7 +28905,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28940,11 +28957,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -29004,7 +29021,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/request-delegation.ts",
@@ -29190,7 +29207,8 @@
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its statement that non-metadata calls remain subject to approval and the caller's authority still holds. Prose accurate.",
         "Re-read 'Self-Configuring Agent Example' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Non-metadata calls remain subject to approval and the caller's authority, with both changes. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Non-metadata calls remain subject to approval and the caller's authority, with both changes. Prose accurate.",
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b; this branch's changes do not touch Station's engine, which runs the example. No prose change."
       ]
     },
     {
