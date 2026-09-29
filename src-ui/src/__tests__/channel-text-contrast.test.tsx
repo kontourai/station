@@ -217,6 +217,7 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
     mode: Mode,
     channel: Channel,
     vendorRoles: boolean,
+    inline: Record<string, string> = {},
   ): Promise<Sample[]> {
     const page = await browser.newPage();
     try {
@@ -224,11 +225,17 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
       await page.setContent(
         `<!doctype html><html data-theme="${mode}"><head>${shim}<style>${css}</style></head><body>${markup}</body></html>`,
       );
-      await page.evaluate((channel) => {
-        const root = document.documentElement;
-        if (channel === 'dev') root.classList.add('is-dev-build');
-        else if (channel !== 'release') root.dataset.appChannel = channel;
-      }, channel);
+      await page.evaluate(
+        ({ channel, inline }) => {
+          const root = document.documentElement;
+          if (channel === 'dev') root.classList.add('is-dev-build');
+          else if (channel !== 'release') root.dataset.appChannel = channel;
+          // How lib/branding-theme.ts applies a white-label theme.
+          for (const [name, value] of Object.entries(inline))
+            root.style.setProperty(name, value);
+        },
+        { channel, inline },
+      );
 
       const read = (state: string) =>
         page.evaluate(
@@ -343,6 +350,31 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
         }))
         .filter((entry) => entry.ratio < AA_TEXT);
       expect(failing).toEqual([]);
+    },
+  );
+
+  // Every channel sets brand and action to one shade, so only a theme whose
+  // brand and action differ shows which role each surface reads.
+  test.each([
+    ['dark', { brand: '#e08b2f', action: '#7983f4', onAction: '#06080b' }],
+    ['light', { brand: '#98560c', action: '#4f5bd5', onAction: '#ffffff' }],
+  ] as const)(
+    'in %s mode, identity text follows the brand and links follow the action role',
+    async (mode, theme) => {
+      const samples = await sample(mode, 'release', false, {
+        '--k-brand': theme.brand,
+        '--k-action': theme.action,
+        '--k-action-contrast': theme.onAction,
+      });
+      const painted = Object.fromEntries(
+        samples.map((entry) => [entry.target, entry.color]),
+      );
+      expect(painted).toEqual({
+        'readiness eyebrow': theme.brand,
+        'readiness why link': theme.action,
+        'trust eyebrow': theme.brand,
+        'trust evidence toggle': theme.action,
+      });
     },
   );
 });
