@@ -358,7 +358,7 @@ frame, input and lifecycle ownership.
   after a lapse. A separate **fence** advances on every holder change,
   including release and expiry, so work from an earlier claim cannot become
   valid when the same agent reclaims control. An agent cannot preempt a live
-  human lease. The holder can release it explicitly (the Browser pane's
+  human lease. The holder can release it explicitly (the Browser pane's driver chip,
   **Hand back to agent**); otherwise a human hold lapses. Viewing and
   controlling are authorized separately.
 

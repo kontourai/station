@@ -102,12 +102,14 @@ selects only the caller's authorized Project profile. Its control operations
 use the shared lease and check the captured fence around asynchronous steps.
 Human input with a current epoch can preempt an Agent; Agents cannot preempt
 a live human holder. Watching needs no control lease. The pane's control line
-says who is driving with the float-over-chat's rule (the lease holder, or an
-Agent whose last input is under ten seconds old). While a person holds
-control it offers **Hand back to agent** (**Release control** when no Agent
-has driven the session), which releases the lease explicitly and is recorded
-as `control-released`; an Agent may then claim at once instead of waiting for
-the person's hold to lapse. Closing the pane does not release the lease; it
+says who is driving in one word (**Agent** or **You**) with the float-over-chat's
+rule (the lease holder, or an Agent whose last input is under ten seconds old).
+There is no Take control button: a click or key on the page takes control, and
+while an Agent drives, hovering the page says so. While a person holds control,
+the chip opens **Hand back to agent** (**Release control** when no Agent has
+driven the session), which releases the lease explicitly and is recorded as
+`control-released`; an Agent may then claim at once instead of waiting for the
+person's hold to lapse. Closing the pane does not release the lease; it
 can lapse. A timeout or interrupted operation does not establish that an
 already-sent browser effect was undone.
 
@@ -145,10 +147,10 @@ generation ([BrowserConsoleLog](../../src-server/services/browser/browser-consol
 console API calls, uncaught exceptions and the browser's own log entries. It
 keeps the latest 500 entries, cuts each to 2,000 characters, and counts what
 it evicted; the pane's **Console** drawer reads it incrementally, filters by
-level and shows the dropped count. Reading it needs view standing. Agents do
+level and shows the dropped count; it can be resized and scrolls on its own. Reading it needs view standing. Agents do
 not have a console tool.
 
-**Screenshot** captures the page's viewport as PNG (JPEG over 16 MiB, refused
+**Screenshot** (in **⋯**) captures the page's viewport as PNG (JPEG over 16 MiB, refused
 beyond that) with view standing, and offers **Save image** and, where the
 viewer's clipboard accepts PNGs, **Copy image**.
 
@@ -158,9 +160,13 @@ the same tab and the popup target is closed by the
 the history records the navigation as `link-followed`. In-pane tabs are not
 implemented.
 
-On a pane narrower than 560px the viewport, session, Agent-access,
-local-server and close controls fold behind **More**. The 390px check below
-found no pane control under 44px.
+The pane's chrome is one row: the address field (host and path, with back,
+forward and reload inside it), the driver chip, **Console** (with a count of
+errors not yet seen), and **⋯**, which holds Screenshot (Mod+Shift+S),
+Viewport, Sessions, Agent access, Local servers and, last, Close session. On
+a coarse pointer or a window up to 768px wide every control is at least 44px
+and the row does not wrap; the path gives way first, then the host. The 390px
+check below found no control under 44px.
 
 ## State, evidence and remaining limits
 

@@ -1449,7 +1449,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1479,7 +1479,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "591144ca18d28552fcf4a85e8ca74fec23efe42a29da4fa04e8c0bdfa8c70776"
+          "digest": "94162529a4b5f49068eba87988143335d1224a5b25f5ec15bc1ea9316392b29b"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1505,7 +1505,8 @@
         "Integration source review through e0314c727: module-map.md and the extension-ecosystem/workspace-surfaces contexts removed the deleted CollaborativeEditorPane controller and PluginForegroundRuns entries in favor of ProjectTaskRoom. The five context links and relationship statements do not name either; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Depends on the glossary; the glossary change (explicit lease release) does not touch the relationships described here. No prose change."
+        "Depends on the glossary; the glossary change (explicit lease release) does not touch the relationships described here. No prose change.",
+        "Depends on the glossary; its only change names the Browser pane's driver chip for the hand-back. Relationships unaffected. No prose change."
       ]
     },
     {
@@ -1513,7 +1514,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1543,7 +1544,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "591144ca18d28552fcf4a85e8ca74fec23efe42a29da4fa04e8c0bdfa8c70776"
+          "digest": "94162529a4b5f49068eba87988143335d1224a5b25f5ec15bc1ea9316392b29b"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1569,7 +1570,8 @@
         "Integration source review through e0314c727: module-map replaced the CollaborativeEditorPane entry with ProjectTaskRoom and removed PluginForegroundRuns, and the two child CONTEXT files follow suit. The root CONTEXT names neither module and routes only to the child contexts and guides, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Depends on the glossary; the glossary change (explicit lease release) does not touch the responsibility areas described here. No prose change."
+        "Depends on the glossary; the glossary change (explicit lease release) does not touch the responsibility areas described here. No prose change.",
+        "Depends on the glossary; its only change names the Browser pane's driver chip for the hand-back. Responsibility areas unaffected. No prose change."
       ]
     },
     {
@@ -2138,7 +2140,7 @@
     {
       "path": "docs/README.md",
       "documentDigest": "376eb72a923e3650381d57db7299752695bb6ec297d6a47fd5077930c06e0382",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read every audience route and index description against its canonical document and the explicit public Pages allowlist. Current, design, history and generated content are separated.",
@@ -2362,7 +2364,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "fa3e5b297d61072d07f570acccd03e5ca2720e0bdfd27d3805996a2e1efdea0c"
+          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -2394,7 +2396,8 @@
         "Links to the documentation guide and Learn Station remain valid; their added freshness sections do not change this map's descriptions.",
         "The documentation guide link and description remain valid after the mode wording change.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Index descriptions of the Browser workspace guide, glossary and module map remain accurate after the page-tools change. No prose change."
+        "Index descriptions of the Browser workspace guide, glossary and module map remain accurate after the page-tools change. No prose change.",
+        "BrowserPane.tsx changed only its toolbar chrome (one row: omnibox with back/forward/reload, one-word driver chip that opens the hand-back, Console with an unseen-error count, a ⋯ menu ending in Close session). This document's Browser claims do not describe the toolbar layout; no prose change."
       ]
     },
     {
@@ -2807,7 +2810,7 @@
     {
       "path": "docs/adr/0017-browser-preview-host.md",
       "documentDigest": "9be14f3fe1a2cd87746feb09a90699767a0957a984a914dacbb21038f2319a85",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; keep original desktop choices/platform gaps and dated body. Added current Browser guide link in existing banner.",
@@ -3011,7 +3014,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "fa3e5b297d61072d07f570acccd03e5ca2720e0bdfd27d3805996a2e1efdea0c"
+          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -3032,12 +3035,13 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only the recognizeCredential security hook to runtime-routes.ts; prose accurate: the dated Browser Preview decisions and current-guide banner don't touch credential refusal status. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) made DEVICE_TOOLS_DOCK_MIN_WIDTH and deviceToolsLayout module-private and dropped a re-export from DeviceWorkspacePane.tsx. There is no behavior change, and the ADR's adapter-local preview-host decision does not depend on these exports. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Dated browser design record; its opening note already routes current behavior to the Browser workspace guide. The page-tools change (person-held dialogs, bounded console, screenshot route, explicit hand-back, stale Browser Preview comments) does not alter its dated claims; no prose change."
+        "Dated browser design record; its opening note already routes current behavior to the Browser workspace guide. The page-tools change (person-held dialogs, bounded console, screenshot route, explicit hand-back, stale Browser Preview comments) does not alter its dated claims; no prose change.",
+        "BrowserPane.tsx changed only its toolbar chrome (one row: omnibox with back/forward/reload, one-word driver chip that opens the hand-back, Console with an unseen-error count, a ⋯ menu ending in Close session). This document's Browser claims do not describe the toolbar layout; no prose change."
       ]
     },
     {
       "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "design",
       "state": "classified",
       "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work. Browser/Device tranche: Full read; unchanged. Current viewer is per-visible-viewer, not the planned multiplex owner; no actual pool-starvation measurement. Current repo issue935 is the original ADR task, not archive935.",
@@ -3262,7 +3266,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "fa3e5b297d61072d07f570acccd03e5ca2720e0bdfd27d3805996a2e1efdea0c"
+          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -3287,13 +3291,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout and the DEVICE_PLACEHOLDER_ASPECT/deviceCornerRadius re-export; the ADR names none of them and its transport claims are untouched; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Dated browser design record; its opening note already routes current behavior to the Browser workspace guide. The page-tools change (person-held dialogs, bounded console, screenshot route, explicit hand-back, stale Browser Preview comments) does not alter its dated claims; no prose change."
+        "Dated browser design record; its opening note already routes current behavior to the Browser workspace guide. The page-tools change (person-held dialogs, bounded console, screenshot route, explicit hand-back, stale Browser Preview comments) does not alter its dated claims; no prose change.",
+        "BrowserPane.tsx changed only its toolbar chrome (one row: omnibox with back/forward/reload, one-word driver chip that opens the hand-back, Console with an unseen-error count, a ⋯ menu ending in Close session). This document's Browser claims do not describe the toolbar layout; no prose change."
       ]
     },
     {
       "path": "docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md",
       "documentDigest": "3a45b8bcbd8896078989b913a152b13e14e7bdb14023faa3072208c2bc83f474",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated planned/unverified statements. Current implementation uses per-Project/principal profiles, bound tool grants, shared Device producer. CEF and multiplex plans are not current implementations. Added current guide link only.",
@@ -3497,7 +3502,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "fa3e5b297d61072d07f570acccd03e5ca2720e0bdfd27d3805996a2e1efdea0c"
+          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -3518,7 +3523,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 adds recognizeCredential in runtime-routes.ts, so a recognized but unadmitted credential gets 403 instead of 401. This dated ADR's browser-pane and credential statements do not depend on that refusal status. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2919 makes DeviceWorkspacePane exports (DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout, placeholder re-exports) module-private with no behavior change. The ADR's Device pane capture and adoption claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Dated browser design record; its opening note already routes current behavior to the Browser workspace guide. The page-tools change (person-held dialogs, bounded console, screenshot route, explicit hand-back, stale Browser Preview comments) does not alter its dated claims; no prose change."
+        "Dated browser design record; its opening note already routes current behavior to the Browser workspace guide. The page-tools change (person-held dialogs, bounded console, screenshot route, explicit hand-back, stale Browser Preview comments) does not alter its dated claims; no prose change.",
+        "BrowserPane.tsx changed only its toolbar chrome (one row: omnibox with back/forward/reload, one-word driver chip that opens the hand-back, Console with an unseen-error count, a ⋯ menu ending in Close session). This document's Browser claims do not describe the toolbar layout; no prose change."
       ]
     },
     {
@@ -3902,7 +3908,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -5546,7 +5552,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "fa3e5b297d61072d07f570acccd03e5ca2720e0bdfd27d3805996a2e1efdea0c"
+          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -5651,7 +5657,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; registry.ts only deleted the caller-less registerBrandingProvider (getBrandingProvider default unchanged); chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "BrowserSessionService section: added the page-tools ownership (person-held dialogs in ChromiumScreencastProducer via browser-live-surfaces.ts, answer route refusing Agents, dialog-open refusal, browser-console-log.ts, registry captureScreenshot) and the new test files. Reviewed only the BrowserSessionService and Shared live surface sections for this change; other sections unchanged by it."
+        "BrowserSessionService section: added the page-tools ownership (person-held dialogs in ChromiumScreencastProducer via browser-live-surfaces.ts, answer route refusing Agents, dialog-open refusal, browser-console-log.ts, registry captureScreenshot) and the new test files. Reviewed only the BrowserSessionService and Shared live surface sections for this change; other sections unchanged by it.",
+        "BrowserSessionService section re-read against the quiet toolbar change in BrowserPane.tsx: its ownership and page-tools claims still hold (the change is presentational). No prose change."
       ]
     },
     {
@@ -6471,7 +6478,7 @@
     {
       "path": "docs/design/browser-preview-host-spike.md",
       "documentDigest": "054668c44ea7e835f73044ed1f004a832f5412d2da133d11f7958f8ba3211510",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated upstream/platform experiment and go/no-go rationale; source/current guide link added, no experiment rerun or current-upstream claim.",
@@ -6675,7 +6682,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "fa3e5b297d61072d07f570acccd03e5ca2720e0bdfd27d3805996a2e1efdea0c"
+          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -6696,13 +6703,14 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential wiring in runtime-routes.ts for the 403 insufficient_scope device-gate outcome. The dated spike's claims cover native preview host authority, grants and platform experiments, and none of them touches this wiring. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx un-exports DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout and re-exports with no behavior change; the doc cites none of them; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Dated browser design record; its opening note already routes current behavior to the Browser workspace guide. The page-tools change (person-held dialogs, bounded console, screenshot route, explicit hand-back, stale Browser Preview comments) does not alter its dated claims; no prose change."
+        "Dated browser design record; its opening note already routes current behavior to the Browser workspace guide. The page-tools change (person-held dialogs, bounded console, screenshot route, explicit hand-back, stale Browser Preview comments) does not alter its dated claims; no prose change.",
+        "BrowserPane.tsx changed only its toolbar chrome (one row: omnibox with back/forward/reload, one-word driver chip that opens the hand-back, Console with an unseen-error count, a ⋯ menu ending in Close session). This document's Browser claims do not describe the toolbar layout; no prose change."
       ]
     },
     {
       "path": "docs/design/browser-preview-pane-mvp.md",
       "documentDigest": "e01e9883f210cd5785ef82049198220f0e6015c19bb2acf3a6dcc1d56cea4eba",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain original native-loopback grants and unavailable mobile/web observations as dated history.2.0 session-reference migration is current owner. Added current guide link only.",
@@ -6906,7 +6914,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "fa3e5b297d61072d07f570acccd03e5ca2720e0bdfd27d3805996a2e1efdea0c"
+          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -6927,7 +6935,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only the recognizeCredential hook to runtime-routes.ts; prose accurate: the dated preview admission/grant history and current-guide link are unaffected. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) makes DEVICE_TOOLS_DOCK_MIN_WIDTH and deviceToolsLayout module-private in DeviceWorkspacePane and drops a re-export. There is no behaviour change, and the historical Browser pane design claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Dated browser design record; its opening note already routes current behavior to the Browser workspace guide. The page-tools change (person-held dialogs, bounded console, screenshot route, explicit hand-back, stale Browser Preview comments) does not alter its dated claims; no prose change."
+        "Dated browser design record; its opening note already routes current behavior to the Browser workspace guide. The page-tools change (person-held dialogs, bounded console, screenshot route, explicit hand-back, stale Browser Preview comments) does not alter its dated claims; no prose change.",
+        "BrowserPane.tsx changed only its toolbar chrome (one row: omnibox with back/forward/reload, one-word driver chip that opens the hand-back, Console with an unseen-error count, a ⋯ menu ending in Close session). This document's Browser claims do not describe the toolbar layout; no prose change."
       ]
     },
     {
@@ -7257,7 +7266,7 @@
     {
       "path": "docs/design/collaborative-editor-pane.md",
       "documentDigest": "39b13443c5fd44c9c548a6563cb8840390f8df55533d03cd72637d812f06b06e",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Historical design for the deleted pure collaborative editor controller (#2900), marked not shipped. Only the server-owned editing capability remains current; the shipped Task path is ProjectTaskRoom.",
@@ -7273,7 +7282,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.tsx",
@@ -7295,7 +7304,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Grepped for tool-call, approval, button-state and contrast claims: none; the document describes no styling this change touches.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Re-grepped: no tool-call, approval-button or disabled-button styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -8770,7 +8780,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8946,7 +8956,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/layouts/index.tsx",
@@ -9072,7 +9082,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Its disabled-row claims are about pane chooser/coding rows (aria-disabled reasons), not the approval card; no tool-call or approval-button styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Its disabled claims concern pane chooser rows and its dockSlotPlacement right/left dock claims are unchanged by this CSS; no approval-button claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -9665,7 +9676,7 @@
     {
       "path": "docs/design/session-tape-replay.md",
       "documentDigest": "4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9749,7 +9760,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx",
@@ -9771,7 +9782,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Mentions approval only as a replayed event/disabled action class; no approval-card layout or colour claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The one other changed source is codex-adapter.ts, whose #2921 change since this record is a comment on the tool-level session grant; the page makes no claim about Codex session grants."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The one other changed source is codex-adapter.ts, whose #2921 change since this record is a comment on the tool-level session grant; the page makes no claim about Codex session grants.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -10250,8 +10262,8 @@
     },
     {
       "path": "docs/glossary.md",
-      "documentDigest": "591144ca18d28552fcf4a85e8ca74fec23efe42a29da4fa04e8c0bdfa8c70776",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "documentDigest": "94162529a4b5f49068eba87988143335d1224a5b25f5ec15bc1ea9316392b29b",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10503,7 +10515,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "fa3e5b297d61072d07f570acccd03e5ca2720e0bdfd27d3805996a2e1efdea0c"
+          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -10533,7 +10545,8 @@
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Control lease entry now says a holder can release explicitly (the Browser pane's Hand back to agent), checked against releaseHumanControl in live-surface/registry.ts and useLiveSurface.releaseControl; other Browser-pane entries re-read against the page-tools change and still accurate."
+        "Control lease entry now says a holder can release explicitly (the Browser pane's Hand back to agent), checked against releaseHumanControl in live-surface/registry.ts and useLiveSurface.releaseControl; other Browser-pane entries re-read against the page-tools change and still accurate.",
+        "Control lease entry now names the Browser pane's driver chip as where Hand back to agent lives, matching the quiet toolbar in BrowserPane.tsx. Other Browser entries unaffected."
       ]
     },
     {
@@ -11194,8 +11207,8 @@
     },
     {
       "path": "docs/guides/browser-workspace.md",
-      "documentDigest": "0d862f93d574bae9b05faf199e60ca238a7106406f8fb16be92b5dc41c246ff2",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "documentDigest": "afa0188cb9662c0f3d8c72c868c49c166d14a76099f3801ab17e370ac90d6b1e",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "New guide; acquisition/consent, profile and network boundaries, bound Agent caller, evaluation, lifecycle, shared viewer, limits.",
@@ -11399,7 +11412,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "fa3e5b297d61072d07f570acccd03e5ca2720e0bdfd27d3805996a2e1efdea0c"
+          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -11421,7 +11434,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to runtime-routes.ts. No browser-workspace route, consent, profile, network or viewer behavior changed. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2919 makes DeviceWorkspacePane helpers module-private with no behavior change. The guide's Device pane pointer and frame-transport claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Added 'Page dialogs, console, screenshots and new windows': traced chromium-screencast-producer.ts (holdDialog, settle-on-hold, 120s automatic dismissal, beforeunload never held), browser-live-surfaces.ts (hold only when lease holder is human), routes/browser.ts (dialog answer: drive standing, agent requests 403; console/screenshot: view), browser-automation.ts (dialog-open refusal, dialogWaitingForPerson), browser-console-log.ts (500 entries, 2000 chars, dropped count), chromium-server-host.ts popup folding (link-followed). Updated hand-back wording against useLiveSurface.releaseControl and the pane. Executed: browser-pane-page.routes.test.ts, chromium-screencast-producer(.real).test.ts with installed Chrome, BrowserPane.pageTools.test.tsx, and an isolated-Station Playwright run at 1280px and 390px touch. Limits stated: no physical phone keyboard, no real Agent, no public site."
+        "Added 'Page dialogs, console, screenshots and new windows': traced chromium-screencast-producer.ts (holdDialog, settle-on-hold, 120s automatic dismissal, beforeunload never held), browser-live-surfaces.ts (hold only when lease holder is human), routes/browser.ts (dialog answer: drive standing, agent requests 403; console/screenshot: view), browser-automation.ts (dialog-open refusal, dialogWaitingForPerson), browser-console-log.ts (500 entries, 2000 chars, dropped count), chromium-server-host.ts popup folding (link-followed). Updated hand-back wording against useLiveSurface.releaseControl and the pane. Executed: browser-pane-page.routes.test.ts, chromium-screencast-producer(.real).test.ts with installed Chrome, BrowserPane.pageTools.test.tsx, and an isolated-Station Playwright run at 1280px and 390px touch. Limits stated: no physical phone keyboard, no real Agent, no public site.",
+        "Rewrote the control-line and chrome paragraphs for the quiet toolbar: one-word driver chip (Agent/You, recentDriver rule), no Take control button (a click on the page takes control; hover hint while an Agent drives), chip opens Hand back to agent / Release control, Console count of unseen errors, ⋯ with Screenshot (Mod+Shift+S), Viewport, Sessions, Agent access, Local servers, Close session; 44px at coarse pointer or <=768px with no wrap. Checked against BrowserPane.tsx, BrowserOverflowMenu.tsx and BrowserConsoleDrawer.tsx, BrowserPane.pageTools.test.tsx, and an isolated-Station Playwright run at 1280px and 390px in both themes."
       ]
     },
     {
@@ -11821,7 +11835,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12201,7 +12215,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -12335,7 +12349,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval here is key/device approval; no tool-call card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -14670,7 +14685,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14786,7 +14801,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -14833,7 +14848,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No tool-call card or button-state claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -15382,7 +15398,7 @@
     {
       "path": "docs/guides/mobile-device-workspace.md",
       "documentDigest": "194d80cb4861314943734e486a30079113877b4f8f4cd822a5e3053b1394616b",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read/rewrite of stale capture-only premise. Current managed/SSH helpers, sharing, human live control, lifetime, input vs display evidence; retain separate capture SDK example and corrected per-lane bounds/helper-secret distinction.",
@@ -15586,7 +15602,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "fa3e5b297d61072d07f570acccd03e5ca2720e0bdfd27d3805996a2e1efdea0c"
+          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -15608,7 +15624,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to runtime-routes.ts. No managed/SSH device helper, sharing, live-control or lifetime route changed. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports DEVICE_TOOLS_DOCK_MIN_WIDTH/deviceToolsLayout and a re-export. The pane still renders LiveSurfaceCanvas, controller/input status and device tools as the guide states; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Shared live-surface consumer: the change adds an optional releaseControl to useLiveSurface/LiveSurfaceControlState used by the Browser pane only; Device pane behavior and this guide's lease, input and screenshot-poll claims are unaffected. No prose change."
+        "Shared live-surface consumer: the change adds an optional releaseControl to useLiveSurface/LiveSurfaceControlState used by the Browser pane only; Device pane behavior and this guide's lease, input and screenshot-poll claims are unaffected. No prose change.",
+        "BrowserPane.tsx changed only its toolbar chrome (one row: omnibox with back/forward/reload, one-word driver chip that opens the hand-back, Console with an unseen-error count, a ⋯ menu ending in Close session). This document's Browser claims do not describe the toolbar layout; no prose change."
       ]
     },
     {
@@ -18131,7 +18148,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18239,7 +18256,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -18290,7 +18307,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. The shared mobile [class*=__actions] wrap/44px rule it describes still matches .tool-call__actions (the class name is unchanged; the base rule now also wraps). The #2917 Playwright journey asserts no horizontal page overflow at 360px; it does not re-assert the 44px floor. No claim changed.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Shared mobile [class*=__actions] rule unchanged and still matches .tool-call__actions; the new case runs above the breakpoint where that rule does not apply, consistent with the guide. No claim changed.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Shared mobile __actions rule unchanged; #2917 right-dock desktop case still consistent. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -18835,7 +18853,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18991,7 +19009,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/lib/starter-work-operation-store.ts",
@@ -19083,7 +19101,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval flow only; no inline approval-card styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "Browser page-tools change (feat/browser-full): runtime-routes.ts only gained three dependencies on the /api/browser mount (pendingDialogFor, answerDialog, consoleFor) and dialogWaitingForPerson on BrowserAutomation. Searched this document for browser/dialog/console/screenshot/lease/hand-back claims; none describe the changed wiring, so no prose change. Did not re-review unrelated claims."
+        "Browser page-tools change (feat/browser-full): runtime-routes.ts only gained three dependencies on the /api/browser mount (pendingDialogFor, answerDialog, consoleFor) and dialogWaitingForPerson on BrowserAutomation. Searched this document for browser/dialog/console/screenshot/lease/hand-back claims; none describe the changed wiring, so no prose change. Did not re-review unrelated claims.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -19732,7 +19751,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "6b1815a15e332e6f0799348d7c2c7c2d7c29fee226f4fb91ca081590207ca08c",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19840,7 +19859,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -19907,7 +19926,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Its guidance (verify changed surface in light/dark incl. disabled state) was followed: rendered and measured the card in both themes; the change uses existing --accent-primary/--text-on-accent/--accent-hover-fill/--error-dark/--bg-tertiary/--text-secondary tokens. No claim changed.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Guidance to verify disabled state in light and dark was followed (rendered and measured 4.33:1 light, 4.38:1 dark); uses existing tokens. No claim changed.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). The guide's new claim that --accent-primary/--text-on-accent read the action role holds, and the #2917 Allow Once button consumes exactly that pair (hover: --accent-hover-fill -> --accent-darker -> the action role), so channel and white-label action roles reach it. No prose change.",
-        "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium."
+        "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -20654,7 +20674,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20782,7 +20802,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -20878,7 +20898,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval scene is Notifications inspection, not the inline card; no claim touched.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. The #2843 hover-contrast note concerns the release selection style, which this change does not touch."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. The #2843 hover-contrast note concerns the release selection style, which this change does not touch.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -20910,7 +20931,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -21018,7 +21039,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21070,13 +21091,14 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Backend approval ownership only; no UI styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Backend approval ownership only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21184,7 +21206,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21239,7 +21261,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. No tool-call card or button-state styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-button styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -21542,7 +21565,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21594,7 +21617,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -21641,7 +21664,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No UI styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -24000,7 +24024,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -24040,7 +24064,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -24093,7 +24117,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -26855,7 +26880,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26984,7 +27009,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -27053,7 +27078,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval buttons (Approve once/Deny) are a different surface; no claim touched.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -27926,7 +27952,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -28014,7 +28040,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -28043,7 +28069,8 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -30347,7 +30374,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -30399,7 +30426,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
+          "digest": "33d1a953beab651a91fdfa0621a1846e62ecc49e370f536665ec898f4d644600"
         }
       ],
       "checks": [
@@ -30419,7 +30446,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Icon/favicon generation only; no claim touched by approval-card CSS.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Icon generation only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The raster channel icons and the favicon-dev swap under is-dev-build are unchanged; the CSS brand stays an amber/indigo/violet shade per channel."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The raster channel icons and the favicon-dev swap under is-dev-build are unchanged; the CSS brand stays an amber/indigo/violet shade per channel.",
+        "index.css gained only an additive `.button--icon` rule (Button variant=\"icon\": 30px round ghost with an accent wash) for the Browser pane toolbar. Searched this document for Button variant, icon-button, toolbar and Browser-pane claims; none describe or depend on it. No prose change."
       ]
     },
     {
@@ -30672,7 +30700,7 @@
     },
     {
       "path": "src-ui/AGENTS.md",
-      "sourceRevision": "12af6cc0b92d9fc23aec5917e61c6674455f4c57",
+      "sourceRevision": "82e8da4a61e03118e0820a7d698d5c22b212340f",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to canonical module/test guidance. The navigation store and useUnsavedGuard support the single route-guard ownership rule; shared controls and physical layout claims remain distinct from DOM tests.",
@@ -30689,7 +30717,7 @@
         },
         {
           "path": "src-ui/src/components/Button.tsx",
-          "digest": "b5ec131e05175b7bed06b33e6ae9446cf1a7297ede17f2576dbef404fcf8ae7b"
+          "digest": "53856c1cf91b49fe58e51322cf69f71843a3f2c3b56f1df8a69ac67fd05b79d7"
         },
         {
           "path": "src-ui/src/components/Dialog.tsx",
@@ -30725,7 +30753,8 @@
         "Integration source review through e0314c727: the module map dropped the CollaborativeEditorPane and PluginForegroundRuns sections and added ProjectTaskRoom. This policy only routes to the module map and names no removed module, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change."
+        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change.",
+        "Button.tsx gained an additive `icon` variant. This file's guidance (use Button for standard actions, 44px mobile targets) still holds and the toolbar follows it. No prose change."
       ]
     },
     {
