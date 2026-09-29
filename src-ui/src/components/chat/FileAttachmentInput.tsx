@@ -136,10 +136,10 @@ export function FileAttachmentInput({
           explainUnavailable
             ? unavailableReason
             : disabled && !canAttach
-            ? "Current model doesn't support attachments"
-            : attachments.length > 0
-              ? 'Review attachments'
-              : 'Attach files'
+              ? "Current model doesn't support attachments"
+              : attachments.length > 0
+                ? 'Review attachments'
+                : 'Attach files'
         }
         aria-label={
           attachments.length > 0

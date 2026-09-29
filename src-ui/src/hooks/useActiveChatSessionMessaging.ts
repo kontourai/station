@@ -858,6 +858,13 @@ export function useSendMessage(
                       ),
                   },
         });
+        // The engine just answered the image question for itself; the
+        // inventory read that carries its handshake answer is cached for
+        // minutes and may predate that answer. Re-read it so the composer's
+        // chips and Send gate reflect the refusal instead of "Ready".
+        if (err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE) {
+          invalidate(['connections', 'engines']);
+        }
         if (foregroundIndeterminate) {
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);

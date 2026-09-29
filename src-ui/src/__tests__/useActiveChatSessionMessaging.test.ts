@@ -799,6 +799,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(notice?.content).toContain('Nothing was sent.');
     expect(notice?.content).not.toContain('Retrying may help');
     expect(notice?.action?.label).toBe('Remove attachments');
+    // The handshake answer the composer reads is re-read, not left cached.
+    expect(invalidateMock).toHaveBeenCalledWith(['connections', 'engines']);
     // The refused attachments came back to the composer with the draft...
     expect(chat?.attachments).toEqual([stagedAttachment]);
     globalThis.fetch = (async () =>
