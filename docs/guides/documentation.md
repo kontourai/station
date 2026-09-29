@@ -233,19 +233,23 @@ git add -A docs/learn && git commit --no-edit
 ```
 
 If the branch also re-reviewed a capture, `docs/learn/media.json` conflicts
-too. The command resolves that file itself. For each conflicting hunk it keeps
-the side that still has the old ledger, keeps the other side's clean edits,
-and then moves the review fields into the ledger. It judges bindings to
+too, and a branch that re-reviewed only captures conflicts there alone. The
+command resolves that file itself. It merges each capture field by field
+against the merge base: the side that still has the old layout keeps its
+review fields, and any other field takes whichever side changed it. Where both
+sides changed one field differently, it names the field and stops without
+writing anything, so you resolve that field and rerun. It judges bindings to
 `media.json` against the bytes it writes, not the conflicted working copy.
 
 The command applies each record the branch changed since that base. It merges
 bindings per source, adds the branch's appended checks as one new notes file
 and deletes the old file. Where both sides reviewed different bytes of one
 source, it keeps the binding that matches the current bytes. If neither
-matches, the record stays stale, and the command names it so you can review it. It also carries
-the branch's in-place edits to earlier checks, such as a redaction. Where both
-sides edited the same check, it keeps ours and names the record so you can
-apply the branch's edit by hand.
+matches, the record stays stale, and the command names it so you can review it.
+It also carries the branch's in-place edits to earlier checks, such as a
+redaction. Where both sides edited the same check, or the branch removed one,
+it keeps ours and names the record so you can apply the branch's change by
+hand.
 
 Staleness that no single pull request owns, such as two merges that combine,
 is collected by the Nightly
