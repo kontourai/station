@@ -6,6 +6,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { appHomesRootDir } from '../../../providers/app-home/app-home-profiles.js';
 import {
+  projectCredentialProfileRegistry,
+  setCredentialProfileEnv,
+} from '../../../providers/app-home/credential-profile-registry.js';
+import {
   type DeviceCodeChildProcess,
   DeviceCodeLoginManager,
 } from '../../../services/connections/device-code-login.js';
@@ -657,6 +661,110 @@ describe('App home profile routes (#896)', () => {
     );
     expect(hostileLabel.status).toBe(400);
     expect(service.upsertCredentialProfile).not.toHaveBeenCalled();
+  });
+
+  describe('#2966 credential profile env overlay route', () => {
+    function envFixture() {
+      const { service } = credentialRecoveryFixture();
+      let state: unknown = {
+        profiles: [
+          {
+            ref: 'profile-a',
+            label: 'Canary Account Label',
+            env: { STALE_ENTRY: 'removed-on-replace' },
+          },
+        ],
+        group: { profileRefs: ['profile-a'], enrolledProfileRefs: [] },
+      };
+      const project = () =>
+        projectCredentialProfileRegistry(state, 'restart_resume');
+      const withEnv = {
+        ...service,
+        getCredentialRecovery: vi.fn(async () => project()),
+        setCredentialProfileEnv: vi.fn(
+          async (_id: string, ref: string, env: Record<string, string>) => {
+            state = setCredentialProfileEnv(state, ref, env).state;
+            return project();
+          },
+        ),
+      };
+      return {
+        service: withEnv,
+        app: createAppHomeRoutes({ connectionService: withEnv as any }),
+      };
+    }
+    const put = (
+      app: ReturnType<typeof createAppHomeRoutes>,
+      body: unknown,
+      ref = 'profile-a',
+    ) =>
+      app.request(`/agent/codex/credential-recovery/profiles/${ref}/env`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    test('refuses a credential-shaped literal with a 400 that never echoes the value', async () => {
+      const { app, service } = envFixture();
+
+      const res = await put(app, {
+        env: {
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          ANTHROPIC_AUTH_TOKEN: 'canary-secret',
+        },
+      });
+
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain('ANTHROPIC_AUTH_TOKEN');
+      expect(text).not.toContain('canary-secret');
+      expect(service.setCredentialProfileEnv).not.toHaveBeenCalled();
+    });
+
+    test('replaces the overlay wholesale, returns it in the projection, and {} clears it', async () => {
+      const { app } = envFixture();
+
+      const replaced = await put(app, {
+        env: {
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          ANTHROPIC_API_KEY: '',
+        },
+      });
+      expect(replaced.status).toBe(200);
+      expect(
+        (await readJson<{ data: { profiles: unknown[] } }>(replaced)).data
+          .profiles,
+      ).toEqual([
+        {
+          ref: 'profile-a',
+          label: 'Canary Account Label',
+          env: {
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+            ANTHROPIC_API_KEY: '',
+          },
+        },
+      ]);
+
+      const listed = await app.request('/agent/codex/credential-recovery');
+      expect(JSON.stringify(await listed.json())).not.toContain('STALE_ENTRY');
+
+      const cleared = await put(app, { env: {} });
+      expect(cleared.status).toBe(200);
+      expect(
+        (await readJson<{ data: { profiles: unknown[] } }>(cleared)).data
+          .profiles,
+      ).toEqual([{ ref: 'profile-a', label: 'Canary Account Label' }]);
+    });
+
+    test('404s for an unknown profile and 400s for a hostile ref or missing env', async () => {
+      const { app, service } = envFixture();
+
+      expect((await put(app, { env: {} }, 'profile-missing')).status).toBe(404);
+      expect((await put(app, { env: {} }, 'a%2Fb')).status).toBe(400);
+      expect((await put(app, {})).status).toBe(400);
+      expect((await put(app, { env: { TMPDIR: '/tmp' } })).status).toBe(400);
+      expect(service.setCredentialProfileEnv).not.toHaveBeenCalled();
+    });
   });
 
   test('credential recovery reports a conflicting profile mutation instead of claiming it completed', async () => {

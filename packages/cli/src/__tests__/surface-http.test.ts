@@ -136,7 +136,7 @@ describe('CLI surface commands over HTTP', () => {
         return;
       }
       const credentialRecoveryMatch = url.pathname.match(
-        /^\/api\/connections\/agent\/([^/]+)\/credential-recovery(?:\/profiles(?:\/([^/]+)(?:\/(enrollment|import|apply))?)?|\/policy)?$/,
+        /^\/api\/connections\/agent\/([^/]+)\/credential-recovery(?:\/profiles(?:\/([^/]+)(?:\/(enrollment|env|import|apply))?)?|\/policy)?$/,
       );
       if (credentialRecoveryMatch) {
         state.credentialRecoveryCalls.push({
@@ -187,7 +187,15 @@ describe('CLI surface commands over HTTP', () => {
         const projection = {
           profiles: [
             { ref: 'primary', label: 'Primary account' },
-            { ref: 'recovery', label: 'Recovery account' },
+            {
+              ref: 'recovery',
+              label: 'Recovery account',
+              env: {
+                ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+                ANTHROPIC_API_KEY: '',
+                NOT_A_STRING: 7,
+              },
+            },
           ],
           group: {
             profileRefs: ['primary', 'recovery'],
@@ -1389,9 +1397,31 @@ describe('CLI surface commands over HTTP', () => {
     expect(recoveryOutput).not.toContain('Primary account');
     expect(recoveryOutput).not.toContain('must-not-print');
 
+    expect(recoveryOutput).not.toContain('ANTHROPIC_BASE_URL');
+
     await runCli(['connections', 'profiles', 'codex', `--api-base=${apiBase}`]);
     const profileListOutput = String(_consoleLog.mock.calls.at(-1)?.[0]);
     expect(profileListOutput).toContain('Primary account');
+    expect(JSON.parse(profileListOutput).profiles[1].env).toEqual({
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+      ANTHROPIC_API_KEY: '',
+    });
+    await runCli([
+      'connections',
+      'profile-env',
+      'codex',
+      'recovery',
+      '--data={"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8318","ANTHROPIC_API_KEY":""}}',
+      `--api-base=${apiBase}`,
+    ]);
+    const profileEnvOutput = String(_consoleLog.mock.calls.at(-1)?.[0]);
+    expect(JSON.parse(profileEnvOutput).profiles[1]).toEqual({
+      ref: 'recovery',
+      env: {
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        ANTHROPIC_API_KEY: '',
+      },
+    });
     await runCli([
       'connections',
       'profile-upsert',
@@ -1458,6 +1488,16 @@ describe('CLI surface commands over HTTP', () => {
       {
         method: 'GET',
         path: '/api/connections/agent/codex/credential-recovery',
+      },
+      {
+        method: 'PUT',
+        path: '/api/connections/agent/codex/credential-recovery/profiles/recovery/env',
+        body: {
+          env: {
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+            ANTHROPIC_API_KEY: '',
+          },
+        },
       },
       {
         method: 'POST',

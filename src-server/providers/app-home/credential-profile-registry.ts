@@ -11,6 +11,7 @@ import {
   DEFAULT_CREDENTIAL_RECOVERY_POLICY,
   isAutomaticCredentialRecoveryEnabled,
 } from '@kontourai/station-contracts/connection-recovery';
+import { sanitizeCredentialProfileEnv } from '../../services/connections/connection-env.js';
 import {
   appHomeProfileDir,
   type EnsureAppHomeProfileOptions,
@@ -102,6 +103,18 @@ function normalizeAttemptId(value: unknown): string | undefined {
     : undefined;
 }
 
+function profileRecord(
+  ref: string,
+  label: string | undefined,
+  env: Record<string, string> | undefined,
+): CredentialProfile {
+  return {
+    ref,
+    ...(label ? { label } : {}),
+    ...(env && Object.keys(env).length > 0 ? { env: { ...env } } : {}),
+  };
+}
+
 function normalizeProfiles(value: unknown): CredentialProfile[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -112,10 +125,49 @@ function normalizeProfiles(value: unknown): CredentialProfile[] {
     const ref = normalizeRef(raw.ref);
     if (!ref || seen.has(ref) || profiles.length >= MAX_PROFILES) continue;
     seen.add(ref);
-    const label = normalizeLabel(raw.label);
-    profiles.push(label ? { ref, label } : { ref });
+    // An invalid overlay is dropped whole, never partially: the spawn-time
+    // resolver (`credential-profile-env.ts`) re-reads the persisted value and
+    // refuses to start rather than applying what survived normalization.
+    profiles.push(
+      profileRecord(
+        ref,
+        normalizeLabel(raw.label),
+        sanitizeCredentialProfileEnv(raw.env),
+      ),
+    );
   }
   return profiles;
+}
+
+/**
+ * The persisted, un-normalized `env` of the profile that normalization would
+ * keep for `refInput` (the first valid occurrence). The spawn-time resolver
+ * validates this raw value itself so a hand-edited invalid overlay fails the
+ * start instead of disappearing in normalization.
+ */
+export function persistedCredentialProfileEnv(
+  value: unknown,
+  refInput: string,
+): unknown {
+  const ref = normalizeRef(refInput);
+  const raw =
+    value && typeof value === 'object'
+      ? (value as Record<string, unknown>).profiles
+      : undefined;
+  if (!ref || !Array.isArray(raw)) return undefined;
+  const seen = new Set<string>();
+  let kept = 0;
+  for (const candidate of raw) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const record = candidate as Record<string, unknown>;
+    const candidateRef = normalizeRef(record.ref);
+    if (!candidateRef || seen.has(candidateRef) || kept >= MAX_PROFILES)
+      continue;
+    seen.add(candidateRef);
+    kept += 1;
+    if (candidateRef === ref) return record.env;
+  }
+  return undefined;
 }
 
 function normalizeRefs(value: unknown, knownRefs: Set<string>): string[] {
@@ -280,10 +332,14 @@ function rejected(
   };
 }
 
-/** Upserts management metadata and explicitly adds a new profile to the group. */
+/**
+ * Upserts management metadata (ref + label) and explicitly adds a new profile
+ * to the group. The env overlay is not metadata: an upsert keeps an existing
+ * profile's env untouched, and `setCredentialProfileEnv` owns changing it.
+ */
 export function upsertCredentialProfile(
   value: unknown,
-  profile: CredentialProfile,
+  profile: Pick<CredentialProfile, 'ref' | 'label'>,
 ): CredentialProfileRegistryTransitionResult {
   const state = stateOf(value);
   const ref = normalizeRef(profile.ref);
@@ -294,9 +350,11 @@ export function upsertCredentialProfile(
     return rejected(state);
   const profiles = existing
     ? state.profiles.map((candidate) =>
-        candidate.ref === ref ? (label ? { ref, label } : { ref }) : candidate,
+        candidate.ref === ref
+          ? profileRecord(ref, label, candidate.env)
+          : candidate,
       )
-    : [...state.profiles, label ? { ref, label } : { ref }];
+    : [...state.profiles, profileRecord(ref, label, undefined)];
   const profileRefs = state.group.profileRefs.includes(ref)
     ? state.group.profileRefs
     : [...state.group.profileRefs, ref];
@@ -305,6 +363,32 @@ export function upsertCredentialProfile(
       ...state,
       profiles,
       group: { ...state.group, profileRefs },
+    }),
+    transition: 'ignored',
+  };
+}
+
+/**
+ * Replaces a profile's env overlay wholesale; an empty map clears it. An
+ * invalid overlay is rejected whole rather than partially applied.
+ */
+export function setCredentialProfileEnv(
+  value: unknown,
+  refInput: string,
+  envInput: unknown,
+): CredentialProfileRegistryTransitionResult {
+  const state = stateOf(value);
+  const ref = normalizeRef(refInput);
+  const env = sanitizeCredentialProfileEnv(envInput);
+  if (!ref || !env) return rejected(state);
+  if (!state.profiles.some((profile) => profile.ref === ref))
+    return rejected(state);
+  return {
+    state: withState({
+      ...state,
+      profiles: state.profiles.map((profile) =>
+        profile.ref === ref ? profileRecord(ref, profile.label, env) : profile,
+      ),
     }),
     transition: 'ignored',
   };
@@ -385,7 +469,9 @@ export function projectCredentialProfileRegistry(
 ): CredentialRecoveryGroupProjection {
   const state = stateOf(value);
   return {
-    profiles: state.profiles.map((profile) => ({ ...profile })),
+    profiles: state.profiles.map((profile) =>
+      profileRecord(profile.ref, profile.label, profile.env),
+    ),
     group: {
       profileRefs: [...state.group.profileRefs],
       enrolledProfileRefs: [...state.group.enrolledProfileRefs],

@@ -216,7 +216,10 @@ failure mode instead of an adapter-level design choice.
 
 Credential profiles extend the app-home boundary without turning it into a second
 credential vault. The persisted connection record carries only an opaque profile `ref`,
-an optional **management-only** label, explicit group/enrollment metadata, default-off
+an optional **management-only** label, an optional non-secret env overlay (#2966;
+credential-shaped names may only hold an empty masking value — see the
+[connections guide](../guides/connections.md#give-a-credential-profile-its-own-routing)),
+explicit group/enrollment metadata, default-off
 automatic policy, and the current non-secret application projection. Credential material
 stays in the selected engine credential owner rather than the recovery registry; it is never copied into
 the connection registry, response, CLI output, receipt, log, or metric. A ref is not an
@@ -230,8 +233,9 @@ profile home. Routes and UI return the ref/label only, never the profile directo
 keeps a profile usable even when the legacy `config.useAppHome` toggle is off: an active
 credential profile has precedence for ordinary future starts; only if there is no active
 profile does Station use the legacy base app-home opt-in or the engine's global config.
-An explicit selected-profile environment failure fails closed rather than silently falling
-back to global credentials.
+A selected-profile environment failure — an explicit ref or the connection's active
+profile, including an invalid persisted env overlay — fails closed rather than silently
+falling back to global credentials.
 
 **Capability matrix and application.** Capability is adapter-declared, never inferred
 from a provider name. Codex currently declares `restart_resume` and does not claim
@@ -261,6 +265,7 @@ adoption. Active or pending/enrolled refs cannot be deleted.
 be explicitly enrolled before it can be considered. Selection is fail-closed: only an
 *observed*, account-scoped `rate-limit` or `capacity` failure may stage a different
 enrolled profile; authentication, provider/server/unknown scope, a same-profile candidate,
+a candidate whose env overlay differs from the active profile's (`environment_mismatch`),
 or an unsupported adapter all refuse. The selected recovery restart/resume follows the
 same stage → commit-on-live-success / rollback-on-failure protocol as manual adoption.
 

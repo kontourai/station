@@ -124,3 +124,95 @@ export function connectionSpawnEnv(
   }
   return Object.keys(env).length > 0 ? env : undefined;
 }
+
+/**
+ * A credential profile's env overlay carries no credential values: the
+ * profile's own app home owns them. A non-empty literal under a name shaped
+ * like a credential is refused; the empty string stays legal because masking
+ * an inherited credential (e.g. `ANTHROPIC_API_KEY: ""` beside a proxy base
+ * URL) is the overlay's main use. Deliberately over-inclusive: a refused
+ * non-secret value can live in the connection `env` instead.
+ */
+const CREDENTIAL_SHAPED_ENV_NAME_PATTERN =
+  /(KEY|TOKEN|SECRET|PASSWORD|CREDENTIALS?)$/i;
+
+/**
+ * The profile overlay additionally refuses both engines' config-home keys:
+ * the selected profile's app home is the one value those keys may hold.
+ */
+const CREDENTIAL_PROFILE_ENV_REFUSED_KEYS = new Set<string>([
+  ...CONNECTION_ENV_REFUSED_KEYS,
+  ...Object.values(CONNECTION_CONFIG_HOME_ENV_KEYS),
+]);
+
+export type CredentialProfileEnvValidation =
+  | { ok: true; env: Record<string, string> }
+  | { ok: false; violations: string[] };
+
+/**
+ * Strict, all-or-nothing validation of a credential profile's env overlay.
+ * Unlike the connection env's drop-never-throw sanitizer, a profile overlay
+ * is either applied whole or refused: silently dropping an entry (say the
+ * `ANTHROPIC_API_KEY: ""` mask) would route a session with credentials it
+ * was configured to hide. Violation text names the offending variable but
+ * never echoes a value, which may be a pasted secret.
+ */
+export function validateCredentialProfileEnv(
+  value: unknown,
+): CredentialProfileEnvValidation {
+  if (value === undefined) return { ok: true, env: {} };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { ok: false, violations: ['env must be an object of strings'] };
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  const violations: string[] = [];
+  if (entries.length > CONNECTION_ENV_MAX_ENTRIES) {
+    violations.push(
+      `env has ${entries.length} entries; at most ${CONNECTION_ENV_MAX_ENTRIES} are allowed`,
+    );
+  }
+  const env: Record<string, string> = {};
+  for (const [name, raw] of entries) {
+    if (!CONNECTION_ENV_NAME_PATTERN.test(name)) {
+      violations.push('env contains an invalid variable name');
+      continue;
+    }
+    if (CREDENTIAL_PROFILE_ENV_REFUSED_KEYS.has(name)) {
+      violations.push(`${name} is owned by Station and cannot be set`);
+      continue;
+    }
+    if (typeof raw !== 'string') {
+      violations.push(`${name} must be a string`);
+      continue;
+    }
+    if (raw.length > CONNECTION_ENV_VALUE_MAX_LENGTH) {
+      violations.push(
+        `${name} is longer than ${CONNECTION_ENV_VALUE_MAX_LENGTH} characters`,
+      );
+      continue;
+    }
+    if (raw.includes('\u0000')) {
+      violations.push(`${name} contains a NUL character`);
+      continue;
+    }
+    if (raw !== '' && CREDENTIAL_SHAPED_ENV_NAME_PATTERN.test(name)) {
+      violations.push(
+        `${name} looks like a credential; a profile env may only mask it with an empty value`,
+      );
+      continue;
+    }
+    env[name] = raw;
+  }
+  return violations.length > 0 ? { ok: false, violations } : { ok: true, env };
+}
+
+/**
+ * The registry's form of {@link validateCredentialProfileEnv}: the whole
+ * overlay, or `undefined` when any entry is invalid (never a partial map).
+ */
+export function sanitizeCredentialProfileEnv(
+  value: unknown,
+): Record<string, string> | undefined {
+  const result = validateCredentialProfileEnv(value);
+  return result.ok ? result.env : undefined;
+}

@@ -60,6 +60,15 @@ export interface CredentialProfile {
   ref: string;
   /** Optional management-only display label. Never use as account identity. */
   label?: string;
+  /**
+   * Optional non-secret environment overlay applied to engine sessions that
+   * run under this profile (for example a proxy base URL). An empty-string
+   * value masks an inherited variable. It never carries credential values:
+   * a non-empty literal whose name looks credential-shaped (`*_KEY`,
+   * `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_CREDENTIAL(S)`) is refused, as
+   * are the profile-home keys and Station-internal names.
+   */
+  env?: Record<string, string>;
 }
 
 /** Explicit membership required before a profile can be automatically selected. */
@@ -94,7 +103,9 @@ export type CredentialProfileApplicationOutcome =
 
 /**
  * Persisted, non-secret credential-profile state. Credential values belong
- * exclusively to the selected app-home directory, never to this record.
+ * exclusively to the selected app-home directory, never to this record: a
+ * profile's `env` overlay holds only non-secret literals (credential-shaped
+ * names may appear only with an empty, masking value).
  */
 export interface CredentialProfileRegistryState {
   profiles?: CredentialProfile[];

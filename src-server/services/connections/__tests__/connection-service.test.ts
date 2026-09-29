@@ -3338,17 +3338,22 @@ describe('ConnectionService', () => {
       | 'restart_resume'
       | 'unsupported' = 'restart_resume',
     protocol?: ReturnType<EventStore['createCredentialApplicationFactory']>,
+    profiles: Array<{
+      ref: string;
+      label?: string;
+      env?: Record<string, string>;
+    }> = [
+      { ref: 'profile-a', label: 'Primary account' },
+      { ref: 'canary-profile-ref', label: 'Canary Account Label' },
+      { ref: 'profile-c', label: 'Superseding account' },
+    ],
   ) {
     let appConfig: any = {
       defaultModel: 'model-a',
       agentConnections: {
         codex: {
           credentialRecovery: {
-            profiles: [
-              { ref: 'profile-a', label: 'Primary account' },
-              { ref: 'canary-profile-ref', label: 'Canary Account Label' },
-              { ref: 'profile-c', label: 'Superseding account' },
-            ],
+            profiles,
             group: {
               profileRefs: ['profile-a', 'canary-profile-ref', 'profile-c'],
               enrolledProfileRefs: ['canary-profile-ref', 'profile-c'],
@@ -3608,6 +3613,74 @@ describe('ConnectionService', () => {
       store.close();
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  describe('#2966 automatic candidate selection honors routing env', () => {
+    const routed = { OPENAI_BASE_URL: 'http://127.0.0.1:9000' };
+    const exhausted = {
+      kind: 'capacity' as const,
+      scope: 'account' as const,
+      timing: {},
+    };
+
+    test('skips an enrolled candidate that routes differently and stages the first matching one', async () => {
+      const { service, getAppConfig } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        undefined,
+        [
+          { ref: 'profile-a', env: routed },
+          { ref: 'canary-profile-ref' },
+          { ref: 'profile-c', env: routed },
+        ],
+      );
+      await service.setCredentialRecoveryAutomaticPolicy('codex', true);
+
+      const attempt = await service.stageAutomaticCredentialProfileApplication(
+        'codex',
+        exhausted,
+      );
+
+      expect(attempt?.candidateProfileRef).toBe('profile-c');
+      expect(
+        getAppConfig().agentConnections.codex.credentialRecovery.profiles,
+      ).toContainEqual({ ref: 'profile-a', env: routed });
+    });
+
+    test('refuses as environment_mismatch when no enrolled candidate routes like the active profile', async () => {
+      const { service } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        undefined,
+        [
+          { ref: 'profile-a', env: routed },
+          { ref: 'canary-profile-ref' },
+          {
+            ref: 'profile-c',
+            env: { OPENAI_BASE_URL: 'http://elsewhere.example.internal' },
+          },
+        ],
+      );
+      await service.setCredentialRecoveryAutomaticPolicy('codex', true);
+      const metricAdd = vi.spyOn(credentialProfileApplication, 'add');
+      try {
+        await expect(
+          service.stageAutomaticCredentialProfileApplication(
+            'codex',
+            exhausted,
+          ),
+        ).resolves.toBeUndefined();
+        expect(metricAdd).toHaveBeenCalledWith(1, {
+          source: 'recovery',
+          capability: 'restart_resume',
+          outcome: 'rejected',
+          scope: 'account',
+          reason: 'environment_mismatch',
+        });
+      } finally {
+        metricAdd.mockRestore();
+      }
+    });
   });
 
   test('refuses to enable automatic credential recovery when the adapter is unsupported', async () => {

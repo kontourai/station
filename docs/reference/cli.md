@@ -1519,7 +1519,22 @@ station connections create --data=<json> [--api-base=<url>]
 station connections update <id> --data=<json> [--api-base=<url>]
 station connections delete <id> [--api-base=<url>]
 station connections test <id> [--api-base=<url>]
+station connections recovery <id> [--api-base=<url>]
+station connections profiles <id> [--api-base=<url>]
+station connections profile-upsert <id> --data='{"ref":"...","label":"..."}' [--api-base=<url>]
+station connections profile-env <id> <profile-ref> --data='{"env":{"NAME":"value"}}' [--api-base=<url>]
+station connections profile-delete|profile-enroll|profile-unenroll <id> <profile-ref> [--api-base=<url>]
+station connections recovery-policy <id> --automatic=<true|false> [--api-base=<url>]
+station connections profile-import <id> <profile-ref> [--include-credentials] [--api-base=<url>]
+station connections profile-apply <id> <profile-ref> --confirm [--timeout-ms=<ms>] [--api-base=<url>]
 ```
+
+`profile-env` replaces a credential profile's non-secret env overlay
+(`{"env":{}}` clears it). A non-empty value under a credential-shaped name
+(`*_KEY`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_CREDENTIAL(S)`) is refused;
+set such a name to `""` to mask an inherited value. `profiles` and
+`profile-env` print each profile's overlay; `recovery` does not. See
+[credential profile env overlays](../guides/connections.md#give-a-credential-profile-its-own-routing).
 
 ### `flow`
 

@@ -896,6 +896,31 @@ removes saved overrides and unregisters the engine connection from the Agent
 registry. This does not uninstall the engine executable. A pending runtime
 reconciliation can return 202 with `configurationActivation`.
 
+### Set a Credential Profile's Env Overlay
+
+```http
+PUT /api/connections/agent/:id/credential-recovery/profiles/:ref/env
+```
+
+The body is `{"env": {"NAME": "value", ...}}`. It replaces the profile's
+non-secret env overlay wholesale; `{"env": {}}` clears it. The
+[request schema](../../src-server/routes/schemas/schema-definitions/runtime.ts)
+applies the [profile env rules](../../src-server/services/connections/connection-env.ts)
+and refuses the whole body with 400 when any entry breaks them: an invalid
+name, a non-string value, NUL, a value over 32,768 JavaScript string code
+units, more than 64 entries, `TMPDIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, a
+Station-internal name, or a non-empty value under a name ending in `KEY`,
+`TOKEN`, `SECRET`, `PASSWORD`, or `CREDENTIAL(S)` (case-insensitive; an empty
+string is allowed so a profile can mask an inherited credential). Error
+details name the variable, never its value.
+
+An unknown profile returns 404, and an Agent App without credential recovery
+returns 404. On success the response is `{success: true, data}` with the
+credential-recovery projection, whose `profiles[].env` carries the overlay.
+The route belongs to the `/api/connections/agent/:id/credential-recovery`
+family, which requires the `access:manage` pairing scope
+([route mapping](../../src-server/security/pairing-route-scopes.ts)).
+
 ### Test a Connection
 
 `POST /api/connections/:id/test` returns `{success: true, data}` with

@@ -78,6 +78,7 @@ import {
   ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
+import { CredentialProfileEnvUnavailableError } from '../app-home/credential-profile-env.js';
 import { detectClaudeAuthState } from '../auth/claude-auth.js';
 import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
@@ -736,10 +737,11 @@ export interface ClaudeAdapterOptions {
   /**
    * App-home profile env (archive#896, agent-engine-unification.md §6.1's overlay
    * model, channel 2) — `undefined` when the claude connection has
-   * not opted in (`config.useAppHome`) or on any resolution failure; the
-   * caller degrades to `undefined` rather than throwing. Applied at
-   * `startSession` only — see `adoptSession`'s doc comment for why
-   * adoption deliberately never applies it.
+   * not opted in (`config.useAppHome`). For a selected credential profile it
+   * is the profile's env overlay under its `CLAUDE_CONFIG_DIR` (#2966), and a
+   * failure throws `CredentialProfileEnvUnavailableError`, which
+   * `resolveAppHomeEnv` never degrades. Applied at `startSession` only — see
+   * `adoptSession`'s doc comment for why adoption deliberately never applies it.
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
@@ -3094,10 +3096,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     try {
       return await this.options.getAppHomeEnv?.(credentialProfileRef);
     } catch (error) {
-      if (credentialProfileRef) {
-        throw new Error(
-          'Credential profile environment could not be prepared.',
-        );
+      // #2966: the resolver's typed error marks a failure AFTER a profile
+      // was selected — including the connection's configured active profile,
+      // which carries no explicit ref here. Degrading that to global would
+      // run on credentials (and routing) nobody selected.
+      if (
+        credentialProfileRef ||
+        error instanceof CredentialProfileEnvUnavailableError
+      ) {
+        throw new CredentialProfileEnvUnavailableError();
       }
       (this.options.logger ?? console).warn?.(
         `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${errorMessage(error)}`,
