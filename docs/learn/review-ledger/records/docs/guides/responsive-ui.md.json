@@ -28,9 +28,9 @@
 
     {"path":"packages/sdk/src/queryFactories.ts","digest":"1359417720b7dd3507f5909d835d7f9c06200e2cadaa7c3c66e754cb1a5ee8ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"c15895373f108c3d6c2d434ee19eff4f29a8a71eeb4f3d652e786e317f3ed436","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/shared/package.json","digest":"0bbc56ff6227f45998a77b3ce439bc856c9e07d7b906ce76f00bd45b7787b9f3","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"scripts/mobile-css-ratchet.mjs","digest":"fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

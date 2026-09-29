@@ -14,7 +14,7 @@
   "sources": [
     {"path":"examples/builder-delivery-viewer/layout.json","digest":"165e78760f23b4d9accd75c796466c0cea2d68217d8be2701916946e71fe1991","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"examples/builder-delivery-viewer/package.json","digest":"00f55a8c338c797a09cd22df48a632e65f75a01f76e7d1e7bc305154b6959829","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"examples/builder-delivery-viewer/package.json","digest":"4a03ee37bb6050ee3df4e1e44493dafb5ba87a603b16cc5220b833063c677995","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"examples/builder-delivery-viewer/plugin.json","digest":"b0c0fdfc602ab139aab3751c62ecc518b0eb80020456b33f8eebb070189cfd28","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -26,7 +26,7 @@
 
     {"path":"examples/registry/manifest.json","digest":"1a6cc7babffefe6a1d0dd44d71387dd6209857091bdf40cf556d29531ec8e32b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

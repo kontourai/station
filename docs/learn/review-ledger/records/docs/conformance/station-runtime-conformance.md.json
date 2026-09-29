@@ -9,10 +9,10 @@
 
   "limits": "Adapter probe results do not establish a live model or every-engine conformance outcome.",
 
-  "document": {"digest":"2aa80fa282a261b83f2b01aa9d135c187be076ab86b8dddbabdb32023ff6833e","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+  "document": {"digest":"e10a596e445fdd2be4d888baee7d4e3e32d696fbeffc525b3f78d7f878423a30","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
   "sources": [
-    {"path":"docs/conformance/station-runtime-conformance.json","digest":"cbc50694ef250065ab80f9b05865d59cbeef8a15177e6d805b9818c7550794d2","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    {"path":"docs/conformance/station-runtime-conformance.json","digest":"0e490185dc517a73778f26db61735d8d0fe74f597ebca0ed1afc46c62c620bf3","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"scripts/generate-runtime-conformance.mjs","digest":"4f5197dcdd37c540f09d3938807e9ef5866472827429ee906ed56e6e8d8d0876","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 

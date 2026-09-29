@@ -12,7 +12,7 @@
   "document": {"digest":"5545f52b980d2071732503351ddbd811e19d4c6e333c7e02b294db00a197a147","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"package.json","digest":"12631831e2544c3af335cd44ede75b95aa5d4acf88d9953857064676857ec31c","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
@@ -22,7 +22,7 @@
 
     {"path":"packages/sdk/src/client/projects.ts","digest":"f89fed1caeffeaec2d1b29e0eda07253caa9e4f88a435b44f7be0248d2d40a3c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"src-desktop/src/lib.rs","digest":"36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

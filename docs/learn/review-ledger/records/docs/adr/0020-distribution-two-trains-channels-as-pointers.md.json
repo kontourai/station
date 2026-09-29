@@ -1,0 +1,69 @@
+{
+  "path": "docs/adr/0020-distribution-two-trains-channels-as-pointers.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Accepted decision record for the distribution epic (#2956, #2958): channels as signed pointers over one host stream, a client train and a host stream joined by launcher and client-API protocol ranges with rejection paths, a manifest-only installer, a desktop shell that fetches and verifies the host with the installer verifier, one opt-in service-install capability, and the #2713 answers (never-backwards channel switching with restore/start-fresh escape hatches, consent-based migration to the stable desktop identity, URL-keyed pairing, one channel record per axis).",
+
+  "limits": "Decision record only; no behavior ships with it. Context statements describe origin/main on 2026-09-29 and were checked against the listed sources; the decisions are implemented and proven by #2959-#2962, not by this record.",
+
+  "document": {"digest":"d5acbd007ab05fd13e9689943a2040edbc5a8980c4c04eb7a3f0aa6e2dc03372","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+  "sources": [
+    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"packages/shared/src/service-launcher-protocol.ts","digest":"fdbe729811c373d0bdf059c51ea72dbc5d1e3240c88c91fa553d878107a9b68e","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"src-server/routes/system/archive-update.ts","digest":"97a36602f6d3d0b0ad2e19d566784adad7c1caafece78d961c849167232003f9","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"src-ui/src/lib/compatibility.ts","digest":"4c3ddfb66d0c660278dbb12f3dcc66fbb4a7c3c24a882c3d65afe3c89bd9dac3","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"config/release-manifest-keys.json","digest":"28b356665f581456dcddd64ae86ebf3bde1fb1ee12408c480b7a2fa68923f0c3","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"config/channel-ports.json","digest":"b57f2202d6b699d201df79f80e3dd7b3049b3a4c5b3455185e8d35c619a69bcf","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","digest":"ae630ad46482a84ef322e83bf470c9936219e5ba452eeff3a7e45ecc047d43d4","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"packaging/portable-server/bin/station-launcher.mjs","digest":"bb4b5acbe1ca4528b66c51821919b0c048d51102ae47eda12ada64bc236f14a2","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"scripts/portable-nightly-publication.mjs","digest":"ead20dbb641dd589b6f6eae6ecbd7923ac744f38e958ea57b0a099ba006d3940","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"src-desktop/tauri.conf.json","digest":"24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"src-desktop/tauri.beta.conf.json","digest":"91b0495f471651c383602046d4a2d4d32ff5cd5e4b7219cf4f7c9daf3486ccc5","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"src-desktop/tauri.nightly.conf.json","digest":"7958e34fb92ec4938b550c12306bc6b300dcb302a69906753b70ff8ce1181262","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"packages/connect/src/core/pairingDeepLink.ts","digest":"e52ea12978d577a648ca00eecbd9bede7f7e6257c34b3fb573c5f976ad92feda","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"src-server/routes/system/build-provenance.ts","digest":"825fc8c500a09d351fbedb19373d2c65aca0549b45296d62c411cad41f6adb7b","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"packages/shared/src/station-home-store-registry.ts","digest":"76ec8c229b2fa73eb4eda7ba18ebf3aa5b29320e0c06d081fc7a97b50da5381d","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"packages/shared/src/release-manifest.mjs","digest":"9dbda2644188254731d9806fc22278870a713b6dcddf7a7c1467fee1170fbf83","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"packages/shared/src/prebuilt-archive.ts","digest":"73f956c32b937353113b247025a4c7e7feba6e4f305703d4366593b9e5ba78d8","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"}
+  ],
+
+  "checks": [
+    "Context claims checked against source: launcher protocol constants and refusals (install.sh range refuse; service-launcher-protocol.ts; archive-update.ts; none in src-desktop Rust); client API compat (environment-security.ts STATION_COMPAT_*; compatibility.ts client-side refusal; host records only); home schema downgrade refusal (station-home-schema.ts); install state record read by lifecycle.ts; pinned keys (release-manifest-keys.json); per-channel identities (channel-ports.json). Decisions: owner direction and owner answers of 2026-09-29; engineering additions labeled.",
+
+    "Review fix round: D1 restated as ring-tagged pointers now with promotion as the target (owner), verifier = packages/shared/src/release-manifest.mjs plus install.sh's golden-vector copy only, bundled-host pin (not the startup ticket) becomes a range check, supersedes ADR 0015 in part, channel records described as two agreeing records today with a single-writer target, CLI axes split, host-side refusal needs a client protocol field, D6 split updater keys (owner), engineering additions labeled, alternatives and NOT_VERIFIED added.",
+
+    "Delta-review fixes: hold rule requires a strictly greater core (equal cores hide newer nightly code); D4 verifies only under a pinned or verified-archive Node; D6 rotation bootstrap (signed with the shared key, then retire it from nightly); migration labels split; baked-ring copy qualified.",
+
+    "Wording: nightly core reason corrected; lines re-wrapped.",
+
+    "Source ADR 0015 changed by the merged #2957 evidence addendum (e8dc2e22). ADR 0020's NOT_VERIFIED carry-list and the addendum anchor match the landed text (Windows readiness and watchdog timings, stale sidecar entries, shared roots refusing first launch).",
+
+    "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold."
+  ]
+}

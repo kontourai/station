@@ -18,19 +18,19 @@
 
     {"path":".github/workflows/main-health.yml","digest":"397e6b49220a66359241c76a4412c1d98de25f5087b0177673f26a7ae146679d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":".github/workflows/security-analysis.yml","digest":"2aa93f7925004df1afecdb8cc1d15190315383816ac83125f0c61bd403c03575","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/security-analysis.yml","digest":"14107fac7f9b0cef3631098200985ab9f73e0780ad8b95d74a6e01356c25deaa","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":".npmrc","digest":"494a0451b5f0162e3935bd1c352fdafc8454ee42485693d23e9890ff24528403","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"config/dependency-lifecycle-allowlist.json","digest":"7dea4c4aecb03064e3c978a4255221a2e8a222c68717c51e6178c0e615ef6ac3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"package.json","digest":"12631831e2544c3af335cd44ede75b95aa5d4acf88d9953857064676857ec31c","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"patches/voltagent-core-2.10.0.patch","digest":"8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"pnpm-workspace.yaml","digest":"e101a202d035469d94011b568c05b558f02914e050a1fb94ff8639e68c721891","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"pnpm-workspace.yaml","digest":"962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"scripts/__tests__/codeql-sarif-policy.test.ts","digest":"a7e2db81ccf7daabe0d4e1b3d91cc46401d20f5aafa351c72ca56068bd4fd608","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -38,7 +38,7 @@
 
     {"path":"scripts/__tests__/pnpm-advisory-command.test.ts","digest":"235c4174211032d0199025a05c3190e12e688d0d093c04491da603caf2654c0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/actionlint-gate.mjs","digest":"93b689c4bfc7f191022916b1fdfa99be0b94d5c4beb7ac805f3af3013aaf6bd4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/actionlint-gate.mjs","digest":"25b1f998e505ab9c07b1413791f22721c9fdf4defa433f2e7157739640f1df95","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"scripts/classify-ci-change.mjs","digest":"bfe2eb23055b9149b644b1c81d3db2cc09b35a9ecd56d702653b38e77c2910ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

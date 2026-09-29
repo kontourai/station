@@ -20,7 +20,7 @@
 
     {"path":"packages/contracts/src/settings-registry.ts","digest":"95bcee81c363ab5ab39dff227f2aaec271f7baecd7bf1c9ae33b85ac7928de5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"schemas/agent.schema.json","digest":"d5f9d556348793b8a12764d68b005a9ab08c956da09304b61f2bf29620ba798d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -14,11 +14,11 @@
   "sources": [
     {"path":".github/workflows/node-pty-prebuilds.yml","digest":"764daeea2e3e7ce837be3daa83c22ad249050a7e6571598380e6a9574e37dcfc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"config/dependency-lifecycle-allowlist.json","digest":"7dea4c4aecb03064e3c978a4255221a2e8a222c68717c51e6178c0e615ef6ac3","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"packaging/node-pty-prebuilds/manifest.json","digest":"22b3c66570004f238adb60b2b34c830c9d285ac01f060de3d1195f8098b73254","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"scripts/__tests__/dependency-lifecycle.test.ts","digest":"b94c5e49462f77454aca7aaee0a34f29fd05b5d3b89839aaadbea6e922815d54","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

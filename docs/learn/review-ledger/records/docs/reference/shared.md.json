@@ -50,7 +50,7 @@
 
     {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"c15895373f108c3d6c2d434ee19eff4f29a8a71eeb4f3d652e786e317f3ed436","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/shared/package.json","digest":"0bbc56ff6227f45998a77b3ce439bc856c9e07d7b906ce76f00bd45b7787b9f3","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"packages/shared/src/__tests__/build.test.ts","digest":"e7c2da46760a947ef17e70c50e4c244376e4b60f98802a4fd2f620764f08d4bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -80,7 +80,7 @@
 
     {"path":"packages/shared/src/types.ts","digest":"fab18c926454048b1723c4e4575be8a5fba438473de42b420def9154a91d63a7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

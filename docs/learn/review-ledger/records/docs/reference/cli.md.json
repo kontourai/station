@@ -12,15 +12,15 @@
   "document": {"digest":"f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
   "sources": [
-    {"path":".github/workflows/publish-release.yml","digest":"52286a0d9c756da6a30578f1e20da58dc04addd85fea7a3681944405a5ad49f5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/release.yml","digest":"9a1fd4c702edb986fde2ea6a004132d98d70bbfce5023bc012f9e88d1abbeaae","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":".github/workflows/release.yml","digest":"e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"packages/cli/bundle-externals.mjs","digest":"5a8122d158b0c5e2bc91e6bbed446b42461bf0da3f0c3c8c69178ebd8339ef85","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/package.json","digest":"3326cda44f10983039189724dbec68a663a5fa2eecb7ba4663a96a4eaedd4d91","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/package.json","digest":"ecb38859cb77f9bc6f0fe148585c7f0e834f29b73944cf383b993cbf1f2abbd8","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"packages/cli/src/__tests__/cloud-project-import-durability.test.ts","digest":"a0f8da626a15433a4ebcd6744a1e344e3907f53ef72a47be039057292c15bf97","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

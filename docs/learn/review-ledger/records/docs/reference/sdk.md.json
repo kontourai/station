@@ -32,7 +32,7 @@
 
     {"path":"packages/contracts/src/task-basis.ts","digest":"9345de0dd369e4e9d5fae71c38261983385662c314c0cdbf77f9596cdd3d7834","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/package.json","digest":"efcbeb1cf58acd8b9cab21a98044292b901b5fca14667336b77619454e36a761","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/package.json","digest":"0a3c1a8ffbaefd0d82f809b870d5ee0c95257952ad90caf731acfbfa29bd33df","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"packages/sdk/src/agentResolver.ts","digest":"7dff59fa6b40a9826fc8ebab998361fcc9c588e80f9f781b2b88acbd7722f426","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -236,7 +236,7 @@
 
     {"path":"packages/shared/src/station-home-archive.ts","digest":"2d857da29eb1de501523692cb04839be37b3375b354456fe5b676ae53ef38294","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"src-server/knowledge-store/adapters/shared/file-transactions.ts","digest":"5505e0eb47ae0cc4eeefa829efa474a70ac0de4a438fd0f28d7e1855cf591c36","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -16,7 +16,7 @@
 
     {"path":"packages/shared/src/mcp-ui-csp.ts","digest":"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"src-server/routes/agents/tools.ts","digest":"a80801f4a31e7761be350924011935a8b0a613847f5648de7308b828331d359e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

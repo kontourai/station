@@ -18,13 +18,13 @@
 
     {"path":".github/workflows/interactive-workspace-performance.yml","digest":"edcaa2f6d7a7ce1eeb4e7953ff65d78f7a6f609460dfedaf6976b727a04b7004","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":".github/workflows/security-analysis.yml","digest":"2aa93f7925004df1afecdb8cc1d15190315383816ac83125f0c61bd403c03575","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":".github/workflows/security-analysis.yml","digest":"14107fac7f9b0cef3631098200985ab9f73e0780ad8b95d74a6e01356c25deaa","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":".github/workflows/windows-vitest-diagnostic.yml","digest":"040f1a8683332740c89c7c9716f7f70370838e9d86441827913cc3db7786d527","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
     {"path":"config/product-laws.json","digest":"2a32cd190581bca72ed1076f901fd9a427022e2d381e964a777101c9c6de3114","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"package.json","digest":"12631831e2544c3af335cd44ede75b95aa5d4acf88d9953857064676857ec31c","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"packages/cli/src/commands/cloud-project-import.ts","digest":"0831594f687da39abbf2bc7655663d459b97de900728d0d03e7fa2e28b2c5543","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -38,9 +38,9 @@
 
     {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"pnpm-workspace.yaml","digest":"e101a202d035469d94011b568c05b558f02914e050a1fb94ff8639e68c721891","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"pnpm-workspace.yaml","digest":"962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"scripts/actionlint-gate.mjs","digest":"93b689c4bfc7f191022916b1fdfa99be0b94d5c4beb7ac805f3af3013aaf6bd4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"scripts/actionlint-gate.mjs","digest":"25b1f998e505ab9c07b1413791f22721c9fdf4defa433f2e7157739640f1df95","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"scripts/codeql-error-baseline.json","digest":"68f25eff8ac6a15bb324e169be219a0659eacc42a59c451699b171968bd62978","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

@@ -9,10 +9,10 @@
 
   "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
 
-  "document": {"digest":"00bd21c28838d6c4d231bd7e191c39b95442afcbedc42e8ef1dad88f06d19434","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"246a55f2128c3f24b4127c2f7330a56a4a84077abce5fdf94dfe11b1d9cb9e03","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
   "sources": [
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"package.json","digest":"12631831e2544c3af335cd44ede75b95aa5d4acf88d9953857064676857ec31c","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -22,7 +22,7 @@
 
     {"path":"packages/shared/src/tool-request-preview.ts","digest":"9b0d50b2a12103f2e8cf95f97707b88af83ff72ce420dd8c6176eb3f514a2cc8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"b34b2c9f1367a54577331ed96ad07fed64463274dfa8ae21a135ce21667f4f06","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

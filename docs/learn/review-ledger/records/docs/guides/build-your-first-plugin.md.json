@@ -28,9 +28,9 @@
 
     {"path":"packages/cli/src/dev/watchers.ts","digest":"84d7e142a2ee88d419333d9464bccd8072f126d3746d0c3ae748fb7ae293b70c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/package.json","digest":"efcbeb1cf58acd8b9cab21a98044292b901b5fca14667336b77619454e36a761","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/sdk/package.json","digest":"0a3c1a8ffbaefd0d82f809b870d5ee0c95257952ad90caf731acfbfa29bd33df","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"packages/shared/package.json","digest":"c15895373f108c3d6c2d434ee19eff4f29a8a71eeb4f3d652e786e317f3ed436","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/shared/package.json","digest":"0bbc56ff6227f45998a77b3ce439bc856c9e07d7b906ce76f00bd45b7787b9f3","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

@@ -12,17 +12,17 @@
   "document": {"digest":"65ed27eebefb1258681b81b175dd06c183fdaec0a3c3294e79215a4ba68acdc4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
-    {"path":".github/workflows/android-test.yml","digest":"bab88e4527a8886a847d7494a743b6d7522defd271e0505763a87db1cf81f104","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/android-test.yml","digest":"2a653b007047dfca16491297c7ce96455fd6571d5dad7a2fea40a62859a14146","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/build-android.yml","digest":"29abdb1ed62f92c4036946a59ebc2194c3efdfdf44be9895dedd02e1d62ca6fd","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/build-android.yml","digest":"5c20cca3946560c4c3c217c44ce6ea7686ce9254a4f576fe0c0e1596b440f7a7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":".github/workflows/desktop-clean-checkout.yml","digest":"b1bf471f893030f7441245158c57fd287bbeadb232dbffe24f78418a1c1ed427","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":".github/workflows/nightly-native-stage.yml","digest":"ad6292837e6b7f61057b6eef1c406d1374bc13a0aae97ebe321736b6f0c37f1d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/release.yml","digest":"9a1fd4c702edb986fde2ea6a004132d98d70bbfce5023bc012f9e88d1abbeaae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/release.yml","digest":"e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/testflight-delivery.yml","digest":"0fdc15dc10878bd59633bc571bf768d11995d331ac70e16344b2d274bc558c2a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"config/channel-platform-matrix.json","digest":"813d8c4e7fa64f8c7bd87278b2f44e655f953030242c9f486cb903ada8527a13","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -44,7 +44,7 @@
 
     {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":"scripts/__tests__/browser-preview-packaged-fixture.test.ts","digest":"9b4629b23e89e0896de6a639f02e9282e1fb9a856bc80e9445ec193eb0aa20a5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
