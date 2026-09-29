@@ -67,6 +67,18 @@ vi.mock('../components/pull-requests/ConversationPullRequestLinks', () => ({
   ConversationPullRequestLinks: () => null,
 }));
 
+// The attention card's own actions are covered by SessionsView.test.tsx; here
+// it only has to exist, with the self-pointing link the real session-failed
+// card renders, so a duplicate is observable.
+vi.mock('../components/attention/AttentionCard', () => ({
+  AttentionCard: ({ item }: { item: { title: string; openHref?: string } }) => (
+    <article data-testid="attention-item">
+      {item.title}
+      {item.openHref && <a href={item.openHref}>Open session</a>}
+    </article>
+  ),
+}));
+
 // The launcher is its own surface; this file only proves the detail opens it
 // for the right parent.
 vi.mock('../components/chat-dock/DelegationLauncher', () => ({
