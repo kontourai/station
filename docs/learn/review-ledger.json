@@ -1449,7 +1449,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2",
-      "sourceRevision": "b517c513f9bbd63b3db03a65945ed9bbb3ef80f5",
+      "sourceRevision": "be1dd637dbfb5060759220e26e27817086fab183",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1479,7 +1479,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "ef4da8449d6f90b53fc00bcf8c8584dfa658ff4159ceda8998fccef779ea4932"
+          "digest": "f61bfd49b6194a18bd9bb4d39c11e9515178904d61bfe7a61be47879b87f0c78"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1505,7 +1505,8 @@
         "Integration source review through e0314c727: module-map.md and the extension-ecosystem/workspace-surfaces contexts removed the deleted CollaborativeEditorPane controller and PluginForegroundRuns entries in favor of ProjectTaskRoom. The five context links and relationship statements do not name either; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Glossary gained a Live lanes entry; this page only links the glossary and makes no lane or Draft claim, so no prose change."
+        "Glossary gained a Live lanes entry; this page only links the glossary and makes no lane or Draft claim, so no prose change.",
+        "Glossary wording refined for Needs you; this page only links the glossary, no lane claim, no prose change."
       ]
     },
     {
@@ -1513,7 +1514,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce",
-      "sourceRevision": "b517c513f9bbd63b3db03a65945ed9bbb3ef80f5",
+      "sourceRevision": "be1dd637dbfb5060759220e26e27817086fab183",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1543,7 +1544,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "ef4da8449d6f90b53fc00bcf8c8584dfa658ff4159ceda8998fccef779ea4932"
+          "digest": "f61bfd49b6194a18bd9bb4d39c11e9515178904d61bfe7a61be47879b87f0c78"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1569,7 +1570,8 @@
         "Integration source review through e0314c727: module-map replaced the CollaborativeEditorPane entry with ProjectTaskRoom and removed PluginForegroundRuns, and the two child CONTEXT files follow suit. The root CONTEXT names neither module and routes only to the child contexts and guides, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Glossary gained a Live lanes entry; this page only links the glossary and makes no lane or Draft claim, so no prose change."
+        "Glossary gained a Live lanes entry; this page only links the glossary and makes no lane or Draft claim, so no prose change.",
+        "Glossary wording refined for Needs you; this page only links the glossary, no lane claim, no prose change."
       ]
     },
     {
@@ -10229,8 +10231,8 @@
     },
     {
       "path": "docs/glossary.md",
-      "documentDigest": "ef4da8449d6f90b53fc00bcf8c8584dfa658ff4159ceda8998fccef779ea4932",
-      "sourceRevision": "b517c513f9bbd63b3db03a65945ed9bbb3ef80f5",
+      "documentDigest": "f61bfd49b6194a18bd9bb4d39c11e9515178904d61bfe7a61be47879b87f0c78",
+      "sourceRevision": "be1dd637dbfb5060759220e26e27817086fab183",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10512,7 +10514,8 @@
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Added the Live lanes entry (Needs you / Running / Idle from liveLaneFor in src-ui/src/views/home/home-lane-model.ts, consumed by Home, the Sessions list, the project live-work badge and the chat dock inbox) and the Unsent draft cue read from chatDraftsStore; replaced the retired 'Active now' reference in the Draft entry. Checked against the partition and InboxRow code in this commit."
+        "Added the Live lanes entry (Needs you / Running / Idle from liveLaneFor in src-ui/src/views/home/home-lane-model.ts, consumed by Home, the Sessions list, the project live-work badge and the chat dock inbox) and the Unsent draft cue read from chatDraftsStore; replaced the retired 'Active now' reference in the Draft entry. Checked against the partition and InboxRow code in this commit.",
+        "Live lanes entry: Needs you now also names an offline-queued send (chat.status 'queued' folds to Needs attention in chatLifecycleLabel). Checked against home-view-model.ts and liveLaneFor."
       ]
     },
     {
@@ -13978,7 +13981,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "be1dd637dbfb5060759220e26e27817086fab183",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14090,7 +14093,7 @@
         },
         {
           "path": "tests/mobile-chat-composer.spec.ts",
-          "digest": "e7b07dd80b333eff218771cbb7013535482873fcce11115ef991d0fa1f97316b"
+          "digest": "42e42bc7fefe1cb8b25f5ff7086bffbdb68466be37b916a4b072328e6df196c9"
         },
         {
           "path": "tests/monitoring.spec.ts",
@@ -14151,7 +14154,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) deleted tests/plugin-system.spec.ts and tests/plugin-dependency-lifecycle.spec.ts and removed them from tests/e2e-manifest.mjs. The commit gives plugin-pane-sdk-context, minimal-workspace-example and bundled-plugin-registry-lifecycle ownership of installed-plugin pane rendering. The same commits added tests/authenticated-request-canary.spec.ts (smoke-live), refactored run-e2e-suite.mjs evidence retention into settleStartedE2ERun, dropped plugin-update's update-banner test and monitoring's redaction assertion, and changed the agents-editor-gates/readiness-board rationale. None of these other changes alter the matrix's claims. Corrected the Plugins row: removed plugin-system, added the three owning specs, and changed 'installed layout loading' to 'installed plugin panes rendering'. The ledger may want to add tests/plugin-pane-sdk-context.spec.ts, tests/minimal-workspace-example.spec.ts and tests/bundled-plugin-registry-lifecycle.spec.ts as sources. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): tests/e2e-manifest.mjs adds tests/branding-theme-boot.spec.ts to the product bucket (parallel-safe, surface Shell, tier full); PR_BROWSER_SMOKE_CONTRACT and suite runner behavior are unchanged. The matrix names no Shell/theming row and claims no exhaustive coverage. Prose accurate. Source review is separate from executed test evidence.",
-        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose."
+        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
+        "mobile-chat-composer.spec.ts only changed the chip word it filters rows by (Active -> Running); journeys and coverage are unchanged, so the matrix entry stays accurate."
       ]
     },
     {
