@@ -28,7 +28,8 @@ const REPO_ROOT = resolve(HERE, '../../../');
 const TABLE = `| Check | Command | Result | Trusted |
 | --- | --- | --- | --- |
 | Directory contents | \`ls -la\` | Only a README and the repository metadata | yes |
-| Commit history | \`git log --oneline -5\` | Fails: the default branch has no commits yet | no |`;
+| Commit history | \`git log --oneline -5\` | Fails: the default branch has no commits yet | no |
+| Documentation completeness | \`README.md\` | One line only | no |`;
 
 function answerMarkup(): string {
   const { container, unmount } = render(
