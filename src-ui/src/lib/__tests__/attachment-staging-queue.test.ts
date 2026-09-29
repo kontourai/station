@@ -95,4 +95,37 @@ describe('stageComposerAttachments', () => {
       stageComposerAttachments('http://station.test', [attachment('blocked')]),
     ).rejects.toThrow('does not advertise');
   });
+
+  // The route answers 409 `stage_capacity` (5 stages per owner); the SDK
+  // throws its ChatHttpError with that code. Retrying only asks for another
+  // stage from a full login, so the stage is failed, not retryable.
+  test('a full staging capacity is a failed stage that says why, not a Retry', async () => {
+    capability.mockResolvedValueOnce({
+      state: 'supported',
+      version: 1,
+      maxConcurrentUploads: 3,
+    });
+    prepare.mockReset();
+    prepare.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          'Attachment staging capacity is full. Remove or send another attachment first.',
+        ),
+        { name: 'ChatHttpError', status: 409, code: 'stage_capacity' },
+      ),
+    );
+    const updates: unknown[] = [];
+    await stageComposerAttachments(
+      'http://station.test',
+      [attachment('sixth')],
+      undefined,
+      (update) => updates.push(update),
+    ).catch(() => undefined);
+    expect(updates.at(-1)).toMatchObject({
+      clientAttachmentId: 'sixth',
+      state: 'failed',
+      capacityFull: true,
+      error: expect.stringContaining('capacity is full'),
+    });
+  });
 });

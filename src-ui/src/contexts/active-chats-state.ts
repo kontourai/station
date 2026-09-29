@@ -146,6 +146,8 @@ export type ChatMessage = {
   contentParts?: ChatContentPart[];
   traceId?: string;
   timestamp?: number;
+  /** See `ChatMessage.steerInterruptedRun` in types.ts. */
+  steerInterruptedRun?: boolean;
   model?: string;
   modelOptions?: Record<string, string | number | boolean>;
   /**

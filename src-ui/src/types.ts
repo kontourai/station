@@ -133,6 +133,8 @@ export interface ComposerAttachmentStageSnapshot {
    * a failed upload so the chip can say which one happened.
    */
   expired?: boolean;
+  /** See `ComposerAttachmentStageUpdate.capacityFull`. */
+  capacityFull?: boolean;
   error?: string;
   /** Retained provenance is safe across reload; source bytes are never retained. */
   transformation?: TransformationReceipt;

@@ -52,7 +52,12 @@ function applyUpdate(
   return snapshots.map((snapshot) => {
     if (snapshot.clientAttachmentId !== update.clientAttachmentId)
       return snapshot;
-    const { error: _error, expired: _expired, ...withoutError } = snapshot;
+    const {
+      error: _error,
+      expired: _expired,
+      capacityFull: _capacityFull,
+      ...withoutError
+    } = snapshot;
     return {
       ...withoutError,
       state: update.state,
@@ -61,6 +66,7 @@ function applyUpdate(
       ...(update.reference ? { reference: update.reference } : {}),
       ...(update.delivery ? { delivery: update.delivery } : {}),
       ...(update.error ? { error: update.error } : {}),
+      ...(update.capacityFull ? { capacityFull: true } : {}),
       needsFile: false,
     };
   });
@@ -233,14 +239,19 @@ export function useComposerAttachments(options: {
             const current = currentStages().find(
               (stage) => stage.clientAttachmentId === clientAttachmentId,
             );
+            const capacityFull =
+              (failure as { code?: unknown } | null)?.code ===
+                'stage_capacity' || current?.capacityFull === true;
             if (current?.state !== 'complete') {
               update({
                 clientAttachmentId,
-                state: message.includes('does not advertise')
-                  ? 'failed'
-                  : 'retryable',
+                state:
+                  capacityFull || message.includes('does not advertise')
+                    ? 'failed'
+                    : 'retryable',
                 progress: 0,
                 error: message,
+                ...(capacityFull ? { capacityFull: true } : {}),
               });
             }
             setError(message);
@@ -615,17 +626,19 @@ export function useComposerAttachments(options: {
       ? undefined
       : options.stages.some((stage) => stage.state === 'accepted')
         ? 'An attachment was accepted with its prior message. Wait for that turn before sending again.'
-        : hasRetryableStage
-          ? options.stages.some(
-              (stage) => stage.state === 'retryable' && stage.expired,
-            )
-            ? 'An upload expired before it was sent. Upload it again or remove it.'
-            : 'An upload did not finish. Retry it or remove it before sending.'
-          : hasUnavailableStage
-            ? 'Choose the file again or remove it before sending.'
-            : hasInFlightStage
-              ? 'Wait until every selected file finishes staging before sending.'
-              : undefined;
+        : options.stages.some((stage) => stage.capacityFull)
+          ? 'Too many uploads are waiting to be sent (at most 5 at a time). Remove attachments here or in another chat, or wait up to 10 minutes for unsent ones to expire, then add the file again.'
+          : hasRetryableStage
+            ? options.stages.some(
+                (stage) => stage.state === 'retryable' && stage.expired,
+              )
+              ? 'An upload expired before it was sent. Upload it again or remove it.'
+              : 'An upload did not finish. Retry it or remove it before sending.'
+            : hasUnavailableStage
+              ? 'Choose the file again or remove it before sending.'
+              : hasInFlightStage
+                ? 'Wait until every selected file finishes staging before sending.'
+                : undefined;
 
   return {
     error,

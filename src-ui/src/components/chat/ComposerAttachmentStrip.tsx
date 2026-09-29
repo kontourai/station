@@ -61,6 +61,8 @@ function chipStatus(
     case 'cancelled':
       return { label: 'Upload stopped', tone: 'blocked' };
     case 'failed':
+      if (stage.capacityFull)
+        return { label: 'Upload limit reached', tone: 'blocked' };
       return stage.needsFile
         ? { label: 'Choose the file again', tone: 'blocked' }
         : { label: 'Upload failed', tone: 'blocked' };

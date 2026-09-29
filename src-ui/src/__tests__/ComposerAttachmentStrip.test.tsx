@@ -213,6 +213,32 @@ describe('ComposerAttachmentStrip', () => {
     expect(retry).toHaveBeenCalledWith('a1');
   });
 
+  test('a full staging capacity says so and offers no Retry that cannot succeed', () => {
+    render(
+      <ComposerAttachmentStrip
+        attachments={[attachment()]}
+        stages={[
+          {
+            clientAttachmentId: 'a1',
+            name: 'screenshot.webp',
+            mimeType: 'image/webp',
+            size: 1_048_576,
+            state: 'failed',
+            progress: 0,
+            capacityFull: true,
+            error: 'Attachment staging capacity is full.',
+          },
+        ]}
+        onRemove={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Upload limit reached')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /^(Retry|Upload again) / }),
+    ).toBeNull();
+  });
+
   test('an image chip says the engine refused images instead of "ready"', () => {
     render(
       <ComposerAttachmentStrip

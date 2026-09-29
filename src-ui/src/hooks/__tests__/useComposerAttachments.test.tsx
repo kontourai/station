@@ -102,6 +102,61 @@ describe('useComposerAttachments', () => {
     );
   });
 
+  // The queue reports the capacity refusal and then rejects with the SDK's
+  // coded error; the hook's own catch used to turn it back into `retryable`,
+  // so Retry spun on a login that could never get another stage.
+  test('a full staging capacity stays a failed, explained stage', async () => {
+    let stages: ComposerAttachmentStageSnapshot[] = [];
+    const selected: FileAttachment[] = [];
+    const capacity = Object.assign(
+      new Error('Attachment staging capacity is full.'),
+      { status: 409, code: 'stage_capacity' },
+    );
+    stageComposerAttachments.mockImplementationOnce(
+      async (_api, files, _signal, update) => {
+        update({
+          clientAttachmentId: files[0].id,
+          state: 'failed',
+          progress: 0,
+          error: capacity.message,
+          capacityFull: true,
+        });
+        throw capacity;
+      },
+    );
+    readChatAttachmentFiles.mockResolvedValueOnce({
+      attachments: [attachment('sixth')],
+      errors: [],
+    });
+    const hook = renderHook(() =>
+      useComposerAttachments({
+        apiBase: 'http://station.test',
+        ownerKey: 'full',
+        attachments: selected,
+        stages,
+        getCurrentAttachments: () => selected,
+        getCurrentStages: () => stages,
+        capabilities: { images: true, files: true },
+        onAddAttachments: (files) => selected.push(...files),
+        onStagesChange: (value) => {
+          stages = value;
+        },
+      }),
+    );
+    await act(async () => {
+      await hook.result.current.selectFiles([new File(['hello'], 'x.txt')]);
+    });
+    await waitFor(() =>
+      expect(stages).toMatchObject([
+        { clientAttachmentId: 'sixth', state: 'failed', capacityFull: true },
+      ]),
+    );
+    hook.rerender();
+    expect(hook.result.current.sendBlockedReason).toMatch(
+      /Too many uploads are waiting to be sent/,
+    );
+  });
+
   test('late upload progress stays with its original chat after the selected composer changes', async () => {
     const records: Record<string, ComposerAttachmentStageSnapshot[]> = {
       a: [],
