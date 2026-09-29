@@ -1263,6 +1263,88 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     ).toEqual(foldedState);
   });
 
+  it('folds a branch that re-reviewed a capture in media.json, resolving that conflict too', () => {
+    const f = fixture();
+    const { legacyLedger, legacyMedia } = legacyLayout(f.root);
+    const legacyText = (media: unknown) =>
+      `${JSON.stringify(media, null, 2)}\n`;
+    const citeMedia = (ledger: any, text: string) => {
+      const d = ledger.records.find(
+        (entry: { path: string }) => entry.path === 'docs/d.md',
+      );
+      d.sources[0].digest = hash(text);
+      return d;
+    };
+    // The shared base: docs/d.md reviewed the old-layout media.json bytes.
+    git(f.root, ['switch', '-qc', 'legacy-base', 'main']);
+    rmSync(join(f.root, REVIEW_LEDGER_DIR), { recursive: true });
+    const baseLedger = structuredClone(legacyLedger);
+    citeMedia(baseLedger, legacyText(legacyMedia));
+    f.write(LEGACY_REVIEW_LEDGER, legacyText(baseLedger));
+    f.write(MEDIA, legacyText(legacyMedia));
+    const base = commit(f.root, 'legacy base');
+    // Their branch re-reviews the capture and rebinds its citer to those bytes.
+    git(f.root, ['switch', '-qc', 'theirs']);
+    const theirMedia = structuredClone(legacyMedia);
+    theirMedia.captures[0].reviewNotes = ['Their capture review.'];
+    f.write(MEDIA, legacyText(theirMedia));
+    const theirLedger = structuredClone(baseLedger);
+    citeMedia(theirLedger, legacyText(theirMedia)).checks.push(
+      'Their review of d.',
+    );
+    f.write(LEGACY_REVIEW_LEDGER, legacyText(theirLedger));
+    commit(f.root, 'review the capture in the old files');
+    // Ours migrates, which rebinds the citer, then edits a caption.
+    git(f.root, ['switch', '-qc', 'ours', base]);
+    git(f.root, ['rm', '-rq', LEGACY_REVIEW_LEDGER, MEDIA]);
+    git(f.root, ['checkout', 'main', '--', REVIEW_LEDGER_DIR, MEDIA]);
+    commit(f.root, 'migrate layout');
+    f.write(MEDIA, f.read(MEDIA).replace('"A task."', '"A task, open."'));
+    commit(f.root, 'edit a caption');
+    expect(
+      record_(f.root, ['docs/d.md', '--note', 'Our review of d.']).status,
+    ).toBe(0);
+    commit(f.root, 'record d');
+    const oursTip = git(f.root, ['rev-parse', 'HEAD']);
+    // Both directions: the branch merged in, and the branch merging ours.
+    for (const [branch, other] of [
+      ['ours', 'theirs'],
+      ['theirs', oursTip],
+    ]) {
+      git(f.root, ['switch', '-q', branch]);
+      expect(merge(f.root, other).status).toBe(1);
+      expect(conflicted(f.root).sort()).toEqual(
+        [LEGACY_REVIEW_LEDGER, MEDIA].sort(),
+      );
+      // No hand resolution: the command resolves media.json itself.
+      const folded = run(f.root, 'migrate-review-ledger.mjs', [
+        '--base',
+        base,
+      ]);
+      expect(folded.status, folded.stderr).toBe(0);
+      expect(folded.stdout).toContain('Resolved the docs/learn/media.json');
+      // Judged against the bytes it writes, the citer is not reported stale.
+      expect(folded.stdout).not.toContain('Both sides rebound');
+      commit(f.root, `merge into ${branch}`);
+      expect(git(f.root, ['status', '--porcelain'])).toBe('');
+      const media = f.read(MEDIA);
+      expect(media).toContain('"A task, open."');
+      expect(media).not.toMatch(/reviewNotes|reviewedRevision|"sources"/);
+      expect(compiledMedia(f.root).captures[0].reviewNotes).toContain(
+        'Their capture review.',
+      );
+      expect(compiled(f.root, 'docs/d.md').sources[0].digest).toBe(
+        hash(media),
+      );
+      expect(compiled(f.root, 'docs/d.md').checks).toEqual(
+        expect.arrayContaining(['Our review of d.', 'Their review of d.']),
+      );
+      const result = check(f.root, strict);
+      expect(result.blocking).toEqual([]);
+      expect(result.status).toBe(0);
+    }
+  });
+
   it('stales a value binding only when its cited value changes', () => {
     const f = fixture();
     git(f.root, ['switch', '-qc', 'scripts']);

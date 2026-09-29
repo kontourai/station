@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 // Convert the single-file review ledger to the per-record layout (#2936).
 //
 //   node scripts/migrate-review-ledger.mjs
@@ -19,7 +19,8 @@ import { execFileSync } from 'node:child_process';
 // appended checks become one new notes file. Where both sides rebound one
 // binding differently, the binding whose hash matches the current bytes
 // wins; if neither does, the record stays stale for the freshness check.
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -160,6 +161,63 @@ function git(root, args) {
   });
 }
 
+/** The index stages (1 base, 2 ours, 3 theirs) of an unmerged file. */
+function unmergedStages(root, file) {
+  return new Set(
+    git(root, ['ls-files', '-u', '--', file])
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => line.split(/\s+/)[2]),
+  );
+}
+
+/**
+ * During the merge, media.json conflicts where one side removed the capture
+ * review fields and the other edited them. Keep the side that still has the
+ * old ledger for each conflicting hunk, and every clean hunk of the other
+ * side; the review fields then move out below. Returns whether it resolved.
+ */
+function resolveConflictedManifest(root) {
+  const media = unmergedStages(root, LEARNING_MEDIA_MANIFEST);
+  if (media.size === 0) return false;
+  const ledger = unmergedStages(root, LEGACY_REVIEW_LEDGER);
+  const side =
+    ledger.has('2') && !ledger.has('3')
+      ? 'ours'
+      : ledger.has('3') && !ledger.has('2')
+        ? 'theirs'
+        : undefined;
+  if (side === undefined || !['1', '2', '3'].every((stage) => media.has(stage)))
+    throw new Error(
+      `${LEARNING_MEDIA_MANIFEST} conflicts outside the layout change; resolve it and rerun`,
+    );
+  const blobs = readGitObjects(
+    root,
+    ['2', '1', '3'].map((stage) => `:${stage}:${LEARNING_MEDIA_MANIFEST}`),
+  );
+  const dir = mkdtempSync(path.join(tmpdir(), 'review-ledger-fold-'));
+  try {
+    const files = blobs.map((bytes, index) => {
+      const file = path.join(dir, String(index));
+      writeFileSync(file, bytes);
+      return file;
+    });
+    const merged = spawnSync(
+      'git',
+      ['merge-file', '-p', `--${side}`, ...files],
+      { cwd: root, windowsHide: true, maxBuffer: 256 * 1024 * 1024 },
+    );
+    if (merged.status !== 0)
+      throw new Error(
+        `git merge-file could not resolve ${LEARNING_MEDIA_MANIFEST}: ${merged.stderr}`,
+      );
+    writeFileSync(path.join(root, LEARNING_MEDIA_MANIFEST), merged.stdout);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  return true;
+}
+
 function legacyAt(root, ref) {
   const [ledger, media] = readGitObjects(root, [
     `${ref}:${LEGACY_REVIEW_LEDGER}`,
@@ -181,6 +239,7 @@ function migrateReviewLedger({
   base,
   now = new Date(),
 } = {}) {
+  const resolvedManifest = resolveConflictedManifest(root);
   const reader = createLearningSourceReader(root);
   if (!reader.exists(LEGACY_REVIEW_LEDGER))
     throw new Error(`No ${LEGACY_REVIEW_LEDGER} to migrate`);
@@ -198,9 +257,25 @@ function migrateReviewLedger({
     throw new Error(
       `${REVIEW_LEDGER_INDEX} already exists; pass --base <merge base> to fold ${LEGACY_REVIEW_LEDGER} into it`,
     );
+  // The manifest this command writes: review fields move out of it, so a
+  // binding to it is current only against these bytes, not the working tree's.
+  const strippedManifest = legacyCaptures.length
+    ? serializeLearningMedia({
+        ...manifest,
+        captures: manifest.captures.map((capture) =>
+          Object.fromEntries(
+            Object.entries(capture).filter(
+              ([key]) => !REVIEW_FIELDS.includes(key),
+            ),
+          ),
+        ),
+      })
+    : undefined;
   const files = new Map();
   const current = ({ path: file, digest }) => {
     const source = bindingFile(file);
+    if (source === LEARNING_MEDIA_MANIFEST && strippedManifest !== undefined)
+      return bindingDigest(file, Buffer.from(strippedManifest)) === digest;
     return (
       reader.exists(source) &&
       bindingDigest(file, reader.read(source)) === digest
@@ -311,22 +386,11 @@ function migrateReviewLedger({
       writeFileSync(target, text);
     }
   }
-  if (legacyCaptures.length)
-    writeFileSync(
-      path.join(root, LEARNING_MEDIA_MANIFEST),
-      serializeLearningMedia({
-        ...manifest,
-        captures: manifest.captures.map((capture) =>
-          Object.fromEntries(
-            Object.entries(capture).filter(
-              ([key]) => !REVIEW_FIELDS.includes(key),
-            ),
-          ),
-        ),
-      }),
-    );
+  if (strippedManifest !== undefined)
+    writeFileSync(path.join(root, LEARNING_MEDIA_MANIFEST), strippedManifest);
   rmSync(path.join(root, LEGACY_REVIEW_LEDGER));
   return {
+    resolvedManifest,
     written: [...files.keys()].filter((file) => files.get(file) !== undefined),
     removed: [...files.keys()].filter((file) => files.get(file) === undefined),
     notes: notes.length,
@@ -350,6 +414,10 @@ export function main(argv = process.argv.slice(2)) {
   console.log(
     `Migrated ${LEGACY_REVIEW_LEDGER}: wrote ${result.written.length} file(s), removed ${result.removed.length}, ${result.notes} note(s) from appended checks.`,
   );
+  if (result.resolvedManifest)
+    console.log(
+      `Resolved the ${LEARNING_MEDIA_MANIFEST} conflict: kept the old-layout side's review fields, moved them into the ledger, and kept the other side's remaining edits.`,
+    );
   if (result.stale.length)
     console.log(
       `Both sides rebound these differently and neither matches the current bytes; review and record them: ${result.stale.join(', ')}`,
