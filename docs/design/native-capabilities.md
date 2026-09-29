@@ -106,8 +106,10 @@ Project authority. Requests use fixed broker paths. An uncertain `open` may
 already have created an offer: retain its nonce and read that offer within its
 window rather than blindly opening it again.
 
-No renderer adapter or ordinary native application caller currently invokes
-these names. They do not open a DataChannel, verify the returned Station proof,
+The renderer's [application signaling adapter](../../src-ui/src/platform/native/nativeApplicationSignalingBridge.ts)
+wraps these names for one exact saved-profile revision and validates their
+results, but no ordinary native application caller composes it. The commands
+themselves do not open a DataChannel, verify the returned Station proof,
 carry application requests, select a route, sign in or enroll a Device. The
 account proof-key vault below remains separate and unwired. Command registration
 and source tests are not an executed Tauri IPC, packaged-platform or physical

@@ -257,22 +257,6 @@ const PERSON_ONLY: Pick<
 };
 
 /**
- * #2377 slice C2a (decision 3: remote Stations need bound + operator): the
- * leaves the dispatch code reaches while resolving a saved SSH or peer
- * target — the SSH environment list, an SSH connect, and a peer's bearer.
- * They are NOT dispatch leaves: only operator entries own them, so a caller
- * that is not a bound operator is refused before it holds any bearer or
- * makes Station connect anywhere. Dispatch route handlers still reach them
- * as Station's own server code (the attestation), after the route's scope
- * check. Slice C2b moves the tool-side resolution server-side.
- */
-const REMOTE_TARGET_ROUTES: readonly StationControlRoute[] = [
-  get('/api/environments/ssh'),
-  post('/api/environments/ssh/:id/connect'),
-  get('/api/environments/peers/:environmentId/credential'),
-];
-
-/**
  * The routes the cross-Station dispatch code (`station-control-delegation.ts`)
  * reaches on THIS Station when its target is the current Station. Every
  * dispatch-family tool can reach any of them, because the path it takes
@@ -291,6 +275,10 @@ export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   post('/api/orchestration/chat/background'),
   post('/api/orchestration/chat/:conversationId/continue'),
   post('/api/orchestration/delegations'),
+  // #2377 slice C2b: a tool's listing on a saved Environment goes through
+  // this Station's route (which refuses a remote target for anyone but a
+  // bound operator, then forwards).
+  get('/api/orchestration/delegations'),
   get('/api/orchestration/delegations/:taskId'),
   get('/api/orchestration/delegations/:taskId/events'),
   post('/api/orchestration/delegations/:taskId/continue'),
@@ -303,18 +291,16 @@ export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   get('/api/orchestration/sessions/read-model'),
   get('/api/orchestration/sessions/:threadId'),
   get('/api/orchestration/sessions/:threadId/event-page'),
-  // #2601: before forwarding to a saved Environment, the dispatch code asks
-  // this Station for the lineage it derives for the verified caller. The
-  // route answers only from the forwarded credential.
-  get('/api/orchestration/station-control/caller/delegation'),
 ];
 
 /**
  * Dispatch admits any VERIFIED caller at the table (a caller-less request is
  * refused, decision 4: dispatch is not a read); the dispatch ROUTES then
- * hold it to its scope (slice C2a, `stationControlScopeRefusal`), and remote
- * targets need a bound operator (`REMOTE_TARGET_ROUTES`). Still slice C:
- * C2b moves cross-Station forwarding server-side.
+ * hold it to its scope (slice C2a, `stationControlScopeRefusal`), and a
+ * remote target needs a bound operator, decided by the route before it
+ * forwards (slice C2b: a tool only ever calls this Station's routes; the
+ * route forwards a saved Environment through `RemoteStationForwarder`, so no
+ * tool reaches another Station, an SSH connect, or a peer bearer).
  */
 const DISPATCH: Omit<StationControlToolPolicy, 'routes'> = {
   assurance: 'any',
@@ -548,19 +534,24 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   // Decision 2: the saved SSH environments are the operator's Station-wide
   // configuration (the same view `get_ssh_environment` gives), so listing
-  // them is an operator-wide read. Since slice C2a no looser entry shares
-  // the leaf (`REMOTE_TARGET_ROUTES`).
+  // them is an operator-wide read. No other entry reaches the leaf.
   list_delegation_environments: {
     ...OPERATOR_READ,
     routes: [get('/api/environments/ssh')],
   },
   list_delegation_targets: {
-    // Decision 1: discovery may reconnect a saved SSH environment; those
-    // leaves are the operator's alone (slice C2a). The rest it shares with
-    // dispatch, which the server enforces only as loosely as dispatch.
+    // Decision 1: discovery may reconnect a saved SSH environment. Since
+    // slice C2b the tool asks this Station's route for a saved Environment
+    // (`POST /api/orchestration/delegations/options`), which refuses a
+    // caller that is not a bound operator before it connects anything. The
+    // rest it shares with dispatch, which the server enforces only as
+    // loosely as dispatch.
     ...OPERATOR_MUTATION,
     tightenedBy: ['C'],
-    routes: [...REMOTE_TARGET_ROUTES, ...DISPATCH_ROUTES],
+    routes: [
+      post('/api/orchestration/delegations/options'),
+      ...DISPATCH_ROUTES,
+    ],
   },
   list_delegated_tasks: { ...DISPATCH, routes: DISPATCH_ROUTES },
   delegate_task: {
