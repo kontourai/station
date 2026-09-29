@@ -10081,7 +10081,7 @@
     {
       "path": "docs/design/shell-skeletons.md",
       "documentDigest": "994c25f6cbacf02076b0ff5aa1db16f9fb708aa5faaa5af69e2bd91ac79db379",
-      "sourceRevision": "b94001fbc5a5cba09ba147dc7b778da0c618d602",
+      "sourceRevision": "bd22ad7a347e146987746f8c75b6307d70ae4ea0",
       "kind": "policy",
       "state": "classified",
       "summary": "Header/skeleton policy with historical port measurements; current owners linked, wrapper descriptions scoped historically, and distinct frame-null/ratchet-exception inventories corrected.",
@@ -10097,7 +10097,7 @@
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "4b6735998769eee8f92552e1740729905b8c0ffd16318539cd0b76aa2ff751ac"
+          "digest": "75b26eb25c2df9b10669fd837d11c8c04cd1404d6efb9d6b0b420a175ff4e5fb"
         },
         {
           "path": "src-ui/src/views/ConnectionsHub.tsx",
@@ -10116,7 +10116,8 @@
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Original port table, numbers, statuses, and evidence retained byte-identically; surrounding interpretation explicitly historical.",
         "Reviewed integration deltas: Corrected evidence to actual AppViewContent tests; those tests do not prove whole-App navigation or transition-guard behavior. src-ui/src/views/ProjectSettingsView.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found.",
-        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52)."
+        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52).",
+        "activity-a11y review round: SplitPaneLayout now grows coarse-pointer hit areas vertically only (narrow trailing/summary controls laid out 44px wide, trailing slot no-wrap on coarse), re-syncs Tab demotion via a MutationObserver, skips unreachable controls on Right/Left, keeps the Tab stop on a focused row across outside selection changes, rehomes focus when the focused row is removed, and names group toggles by their constant label with aria-expanded. Props, header/title ownership and skeleton shapes are unchanged. No prose change."
       ]
     },
     {
@@ -11987,7 +11988,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "b94001fbc5a5cba09ba147dc7b778da0c618d602",
+      "sourceRevision": "bd22ad7a347e146987746f8c75b6307d70ae4ea0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11995,7 +11996,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "67aa0497d05e29dae1a8f522782d30061f971ae987b75fe33fb2e97db2fe476b"
+          "digest": "8da3a75e9fa5c352334c5e187b54576746558c802b69ee1fb167b95e12d0e634"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -12335,11 +12336,11 @@
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
-          "digest": "11b1b3d742d317b58e5675c41819faf8680f7d5d6ca3ec2a3fa675bb52bb275e"
+          "digest": "9ae564b52d14b0e7af2e070bd36dd302f54bedbf9d002fa7028a626209c7dc76"
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "4b6735998769eee8f92552e1740729905b8c0ffd16318539cd0b76aa2ff751ac"
+          "digest": "75b26eb25c2df9b10669fd837d11c8c04cd1404d6efb9d6b0b420a175ff4e5fb"
         },
         {
           "path": "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx",
@@ -12503,7 +12504,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
         "Re-read 'Connections Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; pairing-route-scopes.ts drops the /station-control/caller/delegation entry; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52)."
+        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52).",
+        "activity-a11y review round: SplitPaneLayout now grows coarse-pointer hit areas vertically only (narrow trailing/summary controls laid out 44px wide, trailing slot no-wrap on coarse), re-syncs Tab demotion via a MutationObserver, skips unreachable controls on Right/Left, keeps the Tab stop on a focused row across outside selection changes, rehomes focus when the focused row is removed, and names group toggles by their constant label with aria-expanded. The guide names rows and buttons by visible label; none of its steps depends on touch hit areas, Tab order or group-toggle names. No prose change."
       ]
     },
     {
@@ -14852,7 +14854,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "b94001fbc5a5cba09ba147dc7b778da0c618d602",
+      "sourceRevision": "bd22ad7a347e146987746f8c75b6307d70ae4ea0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14860,7 +14862,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "67aa0497d05e29dae1a8f522782d30061f971ae987b75fe33fb2e97db2fe476b"
+          "digest": "8da3a75e9fa5c352334c5e187b54576746558c802b69ee1fb167b95e12d0e634"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -15017,7 +15019,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
         "Re-read 'Knowledge: stores and the retrieval index' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52)."
+        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52).",
+        "activity-a11y review round: the media.json delta only updates the connections-models.png entry's review revision, source hashes and reviewNotes. This document neither embeds nor describes that capture; its own capture entries are byte-identical. No prose change."
       ]
     },
     {
@@ -19061,7 +19064,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "b94001fbc5a5cba09ba147dc7b778da0c618d602",
+      "sourceRevision": "bd22ad7a347e146987746f8c75b6307d70ae4ea0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -19069,7 +19072,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "67aa0497d05e29dae1a8f522782d30061f971ae987b75fe33fb2e97db2fe476b"
+          "digest": "8da3a75e9fa5c352334c5e187b54576746558c802b69ee1fb167b95e12d0e634"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -19310,7 +19313,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
         "Re-read 'How Starter Work connects first steps to real work' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52)."
+        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52).",
+        "activity-a11y review round: the media.json delta only updates the connections-models.png entry's review revision, source hashes and reviewNotes. This document neither embeds nor describes that capture; its own capture entries are byte-identical. No prose change."
       ]
     },
     {
@@ -20890,7 +20894,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "b94001fbc5a5cba09ba147dc7b778da0c618d602",
+      "sourceRevision": "bd22ad7a347e146987746f8c75b6307d70ae4ea0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20898,7 +20902,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "67aa0497d05e29dae1a8f522782d30061f971ae987b75fe33fb2e97db2fe476b"
+          "digest": "8da3a75e9fa5c352334c5e187b54576746558c802b69ee1fb167b95e12d0e634"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20994,11 +20998,11 @@
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
-          "digest": "11b1b3d742d317b58e5675c41819faf8680f7d5d6ca3ec2a3fa675bb52bb275e"
+          "digest": "9ae564b52d14b0e7af2e070bd36dd302f54bedbf9d002fa7028a626209c7dc76"
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "4b6735998769eee8f92552e1740729905b8c0ffd16318539cd0b76aa2ff751ac"
+          "digest": "75b26eb25c2df9b10669fd837d11c8c04cd1404d6efb9d6b0b420a175ff4e5fb"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -21116,7 +21120,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. The #2843 hover-contrast note concerns the release selection style, which this change does not touch.",
         "Rechecked the knowledge walkthrough: the only knowledge.ts change is the body-read deadline guard in its unwrap, which changes no step or screen the walkthrough describes.",
-        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52)."
+        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52).",
+        "activity-a11y review round: SplitPaneLayout now grows coarse-pointer hit areas vertically only (narrow trailing/summary controls laid out 44px wide, trailing slot no-wrap on coarse), re-syncs Tab demotion via a MutationObserver, skips unreachable controls on Right/Left, keeps the Tab stop on a focused row across outside selection changes, rehomes focus when the focused row is removed, and names group toggles by their constant label with aria-expanded. The walkthrough's Connections scene text and capture remain accurate; no prose describes list keyboard, touch sizing or group names."
       ]
     },
     {
@@ -21785,7 +21790,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "b94001fbc5a5cba09ba147dc7b778da0c618d602",
+      "sourceRevision": "bd22ad7a347e146987746f8c75b6307d70ae4ea0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21793,7 +21798,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "67aa0497d05e29dae1a8f522782d30061f971ae987b75fe33fb2e97db2fe476b"
+          "digest": "8da3a75e9fa5c352334c5e187b54576746558c802b69ee1fb167b95e12d0e634"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21821,11 +21826,11 @@
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
-          "digest": "11b1b3d742d317b58e5675c41819faf8680f7d5d6ca3ec2a3fa675bb52bb275e"
+          "digest": "9ae564b52d14b0e7af2e070bd36dd302f54bedbf9d002fa7028a626209c7dc76"
         },
         {
           "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "4b6735998769eee8f92552e1740729905b8c0ffd16318539cd0b76aa2ff751ac"
+          "digest": "75b26eb25c2df9b10669fd837d11c8c04cd1404d6efb9d6b0b420a175ff4e5fb"
         },
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -21886,7 +21891,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
         "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the captures this page cites and their evidence text are unchanged, so its claims hold.",
-        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52)."
+        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52).",
+        "activity-a11y review round: SplitPaneLayout now grows coarse-pointer hit areas vertically only (narrow trailing/summary controls laid out 44px wide, trailing slot no-wrap on coarse), re-syncs Tab demotion via a MutationObserver, skips unreachable controls on Right/Left, keeps the Tab stop on a focused row across outside selection changes, rehomes focus when the focused row is removed, and names group toggles by their constant label with aria-expanded. This reference does not describe list rows. No prose change."
       ]
     },
     {
@@ -24259,7 +24265,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "b94001fbc5a5cba09ba147dc7b778da0c618d602",
+      "sourceRevision": "bd22ad7a347e146987746f8c75b6307d70ae4ea0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -24267,7 +24273,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "67aa0497d05e29dae1a8f522782d30061f971ae987b75fe33fb2e97db2fe476b"
+          "digest": "8da3a75e9fa5c352334c5e187b54576746558c802b69ee1fb167b95e12d0e634"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -24354,7 +24360,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
         "Re-read 'Project/Task room collaboration acceptance' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52)."
+        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52).",
+        "activity-a11y review round: the media.json delta only updates the connections-models.png entry's review revision, source hashes and reviewNotes. This document neither embeds nor describes that capture; its own capture entries are byte-identical. No prose change."
       ]
     },
     {
@@ -27124,7 +27131,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "b94001fbc5a5cba09ba147dc7b778da0c618d602",
+      "sourceRevision": "bd22ad7a347e146987746f8c75b6307d70ae4ea0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -27141,7 +27148,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "67aa0497d05e29dae1a8f522782d30061f971ae987b75fe33fb2e97db2fe476b"
+          "digest": "8da3a75e9fa5c352334c5e187b54576746558c802b69ee1fb167b95e12d0e634"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -27326,7 +27333,8 @@
         "Own edit: only the archive-install guide's link target changed, from the repo-relative ../guides/release-channel-ports.md to the absolute repository blob URL for the same file and the same #prebuilt-archives-and-source-releases anchor, so the published Start Here page no longer links to an ungenerated target. The surrounding claims (STATION_INSTALL_PUBLIC_MANIFEST_URL, the signed platform-v2 prebuilt archive, bundled Node.js, and the published-manifest requirement) are untouched. Verified docs:links:check re-resolves the blob URL as a local link and validates the anchor in 423 Markdown files.",
         "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the getting-started captures and steps are unchanged, so the page holds.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52)."
+        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52).",
+        "activity-a11y review round: the media.json delta only updates the connections-models.png entry's review revision, source hashes and reviewNotes. This document neither embeds nor describes that capture; its own capture entries are byte-identical. No prose change."
       ]
     },
     {
@@ -28208,7 +28216,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "b94001fbc5a5cba09ba147dc7b778da0c618d602",
+      "sourceRevision": "bd22ad7a347e146987746f8c75b6307d70ae4ea0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -28216,7 +28224,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "67aa0497d05e29dae1a8f522782d30061f971ae987b75fe33fb2e97db2fe476b"
+          "digest": "8da3a75e9fa5c352334c5e187b54576746558c802b69ee1fb167b95e12d0e634"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -28327,7 +28335,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
         "Re-read 'Knowledge Library' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52)."
+        "Merge of origin/main into feat/activity-a11y: sources changed only by this branch's SplitPaneLayout selected-row/keyboard/naming change, the re-captured connections-models.png and its media.json entry (plus main's own media.json entries already reviewed on main), and the skills.spec row-name lookup; the document's claims do not describe the selected-row styling, row accessible names or keyboard model and remain accurate (same conclusion as the lane review at 769ae5e52).",
+        "activity-a11y review round: the media.json delta only updates the connections-models.png entry's review revision, source hashes and reviewNotes. This document neither embeds nor describes that capture; its own capture entries are byte-identical. No prose change."
       ]
     },
     {
