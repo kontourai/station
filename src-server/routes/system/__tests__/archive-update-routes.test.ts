@@ -573,6 +573,26 @@ describe('POST /core-update on a launcher-run archive', () => {
     expect(fetchFn).toHaveBeenCalledTimes(6);
   });
 
+  test('resolves a relative redirect against the URL that sent it', async () => {
+    const install = makeInstall();
+    const resolved = new URL('/relative/asset.json', MANIFEST_URL).href;
+    fetchFn.mockImplementation(async (url: string) =>
+      url === MANIFEST_URL
+        ? new Response(null, {
+            status: 302,
+            headers: { location: '/relative/asset.json' },
+          })
+        : new Response(signedManifest(releasePayload(NEWER)), { status: 200 }),
+    );
+    expect(
+      await json(await createApp(install).request('/core-update')),
+    ).toMatchObject({ releaseCheck: 'verified' });
+    expect(fetchFn.mock.calls.map((call) => call[0])).toEqual([
+      MANIFEST_URL,
+      resolved,
+    ]);
+  });
+
   test('a redirect with no location is a failed check', async () => {
     const install = makeInstall();
     fetchFn.mockImplementation(async () => new Response(null, { status: 302 }));

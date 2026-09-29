@@ -189,6 +189,8 @@ async function fetchVerifiedReleaseManifest(
       throw new ReleaseCheckError('unreachable', errorMessage(error));
     }
     if (response.status < 300 || response.status > 399) break;
+    // Release the hop's connection; only the final response is read.
+    await response.body?.cancel().catch(() => {});
     const location = response.headers.get('location');
     if (!location)
       throw new ReleaseCheckError(
