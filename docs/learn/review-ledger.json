@@ -10414,8 +10414,8 @@
     },
     {
       "path": "docs/glossary.md",
-      "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "documentDigest": "f61bfd49b6194a18bd9bb4d39c11e9515178904d61bfe7a61be47879b87f0c78",
+      "sourceRevision": "95efce23c91be64b1fa73f153a3ccadf31057c6d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10699,7 +10699,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read 'Glossary' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Added the Live lanes entry (Needs you / Running / Idle from liveLaneFor in src-ui/src/views/home/home-lane-model.ts, consumed by Home, the Sessions list, the project live-work badge and the chat dock inbox) and the Unsent draft cue read from chatDraftsStore; replaced the retired 'Active now' reference in the Draft entry. Checked against the partition and InboxRow code in this commit.",
-        "Live lanes entry: Needs you now also names an offline-queued send (chat.status 'queued' folds to Needs attention in chatLifecycleLabel). Checked against home-view-model.ts and liveLaneFor."
+        "Live lanes entry: Needs you now also names an offline-queued send (chat.status 'queued' folds to Needs attention in chatLifecycleLabel). Checked against home-view-model.ts and liveLaneFor.",
+        "Merge of origin/main 62a39b083: main left glossary bytes unchanged and re-reviewed it against C2b source changes; this lane's Live lanes / Unsent draft / Needs-you wording is the only text delta. Re-read those lines on the merged tree against liveLaneFor and chatDraftsStore; digest recomputed from merged bytes."
       ]
     },
     {
