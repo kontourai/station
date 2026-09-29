@@ -168,9 +168,9 @@ export class ConversationLineage {
   constructor(private readonly deps: ConversationLineageDeps) {}
 
   /**
-   * Resolve the execution session for a durable conversation. A completed,
-   * failed, or canceled execution session is intentionally never reopened:
-   * this reserves one child session beneath the unchanged conversation.
+   * Reuse the current execution session when its lifecycle, engine binding
+   * and model support the next turn. Otherwise reserve a child beneath the
+   * unchanged conversation; a failed or canceled turn alone does not require one.
    *
    * The reservation is durable before a provider is started. A retry after a
    * crash therefore receives the same child identity; concurrent callers

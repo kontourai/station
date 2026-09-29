@@ -84,6 +84,10 @@ describe('PeerCredentialStore (station#1123 slice 2)', () => {
     expect(record).not.toHaveProperty('credential');
 
     const file = join(root, 'security', 'peer-credentials.json');
+    // The secret is stored in plaintext; only the private file mode protects it.
+    expect(readFileSync(file, 'utf8')).toContain(
+      'peer-bearer-credential-0123456789abcdef',
+    );
     if (process.platform !== 'win32') {
       expect(lstatSync(file).mode & 0o777).toBe(0o600);
       expect(lstatSync(join(root, 'security')).mode & 0o777).toBe(0o700);
@@ -111,24 +115,6 @@ describe('PeerCredentialStore (station#1123 slice 2)', () => {
     expect(readFileSync(storedPeerFile(root), 'utf8')).toContain(
       '"label":"peer b"',
     );
-  });
-
-  test('is not world- or group-readable on disk', async () => {
-    const root = home();
-    const store = new PeerCredentialStore(root);
-    await store.upsert({
-      environmentId: 'environment-peer-b',
-      apiBase: 'https://box-b.example.test',
-      scope: 'orchestration:read',
-      credential: 'peer-bearer-credential-0123456789abcdef',
-    });
-    const file = join(root, 'security', 'peer-credentials.json');
-    const raw = readFileSync(file, 'utf8');
-    expect(raw).toContain('peer-bearer-credential-0123456789abcdef');
-    if (process.platform !== 'win32') {
-      const mode = lstatSync(file).mode & 0o777;
-      expect(mode & 0o077).toBe(0);
-    }
   });
 
   test('list() never includes the credential even across multiple peers', async () => {

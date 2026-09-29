@@ -12,6 +12,7 @@ import type {
   ExternalEngineReadinessProjection,
   HomeRecoveryDisclosure,
   SelfUpdateUnavailableCode,
+  ServiceUpdateProgress,
   SystemRuntimeIdentity,
   UpdateProvenanceIssue,
 } from '@kontourai/station-contracts/system-status';
@@ -35,6 +36,7 @@ import {
   fetchServerCapabilities,
   renewAuth,
   requestCoreUpdateStatus,
+  requestServiceUpdateProgress,
   requestSystemStatus,
   verifyBedrockConnection,
   verifyManagedRuntimeConnection,
@@ -53,6 +55,7 @@ export {
   fetchServerCapabilities,
   renewAuth,
   requestCoreUpdateStatus,
+  requestServiceUpdateProgress,
   requestSystemIdentity,
   requestSystemStatus,
   verifyBedrockConnection,
@@ -207,7 +210,14 @@ export interface MonitoringMetric {
 export interface BrandingData {
   appName: string;
   logo: { src: string; alt?: string } | null;
-  theme: Record<string, string> | null;
+  /**
+   * White-label overrides exactly as the branding provider returned them:
+   * by convention flat `--k-*` keys for both modes and per-mode `dark` /
+   * `light` objects. `unknown` because nothing on the way validates it —
+   * a consumer must parse it before use (Station's UI does, in
+   * `src-ui/src/lib/branding-theme.ts`).
+   */
+  theme: unknown;
   welcomeMessage: string | null;
 }
 
@@ -263,12 +273,49 @@ export interface CoreUpdateStatus {
   ahead?: number;
   updateAvailable: boolean;
   noUpstream?: boolean;
-  /** How this install was made — absent on servers older than station#1624. */
-  installKind?: 'source-checkout' | 'desktop-bundle' | 'unknown';
-  /** Release channel a stamped bundle tracks (e.g. "nightly"). */
+  /**
+   * How this install was made — absent on servers older than station#1624.
+   * `archive` is a prebuilt release archive; `archive-service` is one the
+   * Station service's fixed launcher runs, which can update itself (#2675).
+   */
+  installKind?:
+    | 'source-checkout'
+    | 'desktop-bundle'
+    | 'archive'
+    | 'archive-service'
+    | 'unknown';
+  /**
+   * Release channel the install tracks: a stamped bundle's channel (e.g.
+   * "nightly"), or a release archive's ring (stable, preview, nightly).
+   */
   channel?: string;
-  /** What applying an update means here; the apply button is git-pull only. */
-  applyMethod?: 'git-pull' | 'reinstall' | 'self-update';
+  /**
+   * What applying an update means here. `service-update` queues an update for
+   * the service's launcher (`archive-service`); `station-upgrade` means the
+   * host updates the install with `station upgrade`.
+   */
+  applyMethod?:
+    | 'git-pull'
+    | 'reinstall'
+    | 'self-update'
+    | 'service-update'
+    | 'station-upgrade';
+  /** A release archive's running version (e.g. "0.7.0-nightly.12"). */
+  currentVersion?: string;
+  /** The newest version the archive's verified release manifest names. */
+  latestVersion?: string;
+  /**
+   * What a release archive's check established: `verified` (the signed
+   * manifest verified against the pinned keys), `unreachable`, `unverified`
+   * (it arrived but did not verify), or `not-recorded` (the install records
+   * no public manifest). Absent for other install kinds and older servers.
+   */
+  releaseCheck?: 'verified' | 'unreachable' | 'unverified' | 'not-recorded';
+  /**
+   * The service launcher's update progress for an `archive-service` install:
+   * an update under way, or the last one's outcome. Absent otherwise.
+   */
+  serviceUpdate?: ServiceUpdateProgress;
   /**
    * The channel remote could not be queried. A disclosed warning state, not
    * an `error`: `error` makes the request throw and would hide the install
@@ -700,6 +747,36 @@ export function useCoreUpdateStatusQuery(
     staleTime: config?.staleTime,
     gcTime: config?.gcTime,
     retry: false,
+  });
+}
+
+/**
+ * Polls a launcher-run archive's update progress while `refetchInterval`
+ * says so. The server is expected to be unreachable for part of an update
+ * (it restarts), so a failed read keeps the last progress rather than
+ * clearing it, and the poll continues.
+ */
+export function useServiceUpdateProgressQuery(
+  apiBase: string,
+  options: {
+    enabled: boolean;
+    scopeKey?: string;
+    refetchInterval: (
+      progress: ServiceUpdateProgress | undefined,
+    ) => number | false;
+  },
+) {
+  return useQuery({
+    queryKey: [
+      'core-update-service-progress',
+      apiBase,
+      options.scopeKey ?? null,
+    ],
+    queryFn: ({ signal }) => requestServiceUpdateProgress(apiBase, signal),
+    enabled: !!apiBase && options.enabled,
+    refetchInterval: (query) => options.refetchInterval(query.state.data),
+    retry: false,
+    staleTime: 0,
   });
 }
 

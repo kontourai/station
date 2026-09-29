@@ -24,7 +24,7 @@ import { NotificationService } from '../../../services/notifications/notificatio
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
 import {
-  __resetStationControlStdioCallerCredentialForTests,
+  __resetStationControlStdioEntryForTests,
   api,
   STATION_CONTROL_CALLER_TOKEN_HEADER,
 } from '../../../tools/station-control-shared.js';
@@ -372,7 +372,7 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     expect(
       await outcome(base, 'PUT', '/config/app', internal(), { theme: 'dark' }),
     ).toBe('station_control_caller_required');
-    __resetStationControlStdioCallerCredentialForTests();
+    __resetStationControlStdioEntryForTests();
     process.env.STATION_API_BASE = base;
     try {
       const response = (await runAsStationServer(() =>

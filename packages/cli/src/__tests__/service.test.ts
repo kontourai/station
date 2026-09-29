@@ -813,6 +813,90 @@ describe('station service dispatch', () => {
     }
   });
 
+  test('status shows a launcher-run archive update that needs an operator, with its recovery (#2675 D3)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const installRoot = makeTempDir('station-service-install-');
+    mkdirSync(join(installRoot, 'runtime'), { recursive: true });
+    // The launcher's record after its last failed restore: it runs no
+    // Station, so this is the only place the state can be read.
+    writeFileSync(
+      join(installRoot, 'runtime', 'service-state.json'),
+      JSON.stringify({
+        protocol: 1,
+        activeVersion: '1.0.0',
+        update: {
+          id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          status: 'needs-operator',
+          reason: 'candidate-exited:3',
+          attempts: 1,
+          restoreAttempts: 3,
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+      }),
+    );
+    const serviceDir = join(baseDir, 'service');
+    mkdirSync(serviceDir, { mode: 0o700, recursive: true });
+    launchdRegistration.mockReturnValue({
+      label: 'io.kontourai.station.service-test',
+      platform: 'darwin',
+      unitPath: '/tmp/io.kontourai.station.service-test.plist',
+    });
+    writeFileSync(
+      join(serviceDir, 'service-test.json'),
+      JSON.stringify({
+        host: '127.0.0.1',
+        installedAt: '2026-09-01T00:00:00.000Z',
+        instanceId: 'service-test',
+        kind: 'archive',
+        installRoot,
+        label: 'io.kontourai.station.service-test',
+        nodePath: join(installRoot, 'current', 'runtime', 'bin', 'node'),
+        platform: 'darwin',
+        repoPath: join(installRoot, 'current'),
+        serverPort: 3242,
+        uiPort: 5274,
+        unitPath: '/tmp/io.kontourai.station.service-test.plist',
+      }),
+      { mode: 0o600 },
+    );
+    const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runServiceCommand(['status'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run,
+      });
+      const text = log.mock.calls.flat().join('\n');
+      expect(text).toContain(
+        'update         NEEDS OPERATOR: the update to 1.1.0 could not be rolled back; restoring the home failed 3 times (candidate-exited:3).',
+      );
+      expect(text).toContain(
+        'station service stop --instance=service-test && station service start --instance=service-test',
+      );
+      log.mockClear();
+      await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run,
+      });
+      expect(
+        JSON.parse(String(log.mock.calls.at(-1)?.[0])).update,
+      ).toMatchObject({
+        state: 'needs-operator',
+        restoreAttempts: 3,
+        targetVersion: '1.1.0',
+      });
+    } finally {
+      log.mockRestore();
+      process.exitCode = undefined;
+    }
+  });
+
   test('reads and migrates a legacy-labelled manifest on a real upgrade instead of throwing (#1983)', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
     const baseDir = makeTempDir('station-service-test-');
@@ -3156,6 +3240,11 @@ describe('what an installed service runs (#2675 slice C)', () => {
     const version = join(installRoot, 'versions', '1.2.3');
     mkdirSync(join(version, 'runtime', 'bin'), { recursive: true });
     writeFileSync(join(version, 'runtime', 'bin', 'node'), '');
+    mkdirSync(join(version, 'bin'), { recursive: true });
+    writeFileSync(
+      join(version, 'bin', 'station-launcher.mjs'),
+      '// launcher v1\n',
+    );
     writeFileSync(
       join(version, '.station-prebuilt-archive'),
       'station-prebuilt-archive-v1\n',
@@ -3215,6 +3304,13 @@ describe('what an installed service runs (#2675 slice C)', () => {
       join(current, 'runtime', 'bin'),
     );
     expect(input.servicePath).not.toContain(version);
+    // #2675 D: the fixed launcher the unit runs was copied out of the version.
+    expect(
+      nodeFs.readFileSync(
+        join(installRoot, 'runtime', 'station-launcher.mjs'),
+        'utf8',
+      ),
+    ).toBe('// launcher v1\n');
   });
 
   test('refuses to install from an inactive installer version, before touching the backend', async () => {

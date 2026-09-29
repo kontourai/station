@@ -53,10 +53,9 @@ fi
 # CLI because it operates on this checkout's package directories before any
 # Station command runs.
 #
-# The printed follow-up used to be `npx @kontourai/station-cli dev`, which
-# cannot work: @kontourai/station-cli is a private package with no npm entry,
-# so npx would try to fetch it and fail. Linking the package into the plugin
-# repo first is what actually makes the `station` bin resolvable there.
+# Link the package into the plugin repo before invoking its local `station`
+# bin. `npx @kontourai/station-cli` otherwise selects a published artifact,
+# and top-level `dev` starts Station; `plugin dev` previews the plugin.
 if [ "$1" = "--link" ]; then
   echo "🔗 Linking @kontourai/station-sdk and @kontourai/station-cli globally..."
   # The CLI's `bin` is the built bundle (packages/cli/dist/station.mjs), which

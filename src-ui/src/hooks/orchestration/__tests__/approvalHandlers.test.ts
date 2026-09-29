@@ -22,7 +22,9 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: { getChatForExecutionSession, updateChat },
 }));
 
-const { handleRequestOpenedEvent } = await import('../approvalHandlers');
+const { handleRequestOpenedEvent, handleRequestDeliveryEvent } = await import(
+  '../approvalHandlers'
+);
 const { resolveOrchestrationRequest, inspectAttentionRequest } = await import(
   '@kontourai/station-sdk'
 );
@@ -351,7 +353,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
     expect(showToolApproval).toHaveBeenCalledTimes(1);
   });
 
-  test('an answer to a request already answered says so, and is not an error', async () => {
+  test('an answer to a request no longer open says so, and is not an error', async () => {
     vi.mocked(resolveOrchestrationRequest).mockRejectedValue(
       new Error('This request was already resolved.'),
     );
@@ -367,7 +369,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
 
     await vi.waitFor(() =>
       expect(showToast).toHaveBeenCalledWith(
-        'Bash: this request was already answered.',
+        'Bash: this request is no longer open.',
         'thread-1',
         5000,
       ),
@@ -429,5 +431,80 @@ describe('#2344: the toast reports what happened to its answer', () => {
 
     expect(showToast).not.toHaveBeenCalled();
     expect(showToolApproval).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('handleRequestDeliveryEvent — recorded vs acknowledged (#2880)', () => {
+  function delivery(
+    outcome: 'acknowledged' | 'unacknowledged',
+    requestId: string,
+    reason?: 'no-acknowledgement' | 'invalid-reply',
+  ) {
+    return {
+      ...(reason ? { reason } : {}),
+      eventId: `evt-${outcome}`,
+      provider: 'codex',
+      threadId: 'thread-1',
+      createdAt: '2026-09-28T00:00:00.000Z',
+      method: 'request.delivery',
+      requestId,
+      outcome,
+      waitedMs: 30_000,
+    } as unknown as Parameters<typeof handleRequestDeliveryEvent>[0];
+  }
+
+  beforeEach(() => {
+    updateChat.mockClear();
+    getChatForExecutionSession.mockReset();
+  });
+
+  test('an unacknowledged decision is listed on the chat with its reason', () => {
+    getChatForExecutionSession.mockReturnValue({ unacknowledgedDecisions: [] });
+    handleRequestDeliveryEvent(
+      delivery('unacknowledged', 'req-1', 'no-acknowledgement'),
+    );
+    expect(updateChat).toHaveBeenCalledWith('thread-1', {
+      unacknowledgedDecisions: [
+        { requestId: 'req-1', reason: 'no-acknowledgement' },
+      ],
+    });
+  });
+
+  test('a refused reply is listed as invalid-reply, not as awaiting', () => {
+    getChatForExecutionSession.mockReturnValue({ unacknowledgedDecisions: [] });
+    handleRequestDeliveryEvent(
+      delivery('unacknowledged', 'req-1', 'invalid-reply'),
+    );
+    expect(updateChat).toHaveBeenCalledWith('thread-1', {
+      unacknowledgedDecisions: [
+        { requestId: 'req-1', reason: 'invalid-reply' },
+      ],
+    });
+  });
+
+  test('an unacknowledged report after the session exited does not bring the note back', () => {
+    getChatForExecutionSession.mockReturnValue({
+      orchestrationStatus: 'exited',
+      unacknowledgedDecisions: [],
+    });
+    handleRequestDeliveryEvent(
+      delivery('unacknowledged', 'req-1', 'no-acknowledgement'),
+    );
+    expect(updateChat).not.toHaveBeenCalled();
+  });
+
+  test('a late acknowledgement takes only that decision off the list', () => {
+    getChatForExecutionSession.mockReturnValue({
+      unacknowledgedDecisions: [
+        { requestId: 'req-1', reason: 'no-acknowledgement' },
+        { requestId: 'req-2', reason: 'no-acknowledgement' },
+      ],
+    });
+    handleRequestDeliveryEvent(delivery('acknowledged', 'req-1'));
+    expect(updateChat).toHaveBeenCalledWith('thread-1', {
+      unacknowledgedDecisions: [
+        { requestId: 'req-2', reason: 'no-acknowledgement' },
+      ],
+    });
   });
 });

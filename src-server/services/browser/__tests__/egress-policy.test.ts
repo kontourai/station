@@ -10,7 +10,7 @@ const listeners = deriveStationListeners({
   serverPort: 4100,
   configuredOrigins: [],
 });
-const interfaces = ['192.168.1.20', '100.64.0.7', '203.0.113.5'];
+const interfaces = ['192.168.1.20', '100.64.0.7', '203.0.113.5', 'fe80::1'];
 
 function policy(
   reach: 'operator' | 'project',
@@ -28,21 +28,39 @@ function policy(
 
 describe('every profile: Station listeners, in every spelling', () => {
   test.each([
-    '127.0.0.1',
-    '::ffff:127.0.0.1',
-    '::ffff:7f00:1',
-    '0:0:0:0:0:ffff:7f00:1',
-    '::127.0.0.1',
-    '::1',
-    '0.0.0.0',
-    '192.168.1.20',
-    '100.64.0.7',
-  ])('%s:4100 is refused for operator and project', (address) => {
-    expect(decideEgress(address, 4100, policy('operator'))).toBe(
+    ['127.0.0.1', 4100],
+    ['127.0.0.2', 4101],
+    ['::1', 4102],
+    ['::ffff:127.0.0.1', 4103],
+    // Review H1: Chromium's hex canonical and the expanded spellings.
+    ['::ffff:7f00:1', 4100],
+    ['[::ffff:7f00:1]', 4100],
+    ['0:0:0:0:0:ffff:7f00:1', 4101],
+    ['::127.0.0.1', 4102],
+    ['::ffff:c0a8:114', 4100],
+    ['0.0.0.0', 4100],
+    ['::', 4100],
+    ['192.168.1.20', 4100],
+    ['100.64.0.7', 4100],
+    ['fe80::1%en0', 4100],
+  ])('%s:%i is refused for operator and project', (address, port) => {
+    expect(decideEgress(address, port, policy('operator'))).toBe(
       'station-listener',
     );
-    expect(decideEgress(address, 4100, policy('project'))).toBe(
+    expect(decideEgress(address, port, policy('project'))).toBe(
       'station-listener',
+    );
+  });
+
+  test.each([
+    // A loopback port outside the Station block is the user's dev server.
+    ['127.0.0.1', 4104],
+    // Another machine's Station port is not this host's listener.
+    ['10.0.0.9', 4100],
+  ])('%s:%i is not a Station listener', (address, port) => {
+    expect(decideEgress(address, port, policy('operator'))).toBeUndefined();
+    expect(decideEgress(address, port, policy('project'))).toBe(
+      'non-public-address',
     );
   });
 

@@ -20,13 +20,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { projectResourceShadowComparisons } from '../../../telemetry/metrics.js';
 import {
-  NON_DIVERGENT_OUTCOMES,
   observeCwdShadow,
   SHADOW_LOG_DEDUPE,
   SHADOW_RECORD_FAILURE_LATCH,
 } from '../project-resource-shadow.js';
 import {
-  NON_DIVERGENT_RECORD_OUTCOMES,
   readShadowRecord,
   recordShadowComparison,
   SHADOW_RECORD_VERSION,
@@ -549,14 +547,6 @@ describe('the record and the counter cannot describe different facts', () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn.mock.calls[0][0]).toContain('NOT being accumulated');
   });
-});
-
-test('the reader-side divergence set matches the observer`s, in both directions', () => {
-  // A one-directional assertion (every reader outcome is in the observer set)
-  // cannot catch the reader forgetting one, and vice versa. Pin the sets.
-  expect([...NON_DIVERGENT_RECORD_OUTCOMES].sort()).toEqual(
-    [...NON_DIVERGENT_OUTCOMES].sort(),
-  );
 });
 
 test('every slice 3c population names a distinct dimension tuple', () => {

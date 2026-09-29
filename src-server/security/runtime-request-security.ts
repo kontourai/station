@@ -44,7 +44,7 @@ export type RuntimeDevicePairingSource =
  * Mint-time proof that issuance presented the local-grant secret or the
  * per-boot internal token to a same-machine process. Written onto the
  * stored credential (or the ephemeral internal-token principal) only by
- * those mint paths. `isLocalRuntimeCaller` reads this field and nothing
+ * those mint paths. `bindRuntimeLocalOperator` reads this field and nothing
  * else.
  */
 export type CredentialLocality = 'home-possession';
@@ -228,6 +228,17 @@ export interface RuntimeHttpSecurityOptions {
       activity?: RuntimeCredentialActivityContext;
     },
   ) => boolean | Promise<boolean>;
+  /**
+   * Whether `credential` is a live Station credential, independent of route
+   * admission. Production `verifyCredential` is admission
+   * (`authorizeCredential`) and returns false for an ordinary paired device
+   * on routes that device may not use. Callers that supply this receive
+   * `403 insufficient_scope` for that case instead of
+   * `401 authentication_required`. The 401 is reserved for a credential the
+   * server does not recognize, because the browser treats it as a dead
+   * device session.
+   */
+  recognizeCredential?: (credential: string) => boolean | Promise<boolean>;
   /** Resolves a verified credential's concrete authority for route handlers. */
   resolveCredentialAuthority?: (
     credential: string,
@@ -556,16 +567,18 @@ export interface RuntimeCallerRequest {
 /** The local-operator predicate reads only `principal.locality`. */
 export interface LocalOperatorRequest {
   principal?: RuntimeAuthenticatedRequestPrincipal;
-  /** Ignored. Accepted so a RuntimeCallerRequest still typechecks. */
-  environment?: unknown;
-  header?: (name: string) => string | undefined;
 }
 
 /**
- * Live predicate object so a test can replace `evaluate` and have both
- * {@link isLocalRuntimeCaller} (boundary) and {@link bindRuntimeLocalOperator}
- * (the write diagnostics later reads) move together. Same-file function
- * bindings are not live under `vi.mock`.
+ * The ONE derivation of "is this caller the local operator?" (unredacted
+ * server-log reads and every other local-operator gate). Reads only the
+ * mint-time `locality: 'home-possession'` field recorded on the principal.
+ * Socket, proxy stamp, pairing source, and credential authority are
+ * irrelevant here.
+ *
+ * A live object rather than a function so a test can replace `evaluate`
+ * and prove every consumer of {@link bindRuntimeLocalOperator} moved
+ * together; same-file function bindings are not live under `vi.mock`.
  */
 export const localRuntimeCaller = {
   evaluate(request: LocalOperatorRequest): boolean {
@@ -574,25 +587,10 @@ export const localRuntimeCaller = {
 };
 
 /**
- * The ONE derivation of "is this caller the local operator?" for
- * unredacted server-log reads. Reads only the mint-time
- * `locality: 'home-possession'` field recorded on the principal.
- * Socket, proxy stamp, pairing source, and credential authority are
- * irrelevant here.
- *
- * Do not reimplement this in a route handler. The auth boundary calls
- * {@link bindRuntimeLocalOperator} once; diagnostics reads the bound
- * flag, not a second call. Replace {@link localRuntimeCaller}.evaluate
- * in a test to prove every consumer moved together.
- */
-export function isLocalRuntimeCaller(request: LocalOperatorRequest): boolean {
-  return localRuntimeCaller.evaluate(request);
-}
-
-/**
- * Auth-boundary write of the one local-operator predicate. Diagnostics
- * and any later consumer must read {@link isBoundRuntimeLocalOperator}
- * rather than calling {@link isLocalRuntimeCaller} again.
+ * Auth-boundary write of the one local-operator predicate. Do not
+ * reimplement it in a route handler: the auth boundary calls this once,
+ * and diagnostics and any later consumer read
+ * {@link isBoundRuntimeLocalOperator} rather than evaluating again.
  */
 export function bindRuntimeLocalOperator(
   request: Request,

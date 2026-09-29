@@ -1074,7 +1074,7 @@ describe('OnboardingGate', () => {
     expect(navigate).toHaveBeenCalledWith('/connections/engines/codex');
   });
 
-  test('does not inject optional knowledge setup into the app shell', () => {
+  test('a chat-ready status renders the app shell without a setup launcher', () => {
     currentStatus = chatReadyStatus();
 
     render(
@@ -1084,7 +1084,6 @@ describe('OnboardingGate', () => {
     );
 
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
-    expect(screen.queryByTestId('knowledge-nudge')).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Underlying app action' }),
     ).toBeTruthy();

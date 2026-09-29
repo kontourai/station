@@ -1321,7 +1321,7 @@ export function buildAgentRunSummary(options: {
   };
 }
 
-export function classifyAgentRunFailure(
+function classifyAgentRunFailure(
   event: Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }>,
 ): AgentRunFailureKind {
   const code = event.code?.toLowerCase() ?? '';
@@ -1353,7 +1353,7 @@ export function classifyAgentRunFailure(
   return 'unknown';
 }
 
-export function isAgentRunRetryEligible(kind: AgentRunFailureKind): boolean {
+function isAgentRunRetryEligible(kind: AgentRunFailureKind): boolean {
   return (
     kind === 'runtime_offline' ||
     kind === 'runtime_recovery' ||

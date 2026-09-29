@@ -64,6 +64,8 @@ async function fixture() {
         verifyCredential: (candidate, request) =>
           request !== undefined &&
           security.authorizeCredential(candidate, request),
+        recognizeCredential: (candidate) =>
+          security.verifyCredential(candidate),
         resolveGrantedScope: (candidate) =>
           security.resolveGrantedScope(candidate),
         resolveCredentialAuthority: (candidate) =>
@@ -541,7 +543,11 @@ test('real ingress permits scoped peer metadata reads but only operator-controll
       },
       body: JSON.stringify(payload),
     });
-  expect((await post(ordinary.credential)).status).toBe(401);
+  const refused = await post(ordinary.credential);
+  expect(refused.status).toBe(403);
+  expect(await refused.json()).toEqual({
+    error: { code: 'insufficient_scope' },
+  });
   expect((await post(f.record.credential)).status).toBe(201);
   const listed = await app.request('/api/environments/peers', {
     headers: { Authorization: `Bearer ${ordinary.credential}` },

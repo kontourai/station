@@ -23,16 +23,11 @@ import { errorText } from '../../utils/errorText';
 import type { DocMeta, KnowledgeStatus } from './types';
 import { getKnowledgeTimeAgo } from './utils';
 
-/**
- * Non-destructive guarantee, quoted verbatim from `docs/guides/knowledge.md`'s
- * "The non-destructive guarantee" section (K4 project-settings task — consume
- * the doc's own wording, do not re-derive new copy).
- */
+/** Keep source recovery and cutover limits aligned with docs/guides/knowledge.md. */
 const MIGRATE_GUARANTEE_TEXT =
-  'Migration only ever adds: it creates a new, project-scoped knowledge store ' +
-  'root, writes each pre-index document into it as a record, and builds an index ' +
-  'partition for that root. It never writes to, moves, or deletes anything ' +
-  'under the pre-index vectordb/ or projects/*/knowledge/ directories.';
+  'Migration copies records into a project Knowledge store and builds its index. ' +
+  'The source corpus stays in place, with no automatic cutover or cleanup. ' +
+  'Reading the source can first recover an interrupted earlier write.';
 
 function KnowledgeStoreSubsection({ slug }: { slug: string }) {
   const {

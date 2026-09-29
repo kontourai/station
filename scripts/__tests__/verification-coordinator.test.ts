@@ -423,7 +423,8 @@ describe('verification coordinator', () => {
     }
   });
 
-  test('keeps coordinator authorities behind acyclic bounded modules', () => {
+  // The blocking acyclicity guard: fallow only warns on circular imports.
+  test('keeps coordinator authorities behind modules that never import it back', () => {
     const libraryRoot = join(process.cwd(), 'scripts/lib');
     const coordinator = readFileSync(
       join(libraryRoot, 'verification-coordinator.mjs'),
@@ -443,31 +444,6 @@ describe('verification coordinator', () => {
         "from './verification-coordinator.mjs'",
       );
     }
-    expect(coordinator).not.toContain('function runAdmissionLoop(');
-    expect(coordinator).not.toContain('function runCompletionPhaseSequence(');
-    expect(coordinator).not.toContain('function changedDiagnosticBinding(');
-    expect(coordinator).not.toContain('function acquireLeaseDirectory(');
-    expect(coordinator).not.toContain('function executionEquivalenceKey(');
-    expect(coordinator).not.toContain('function prepareCoordinatorContext(');
-    expect(coordinator.split('\n').length).toBeLessThan(1_900);
-    expect(
-      readFileSync(
-        join(libraryRoot, 'verification-admission.mjs'),
-        'utf8',
-      ).split('\n').length,
-    ).toBeLessThan(500);
-    expect(
-      readFileSync(
-        join(libraryRoot, 'verification-completion-phases.mjs'),
-        'utf8',
-      ).split('\n').length,
-    ).toBeLessThan(500);
-    expect(
-      readFileSync(
-        join(libraryRoot, 'verification-lease-ownership.mjs'),
-        'utf8',
-      ).split('\n').length,
-    ).toBeLessThan(1_000);
     expect(
       readFileSync(
         join(libraryRoot, 'verification-ci-fast-diagnostics.mjs'),

@@ -1992,6 +1992,8 @@ describe('ClaudeAdapter', () => {
     expect(resolved.value).toMatchObject({
       method: 'request.resolved',
       status: 'approved',
+      // #2880: the Agent SDK's canUseTool reports no delivery.
+      acknowledgement: 'none',
     });
   });
 

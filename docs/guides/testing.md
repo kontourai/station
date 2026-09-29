@@ -1,5 +1,17 @@
 # Testing Guide
 
+Use this page to choose evidence, not to run every lane for every change.
+Start with `npm run gate:for -- <paths>` and the affected owner tests.
+Normative requirements below describe what a contribution owes; command wiring
+and retained benchmarks describe different facts. A listed test, a generated
+schedule or a prior measurement is not proof that the current revision passed.
+
+The [documentation maintenance workflow](documentation.md) and its
+[repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
+instructions and diagrams too. Structural gates check named patterns and
+artifacts; independent claim-to-caller review remains necessary. Unimplemented
+prevention proposals do not become requirements merely by appearing in a plan.
+
 ## Repository-wide code health
 
 `npm run audit:code-health` runs the installed Fallow version's full dead-code,
@@ -194,8 +206,19 @@ The subset uses the same resource groups and worker limits as `test:full`:
 ordinary files use four workers, process-heavy files use two, and exclusive
 or shared-output groups run serially. Groups run in sequence. Deferred lanes
 remain deferred; this grouping does not broaden a bounded CI selection.
-Discovery has a 60-second deadline and a 1 MiB output limit. Discovery and
-test commands own their process trees, including cancellation and settlement.
+Discovery retains a 1 MiB output limit. Its timeout is calculated after SDK
+barrel refinement from the caller's remaining discovery budget, reserving
+30 seconds for child settlement and receipt or plan writing. Local `ci:fast`
+allocates a quarter of the selector's allowance to discovery so tests retain
+time to run; the hosted shard planner uses its five-minute planning allowance.
+A caller without a deadline keeps the 60-second timeout. With a deadline,
+less than 60 seconds remaining after the reserve is refused before discovery
+starts; it is not rounded up. Invalid deadlines and timeouts above the
+fifteen-minute lane ceiling are also refused.
+`STATION_TEST_CHANGED_DEADLINE_AT` carries an absolute epoch-millisecond
+deadline to the selector and is removed from discovery and test child
+environments. Discovery and test commands own their process trees, including
+cancellation and settlement.
 Missing or unsafe selected files and discovery failures stop execution and
 produce a preparation error in the diagnostic; they never count as executed
 tests or a passing empty selection.
@@ -255,10 +278,10 @@ npm run test:prepush:repeat       # 20 attempts + local pass-rate/timing receipt
 npm run test:windows:portable     # Windows portable floor; not full parity (#1420)
 npm run test:load-reliability     # dry-only plan for the opt-in local stress lane
 npm run test:full                 # resource-profiled complete Vitest corpus (needs install:playwright — see below)
-npm run verify:local              # resolve Node 24, pin it for children, run verify:static
+npm run verify:local              # coordinated static + desktop Rust + mobile compile escalation
 npm run verify:static             # lint, ratchets, and typecheck
 npm run verify                    # broad diagnostic escalation when explicitly required
-npm run test:focused -- <file...> # pinned single-file runs (never ad hoc `npx vitest` — it can resolve a sibling worktree's config; see AGENTS.md)
+npm run test:focused -- <file...> # exact-file focused runs (never ad hoc `npx vitest` — it can resolve a sibling worktree's config; see AGENTS.md)
 npm run test:coverage             # with coverage report
 npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's BannerHost touch-target check)
 npm run install:playwright:ci     # CI runners: Chromium into the ambient PLAYWRIGHT_BROWSERS_PATH, bounded retry, no root (station#1648)
@@ -272,7 +295,6 @@ npm run screenshot:baseline       # write tests/screenshots.baseline.json from a
 npm run screenshot:diff           # compare a completed gallery run against the committed baseline
 npm run verify:e2e:full           # public coordinated E2E escalation across all buckets plus Android
 npm run sync:e2e:latest            # install newest compatible CI Extended E2E projection locally
-PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test               # e2e
 npm run test:e2e:product -- --spec=tests/foo.spec.ts          # focused spec with the canonical lifecycle
 npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # focused test name
 npm run test:connected-agents         # focused connected-agents server suite
@@ -603,9 +625,13 @@ Baseline artifacts (both committed):
   at `<name>.png` for a volatile entry is an unclaimed leftover and the next
   full-run regeneration deletes it; a partial run prunes nothing either way.
 
+The repeatability and artifact-size observations above belong to the recorded
+capture work; they are not a fresh cross-platform measurement. The current
+screen inventory and renderer identity come from the capture and baseline files.
+
 Typical loop: `npm run test:e2e:screenshot -- --screens=<touched screens>`,
 then `npm run screenshot:diff -- --screens=<touched screens>` to see whether
-the change moved any pixels, without paying for a full 29-screen run or
+the change moved any pixels, without paying for the full current screen inventory or
 committing a new baseline until the change is intentional.
 
 #### Where the gate runs, and which renderer the baseline is bound to
@@ -717,9 +743,11 @@ Every retained spec stays assigned to exactly one bucket in
 
 Use `npm run verify:local` only when the selector or final native-risk surface
 requires it. The
-launcher resolves a Node 24 executable, reports its absolute path and version
-once, prepends its bin directory to `PATH`, and then runs `verify:static` so
-Vitest fixtures and every other child command inherit the same runtime. Set
+local-verification launcher resolves a Node 24 executable, reports its path
+and version, and pins its child command. The public `verify:local` lane composes
+static verification, desktop Rust and mobile Cargo compile checks; it is not
+merely an alias for the static lane. Those native prerequisites make it an
+escalation, not a routine docs-edit check. Set
 `STATION_NODE=/absolute/path/to/node` as an explicit trust override when the
 supported executable is installed outside the common mise, nvm, fnm, Volta,
 Homebrew, and Windows manager locations.
@@ -729,11 +757,11 @@ Homebrew, and Windows manager locations.
 Node 24 runtime gate passes, it first compares every exact-pinned
 `@kontourai/*` dependency with the version installed in `node_modules` and
 fails before builds, lint, typechecks, or tests when they differ. It then cleans
-and rebuilds only
-`@kontourai/station-connect`, whose published `dist` types are imported by the
-root UI typecheck. Do not add a manual `npm run build:connect` prerequisite;
-the clean rebuild is part of the gate so stale generated output cannot satisfy
-the typecheck accidentally.
+and rebuilds the prerequisite outputs selected by
+`scripts/prepare-verify-static.mjs`: Connect's `dist` declarations and the CLI
+bundle. This is part of the static gate. A directly invoked typecheck lane can
+still need its owning build prerequisites; a missing generated package is not
+evidence of an application type regression.
 
 Fresh linked worktrees get the pinned dependency set through
 `npm run dependencies:ci`, so drift
@@ -778,13 +806,13 @@ delete a guard, infer ownership from a dead PID, or run gates against incomplete
 dependencies. A command-not-found error after interrupted provisioning is not
 an executed test failure.
 
-Leave disk headroom for npm extraction, staging, and cache work; this runner
+Leave disk headroom for package extraction, staging, and cache work; this runner
 does not reserve disk space. An ENOSPC or abrupt interruption can prevent a
 phase-receipt update, so the last recorded phase is not proof that an installer
 is still alive or that an install completed.
 
 After successful verification, the exact owned receipt and any regular
-`.DS_Store` metadata up to64KiB are moved individually into a private
+`.DS_Store` metadata up to 64 KiB are moved individually into a private
 `.station-dependency-record-*/` directory (the metadata uses a non-Finder
 destination name). Their identities and the metadata
 size are rechecked after each move; `rmdir` is the atomic final empty check. A
@@ -813,11 +841,11 @@ nothing beyond `npm run dependencies:ci`. It does not silently skip when the bro
 missing (this repo's "no conditional green exits" browser-test doctrine
 applies to it too): it fails loud, naming the missing precondition and the
 fix. Run `npm run install:playwright` once per fresh worktree, before either
-lane, to avoid that failure. CI's `full-regression` job in `.github/workflows/
-ci.yml` runs it for the same reason.
+lane, to avoid that failure. The reusable `.github/workflows/full-regression.yml` provides the browser
+prerequisite for hosted completion; do not infer it from dependency installation.
 
-`npm test` is intentionally the fast blocking tier used by generic pre-push
-hooks. Its checked-in manifest covers repository guardrails, public contracts,
+`npm test` is the named focused pre-push test tier. Station's own
+`.githooks/pre-push` has its separate check list; it does not invoke this alias. Its checked-in manifest covers repository guardrails, public contracts,
 authentication/connection boundaries, orchestration state, and core
 mobile/onboarding behavior while excluding real-process, installer,
 wall-clock, browser, and dogfood-reconcile classes. It writes mode-0600 local
@@ -879,9 +907,9 @@ their paths must be declared by the enclosing verification lane.
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its
 host-wide coordinator weight allows independent worktrees to make progress.
-A local `--maxWorkers` option is appropriate for a narrower focused invocation;
-do not use it to bypass the resource manifest or increase an authoritative
-lane's concurrency.
+A raw Vitest worker override is not accepted by `test:focused`, whose interface
+accepts exact paths rather than options. Use the owning runner's resource policy;
+do not bypass the manifest or increase an authoritative lane's concurrency.
 
 The opt-in load-reliability lane below remains host-local evidence only. It
 does not make the shared default a CI or hosted-CI authority, and it does not
@@ -895,7 +923,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | Lane | Command | Trigger | Expected scope | Resource class | Evidence | Invalidated by |
 | --- | --- | --- | --- | --- | --- | --- |
 | `full-regression` | `npm run full:regression` | promotion / explicit diagnosis | repo-governance + sdk/app builds + static gates + full Vitest corpus | completion gate | completion (trust floor) | command only |
-| `ci-fast` | `npm run ci:fast` | per-push / bounded feedback | base-pinned affected Vitest tests + fixed static invariants (≤12m) | static / integration | diagnostic | test-impact manifest |
+| `ci-fast` | `npm run ci:fast` | per-push / bounded feedback | base-pinned affected Vitest tests + fixed static invariants (configured timeout: 15m) | static / integration | diagnostic | test-impact manifest |
 | `test-changed` | `npm run test:changed` | per-edit local feedback | Vitest related imports + dynamic-boundary edges | changed-scope selector | diagnostic | test-impact manifest |
 | `prepush` | `npm run test:prepush` | pre-push / focused floor | prepare:verify-static + prepush test tier | focused floor | diagnostic | prepush test-group manifest |
 | `test-full` | `npm run test:full` | diagnostic full corpus | resource-profiled Vitest corpus + dogfood-reconcile | static / integration | diagnostic | command only |
@@ -905,7 +933,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `browser-prerequisite` — 20-unit host reservation; 1-minute execution deadline.
@@ -977,10 +1005,10 @@ instead. The coordinator returns exit 0 for an executed, joined, or reused
 lane, so reuse is the expected path, not a workaround.
 <!-- station:verification-policy:end -->
 
-Persistent self-hosted CI jobs deliberately omit `setup-node`'s remote npm
-cache. The runner service account already retains npm's content-addressed cache;
-restoring the same multi-gigabyte archive per job serializes the fleet without
-weakening or improving `npm ci`. `npm run gate:workflows` enforces this for
+Persistent self-hosted CI jobs deliberately omit `setup-node`'s remote
+package cache. Repeated archive restoration was historical fleet overhead;
+current dependency installation follows the managed pnpm lifecycle, not raw
+`npm ci`. `npm run gate:workflows` enforces this for
 self-hosted jobs while continuing to allow remote caches on ephemeral hosted
 runners. Persistent jobs also skip automatic `pull_request` execution and run
 only for protected `main` pushes or reviewed manual dispatches; the same gate
@@ -1215,7 +1243,7 @@ navigation without a connection or credential setup step.
 The `/` route is a deliberate Home surface. Its focused unit lane is:
 
 ```bash
-npx vitest run src-ui/src/__tests__/resolve-home-surface.test.ts src-ui/src/__tests__/AppHomeRoute.test.tsx src-ui/src/__tests__/HomeView.test.tsx src-ui/src/__tests__/ProjectSidebarNav.test.tsx src-ui/src/__tests__/app-routing.test.ts
+npm run test:focused -- src-ui/src/__tests__/resolve-home-surface.test.ts src-ui/src/__tests__/AppHomeRoute.test.tsx src-ui/src/__tests__/HomeView.test.tsx src-ui/src/__tests__/ProjectSidebarNav.test.tsx src-ui/src/__tests__/app-routing.test.ts
 ```
 
 `tests/root-route-restore.spec.ts` owns slow project/layout loading, failure,
@@ -1314,7 +1342,7 @@ Use these terms consistently when adding connected-agents coverage:
 
 - `Contract test`: provider-native event/request mapping into canonical runtime events
 - `Integration test`: Hono route or orchestration service boundary with real collaborators
-- `E2E test`: browser-driven flow using route interception or mocked EventSource delivery
+- `E2E test`: browser-driven journey; state explicitly whether its backend/stream is intercepted or real
 - `Smoke test`: real running app via `./station`
 
 Focused automation:
@@ -1338,11 +1366,11 @@ PW_BASE_URL=http://localhost:5274 PLAYWRIGHT_BROWSERS_PATH=0 \
   tests/orchestration-recovery.spec.ts
 ```
 
-**Dependency-install gotcha:** if `npm run test:connected-agents` fails with
+**Historical dependency-install diagnosis:** if `npm run test:connected-agents` fails with
 `orchestration-service.test.ts` Flow-gated-session tests expecting a
 rejection (`/Flow gate verdict: .../`) but the session completes instead,
-suspect a stale `node_modules` before suspecting a gate-contract or fixture
-regression. `@kontourai/flow`'s gate-expectation schema changed at the
+compare the installed dependency with the current pin as one diagnostic,
+without assuming that the same symptom has the same cause today. `@kontourai/flow`'s gate-expectation schema changed at the
 1.3.0 migration (expectations are now `kind: 'trust.bundle'`); an older installed copy silently
 rejects the migrated `kind: 'trust.bundle'` definitions as invalid, so the
 session never binds to a Flow run and the completion gate fail-opens
@@ -1368,9 +1396,11 @@ Use `--temp-home` for routine local gates. Shared-build actions (`--clean`, `fre
 
 ## Shared Test Utilities
 
-`src-server/__test-utils__/` holds two helpers. There is no mock-factory or
-request-assertion module — construct fakes with `vi.fn()` inline, which keeps
-each test's expectations visible where they are asserted.
+`src-server/__test-utils__/` contains several shared fixtures and helpers,
+including temporary-directory tracking, request/caller fixtures, runtime
+barriers, synthetic producers and the two readers below. Use the existing
+owner when it models your boundary; keep unmodeled collaborator calls visible
+rather than returning a generic successful empty result.
 
 ### Typed JSON bodies (`src-server/__test-utils__/read-json.ts`)
 
@@ -1389,9 +1419,11 @@ expect(body.runs).toHaveLength(1);
 
 ### SSE streams (`src-server/__test-utils__/sse-helpers.ts`)
 
-Collects events from a Hono `streamSSE` response, bounded by both an event
-count and a timeout so a stream that never closes fails fast instead of hanging
-the suite.
+Collects events from a Hono `streamSSE` response until its count bound,
+stream end or timeout. The current helper returns the collected prefix on
+read error/timeout and returns an empty list when no body exists; it does not
+itself throw to prove liveness or completeness. Assert the required marker,
+count and payload so a partial/empty return cannot satisfy the claim.
 
 ```ts
 import { collectSSE } from '../../../__test-utils__/sse-helpers.js';
@@ -1404,34 +1436,18 @@ expect(events.map((e) => e.event)).toContain('run.updated');
 
 ### Service Test
 
-Services import OpenTelemetry instruments at module load, so mock
-`telemetry/metrics.js` **before** importing the subject — hence the top-level
-`await import()` rather than a static import. Collaborators are plain `vi.fn()`
-objects, so each test's expectations stay visible where they are asserted.
+A service test should exercise its real interface with typed collaborators and
+observable outcomes. Mock a telemetry boundary only when that boundary is not
+the claim. Vitest hoists `vi.mock`; static imports can use those mocks. A dynamic
+import is useful when module-evaluation timing is itself under test, not a
+universal requirement for every service.
 
-```ts
-import { describe, expect, test, vi } from 'vitest';
-
-vi.mock('../../../telemetry/metrics.js', () => ({
-  agentOps: { add: vi.fn() },
-}));
-
-const { MyService } = await import('../my-service.js');
-
-function createMockConfigLoader() {
-  return {
-    listAgents: vi.fn().mockResolvedValue([{ slug: 'default' }]),
-  };
-}
-
-describe('MyService', () => {
-  test('creates a thing', async () => {
-    const service = new MyService(createMockConfigLoader() as never);
-    const result = await service.create({ name: 'test' });
-    expect(result.name).toBe('test');
-  });
-});
-```
+Use an existing service suite as a starting point, such as the
+[Session lifecycle tests](../../src-server/services/orchestration/__tests__/session-lifecycle-module.test.ts).
+Preserve its current authority and state fixtures. Do not cast an incomplete
+object to `never` or `any` merely to make a mocked constructor compile. Prove
+both an accepted transition and the relevant refusal/failure at the boundary
+that actually owns them.
 
 ### No-PTY (Degraded Terminal) Configuration
 
@@ -1463,32 +1479,17 @@ the silent-dead-terminal regression is exactly what they exist to catch.
 
 ### Route Integration Test
 
-Routes are exercised through Hono's `app.request()` against the real router.
-`readJson<T>()` supplies the response type — under strict fetch types
-`res.json()` is `Promise<unknown>`, so `body.data` will not type-check without
-it.
+Exercise a real Hono router with `app.request()`. For an authorization or
+middleware claim, use the production composition or the audited route-test
+helper; a standalone route with hand-set authority cannot establish the outer
+authentication boundary. `readJson<T>()` supplies a compile-time type only—it
+does not validate the response. Assert HTTP status, required body fields and
+absence of forbidden effects.
 
-```ts
-import { describe, expect, test, vi } from 'vitest';
-import { readJson } from '../../../__test-utils__/read-json.js';
-
-vi.mock('../../../telemetry/metrics.js', () => ({
-  myRouteOps: { add: vi.fn() },
-}));
-
-const { createMyRoutes } = await import('../my-routes.js');
-
-describe('MyRoutes', () => {
-  test('GET / returns list', async () => {
-    const service = { list: vi.fn().mockResolvedValue([]) };
-    const app = createMyRoutes(service as never);
-
-    const res = await app.request('/');
-    expect(res.status).toBe(200);
-    expect(await readJson<{ data: unknown[] }>(res)).toEqual({ data: [] });
-  });
-});
-```
+Use [route-test-app](../../src-server/__test-utils__/route-test-app.ts) where its
+seam matches the owner. Give mocks exact input/output contracts and reject
+unexpected requests. Do not use a success-shaped empty list as the fallback
+for an API the fixture forgot to implement.
 
 ### Hook Test (jsdom)
 
@@ -1508,9 +1509,8 @@ describe('useMyHook', () => {
 
 ## New Feature Checklist
 
-- [ ] Service has unit test in `__tests__/`
-- [ ] Route has integration test in `__tests__/`
-- [ ] Critical hooks have unit tests
+- [ ] The changed contract has a meaningful test at its lowest authoritative layer
+- [ ] Route/transport and critical UI boundaries have separate tests where they prove a distinct claim
 - [ ] User-facing behavior has a regression at the lowest authoritative layer
 - [ ] A Playwright test exists only when the claim requires a real browser or packaged runtime
 - [ ] Required coverage thresholds and changed-scope selection pass
@@ -1619,11 +1619,14 @@ shape). `scripts/cli-agent-e2e.mjs` closes that gap:
   agent, is **forwarded to the model** in the chat request (inspected directly,
   not dependent on whether a small model chooses to call it), and `station chat`
   connects/streams/exits 0.
-- **Skips cleanly (exit 0)** when Ollama or `dist-server` is absent, so it's safe
-  to run anywhere; it only adds signal when a local model is present.
+- Currently reports **SKIP with exit 0** when Ollama/model or `dist-server` is
+  absent. That is no execution evidence; inspect the explicit PASS/SKIP output,
+  not just the process status. When prerequisites are present this is a real
+  provider/runtime exercise, not a read-only inspection.
 
-Run it locally before pushing runtime/CLI/tool changes (it needs a built server
-and `ollama serve` with a tool-capable model pulled). It is intentionally a
+Use it only for an explicitly selected live-provider check with a built server
+and `ollama serve` plus a tool-capable model. Do not start it merely to verify
+this documentation or to replace a missing hermetic regression. It is intentionally a
 local lane, not part of the quota-limited CI gate.
 
 ### Provider-boundary note

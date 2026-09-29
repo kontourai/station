@@ -65,7 +65,9 @@ describe('cloud preview command', () => {
       );
       expect(template.Parameters.LocalUiPort.MinValue).toBe(1024);
       expect(template.Parameters.LocalUiPort.MaxValue).toBe(65535);
-      expect(() => runCloudCommand(args)).toThrow();
+      expect(() => runCloudCommand(args)).toThrow(
+        /EEXIST: file already exists, open/,
+      );
       expect(() =>
         runCloudCommand(
           args.map((arg) =>
@@ -159,6 +161,7 @@ test('cloud CLI packages and restores a checkout through its public flags', {
       true,
     );
 
+    // The fresh destination itself is refused, not some directory inside it.
     expect(() =>
       runCloudCommand([
         'unpack-workspace',
@@ -166,7 +169,7 @@ test('cloud CLI packages and restores a checkout through its public flags', {
         key,
         `--destination=${join(root, 'restored')}`,
       ]),
-    ).toThrow();
+    ).toThrow(/^EEXIST: file already exists, mkdir '.*[\\/]restored'$/);
     expect(() =>
       runCloudCommand([
         'inspect-workspace',

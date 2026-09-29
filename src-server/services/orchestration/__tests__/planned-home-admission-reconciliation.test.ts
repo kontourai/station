@@ -29,7 +29,7 @@ import {
   createPlannedHomeControlSessionAuthority,
   type PlannedHomeControlResult,
 } from '../planned-home-control-session-authority.js';
-import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
+import { createAuthorizedSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -63,7 +63,10 @@ async function fixture() {
   const controller = await security.initialize();
   const database = new DatabaseSync(join(root, 'authority.sqlite'));
   database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
-  const transfers = createSqlitePlannedHomeTransferStore(database);
+  const transfers = createAuthorizedSqlitePlannedHomeTransferStore(
+    database,
+    () => true,
+  );
   const offer = security.devicePairing.createOffer({
     endpoint: 'https://controller.example.test',
     scope: PAIRING_SCOPE_HOME_TRANSFER,

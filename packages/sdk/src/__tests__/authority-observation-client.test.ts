@@ -25,12 +25,24 @@ const response = (status: number, body: unknown) =>
 
 beforeEach(() => vi.resetAllMocks());
 
-test('reads /api/auth/authority with the captured request scope and returns the closed observation', async () => {
+test('reads /api/auth/authority on the caller request authority and returns the closed observation', async () => {
   transport.getJson.mockResolvedValue(response(200, observation));
-  const result = await getAuthorityObservation('http://station.test', options);
+  const authorized = {
+    requestScope: { apiBase: 'http://station.test', authorityKey: 'scope-1' },
+    credential: 'device-credential-value',
+    credentialOrigin: 'http://station.test',
+    headers: { 'X-Station-Client-Origin': '1;desktop;2.0.0' },
+    authentication: 'required' as const,
+  };
+  const result = await getAuthorityObservation(
+    'http://station.test',
+    authorized,
+  );
+  // The observation must travel on the caller's own authority, exactly like
+  // every other protected read — no ambient credential, no dropped scope.
   expect(transport.getJson).toHaveBeenCalledWith(
     'http://station.test/api/auth/authority',
-    options,
+    authorized,
   );
   expect(result).toEqual(observation);
 });
@@ -72,22 +84,4 @@ test('rejects a wrong schema version', async () => {
   await expect(
     getAuthorityObservation('http://station.test', options),
   ).rejects.toThrow('incompatible authority observation');
-});
-
-test('propagates the caller request authority (credential, headers, scope) verbatim', async () => {
-  transport.getJson.mockResolvedValue(response(200, observation));
-  const authorized = {
-    requestScope: { apiBase: 'http://station.test', authorityKey: 'scope-1' },
-    credential: 'device-credential-value',
-    credentialOrigin: 'http://station.test',
-    headers: { 'X-Station-Client-Origin': '1;desktop;2.0.0' },
-    authentication: 'required' as const,
-  };
-  await getAuthorityObservation('http://station.test', authorized);
-  // The observation must travel on the caller's own authority, exactly like
-  // every other protected read — no ambient credential, no dropped scope.
-  expect(transport.getJson).toHaveBeenCalledWith(
-    'http://station.test/api/auth/authority',
-    authorized,
-  );
 });

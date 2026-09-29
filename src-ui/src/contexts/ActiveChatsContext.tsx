@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { usePruneActiveChats } from '../hooks/usePruneActiveChats';
+import type { FullAccessRefusalNotice } from '../utils/approvalMode';
 import { isShallowEqual } from '../utils/isShallowEqual';
 import {
   type ActiveChatMetadata,
@@ -30,6 +31,7 @@ type ActiveChatsContextType = {
       content: string;
       attachments?: any[];
       action?: { label: string; handler: () => void };
+      fullAccessRefusal?: FullAccessRefusalNotice;
     },
   ) => void;
   clearEphemeralMessages: (sessionId: string) => void;

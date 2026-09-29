@@ -1,5 +1,17 @@
 # The Seam Map — `OrchestrationService`
 
+> **Reading status: historical decomposition evidence and recommendations.**
+> Both parts are anchored to their named August revisions. Counts, line numbers,
+> callers, test gaps, and proposed cuts must be re-derived before a new refactor.
+> The current [OrchestrationService](../../src-server/services/orchestration/orchestration-service.ts)
+> composes the extracted owners, including
+> [TurnProvenanceSidecar](../../src-server/services/orchestration/turn-provenance-sidecar.ts),
+> [FlowPolicySidecar](../../src-server/services/orchestration/flow-policy-sidecar.ts),
+> and [CooperativeStop](../../src-server/services/orchestration/cooperative-stop.ts).
+> Read the [module map](../architecture/module-map.md) for the learning route;
+> this record preserves the reasoning and defects that shaped extraction, not a
+> fresh certification of every current event ordering or ownership boundary.
+
 **Status:** accepted direction — the working document for epic #4024; slices
 cite and update this map instead of re-deriving it.
 **Subject:** `src-server/services/orchestration/orchestration-service.ts`
@@ -840,8 +852,8 @@ at 1629 (`initialize`) / `.delete` at 2334 (`shutdown`) is module-global;
 the test file constructs the service 126 times in one process. Extraction
 must not disturb initialize/shutdown ordering. *(Slice 3 kept the
 ordering: the registry now lives in `attached-session-adoption.ts`, and the
-initialize/shutdown wiring is pinned by that file's source-invariant
-test.)*
+initialize/shutdown wiring is pinned by that file's service-owner
+wiring test, which runs two services over one ledger.)*
 
 **T8 — `orchestration-source-invariants.test.ts` pins this file path** in
 > *Superseded — see Part II (re-derived at `71699b7c1`).*

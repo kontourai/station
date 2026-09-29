@@ -1,5 +1,14 @@
 # Optional Station connection broker
 
+> **Reading status: broker requirements with local implementation milestones.**
+> [Broker service](../../src-server/services/connections/self-hosted-broker-service.ts),
+> [connector](../../src-server/services/connections/self-hosted-broker-connector.ts),
+> [protected application dispatcher](../../src-server/services/connections/virtual-application.ts),
+> and [Device enrollment](../../packages/connect/src/core/brokerRouteEnrollment.ts)
+> own separate parts of the path. The local lab and recorded transport results
+> do not establish production enablement, native activation, or actual remote
+> delivery. Dated target sections preserve their original scope.
+
 > Status: architecture record for [#45](https://github.com/kontourai/station/issues/45).
 > The owner accepted delegated security judgment and required a free local test
 > path on September 12, 2026. Intermediary confidentiality and local testability
@@ -22,7 +31,10 @@ qualify independently. The Node UDP backend remains useful diagnostic evidence;
 it does not acquire TURN/TCP support from Pion's results.
 
 Native desktop has a separate [OS-keyring routing-grant vault](../../src-desktop/src/relay_grant_vault.rs),
-but it does not yet use a grant to connect. The current browser protocol binds
+but the ordinary saved-route client does not yet use a grant to connect. The
+opt-in `/native-application` Connect library and `nativeClient` server connector
+now provide a distinct application lane; they do not wire that user-facing
+activation. The browser protocol binds
 `browserOrigin` to a canonical HTTP(S) page Origin and the broker checks that
 same Origin on signaling. Packaged Tauri WebViews use different platform
 schemes, so a saved native grant cannot be activated by pretending its WebView

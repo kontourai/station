@@ -41,7 +41,7 @@ export interface ParsedCoreArgs {
    * Every value seen for each `--flag=value` occurrence, in argv order —
    * `flags` only keeps the last (a bare `--flag` with no `=value` is never
    * recorded here). Needed for a genuinely repeatable flag like
-   * `--model-option key=value` (station#978 AC7, `collectModelOptions`);
+   * `--model-option=key=value` (archive#978 AC7, `collectModelOptions`);
    * every other flag ignores this and reads `flags` exactly as before —
    * fully additive, no behavior change for existing callers.
    */
@@ -465,7 +465,14 @@ export async function requestJson<T>(
     // the rule. The SDK's field-qualified rendering is the one every client
     // shares (#2708), so the CLI and the SDK print the same sentence.
     const fields = envelopeDetailsMessage(payload.details);
-    throw new Error(fields ? `${summary}: ${fields}` : summary);
+    const code = (payload as { code?: unknown }).code;
+    // Keep a stable refusal code (#1796) so a caller branches on it.
+    // `details` rides along untouched; a renderer parses it (#1796).
+    throw Object.assign(new Error(fields ? `${summary}: ${fields}` : summary), {
+      status: response.status,
+      ...(typeof code === 'string' ? { code } : {}),
+      ...(payload.details !== undefined ? { details: payload.details } : {}),
+    });
   }
 
   if (payload.data !== undefined) {

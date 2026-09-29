@@ -1,5 +1,12 @@
 # Browser Preview Pane MVP (Station #1375)
 
+> **Historical `1.0` design:** the server-hosted Browser pane and `2.0`
+> migration are now implemented. The dated status and future tense below
+> describe the earlier MVP. For current behavior and evidence limits, use the
+> [glossary's Browser pane section](../glossary.md#browser-pane-live-surface-control-lease).
+> Current operator instructions and source boundaries are in the
+> [Browser workspace guide](../guides/browser-workspace.md).
+
 **Status (2026-09-22):** This is the archive#1375 MVP. It describes the
 shipped `1.0` Browser Preview pane and is superseded in part by
 [ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md),

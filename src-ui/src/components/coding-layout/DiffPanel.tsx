@@ -124,7 +124,7 @@ function parseDiffFiles(patch: string): FileDiffMetadata[] {
  * parser, so it can't drift from what the real parser considers a file
  * boundary or a file name.
  */
-export function binaryFileNames(patch: string): Set<string> {
+function binaryFileNames(patch: string): Set<string> {
   const names = new Set<string>();
   for (const block of patch.split(GIT_DIFF_FILE_BREAK_REGEX)) {
     if (!/^Binary files /m.test(block)) continue;
@@ -152,7 +152,7 @@ function diffItemId(fileDiff: FileDiffMetadata, index: number): string {
   );
 }
 
-export interface DiffChangeCounts {
+interface DiffChangeCounts {
   additions: number;
   deletions: number;
 }
@@ -165,9 +165,7 @@ export interface DiffChangeCounts {
  * with what's on screen; it deliberately does not re-count lines from the
  * raw patch text (a second, independently-fallible source of truth).
  */
-export function diffFileChangeCounts(
-  fileDiff: FileDiffMetadata,
-): DiffChangeCounts {
+function diffFileChangeCounts(fileDiff: FileDiffMetadata): DiffChangeCounts {
   let additions = 0;
   let deletions = 0;
   for (const hunk of fileDiff.hunks) {
@@ -190,9 +188,9 @@ export function diffFileChangeCounts(
  * header can render that instead of a zero. Files with hunks (`'lines'`)
  * are unaffected — the numeric stat still renders exactly as before.
  */
-export type DiffFileKind = 'lines' | 'renamed' | 'binary' | 'unknown';
+type DiffFileKind = 'lines' | 'renamed' | 'binary' | 'unknown';
 
-export function diffFileKind(
+function diffFileKind(
   fileDiff: FileDiffMetadata,
   isBinary: boolean,
 ): DiffFileKind {
@@ -212,9 +210,7 @@ const DIFF_FILE_KIND_LABEL: Record<Exclude<DiffFileKind, 'lines'>, string> = {
 };
 
 /** Sum of `diffFileChangeCounts` across every file in the diff. */
-export function diffTotalChangeCounts(
-  files: FileDiffMetadata[],
-): DiffChangeCounts {
+function diffTotalChangeCounts(files: FileDiffMetadata[]): DiffChangeCounts {
   let additions = 0;
   let deletions = 0;
   for (const fileDiff of files) {

@@ -28,7 +28,7 @@ const descriptor = {
     supportedRegions: ['primary', 'secondary', 'standalone'],
     preferredRegion: 'secondary',
   },
-  contextRequirement: { project: true },
+  modes: [{ id: 'default', contextRequirement: { project: true } }],
   provenance: { origin: 'builtin' },
   lifecycle: { stage: 'preview' },
 };
@@ -41,7 +41,7 @@ const instance = {
 };
 const approvedTarget = 'http://127.0.0.1:5173/';
 
-test('current Browser Preview descriptor and restoration instance satisfy the actual contracts', () => {
+test('experiment Browser Preview descriptor and restoration instance satisfy the current contracts', () => {
   const parsedDescriptor = parseWorkspacePaneDescriptor(descriptor);
   const parsedInstance = parseWorkspacePaneInstance(instance);
 

@@ -45,6 +45,11 @@ const report = await createConformanceReport([
   },
 ]);
 
+const matrix = renderConformanceMatrix(report).replace(
+  '`conformance/host-conformance.json`',
+  '`docs/conformance/station-runtime-conformance.json`',
+);
+
 const outputs = new Map([
   [
     resolve(root, 'docs/conformance/station-runtime-conformance.json'),
@@ -52,7 +57,7 @@ const outputs = new Map([
   ],
   [
     resolve(root, 'docs/conformance/station-runtime-conformance.md'),
-    `${renderConformanceMatrix(report)}\nStation application policy, approvals, memory, orchestration, and canonical events remain outside Conduit.\n`,
+    `${matrix}\nStation application policy, approvals, memory, orchestration, and canonical events remain outside Conduit.\n`,
   ],
 ]);
 const check = process.argv.includes('--check');

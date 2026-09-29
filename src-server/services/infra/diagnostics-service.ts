@@ -21,7 +21,7 @@ import {
   diagnosticsBundlesGenerated,
 } from '../../telemetry/metrics.js';
 
-export const MAX_DIAGNOSTIC_LOG_BYTES = 256 * 1024;
+const MAX_DIAGNOSTIC_LOG_BYTES = 256 * 1024;
 const LOGS_NOT_CONFIGURED_REASON =
   'no log file configured (start with --log or service mode)';
 
@@ -88,19 +88,24 @@ async function readInstanceLogPath(
   }
 }
 
-export async function readLogTail(
-  path: string,
-  maxBytes = MAX_DIAGNOSTIC_LOG_BYTES,
-): Promise<string> {
+/** The end of `text` that fits in `maxBytes` of UTF-8, on a character boundary. */
+function lastBytes(text: string, maxBytes: number): string {
+  const bytes = Buffer.from(text, 'utf8');
+  if (bytes.length <= maxBytes) return text;
+  let start = bytes.length - maxBytes;
+  // Skip continuation bytes (10xxxxxx) so no character is split.
+  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start += 1;
+  return bytes.subarray(start).toString('utf8');
+}
+
+async function readLogTail(path: string, maxBytes: number): Promise<string> {
   const file = await open(path, 'r');
   try {
     const { size } = await file.stat();
     const length = Math.min(size, maxBytes);
     const buffer = Buffer.alloc(length);
     await file.read(buffer, 0, length, size - length);
-    let text = buffer.toString('utf8');
-    while (Buffer.byteLength(text) > maxBytes) text = text.slice(1);
-    return text;
+    return lastBytes(buffer.toString('utf8'), maxBytes);
   } finally {
     await file.close();
   }
@@ -149,8 +154,16 @@ export class DiagnosticsService {
       let logsUnavailableReason: string | undefined;
       if (logPath) {
         try {
-          logs = sanitizeFreeText(
-            await this.deps.readLogTail(logPath, MAX_DIAGNOSTIC_LOG_BYTES),
+          const tail = await this.deps.readLogTail(
+            logPath,
+            MAX_DIAGNOSTIC_LOG_BYTES,
+          );
+          // The sanitizer's own limit keeps the HEAD of its input, which here
+          // is the oldest part of the tail, so the bound is re-applied from
+          // the end instead (redaction can lengthen the text).
+          logs = lastBytes(
+            sanitizeFreeText(tail, Number.MAX_SAFE_INTEGER),
+            MAX_DIAGNOSTIC_LOG_BYTES,
           );
         } catch {
           logsUnavailableReason = 'configured log file could not be read';

@@ -300,8 +300,8 @@ jobs:
   # release key id (install.sh's test-only key override), then installs,
   # starts, upgrades (`station upgrade`, from the recorded manifest URL) and
   # uninstalls with NO Node.js on PATH, and fails if anything builds. The
-  # preview ring stands in for nightly: the archive builder stamps
-  # stable/preview provenance only until nightly publication (slice E).
+  # preview ring exercises this install/upgrade path; Nightly publication
+  # has its own signed-manifest workflow and evidence.
   install-prebuilt-archive:
     strategy:
       fail-fast: false

@@ -580,6 +580,34 @@ describe('CLI core commands over HTTP', () => {
         method === 'POST' &&
         (url.pathname === '/api/orchestration/chat' || continueChatMatch)
       ) {
+        // #1796: the real refusal's shape, for a device without the grant.
+        if (body.message === 'refuse full access') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              success: false,
+              code: 'approval-full-access-not-granted',
+              error:
+                "Full access was not applied. Only this Station's operator can allow full access, for this device (id c74f5951).",
+              details: {
+                requested: 'never',
+                requester: {
+                  kind: 'device',
+                  deviceId: 'c74f5951',
+                  deviceName: 'Laptop \u001b[31mCLI',
+                },
+                station: {},
+                grant: {
+                  by: 'operator',
+                  scope: 'approval:full-access',
+                  uiSteps: ['Open the Station desktop app.'],
+                  cli: 'station environment access scope c74f5951 --add approval:full-access',
+                },
+              },
+            }),
+          );
+          return;
+        }
         const chatThreadId = continueChatMatch
           ? decodeURIComponent(continueChatMatch[1])
           : body.conversationId;
@@ -1309,6 +1337,32 @@ describe('CLI core commands over HTTP', () => {
         },
       },
     ]);
+  });
+
+  test('a full-access refusal reaches the CLI printer with its details (#1796)', async () => {
+    const { describeCliError, runCli } = await import('../cli.js');
+    const error = await runCli([
+      'chat',
+      'codex',
+      'refuse full access',
+      '--approval-mode=never',
+      `--api-base=${apiBase}`,
+    ]).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({
+      code: 'approval-full-access-not-granted',
+      details: { requester: { kind: 'device', deviceId: 'c74f5951' } },
+    });
+    const printed = describeCliError(error);
+    expect(printed).toContain(
+      'Ask the operator to allow full access for device "Laptop [31mCLI" (c74f5951):',
+    );
+    expect(printed).toContain(
+      '    station environment access scope c74f5951 --add approval:full-access',
+    );
+    expect(printed).not.toContain('\u001b');
   });
 
   test('--model-option merges after named flags, which win on collision (#978 AC7)', async () => {

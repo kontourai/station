@@ -323,18 +323,11 @@ describe('packaged iOS capability audit', () => {
     expect(() =>
       auditIosInventory({
         ...base,
-        signedBundles: [
-          ...base.signedBundles,
-          { path: 'Station.app/Frameworks/Spy.framework', entitlements: '' },
-        ],
         dependencies: [
-          {
-            binary: 'Station.app/Station',
-            output: 'Station:\n@rpath/Spy.framework/Spy',
-          },
+          { binary: 'Station', output: 'Station:\n@rpath/Spy.framework/Spy' },
         ],
       }),
-    ).toThrow(/Spy/));
+    ).toThrow(/unreviewed dependency paths: @rpath\/Spy\.framework\/Spy/));
   test('fails when any discovered privacy manifest enables tracking', () =>
     expect(() =>
       auditIosInventory({

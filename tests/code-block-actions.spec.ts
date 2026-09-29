@@ -64,57 +64,53 @@ test.beforeAll(async () => {
   stylesheet = styles.outputFiles[0].text;
 });
 
-for (const theme of ['light', 'dark']) {
-  test(`a long ${theme} block repeats copy below the complete source and removes the footer when short`, async ({
-    page,
-  }, testInfo) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.setContent(
-      '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>',
-    );
-    await page.addStyleTag({ content: stylesheet });
+test('a long block repeats copy below the complete source and removes the footer when short', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setContent(
+    '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>',
+  );
+  await page.addStyleTag({ content: stylesheet });
+  await page.addScriptTag({ content: script });
+  await page.evaluate(() => document.fonts.ready);
+  await expect(
+    page.getByRole('button', { name: 'Copy', exact: true }),
+  ).toHaveCount(1);
+  await page.getByRole('button', { name: 'Change length' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Copy', exact: true }),
+  ).toHaveCount(2);
+  const footer = page.getByRole('button', { name: 'Copy', exact: true }).last();
+  await footer.click();
+  expect(await page.evaluate(() => Reflect.get(window, 'copiedText'))).toBe(
+    Array.from({ length: 50 }, (_, i) => `line ${i} value = 42;`).join('\n'),
+  );
+  await expect(
+    page.getByRole('button', { name: 'Copied', exact: true }),
+  ).toHaveCount(2);
+  const box = (await page
+    .getByRole('button', { name: 'Copied', exact: true })
+    .last()
+    .boundingBox())!;
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
+  await page.getByRole('button', { name: 'Change renderer' }).click();
+  await page.getByRole('button', { name: 'Refuse clipboard' }).click();
+  await page.locator('.code-block-actions').last().getByRole('button').click();
+  await expect(
+    page.getByRole('button', { name: "Can't copy", exact: true }),
+  ).toHaveCount(2);
+  // Every assertion above is theme-invariant; only the rendering differs, so
+  // the second theme is captured here rather than by replaying the journey.
+  for (const theme of ['light', 'dark']) {
     await page.evaluate((value) => {
       document.documentElement.dataset.theme = value;
     }, theme);
-    await page.addScriptTag({ content: script });
-    await page.evaluate(() => document.fonts.ready);
-    await expect(
-      page.getByRole('button', { name: 'Copy', exact: true }),
-    ).toHaveCount(1);
-    await page.getByRole('button', { name: 'Change length' }).click();
-    await expect(
-      page.getByRole('button', { name: 'Copy', exact: true }),
-    ).toHaveCount(2);
-    const footer = page
-      .getByRole('button', { name: 'Copy', exact: true })
-      .last();
-    await footer.click();
-    expect(await page.evaluate(() => Reflect.get(window, 'copiedText'))).toBe(
-      Array.from({ length: 50 }, (_, i) => `line ${i} value = 42;`).join('\n'),
-    );
-    await expect(
-      page.getByRole('button', { name: 'Copied', exact: true }),
-    ).toHaveCount(2);
-    const box = (await page
-      .getByRole('button', { name: 'Copied', exact: true })
-      .last()
-      .boundingBox())!;
-    expect(box.height).toBeGreaterThanOrEqual(44);
-    expect(box.x + box.width).toBeLessThanOrEqual(390);
-    await page.getByRole('button', { name: 'Change renderer' }).click();
-    await page.getByRole('button', { name: 'Refuse clipboard' }).click();
-    await page
-      .locator('.code-block-actions')
-      .last()
-      .getByRole('button')
-      .click();
-    await expect(
-      page.getByRole('button', { name: "Can't copy", exact: true }),
-    ).toHaveCount(2);
     await page.screenshot({
       path: testInfo.outputPath(`code-copy-${theme}.png`),
     });
-    await page.getByRole('button', { name: 'Change length' }).click();
-    await expect(page.locator('.code-block-actions')).toHaveCount(1);
-  });
-}
+  }
+  await page.getByRole('button', { name: 'Change length' }).click();
+  await expect(page.locator('.code-block-actions')).toHaveCount(1);
+});

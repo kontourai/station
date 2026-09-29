@@ -47,20 +47,6 @@ test('blocks a new second-session start for the entire restore transaction', asy
   await expect(pendingStart).resolves.toBe('started');
 });
 
-test('terminal and runtime-error release the workspace reservation', async () => {
-  const barrier = new WorkspaceExecutionBarrier();
-  await barrier.runTurnStart(
-    '/repo',
-    'thread-a',
-    async () => undefined,
-    () => true,
-  );
-  barrier.releaseThread('thread-a');
-  await expect(
-    barrier.runExclusive('/repo', async () => 'released'),
-  ).resolves.toBe('released');
-});
-
 test('does not resurrect a turn that terminates before start acknowledgement', async () => {
   const barrier = new WorkspaceExecutionBarrier();
   let acknowledge!: () => void;

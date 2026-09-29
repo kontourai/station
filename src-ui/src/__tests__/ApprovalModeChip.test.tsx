@@ -472,7 +472,7 @@ describe('ApprovalModeChip', () => {
       name: /^Approval mode: Never ask \(full access\)\./,
     });
     expect(chip.className).not.toContain('chat-input__approval-chip--pending');
-    expect(screen.queryByText(/pending next turn/)).toBeNull();
+    expect(chipValue()).toBe('Full access');
   });
 
   test('a rejected escalation (override reverted away from never) shows no pending state', async () => {
@@ -485,7 +485,10 @@ describe('ApprovalModeChip', () => {
       />,
     );
 
-    expect(screen.queryByText(/pending next turn/)).toBeNull();
+    expect(trigger().className).not.toContain(
+      'chat-input__approval-chip--pending',
+    );
+    expect(chipValue()).toBe('Ask');
   });
 
   test('other modes never show a pending state, even with a stale lastAppliedApprovalMode', async () => {
@@ -498,7 +501,7 @@ describe('ApprovalModeChip', () => {
       />,
     );
 
-    expect(screen.queryByText(/pending next turn/)).toBeNull();
+    expect(chipValue()).toBe('Auto');
     expect(trigger().className).toContain(
       'chat-input__approval-chip--override',
     );
@@ -603,10 +606,9 @@ describe('ApprovalModeChip', () => {
     // sibling `<span>`s inside the same `<label>` row. `.closest('label')`
     // is the equivalent "same option row" scope the original `.textContent`
     // check on the (then content-bearing) `<button>` was expressing.
-    expect(option(/^Auto/).closest('label')?.textContent).toContain(
-      autoDescription,
-    );
-    expect(autoDescription.toLowerCase()).not.toContain('safe');
+    const autoRow = option(/^Auto/).closest('label')?.textContent ?? '';
+    expect(autoRow).toContain(autoDescription);
+    expect(autoRow.toLowerCase()).not.toContain('safe');
   });
 
   test('renders nothing when no engineConnectionId is known at all', () => {

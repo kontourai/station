@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   configureApiCredential,
   parseCoreArgs,
@@ -138,11 +138,13 @@ describe('resolveApiBase', () => {
     expect(resolveApiBase(parsed)).toBe('http://127.0.0.1:4242');
   });
 
+  // The literal pins the CLI's DEFAULT_SERVER_PORT binding itself: the test
+  // runtime resolves the stable-local channel port, and a regression to 3141
+  // would point the CLI at the user's own Station.
   it('falls back to the current runtime port when nothing is set', () => {
     const parsed = parseCoreArgs([]);
-    expect(resolveApiBase(parsed)).toBe(
-      `http://127.0.0.1:${process.env.STATION_PORT || DEFAULT_SERVER_PORT}`,
-    );
+    expect(DEFAULT_SERVER_PORT).toBe(18141);
+    expect(resolveApiBase(parsed)).toBe('http://127.0.0.1:18141');
   });
 
   // #174 carry-along (#167 AC5): normalizeApiBase's `/api$/` strip is
@@ -159,5 +161,43 @@ describe('resolveApiBase', () => {
   it('still strips a trailing /api suffix on a hostname that also contains "api"', () => {
     const parsed = parseCoreArgs(['--api-base=http://api.example.com/api']);
     expect(resolveApiBase(parsed)).toBe('http://api.example.com');
+  });
+});
+
+describe('requestJson refusals (#1796)', () => {
+  it('keeps the envelope code and details, so a refusal renders from its structure', async () => {
+    const { requestJson } = await import('../commands/core-api.js');
+    const details = {
+      requested: 'never',
+      requester: { kind: 'person' },
+      station: {},
+      grant: { by: 'operator', scope: 'approval:full-access', uiSteps: ['x'] },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: false,
+              code: 'approval-full-access-not-granted',
+              error: 'Full access was not applied.',
+              details,
+            }),
+            { status: 403, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    );
+    try {
+      await expect(
+        requestJson('http://127.0.0.1:1', '/api/agents/a', { method: 'PUT' }),
+      ).rejects.toMatchObject({
+        status: 403,
+        code: 'approval-full-access-not-granted',
+        details,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

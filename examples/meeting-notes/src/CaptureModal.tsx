@@ -1,30 +1,8 @@
 /**
- * Capture pane — meeting transcript capture -> raw Kit record -> compiled
- * Kit record with a provenance link back to the raw record
- * (`s203-knowledge-meeting-notes` plan, Wave 1 Task 3, AC1a).
- *
- * Filename mirrors `examples/meeting-transcription/src/
- * MeetingTranscriptionModal.tsx` (read-only precedent) per the plan's file
- * list, even though this renders as an inline "Capture" tab pane
- * (`layout.json`) rather than a floating dialog — the tabbed layout shape is
- * the right fit here, not an overlay.
- *
- * Live capture reuses `useSTT()`'s exact call shape (same options/return
- * contract `MeetingTranscriptionModal` already uses:
- * `startListening({continuous, interimResults})` / `stopListening()` /
- * `.transcript` / `.state` / `.supported`) — verbatim, not forked. It is
- * guarded defensively: as of this Wave 1 landing, `@kontourai/station-sdk`
- * does NOT actually export `useSTT` (verified — it is defined only
- * internally at `src-ui/src/hooks/useSTT.ts`, outside the plugin boundary;
- * `MeetingTranscriptionModal.tsx`'s own `import { useSTT } from
- * '@kontourai/station-sdk'` resolves to `undefined` for the same reason).
- * This is a pre-existing SDK gap, not introduced by this task and out of
- * this task's `examples/meeting-notes/**` scope to fix. `LIVE_CAPTURE_
- * SUPPORTED` below detects the gap once, at module load, and the paste/
- * upload textarea (this task's explicitly-sanctioned v1 capture surface)
- * is always available regardless — the live-capture toggle simply doesn't
- * render until the SDK actually exports the hook, at which point it
- * activates with no further change here.
+ * Capture tab: pasted/uploaded text becomes a raw record; compilation invokes
+ * an Agent and separately writes a linked compiled record.
+ * The current public SDK has no useSTT export, so the optional live control is
+ * hidden. Meeting Transcription's voiceRegistry integration is a separate path.
  */
 
 import type { LayoutComponentProps } from '@kontourai/station-sdk';

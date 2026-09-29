@@ -1,5 +1,19 @@
 # Design: Principals — what "people" means in Station, and when it changes
 
+> **Status: mixed historical decision record; current-owner check 2026-09-26.**
+> Preserve the dated decisions below as rationale, not a current claim that
+> account authentication or membership APIs are absent. The runtime now
+> composes optional [account authentication](../guides/deployment-authentication.md)
+> and [Project membership storage](../../src-server/services/projects/project-membership-runtime.ts);
+> [request principal resolution](../../src-server/runtime/bootstrap/orchestration-request-principal.ts)
+> includes that account authority. These gated implementations do not establish
+> that shared access is enabled, every resource is member-authorized, or the
+> two-human acceptance journey has passed. The original rollout gates and
+> blanket OAuth/SSO restrictions below must be read in their historical scope;
+> a Kontour-hosted account adapter is distinct from operator-configured OIDC.
+
+## Retained decision record
+
 > Status: **decision record**. Principal attribution is now landed; independent
 > human membership remains target work. Written 2026-08-03 to reconcile five
 > epics that had accumulated overlapping answers to "how do people work here"

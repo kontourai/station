@@ -613,16 +613,22 @@ describe('required browser evidence cannot silently disappear', () => {
       ),
     ).toEqual([]);
   });
+  const executesOnce =
+    'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks-statics.';
+  const admitsPlan =
+    'Required fast-checks-plan must admit PR and merge candidates without swallowing failures.';
   test.each([
     [
       'manual dependency',
       (text: string) =>
         text.replace('needs: classify', 'needs: [classify, full-regression]'),
+      admitsPlan,
     ],
     [
       'removed suite',
       (text: string) =>
         text.replace('run: npm run test:e2e:pr-smoke', 'run: echo omitted'),
+      executesOnce,
     ],
     [
       'conditional skip',
@@ -631,6 +637,7 @@ describe('required browser evidence cannot silently disappear', () => {
           'run: npm run test:e2e:pr-smoke',
           'if: false\n        run: npm run test:e2e:pr-smoke',
         ),
+      executesOnce,
     ],
     [
       'swallowed error',
@@ -639,6 +646,7 @@ describe('required browser evidence cannot silently disappear', () => {
           'run: npm run test:e2e:pr-smoke',
           'run: npm run test:e2e:pr-smoke || true',
         ),
+      executesOnce,
     ],
     [
       'optional step',
@@ -647,20 +655,26 @@ describe('required browser evidence cannot silently disappear', () => {
           'run: npm run test:e2e:pr-smoke',
           'continue-on-error: true\n        run: npm run test:e2e:pr-smoke',
         ),
+      executesOnce,
     ],
     [
       'optional job',
       (text: string) => text.replace('  fast-checks:', '  optional-smoke:'),
+      'Required browser smoke must run inside fast-checks.',
     ],
     [
       'skipped job',
       (text: string) => text.replace(REQUIRED_FAST_CHECKS_CONDITION, 'false'),
+      admitsPlan,
     ],
-  ])('rejects %s before the workflow can claim green', (_name, mutate) => {
-    const mutated = mutate(cleanWorkflow);
-    expect(mutated).not.toBe(cleanWorkflow);
-    expect(collectRequiredBrowserSmokeFindings(mutated)).not.toEqual([]);
-  });
+  ])(
+    'rejects %s before the workflow can claim green',
+    (_name, mutate, finding) => {
+      const mutated = mutate(cleanWorkflow);
+      expect(mutated).not.toBe(cleanWorkflow);
+      expect(collectRequiredBrowserSmokeFindings(mutated)).toContain(finding);
+    },
+  );
 });
 
 describe('the required fast-checks aggregator cannot pass over a missing part (#2709)', () => {

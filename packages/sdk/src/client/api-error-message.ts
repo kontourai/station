@@ -302,7 +302,9 @@ export function apiErrorMessage(
     | {
         error?: unknown;
         message?: unknown;
-        details?: { formErrors?: unknown; fieldErrors?: unknown };
+        // Read structurally: a validation refusal's `{ formErrors,
+        // fieldErrors }`, and any other `details` (#1796) is ignored here.
+        details?: unknown;
       }
     | null
     | undefined,

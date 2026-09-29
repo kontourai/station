@@ -41,9 +41,9 @@ function descriptor(value: unknown): WorkspacePaneDescriptor {
  *
  * `docked` only, and instance-keyed like a pull request: there is no blank
  * canonical occurrence (an occurrence names one Layout by id), so the
- * region's "+" catalog does not offer it — `RegionPaneCatalog` filters every
- * instance-keyed descriptor out. Its openers are `openLayoutInRegion` and,
- * from #2158, the sidebar's context menu and drag.
+ * registry-driven region chooser does not offer it: instance families are
+ * not registry entries. Its openers are `openLayoutInRegion` and, from #2158,
+ * the sidebar's context menu. The sidebar drag remains separate work.
  *
  * One mode with NO context requirement: a Board has no project, and a
  * project Layout carries its project IN ITS ID rather than taking the dock's

@@ -677,22 +677,8 @@ test.describe('Connections sections at 390x844', () => {
       () => document.documentElement.scrollWidth <= window.innerWidth,
     );
     expect(noHorizontalScroll).toBe(true);
-  });
 
-  /**
-   * Split from the containment case above deliberately. Folding an
-   * expected-to-fail claim into a passing one means the passing half can
-   * regress unnoticed: the file would still "fail as expected" and nobody
-   * would learn the phone had started scrolling sideways.
-   */
-  test('no engine row prints its internal type slug at 390 either', async ({
-    page,
-  }) => {
-    await seedRoutes(page, { engines: [...ENGINES] });
-    await page.goto('/connections/engines');
-
-    const rows = page.locator('.split-pane__item');
-    await expect(rows).toHaveCount(ENGINES.length);
+    // No engine row prints its internal type slug on the phone either.
     for (const engine of ENGINES) {
       await expect(rows.filter({ hasText: engine.name })).not.toContainText(
         engine.type,

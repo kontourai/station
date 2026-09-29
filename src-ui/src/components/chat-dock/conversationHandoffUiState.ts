@@ -86,6 +86,7 @@ export function acceptConversationHandoffUiState(
     sessionAutoApprove: [],
     pendingApprovals: [],
     approvalToasts: new Map(),
+    unacknowledgedDecisions: [],
     abortController: undefined,
     stopPending: undefined,
     pendingClientTurnId: undefined,

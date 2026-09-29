@@ -1,5 +1,11 @@
 # Veritas 0.3 → 0.5 Migration Record (S1c prerequisite)
 
+> **Historical migration record.** Version, command and enforcement statements
+> below describe the migration and later annotations. For current selection,
+> evidence locations and command behavior, use [Veritas for Station](../../../.veritas/README.md)
+> and the checked-in Repo Map and Standards it links.
+
+
 Date: 2026-06-11. Executed per `brownfield-migration-runbook.md`: every 0.3-era check family was inventoried and classified before migrating — nothing was copied 1:1. Reference consumer: the `kontourai/veritas` repo's own `.veritas/` (repo-map + repo-standards + authority + attestations, gated by `veritas readiness --working-tree`).
 
 The gate is now `npm run veritas:shadow` → `veritas readiness --working-tree` (exit 0 ready / 1 blocking failure / >=2 config error). `veritas shadow run`, `veritas report`, `veritas budget`, and the `evaluatePolicyPack`/`loadPolicyPack` library exports no longer exist in 0.5.

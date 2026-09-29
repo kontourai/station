@@ -1,5 +1,14 @@
 # Isolated Agent Runs
 
+> **Reading status: design proposal.** The run record and `station run isolate`
+> command below describe a proposed interface, not an installation instruction
+> or a claim about current command availability. Use the [CLI reference](../reference/cli.md)
+> for supported commands. Current Project workspace selection and worktree
+> provisioning belong to the
+> [execution-target resolver](../../src-server/services/execution-target/execution-target-resolver.ts)
+> and [foreground executor](../../src-server/services/execution-target/execution-target-execution.ts).
+> Their existence does not establish this proposal's complete isolated-run lifecycle.
+
 Status: design note
 
 ## Purpose

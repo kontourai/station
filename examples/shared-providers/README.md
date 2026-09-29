@@ -1,6 +1,9 @@
 # Shared Providers Example
 
-A headless plugin (no UI) that contributes shared infrastructure providers — auth, user identity, user directory, and registries. Other plugins declare this as a dependency to inherit these capabilities.
+A provider-only example for auth status, identity, directory lookup and registry
+interfaces. Its organization-specific commands, domains and data paths are
+placeholders, not configured enterprise integrations. Depending on the package
+does not bypass host grants or select every provider automatically.
 
 ## Patterns Demonstrated
 
@@ -8,25 +11,51 @@ A headless plugin (no UI) that contributes shared infrastructure providers — a
 This plugin has no `entrypoint`, `layout`, or `agents`. It exists solely to contribute providers that other plugins consume. The `providers` array in `plugin.json` maps provider types to JS modules.
 
 ### Settings Schema
-`plugin.json` declares typed settings (`text`, `boolean`, `select`) that appear in the Station settings UI. Providers read these at runtime via `process.env` or the settings API.
+`plugin.json` declares `authDomain`, `debug` and `disablePublicRegistries`
+settings with text/boolean shapes. The host passes saved settings to provider
+factories, but these example factories do not read that argument. Changing
+those fields therefore does not configure the supplied implementations. Some
+providers read environment variables directly; wire settings explicitly when
+adapting this example.
 
 ### Auth Provider (`oauth-auth`)
-Implements the full auth lifecycle: status check (valid/expiring/expired/missing), interactive renewal config, and prerequisite detection. Replace the token path and CLI commands with your organization's SSO tooling.
+Reads expiry metadata from a fixed local token-file path and returns
+valid/expiring/expired/missing status. It does not validate the token with an
+identity provider. `renew()` returns guidance rather than renewing a token;
+prerequisite detection looks for the placeholder `enterprise-auth` command.
+Replace the entire organization-specific flow before relying on it.
 
 ### User Identity Provider (`ldap-user`)
-Returns the current user's identity from the OS, then enriches it by calling an MCP tool to look up additional details (name, title, email) from a directory service.
+Returns the server OS username with example-domain profile/email fields. Its
+enrichment method attempts a local Agent/tool HTTP call; it keeps the base
+identity on failure. The implementation assumes `PORT` or 3141 and supplies no
+Station credential. It is not a verified directory lookup for current
+authenticated or remote Station deployments.
 
 ### User Directory Provider (`ldap-directory`)
-Provides `lookupPerson` and `searchPeople` for the people-picker UI. Finds an agent with the right MCP server attached and calls its tools.
+Exposes `lookupPerson` and `searchPeople`, attempting local HTTP calls through
+an Agent with `directory-mcp`. It has the same target/authentication assumptions
+as the identity example, and falls back to an alias-only person or empty list
+on failure. Those fallbacks do not prove that the directory has no matching user.
 
 ### Integration Registry Provider (`npm-registry`)
-Discovers and installs MCP servers from an npm-compatible registry. Manages `tool.json` definitions in the Station tools directory.
+`listAvailable()` returns an empty placeholder. The implementation shells out
+for global npm installation and writes legacy `tools/<id>/tool.json` records;
+it is not the current `integrations/` lifecycle. Removal deletes that local
+record rather than uninstalling the global npm package. Treat it as a pattern
+requiring redesign against the current managed installation/authority contract,
+not a supported production installer.
 
 ### Agent Registry Provider (`agent-registry`)
-Lists agent packages from a CLI tool. Install/uninstall are delegated to the CLI itself.
+Parses the placeholder `agent-manager agents list` output. Both install and
+uninstall return a refusal telling the operator to use that external CLI;
+the provider does not invoke those mutations. Missing commands or failed list
+calls yield an empty list, not verified absence of packages.
 
 ### External Links
-The `links` array in `plugin.json` adds navigation items to the Station UI (e.g., an admin dashboard link).
+The `links` array contributes link metadata. This example's `achievements`
+placement is read by the Profile page and displays the placeholder admin
+dashboard link there; it does not create a general sidebar item.
 
 ## File Structure
 

@@ -1,5 +1,19 @@
 # Project membership and device enrollment
 
+> **Status: mixed specification and implementation record; current-owner check
+> 2026-09-26.** The dated initial proposal and its statements about missing APIs
+> are retained below. Current gated implementations include the
+> [membership service](../../src-server/services/projects/project-membership-service.ts),
+> [HTTP routes](../../src-server/routes/projects/project-membership-routes.ts),
+> and [runtime composition](../../src-server/runtime/bootstrap/station-runtime.ts).
+> Account-aware principal resolution and device bindings have also advanced
+> beyond the initial "Current seams" description. Use
+> [Deployment authentication](../guides/deployment-authentication.md) for current
+> enablement and limits. Source presence does not prove complete shared-resource
+> admission, production enablement, or the real two-human/device journey.
+
+## Retained specification and updates
+
 > Implementation update: local username/password enrollment and manually shared,
 > single-use invitation links are the first account path. No mail service is
 > required. The membership store/service, operator/admin controls and standalone

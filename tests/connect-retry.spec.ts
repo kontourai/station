@@ -46,7 +46,9 @@ async function seedUnreachable(page: Page) {
     }),
   );
   await page.route('**/.well-known/station/v1', async (route) => {
-    handshakeRequests += 1;
+    // Only probes of the saved Station count; discovery may knock elsewhere.
+    if (new URL(route.request().url()).host === 'station.example.ts.net')
+      handshakeRequests += 1;
     await route.abort('connectionrefused');
   });
 
@@ -142,20 +144,39 @@ test('the indicator still offers a real retry, not only navigation', async ({
   // has to mean "check again now", or transient reachability would have no
   // user-driven retry at all between backoff intervals.
   const fixture = await seedUnreachable(page);
+  await page.clock.install();
   await page.goto('/');
 
   const indicator = page.getByRole('button', { name: /^Manage Stations/ });
   await expect(indicator.getByLabel('error')).toBeVisible();
 
+  // Freeze page timers once the failure shows, so the automatic retry ladder
+  // (setTimeout backoff) can no longer probe on its own; let whatever the
+  // jump fired finish. A probe of the saved Station after the click can then
+  // only be the click's recheck. Opening the Station manager on the same
+  // click is intended, and it does not probe a saved Station on open.
+  await page.clock.pauseAt(Date.now() + 60_000);
+  let lastCount = -1;
+  await expect
+    .poll(
+      () => {
+        const count = fixture.handshakeRequests();
+        const settled = count === lastCount;
+        lastCount = count;
+        return settled;
+      },
+      { intervals: [500] },
+    )
+    .toBe(true);
+
   const requestsBeforeRetry = fixture.handshakeRequests();
-  const retryProbe = page.waitForRequest(
-    (request) =>
-      new URL(request.url()).pathname === '/.well-known/station/v1' &&
-      fixture.handshakeRequests() >= requestsBeforeRetry,
-  );
   await indicator.click();
-  await retryProbe;
-  expect(fixture.handshakeRequests()).toBeGreaterThan(requestsBeforeRetry);
+  await expect
+    .poll(() => fixture.handshakeRequests())
+    .toBeGreaterThan(requestsBeforeRetry);
+  // The same click still opens the Station manager once time runs again.
+  await page.clock.resume();
+  await expect(page.getByRole('dialog')).toBeVisible();
 });
 
 /**

@@ -63,38 +63,6 @@ export interface SessionInventoryModule {
  * rows. Keeping this pure prevents the Session module from reaching into a
  * Task graph or inferring that an unrelated Task item was retained here.
  */
-export function withTaskKeptRows(
-  projection: SessionInventoryV2Projection,
-  rows: readonly Extract<
-    SessionInventoryRow,
-    { kind: `task-kept-${string}` }
-  >[],
-): SessionInventoryV2Projection {
-  if (projection.scope.kind !== 'kept-in-task') return projection;
-  const items = rows.slice(0, 2);
-  return {
-    ...projection,
-    groups: projection.groups.map((group) =>
-      group.id !== 'kept'
-        ? group
-        : {
-            id: 'kept' as const,
-            owner: owner('station.task-graph'),
-            state: rows.length
-              ? ('available' as const)
-              : ('not-captured' as const),
-            ...(rows.length
-              ? { count: { kind: 'at-least' as const, value: rows.length } }
-              : {}),
-            items,
-            // TaskOutput snapshots and gate records have no exact Session
-            // provenance at this schema revision, so never widen them in.
-            gaps: [{ kind: 'not-captured' as const }],
-          },
-    ),
-  };
-}
-
 function taskKeptGroup(
   rows: readonly Extract<
     SessionInventoryRow,
@@ -303,46 +271,27 @@ export function createSessionInventoryModule(input: {
         highWater: 0,
       };
     }
-    for (const event of events) {
-      const fact = event as SessionInventoryEventDescriptor & {
-        // Test-only legacy shape retained while old persisted event fixtures
-        // migrate; production EventStore returns descriptors only.
-        payload?: Record<string, unknown>;
-      };
-      const descriptor = (fact.payload ?? fact) as Record<string, any>;
+    for (const descriptor of events) {
       // Deliberately enumerate only typed canonical facts. In particular,
       // text/reasoning deltas, progress, arguments, output, error details,
       // request text and arbitrary metadata never reach this projection.
       if (descriptor.method === 'turn.started') {
         // #2324: a turn the engine opened on its own provided no input;
         // listing it here would invent a message the user never wrote.
-        if (
-          descriptor.trigger === 'provider' ||
-          descriptor.metadata?.trigger === 'provider'
-        ) {
-          continue;
-        }
-        const attachments = (descriptor.attachments ?? []).map(
-          (attachment: {
-            name: string;
-            mediaType?: string;
-            mimeType?: string;
-            length?: number;
-            size?: number;
-          }) => ({
-            kind: 'attachment' as const,
-            name: attachment.name,
-            mediaType: attachment.mediaType ?? attachment.mimeType ?? '',
-            length: attachment.length ?? attachment.size ?? 0,
-          }),
-        );
+        if (descriptor.trigger === 'provider') continue;
+        const attachments = descriptor.attachments.map((attachment) => ({
+          kind: 'attachment' as const,
+          name: attachment.name,
+          mediaType: attachment.mediaType,
+          length: attachment.length,
+        }));
         inputs.push({
           kind: 'thread-authored-input',
-          key: `input:${event.id}`,
+          key: `input:${descriptor.id}`,
           owner: owner('thread.canonical-events'),
           relations: ['provided-to'],
           sessionId: scope.sessionId,
-          eventId: event.id,
+          eventId: descriptor.id,
           turnId: descriptor.turnId,
           inputKind:
             descriptor.inputKind === 'steer'
@@ -353,15 +302,7 @@ export function createSessionInventoryModule(input: {
           attachmentDescriptors: attachments,
         });
       } else if (descriptor.method === 'tool.completed') {
-        const terminalStatus =
-          descriptor.terminalStatus ??
-          (descriptor.status === 'success'
-            ? 'succeeded'
-            : descriptor.status === 'error'
-              ? 'failed'
-              : descriptor.status === 'unresolved'
-                ? 'unresolved'
-                : 'cancelled');
+        const { terminalStatus } = descriptor;
         // station#1558: `ThreadToolResultRow.terminalStatus` is a published,
         // version-validated vocabulary of succeeded/failed/cancelled, and an
         // unresolved completion is none of them. Emitting it as `cancelled`
@@ -375,37 +316,26 @@ export function createSessionInventoryModule(input: {
         if (terminalStatus === 'unresolved') continue;
         execution.push({
           kind: 'thread-tool-result',
-          key: `tool:${event.id}`,
+          key: `tool:${descriptor.id}`,
           owner: owner('thread.canonical-events'),
           relations: ['observed-during'],
           sessionId: scope.sessionId,
-          eventId: event.id,
-          turnId: descriptor.turnId ?? '',
+          eventId: descriptor.id,
+          turnId: descriptor.turnId,
           toolCallId: descriptor.toolCallId,
-          name: descriptor.name ?? descriptor.toolName,
+          name: descriptor.name,
           terminalStatus,
         });
       } else if (descriptor.method === 'request.resolved') {
         decisions.push({
           kind: 'station-request-decision',
-          key: `request:${event.id}`,
+          key: `request:${descriptor.id}`,
           owner: owner('thread.canonical-events'),
           relations: ['observed-during'],
           sessionId: scope.sessionId,
-          eventId: event.id,
+          eventId: descriptor.id,
           requestId: descriptor.requestId,
-          status:
-            descriptor.status === 'approved'
-              ? 'accepted'
-              : descriptor.status === 'denied'
-                ? 'declined'
-                : descriptor.status === 'cancelled'
-                  ? 'cancelled'
-                  : descriptor.status === 'accepted' ||
-                      descriptor.status === 'declined' ||
-                      descriptor.status === 'pending'
-                    ? descriptor.status
-                    : 'pending',
+          status: descriptor.status,
         });
       } else if (
         descriptor.method === 'session.configured' &&
@@ -413,27 +343,19 @@ export function createSessionInventoryModule(input: {
       ) {
         resources.push({
           kind: 'station-resource-summary',
-          key: `model:${event.id}`,
+          key: `model:${descriptor.id}`,
           owner: owner('thread.canonical-events'),
           relations: ['observed-during'],
           sessionId: scope.sessionId,
           model: descriptor.model,
-          engine: descriptor.engine ?? descriptor.provider,
+          engine: descriptor.engine,
         });
       } else if (descriptor.method === 'token-usage.updated') {
-        const inputTokens = descriptor.inputTokens ?? descriptor.promptTokens;
-        const outputTokens =
-          descriptor.outputTokens ?? descriptor.completionTokens;
-        const cachedTokens =
-          descriptor.cachedTokens ?? descriptor.cacheReadTokens;
-        const costMicros =
-          descriptor.costMicros ??
-          (descriptor.reportedCostUsd === undefined
-            ? undefined
-            : Math.round(descriptor.reportedCostUsd * 1_000_000));
+        const { inputTokens, outputTokens, cachedTokens, costMicros } =
+          descriptor;
         resources.push({
           kind: 'station-resource-summary',
-          key: `usage:${event.id}`,
+          key: `usage:${descriptor.id}`,
           owner: owner('thread.canonical-events'),
           relations: ['observed-during'],
           sessionId: scope.sessionId,

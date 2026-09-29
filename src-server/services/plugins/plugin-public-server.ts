@@ -232,17 +232,6 @@ export async function quiesceAllPluginPublicServerModules(): Promise<PluginPubli
   };
 }
 
-export async function disposePluginPublicServerModule(
-  pluginsDir: string,
-  pluginName: string,
-): Promise<void> {
-  const quiescence = await quiescePluginPublicServerModule(
-    pluginsDir,
-    pluginName,
-  );
-  quiescence.release();
-}
-
 export async function disposeAllPluginPublicServerModules(): Promise<void> {
   globalPluginServerQuiescence += 1;
   const failures: unknown[] = [];

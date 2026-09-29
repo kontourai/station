@@ -159,9 +159,9 @@ export function createStationControlMcpRoutes(
     const candidate =
       url.searchParams.get('token') ??
       extractBearerToken(c.req.header('authorization'));
-    // Station #90 lane D: only the channels this endpoint serves. A stdio
-    // env token or an in-process token presented here is a copied
-    // credential (neither channel ever dials this endpoint).
+    // Station #90 lane D: only the channels this endpoint serves. An
+    // in-process token presented here is a copied credential (that channel
+    // never dials this endpoint).
     const verified = verifyStationControlMcpToken(candidate, {
       channels: STATION_CONTROL_MCP_HTTP_CHANNELS,
     });

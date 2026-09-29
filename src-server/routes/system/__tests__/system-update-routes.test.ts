@@ -31,11 +31,9 @@ vi.mock('../../../utils/git-exec.js', () => ({
   execGit: vi.fn(),
 }));
 
-const {
-  coreUpdateSupervision,
-  createSystemUpdateRoutes,
-  performGitPullRestart,
-} = await import('../system-update-routes.js');
+const { createSystemUpdateRoutes, performGitPullRestart } = await import(
+  '../system-update-routes.js'
+);
 const {
   resolveInstallProvenance,
   fetchChannelLatestSha,
@@ -828,22 +826,39 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
   // The unit's marker names the installed service; a bare supervisor PID
   // (Windows service, desktop, dev harness) names only "a supervisor", and
   // its remedy must not claim the service (review L3).
+  // When both markers are present the service marker wins: its remedy names
+  // the installed service, which is the more specific truth.
   const SUPERVISION_CASES = [
-    ['STATION_SUPERVISOR_PID', '4242', 'supervised', 'a supervising process'],
     [
-      'STATION_SERVICE_MANAGED',
-      '1',
+      'STATION_SUPERVISOR_PID=4242',
+      'supervised',
+      { STATION_SUPERVISOR_PID: '4242' },
+      'a supervising process',
+    ],
+    [
+      'STATION_SERVICE_MANAGED=1',
       'service-managed',
+      { STATION_SERVICE_MANAGED: '1' },
+      'runs under the installed Station service',
+    ],
+    [
+      'both markers',
+      'service-managed',
+      { STATION_SUPERVISOR_PID: '4242', STATION_SERVICE_MANAGED: '1' },
       'runs under the installed Station service',
     ],
   ] as const;
 
+  function stubSupervisionEnv(env: Readonly<Record<string, string>>) {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+  }
+
   test.each(SUPERVISION_CASES)(
-    'under a supervisor (%s=%s) POST refuses 409 as %s with its remedy before any git or build work (#2674)',
-    async (key, value, code, phrase) => {
+    'under a supervisor (%s) POST refuses 409 as %s with its remedy before any git or build work (#2674)',
+    async (_label, code, env, phrase) => {
       const gitRoot = tmpGitRoot();
       armBehindSourceCheckout(gitRoot);
-      vi.stubEnv(key, value);
+      stubSupervisionEnv(env);
 
       const res = await createApp().request('/core-update', {
         method: 'POST',
@@ -868,21 +883,28 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
     },
   );
 
-  test('an unsupervised checkout is not refused: STATION_SERVICE_MANAGED other than "1" is not the marker', async () => {
-    const gitRoot = tmpGitRoot();
-    armBehindSourceCheckout(gitRoot);
-    vi.stubEnv('STATION_SERVICE_MANAGED', '0');
-    vi.stubEnv('STATION_SUPERVISOR_PID', '');
+  test.each([
+    ['STATION_SERVICE_MANAGED=0', { STATION_SERVICE_MANAGED: '0' }],
+    ['STATION_SERVICE_MANAGED=true', { STATION_SERVICE_MANAGED: 'true' }],
+    ['an empty supervisor PID', { STATION_SUPERVISOR_PID: '' }],
+    ['a whitespace supervisor PID', { STATION_SUPERVISOR_PID: '  ' }],
+  ])(
+    'an unsupervised checkout is not refused: %s is not a marker',
+    async (_label, env) => {
+      const gitRoot = tmpGitRoot();
+      armBehindSourceCheckout(gitRoot);
+      stubSupervisionEnv(env);
 
-    const res = await createApp().request('/core-update', { method: 'POST' });
+      const res = await createApp().request('/core-update', { method: 'POST' });
 
-    expect(res.status).toBe(200);
-    expect((await json(res)).restarting).toBe(true);
-    expect(vi.mocked(execGit)).toHaveBeenCalledWith(
-      ['pull', '--ff-only'],
-      expect.objectContaining({ cwd: gitRoot }),
-    );
-  });
+      expect(res.status).toBe(200);
+      expect((await json(res)).restarting).toBe(true);
+      expect(vi.mocked(execGit)).toHaveBeenCalledWith(
+        ['pull', '--ff-only'],
+        expect.objectContaining({ cwd: gitRoot }),
+      );
+    },
+  );
 
   test("installs through the owned dependency lifecycle, then builds through the checkout's own `station build`, never raw build:* (#2673)", async () => {
     const gitRoot = tmpGitRoot();
@@ -987,10 +1009,10 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
   });
 
   test.each(SUPERVISION_CASES)(
-    'GET under a supervisor (%s=%s) keeps the comparison facts and states %s with its remedy',
-    async (key, value, code, phrase) => {
+    'GET under a supervisor (%s) keeps the comparison facts and states %s with its remedy',
+    async (_label, code, env, phrase) => {
       armBehindSourceCheckout(tmpGitRoot());
-      vi.stubEnv(key, value);
+      stubSupervisionEnv(env);
 
       const body = await json(await createApp().request('/core-update'));
 
@@ -1018,24 +1040,6 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
     expect(body.updateAvailable).toBe(true);
     expect(body.selfUpdateUnavailableCode).toBeNull();
     expect(body.selfUpdateUnavailableReason).toBeNull();
-  });
-});
-
-describe('coreUpdateSupervision', () => {
-  test.each([
-    [{}, null],
-    [{ STATION_SUPERVISOR_PID: '' }, null],
-    [{ STATION_SUPERVISOR_PID: '  ' }, null],
-    [{ STATION_SERVICE_MANAGED: '0' }, null],
-    [{ STATION_SERVICE_MANAGED: 'true' }, null],
-    [{ STATION_SUPERVISOR_PID: '123' }, 'supervised'],
-    [
-      { STATION_SUPERVISOR_PID: '123', STATION_SERVICE_MANAGED: '1' },
-      'service-managed',
-    ],
-    [{ STATION_SERVICE_MANAGED: '1' }, 'service-managed'],
-  ] as const)('%o -> %s', (env, expected) => {
-    expect(coreUpdateSupervision(env as NodeJS.ProcessEnv)).toBe(expected);
   });
 });
 

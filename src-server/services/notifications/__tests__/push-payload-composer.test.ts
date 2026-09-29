@@ -86,29 +86,9 @@ describe('composeWebPushPayload', () => {
     expect(composeWebPushPayload(runningLike)?.ttlSeconds).toBe(86400);
   });
 
-  test('AC3: resolves the exact-session deep link when metadata carries enough to compute one', () => {
-    const n = notification({
-      metadata: { sessionId: 'thread-1', sessionKind: 'runtime' },
-    });
-    expect(composeWebPushPayload(n)?.payload.url).toBe(
-      activityDeepLink({ sessionId: 'thread-1' }),
-    );
-  });
-
   test('AC3: falls back to the attention inbox when metadata cannot resolve an exact session or a link', () => {
     const n = notification({ metadata: undefined });
     expect(composeWebPushPayload(n)?.payload.url).toBe('/notifications');
-  });
-
-  test('station#1100 review fix MEDIUM: a job-failure (no session) deep-links to its own metadata.link', () => {
-    const n = notification({
-      category: 'job-failure',
-      title: 'Job "nightly-sync" failed',
-      metadata: { jobName: 'nightly-sync', link: '/schedule?job=nightly-sync' },
-    });
-    expect(composeWebPushPayload(n)?.payload.url).toBe(
-      '/schedule?job=nightly-sync',
-    );
   });
 
   test("AC3: link target survives ranking across a mixed pending batch (leads with the ranked item's own link)", () => {

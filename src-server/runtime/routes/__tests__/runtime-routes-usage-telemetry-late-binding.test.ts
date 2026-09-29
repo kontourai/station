@@ -5,11 +5,13 @@
  * constructs the service, so the field is undefined by construction. The route
  * is now mounted unconditionally behind a getter resolved per request.
  *
- * The existing suite for the handler passes a ready service straight in, so it
- * cannot see either half of that: whether the route exists when the service
- * does not, or whether a later-constructed service actually becomes reachable.
- * This drives `configureRuntimeRoutes` itself, on ONE app instance, with the
- * getter flipping between the two requests — the real lifecycle.
+ * A suite that passes a ready service straight into the handler cannot see
+ * either half of that: whether the route exists when the service does not, or
+ * whether a later-constructed service actually becomes reachable. This drives
+ * `configureRuntimeRoutes` itself, on ONE app instance, with the getter
+ * flipping between the requests — the real lifecycle. It is also the route's
+ * envelope proof; receipt persistence and revision idempotence belong to
+ * usage-telemetry-service.test.ts.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -170,9 +172,10 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
 
     // `StationRuntime` finishes constructing it. No re-registration happens in
     // production, and none happens here.
+    const acknowledgeDisclosure = vi.fn().mockResolvedValue(undefined);
     usageTelemetry = {
       disclosure: vi.fn().mockResolvedValue(disclosure),
-      acknowledgeDisclosure: vi.fn().mockResolvedValue(undefined),
+      acknowledgeDisclosure,
     } as unknown as UsageTelemetryService;
 
     const afterReady = await app.request(
@@ -192,5 +195,10 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       loopbackEnv(),
     );
     expect(acknowledged.status).toBe(200);
+    expect(acknowledgeDisclosure).toHaveBeenCalledOnce();
+    await expect(acknowledged.json()).resolves.toEqual({
+      success: true,
+      data: disclosure,
+    });
   });
 });

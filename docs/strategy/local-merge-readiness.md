@@ -1,5 +1,14 @@
 # Local merge-readiness protocol (provider-hosted CI outage)
 
+> **Historical outage policy (July–August 2026).** This record preserves the
+> local-evidence approach used during that outage. It does not authorize a
+> current merge with failing checks or require a local full-regression run.
+> Follow [AGENTS.md](../../AGENTS.md#landing-a-pull-request) and the
+> [testing guide](../guides/testing.md) for the current merge queue and hosted
+> promotion receipt requirements. The operational assertions below describe
+> the outage period; inspect live runs before making a present-state claim.
+
+
 > Status: **active while provider-hosted jobs fail at zero steps**. As of 2026-08-01,
 > the private self-hosted build fleet supplies post-merge operational detectors for
 > CI, container, Windows, and Android, while provider-hosted publish and

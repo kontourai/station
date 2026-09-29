@@ -8,6 +8,7 @@ import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
+  handleRequestDeliveryEvent,
   handleRequestOpenedEvent,
   handleRequestResolvedEvent,
 } from './approvalHandlers';
@@ -243,6 +244,9 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'request.resolved':
       handleRequestResolvedEvent(event);
+      return;
+    case 'request.delivery':
+      handleRequestDeliveryEvent(event);
       return;
     case 'turn.completed':
       handleTurnCompletedEvent(apiBase, event, provenance);

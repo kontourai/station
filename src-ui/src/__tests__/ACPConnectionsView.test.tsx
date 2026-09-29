@@ -97,11 +97,8 @@ describe('ACPConnectionsView', () => {
     // Fix round (arbiter decision #4): `/connections` is a redirect-only
     // resolver, so a click on its eyebrow would be a no-op or a sibling jump
     // dressed up as "go up" — worse than no affordance. Plain text, not a
-    // link: no `.page__label-link`, and clicking the word does nothing.
+    // link: no `.page__label-link`.
     expect(document.querySelector('.page__label-link')).toBeNull();
-    // Clicking the word is inert: the component takes no navigation callback
-    // at all since the, so there is nothing a click could reach.
-    fireEvent.click(screen.getByText('Connections'));
   });
 
   it('renders no page header of its own', () => {

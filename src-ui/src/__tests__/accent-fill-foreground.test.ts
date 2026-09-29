@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 // The gate's own reading of what an accent fill is. Importing it rather than
 // re-deriving here is the point: a second detector beside it would eventually
@@ -27,12 +29,43 @@ import { ACCENT_PRESETS } from '../views/settings/AccentColorPicker';
  * a list of 53 would rot, and a control dropping out of it would read as
  * "covered" while nothing measured it.
  */
-const SHIPPED_YELLOW = {
-  dark: '#c9a854',
-  light: '#ca8a04',
-};
-/** What `--text-on-accent-yellow` resolves to in both themes. */
-const YELLOW_PARTNER = '#000000';
+const INDEX_CSS = readFileSync(
+  resolve(__dirname, '../index.css'),
+  'utf8',
+).replace(/\/\*[\s\S]*?\*\//g, '');
+
+/**
+ * The custom properties index.css declares for one shipped theme, in source
+ * order, so a later declaration wins as it does in the cascade. The yellow
+ * pair is read from the stylesheet rather than restated here: a copied hex
+ * would stay green while the shipped token drifted below AA.
+ */
+function themeTokens(theme: 'dark' | 'light'): Map<string, string> {
+  const selector = `[data-theme="${theme}"]`;
+  const tokens = new Map<string, string>();
+  for (const [, selectors, body] of INDEX_CSS.matchAll(
+    /([^{}]+)\{([^{}]*)\}/g,
+  )) {
+    const list = selectors.split(',').map((entry) => entry.trim());
+    if (!list.includes(selector)) continue;
+    for (const [, name, value] of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+      tokens.set(name, value.trim());
+    }
+  }
+  return tokens;
+}
+
+function resolveToken(
+  tokens: Map<string, string>,
+  name: string,
+  seen: string[] = [],
+): string | undefined {
+  const value = tokens.get(name);
+  const alias = value?.match(/^var\((--[\w-]+)\)$/)?.[1];
+  if (!alias) return value;
+  if (seen.includes(alias)) return undefined;
+  return resolveToken(tokens, alias, [...seen, name]);
+}
 
 const rules = discoverAccentFilledRules();
 const derived = rules.filter((rule) => rule.derived);
@@ -77,12 +110,16 @@ describe('accent-filled controls take their fill’s own foreground', () => {
     // population assertion so the contrast loop cannot turn vacuously green
     // when that control changes or leaves the shipped surface.
     expect(yellow.length).toBeGreaterThanOrEqual(1);
-    for (const rule of yellow) {
-      for (const [theme, fill] of Object.entries(SHIPPED_YELLOW)) {
-        const ratio = contrastRatio(fill, YELLOW_PARTNER);
+    for (const theme of ['dark', 'light'] as const) {
+      const tokens = themeTokens(theme);
+      const foreground = resolveToken(tokens, '--text-on-accent-yellow');
+      for (const rule of yellow) {
+        const fill = resolveToken(tokens, rule.fillToken);
+        const ratio =
+          fill && foreground ? contrastRatio(fill, foreground) : null;
         expect(
           ratio ?? 0,
-          `${rule.selector}: ${theme} --accent-yellow ${fill} on --text-on-accent-yellow ${YELLOW_PARTNER}`,
+          `${rule.selector}: ${theme} ${rule.fillToken} ${fill} on --text-on-accent-yellow ${foreground}`,
         ).toBeGreaterThanOrEqual(4.5);
       }
     }

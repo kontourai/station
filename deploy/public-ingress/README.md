@@ -17,8 +17,8 @@ Compose network or mount another customer's volumes into it.
 Requirements: a reviewed Station container image pinned by digest, Docker
 Compose 2.24 or later, a DNS hostname you control, a persistent host, and existing
 operator access through Station's normal enrollment flow. The proxy image is
-pinned to an official Caddy image index supporting multiple architectures; review
-its release and digest when updating. The overlay requires an explicit, unique Compose project name. Keep it stable
+pinned by digest; verify the selected image's architecture and release when
+deploying or updating. The overlay requires an explicit, unique Compose project name. Keep it stable
 to retain the existing volumes; never reuse it for a different customer.
 
 From the repository root, prepare a private `deploy/public-ingress/.env` file
@@ -73,10 +73,17 @@ Visit `https://station.example.com` and verify the certificate hostname and
 trusted chain without bypassing TLS checks. Confirm HTTP redirects to HTTPS,
 `/__station/identity` matches the selected build, and an unauthenticated request
 cannot create a Project. Use normal owner-approved pairing, then exercise a
-workspace read, an SSE-backed live view and a terminal/WebSocket journey. A
+workspace read and an SSE-backed live view. A
 healthy internal container alone does not prove public ingress or enrollment.
 
-Caddy handles WebSocket upgrades and automatically flushes SSE responses.
+Caddy can handle WebSocket upgrades and stream SSE, but this profile's upstream
+is Station's port-3000 UI/HTTP proxy. That proxy does not bridge upgrades to the
+dedicated terminal/voice listeners, and the overlay publishes no direct Station
+ports. A Caddy upgrade capability or generic smoke result therefore does not
+qualify real terminal/voice access. [#2769](https://github.com/kontourai/station/issues/2769)
+tracks that separate ingress contract; do not expose a raw listener as a
+workaround without its authentication, origin, scope and TLS boundaries.
+
 The profile retains normal backend cancellation when a client disconnects; it
 does not set negative `flush_interval`, which would keep backend requests alive. It strips unrelated identity headers while preserving
 Station's own authorization and cookies. It does not configure header-based
@@ -123,6 +130,11 @@ local TLS certificate using its generated CA explicitly. It does not install a
 CA into the host trust store, modify DNS, request a public certificate, or start
 the GCP VM. It exercises composed port isolation, redirects, header stripping,
 authorization forwarding, SSE delivery before stream completion, client-disconnect cancellation, and WebSocket
-upgrade. Each created container/network carries an ownership label and is
+upgrade against its synthetic upstream. It does not boot Station or exercise
+its actual enrollment, terminal or voice routes. Each created container/network carries an ownership label and is
 removed after the run. Public CA issuance, real-domain reachability and customer
 workload capacity still require deployment-specific acceptance.
+
+The documentation review did not run this Docker smoke or issue a certificate.
+The Compose/Caddy files and smoke's real test target were inspected; that source
+review is not a new deployment receipt.

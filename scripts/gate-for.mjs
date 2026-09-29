@@ -20,12 +20,14 @@ import {
   loadRepoStandards,
 } from '@kontourai/veritas';
 import { decideOrchestrationTransferScope } from './check-prepush-orchestration-transfer.mjs';
-import {
-  changedPathsSince,
-  decideSdkBarrelScope,
-} from './check-prepush-sdk-barrel.mjs';
+import { decideSdkBarrelScope } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
 import { decideTypecheckScope } from './check-prepush-typecheck.mjs';
+import {
+  collectDocumentationChanges,
+  formatDocumentationImpact,
+  readDocumentationImpact,
+} from './documentation-impact.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { fixturePolicyCommands } from './test-fixture-policy.mjs';
 
@@ -153,15 +155,18 @@ export function veritasGuidanceForPaths(changedPaths, rootDir = process.cwd()) {
   ].join('\n');
 }
 
-function writeBriefedReport(changedPaths, baseSha) {
+function writeBriefedReport(changedPaths, baseSha, mergeBase) {
   try {
     const guidance = veritasGuidanceForPaths(changedPaths);
+    const documentation = formatDocumentationImpact(
+      readDocumentationImpact({ changedPaths, mergeBase }),
+    );
     process.stdout.write(
-      `${gateReport({ changedPaths, baseSha })}\n\n${guidance}\n`,
+      `${gateReport({ changedPaths, baseSha })}\n\n${guidance}\n\n${documentation}\n`,
     );
   } catch (error) {
     console.error(
-      `gate-for: Veritas path briefing failed: ${error instanceof Error ? error.message : error}`,
+      `gate-for: path briefing failed: ${error instanceof Error ? error.message : error}`,
     );
     process.exitCode = 2;
   }
@@ -209,8 +214,11 @@ export function main(argv = process.argv.slice(2)) {
   }
   const baseSha = resolveBaseSha(base);
   let changedPaths;
+  let mergeBase;
   try {
-    changedPaths = changedPathsSince(base);
+    const selection = collectDocumentationChanges(process.cwd(), base);
+    changedPaths = selection.paths;
+    mergeBase = selection.mergeBase;
   } catch {
     // Fail OPEN like the deciders themselves: an unreadable diff means the
     // scope is unknown, and unknown scope reports every gate as applicable.
@@ -222,7 +230,7 @@ export function main(argv = process.argv.slice(2)) {
     process.exitCode = 2;
     return;
   }
-  writeBriefedReport(changedPaths, baseSha);
+  writeBriefedReport(changedPaths, baseSha, mergeBase);
 }
 
 if (invokedDirectly(import.meta.url)) {

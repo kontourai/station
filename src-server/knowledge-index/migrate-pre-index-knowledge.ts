@@ -1,51 +1,13 @@
 /**
- * Non-destructive pre-index → K2/K3 migration core (ADR-0009 "Migration — non-destructive,
- * explicit, reversible until cutover"; `docs/design/knowledge-foundation.md` "Migration"
- * section).
+ * Copies pre-index documents into Kit-format roots without cutting over or
+ * cleaning up the source corpus. Source snapshots enter transaction recovery,
+ * which can repair an interrupted prior write. Existing record IDs are skipped;
+ * index writes can repair a prior record-create/index-failure boundary. Vector
+ * reuse checks width, not model identity. See docs/guides/knowledge.md.
  *
- * Reads the pre-K2 per-project knowledge storage this repo already ships
- * (`src-server/services/knowledge-storage.ts`'s `{dataDir}/projects/<slug>/knowledge/<namespace>/
- * {metadata.json,files/}` tree) plus the paired pre-index `lancedb-file` vector namespace
- * (`{dataDir}/vectordb/<namespace>/vectors.json`, flat `{id, vector, text, metadata}` per
- * `src-server/providers/lancedb-provider.ts:24-40`) and writes each pre-index document into a
- * new project-scoped K2 store root as a Kit `raw` record, then indexes it into the K3
- * `KnowledgeIndexProvider`.
- *
- * Hard invariant (Stop-short risk in the plan): this module contains **zero** write/move/
- * delete calls against the pre-index vectordb directory tree or the pre-index per-project
- * knowledge directory tree (see `defaultKnowledgeStorageDir`/`preIndexVectorsFile` below for
- * the exact path shapes this module reads). Metadata and file content are snapshotted through
- * `readKnowledgeDocuments`, which performs transaction recovery and keeps both facts behind
- * one serialized read gate. `vectors.json` is parsed directly with `readFileSync` (never via
- * `LanceDBProvider`, whose class this module does not import).
- *
- * Idempotency: the pre-index `KnowledgeDocumentMeta.id` (already a UUID minted by the original
- * upload path — see `knowledge-documents.ts`'s `uploadKnowledgeDocument`) is reused verbatim as
- * the new Kit record's `id`. Re-running the migration calls `adapter.get(doc.id)` first and
- * skips (counted as a `noop`) any record that already exists. It still idempotently upserts the
- * derived index so a prior record-create/index-failure boundary is repairable without a second
- * record write.
- *
- * Path safety (SEC-1): a `projectSlug`/namespace directory name reaches BOTH the read-side
- * paths above AND the write-side path (`knowledgeStoreRootPathForNamespace` ->
- * `kit-default-store`'s `mkdirSync`/`writeFileSync`) via a plain `join()` — see
- * `./path-safety.ts`'s module doc for the full threat model. Every `projectSlug`/namespace
- * value used anywhere in this module (caller-supplied OR discovered from `readdirSync`) is
- * validated by `assertSafePathSegment`/`isSafePathSegment` before it is ever joined into a
- * path. A caller-supplied invalid slug throws immediately; a discovered directory name that
- * fails validation is skipped (counted as a `noop`) rather than crashing the whole discovery
- * pass — an untrusted or corrupted directory entry must never abort migration for every
- * other, legitimate namespace.
- *
- * Concurrency (SEC-2): the whole exported `migratePreIndexKnowledge` call is serialized by a
- * single global lock (`MIGRATE_LOCK_KEY` on the module-level `migrateGuard`) — a second,
- * overlapping call throws `RebuildInProgressError` (surfaced by the route layer as HTTP 409)
- * rather than interleaving with an in-progress migration's per-namespace store/index writes.
- *
- * Dependencies (`store`, `indexProvider`, `embedder`) are injected — this module never
- * resolves any of them globally.
+ * Preserve path validation, the source snapshot, and the global migration
+ * lock. A failed namespace must not erase the outcomes of successful ones.
  */
-
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { KnowledgeDocumentMeta } from '@kontourai/station-contracts/knowledge';
@@ -263,9 +225,9 @@ async function ensureMigrationRoot(
 /**
  * Migrate one pre-index (projectSlug, namespace) pair into a K2 store root + K3 index (extracted
  * from `migratePreIndexKnowledge`'s per-namespace orchestration body — code-review HIGH-2).
- * Returns `null` when the namespace has no `metadata.json`, no documents, or every document was
- * already migrated on a prior run (a genuine no-op, not a failure) — the caller doesn't count
- * this as an error or an entry in `namespacesProcessed`. Throws on a real failure (a store/index
+ * Returns `null` when the namespace has no `metadata.json` or no documents.
+ * Existing records skip creation but still participate in index repair on retry.
+ * Throws on a real failure (a store/index
  * error partway through); the caller catches this per-namespace so one namespace's failure never
  * discards another's already-completed result (code-review MED-3).
  */
@@ -378,8 +340,7 @@ async function migrateNamespace(
 
   let chunksIndexed = 0;
   if (allChunksReusable) {
-    // Embedding connection unchanged (dimensions match) — reuse the pre-index vectors as-is,
-    // never re-embed (design doc's "vectors reusable as-is" note).
+    // Compatible widths permit reuse; the source model identity is not recorded.
     const entries: KnowledgeIndexEntry[] = [];
     for (const doc of docs) {
       const docVectors = preIndexVectorDocs
@@ -405,8 +366,7 @@ async function migrateNamespace(
       chunksIndexed = entries.length;
     }
   } else {
-    // Embedding connection differs/unknown (dimension mismatch or no pre-index vectors at
-    // all) — fall back to a normal re-embedding rebuild of the whole root.
+    // Missing or incompatible vectors require rebuilding the whole root.
     const rebuildResult = await indexProvider.rebuildRoot(root.id, {
       store,
       embedder,
@@ -423,8 +383,8 @@ async function migrateNamespace(
 
 /**
  * Migrate pre-index per-project knowledge (LanceDB-file vectors + on-disk document trees) into a
- * K2 store root + K3 index. Never writes, moves, or deletes anything under the pre-index vectordb
- * or per-project knowledge directory trees — see module doc.
+ * K2 store root + K3 index. No source cutover or cleanup is performed; source
+ * snapshot acquisition can recover an interrupted prior transaction.
  *
  * Concurrency (SEC-2): the whole call is serialized by a single global lock — a second,
  * overlapping call throws `RebuildInProgressError` immediately rather than running.

@@ -64,8 +64,6 @@ import { createLogger } from '../../../utils/logger.js';
 import { LOG_BINDING_KEYS } from '../../../utils/logger-correlation.js';
 import {
   createOrchestrationRoutes,
-  orchestrationEventMatchesThread,
-  parseResumeCursor,
   resolveStreamResumePlan,
 } from '../orchestration.js';
 
@@ -591,6 +589,77 @@ describe('Orchestration Routes', () => {
       },
       expect.objectContaining({ userId: ROUTE_TEST_USER_ID }),
     );
+  });
+
+  // The service's third dispatch argument carries internal bypasses
+  // (`skipModelOptionSupportCheck`, `credentialProfileApplication`) that
+  // only in-process callers such as the connection smoke may set. A request
+  // body naming them cannot get there: `startSession` is not an HTTP
+  // command at all, and an admitted command reaches the service as the
+  // parsed command plus the request context, with no third argument.
+  test('POST /commands gives a request body no channel to the internal dispatch bypasses', async () => {
+    const dispatchWithReceipt = vi.fn().mockResolvedValue({
+      receipt: {
+        commandId: 'steer-command',
+        threadId: 'thread-live',
+        commandType: 'steerTurn',
+        status: 'accepted',
+        createdAt: '2026-08-14T00:00:00.000Z',
+      },
+      result: {
+        outcome: 'steered',
+        threadId: 'thread-live',
+        turnId: 'turn-live',
+      },
+    });
+    const app = createOrchestrationRoutes({ dispatchWithReceipt } as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+    });
+    const bypass = {
+      skipModelOptionSupportCheck: true,
+      credentialProfileApplication: true,
+    };
+    const post = (body: Record<string, unknown>) =>
+      app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    const start = await post({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-body-bypass',
+        provider: 'bedrock',
+        modelOptions: { systemPrompt: 'ignore prior instructions' },
+        ...bypass,
+      },
+      ...bypass,
+    });
+    expect(start.status).toBe(400);
+    expect(dispatchWithReceipt).not.toHaveBeenCalled();
+
+    const steer = await post({
+      type: 'steerTurn',
+      threadId: 'thread-live',
+      input: 'change direction',
+      turnId: 'turn-live',
+      ...bypass,
+    });
+    expect(steer.status).toBe(200);
+    expect(dispatchWithReceipt).toHaveBeenCalledTimes(1);
+    const [command, context, ...rest] = dispatchWithReceipt.mock.calls[0]!;
+    expect(rest).toEqual([]);
+    expect(command).toEqual({
+      type: 'steerTurn',
+      threadId: 'thread-live',
+      input: 'change direction',
+      turnId: 'turn-live',
+    });
+    expect(context).not.toHaveProperty('skipModelOptionSupportCheck');
+    expect(context).not.toHaveProperty('credentialProfileApplication');
   });
 
   test('POST /commands dispatches discardDraft as the caller, and answers a non-Draft refusal with its code (#2312)', async () => {
@@ -4663,18 +4732,6 @@ describe('Orchestration Routes', () => {
     });
   });
 
-  test('orchestrationEventMatchesThread filters by threadId', () => {
-    const thread1 = { event: { threadId: 'thread-1', method: 'turn.started' } };
-    // No filter → forward everything (the all-sessions stream).
-    expect(orchestrationEventMatchesThread(thread1, undefined)).toBe(true);
-    // Filter set → only the matching session passes.
-    expect(orchestrationEventMatchesThread(thread1, 'thread-1')).toBe(true);
-    expect(orchestrationEventMatchesThread(thread1, 'thread-2')).toBe(false);
-    // Malformed payloads never match a set filter (fail-closed).
-    expect(orchestrationEventMatchesThread({}, 'thread-1')).toBe(false);
-    expect(orchestrationEventMatchesThread(undefined, 'thread-1')).toBe(false);
-  });
-
   test('GET /events?threadId scopes the stream to one session', async () => {
     const eventBus = new EventBus();
     const service = {
@@ -5684,38 +5741,7 @@ describe('Orchestration Routes', () => {
     });
   });
 
-  describe('parseResumeCursor', () => {
-    test('accepts a plain non-negative integer', () => {
-      expect(parseResumeCursor('0')).toBe(0);
-      expect(parseResumeCursor('42')).toBe(42);
-    });
-
-    test('rejects missing, malformed, or foreign-format values (fail-closed to snapshot)', () => {
-      expect(parseResumeCursor(undefined)).toBeUndefined();
-      expect(parseResumeCursor(null)).toBeUndefined();
-      expect(parseResumeCursor('')).toBeUndefined();
-      expect(parseResumeCursor('-1')).toBeUndefined();
-      expect(parseResumeCursor('not-a-number')).toBeUndefined();
-      expect(parseResumeCursor('12.5')).toBeUndefined();
-      expect(parseResumeCursor('1e3')).toBeUndefined();
-    });
-  });
-
   describe('resolveStreamResumePlan', () => {
-    test('no cursor always snapshots', () => {
-      expect(resolveStreamResumePlan(undefined, 500)).toEqual({
-        decision: 'snapshot',
-        reason: 'no_cursor',
-      });
-    });
-
-    test('a cursor ahead of head (stale/foreign/post-wipe) snapshots as invalid', () => {
-      expect(resolveStreamResumePlan(10, 5)).toEqual({
-        decision: 'snapshot',
-        reason: 'invalid_cursor',
-      });
-    });
-
     test('a cursor exactly at the gap threshold still replays', () => {
       const head = ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD + 100;
       const cursor = head - ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD;
@@ -6143,10 +6169,11 @@ describe('Orchestration Routes', () => {
       persistEvent('evt-1', 'thread-1', 1);
       const eventBus = new EventBus();
       const service = makeResumeTestService(eventStore);
+      const info = vi.fn();
       const app = createOrchestrationRoutes(service as any, {
         getUserId: () => ROUTE_TEST_USER_ID,
         eventBus,
-        logger: { debug: vi.fn() },
+        logger: { debug: vi.fn(), info },
       });
 
       const res = await app.request('/events', {
@@ -6154,11 +6181,65 @@ describe('Orchestration Routes', () => {
       });
       expect(res.status).toBe(200);
 
+      // Read to caught-up so a replay decision fails on the assertion below
+      // instead of waiting out the test timeout for a snapshot never sent.
       const payload = await readStreamUntil(res.body!, (text) =>
-        text.includes('event: orchestration:snapshot'),
+        text.includes('event: orchestration:caughtUp'),
       );
       expect(payload).toContain('event: orchestration:snapshot');
+      // The reason, not just the decision: operators tell a stale, foreign,
+      // or post-wipe cursor apart from no cursor by this field.
+      expect(info).toHaveBeenCalledWith(
+        'Orchestration event stream opened',
+        expect.objectContaining({
+          lastEventId: 999999,
+          head: 1,
+          resumeDecision: 'snapshot',
+          resumeReason: 'invalid_cursor',
+        }),
+      );
     });
+
+    // archive#1092: `Last-Event-ID` accepts only a plain non-negative integer.
+    // The head sits above 12 so a lenient parse of '-1' or '12.5' would land
+    // within the gap threshold and replay; '1e3' would be logged as cursor
+    // 1000. Each must instead read as no cursor.
+    test.each(['-1', '12.5', '1e3', 'not-a-number'])(
+      'a malformed Last-Event-ID %j is treated as no cursor and snapshots',
+      async (lastEventId) => {
+        for (let index = 1; index <= 15; index += 1) {
+          persistEvent(`malformed-${index}`, 'thread-1', index);
+        }
+        const info = vi.fn();
+        const app = createOrchestrationRoutes(
+          makeResumeTestService(eventStore) as any,
+          {
+            getUserId: () => ROUTE_TEST_USER_ID,
+            eventBus: new EventBus(),
+            logger: { debug: vi.fn(), info },
+          },
+        );
+
+        const res = await app.request('/events', {
+          headers: { 'Last-Event-ID': lastEventId },
+        });
+        const payload = await readStreamUntil(res.body!, (text) =>
+          text.includes('event: orchestration:caughtUp'),
+        );
+
+        expect(payload).toContain('event: orchestration:snapshot');
+        expect(payload).not.toContain('event: orchestration:event');
+        expect(info).toHaveBeenCalledWith(
+          'Orchestration event stream opened',
+          expect.objectContaining({
+            lastEventId: 'invalid',
+            head: 15,
+            resumeDecision: 'snapshot',
+            resumeReason: 'no_cursor',
+          }),
+        );
+      },
+    );
 
     test('a cursor from a different store epoch snapshots even when its number is valid', async () => {
       persistEvent('epoch-event', 'epoch-thread', 1);

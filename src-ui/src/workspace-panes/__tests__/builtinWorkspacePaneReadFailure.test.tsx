@@ -74,27 +74,44 @@ afterEach(() => {
   mocks.refetchLayout.mockReset();
 });
 
-describe('CodingFileBrowserPane read failure (Review H1)', () => {
-  const descriptor = WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR;
-  const instance =
-    createWorkspaceCodingFileBrowserPaneInstance('project-uuid-1')!;
+const CODING_PANES = [
+  [
+    'CodingFileBrowserPane',
+    WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+    createWorkspaceCodingFileBrowserPaneInstance('project-uuid-1')!,
+  ],
+  [
+    'CodingDiffPane',
+    WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+    createWorkspaceCodingDiffPaneInstance('project-uuid-1')!,
+  ],
+  [
+    'CodingTerminalWorkspacePane',
+    WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+    createWorkspaceCodingTerminalPaneInstance('project-uuid-1')!,
+  ],
+] as const;
 
-  test('an errored layout read renders the shared failure state, not "Workspace directory needed"', () => {
-    mocks.layoutError = new Error('layout read failed');
-    const Pane = getBuiltinWorkspacePaneRenderer(descriptor)!;
-    render(<Pane descriptor={descriptor} instance={instance} />);
+describe('coding pane layout read failure (Review H1)', () => {
+  test.each(CODING_PANES)(
+    '%s: an errored layout read renders the shared failure state, not "Workspace directory needed"',
+    (_name, descriptor, instance) => {
+      mocks.layoutError = new Error('layout read failed');
+      const Pane = getBuiltinWorkspacePaneRenderer(descriptor)!;
+      render(<Pane descriptor={descriptor} instance={instance} />);
 
-    expect(screen.getByRole('alert')).toBeTruthy();
-    expect(
-      screen.getByText("Unable to load this Project's layout"),
-    ).toBeTruthy();
-    expect(screen.getByText('layout read failed')).toBeTruthy();
-    expect(screen.queryByText('Workspace directory needed')).toBeNull();
-  });
+      expect(screen.getByRole('alert')).toBeTruthy();
+      expect(
+        screen.getByText("Unable to load this Project's layout"),
+      ).toBeTruthy();
+      expect(screen.getByText('layout read failed')).toBeTruthy();
+      expect(screen.queryByText('Workspace directory needed')).toBeNull();
+    },
+  );
+
+  const [, descriptor, instance] = CODING_PANES[0];
 
   test('a settled-empty layout read (no error) still renders "Workspace directory needed", with no error state', () => {
-    mocks.layout = undefined;
-    mocks.layoutError = undefined;
     const Pane = getBuiltinWorkspacePaneRenderer(descriptor)!;
     render(<Pane descriptor={descriptor} instance={instance} />);
 
@@ -109,39 +126,5 @@ describe('CodingFileBrowserPane read failure (Review H1)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(mocks.refetchLayout).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('CodingDiffPane read failure (Review H1)', () => {
-  const descriptor = WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR;
-  const instance = createWorkspaceCodingDiffPaneInstance('project-uuid-1')!;
-
-  test('an errored layout read renders the shared failure state, not "Workspace directory needed"', () => {
-    mocks.layoutError = new Error('layout read failed');
-    const Pane = getBuiltinWorkspacePaneRenderer(descriptor)!;
-    render(<Pane descriptor={descriptor} instance={instance} />);
-
-    expect(screen.getByRole('alert')).toBeTruthy();
-    expect(
-      screen.getByText("Unable to load this Project's layout"),
-    ).toBeTruthy();
-    expect(screen.queryByText('Workspace directory needed')).toBeNull();
-  });
-});
-
-describe('CodingTerminalWorkspacePane read failure (Review H1)', () => {
-  const descriptor = WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR;
-  const instance = createWorkspaceCodingTerminalPaneInstance('project-uuid-1')!;
-
-  test('an errored layout read renders the shared failure state, not "Workspace directory needed"', () => {
-    mocks.layoutError = new Error('layout read failed');
-    const Pane = getBuiltinWorkspacePaneRenderer(descriptor)!;
-    render(<Pane descriptor={descriptor} instance={instance} />);
-
-    expect(screen.getByRole('alert')).toBeTruthy();
-    expect(
-      screen.getByText("Unable to load this Project's layout"),
-    ).toBeTruthy();
-    expect(screen.queryByText('Workspace directory needed')).toBeNull();
   });
 });

@@ -19,12 +19,12 @@ import {
  *    delays `GET /api/connections/models` past that click.
  *  - archive#3741 — Create refused "System prompt is required" for a field
  *    carrying no required marker.
- *  - archive#3742 — the readiness sentence named a connection id.
  *
  * Deliberately narrow. `agents-new-model-turn` owns "Create waits on a ready
  * model connection and offers the repair inline", `agents-editor-roundtrip`
  * owns the mobile sticky footer, and `agents-readiness-board` owns the rail's
- * readiness sentence; what is left here is what none of them can see.
+ * readiness sentence, including archive#3742 (a connection id in it); what
+ * is left here is what none of them can see.
  */
 
 const STUB_MODEL_ID = 'gates-stub-model';
@@ -209,48 +209,5 @@ test.describe('agent editor gates', () => {
 
     await page.locator('#ae-prompt').fill('You are a required-prompt agent.');
     await expect(create).toBeEnabled({ timeout: 20_000 });
-  });
-
-  test('an unready engine is named, never identified by its id (station#3742)', async ({
-    page,
-    authenticatedRequest,
-  }) => {
-    test.setTimeout(90_000);
-    const slug = `gates-broken-engine-${Date.now()}`;
-    const created = await authenticatedRequest.post('/agents', {
-      data: {
-        slug,
-        name: 'Gates Broken Engine',
-        prompt: 'x',
-        execution: { agentConnectionId: 'gates-nonexistent-engine' },
-      },
-    });
-    expect(created.ok()).toBe(true);
-    try {
-      await page.goto('/agents');
-      const rail = page.locator('.split-pane');
-      await expect(rail).toBeVisible({ timeout: 20_000 });
-      await expect(
-        page.getByText('Gates Broken Engine', { exact: false }).first(),
-      ).toBeVisible({ timeout: 20_000 });
-
-      // The rail shows a compact state; the selected agent owns the full
-      // server explanation. Open it before checking human-facing diagnosis.
-      await page.getByText('Gates Broken Engine', { exact: true }).click();
-      await expect(
-        page
-          .getByText(/the engine this agent runs on is no longer connected/i)
-          .first(),
-      ).toBeVisible({ timeout: 30_000 });
-
-      // `innerText` reflects the badge's own text-transform, so match the
-      // sentence rather than its casing.
-      const shell = (await page.locator('body').innerText()).toLowerCase();
-      expect(shell).toContain('not set up');
-      expect(shell).not.toContain('gates-nonexistent-engine');
-      expect(shell).not.toContain('engine connection');
-    } finally {
-      await authenticatedRequest.delete(`/agents/${slug}`);
-    }
   });
 });

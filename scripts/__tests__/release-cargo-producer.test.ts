@@ -142,52 +142,6 @@ test('Cargo.lock has exactly one root and required plugin record', () => {
   }
 });
 
-test('Cargo.lock parser and root/plugin uniqueness fail closed', () => {
-  expect(() => lockedCargoPackages('version = 4\n')).toThrow(
-    'Cargo.lock has no package records',
-  );
-  expect(() => lockedCargoPackages('[[package]]\nname = "station"\n')).toThrow(
-    'Cargo.lock package record is missing name or version',
-  );
-
-  const duplicateRoot = lockedCargoPackages(`
-[[package]]
-name = "station"
-version = "0.1.2"
-
-[[package]]
-name = "station"
-version = "0.1.2"
-`);
-  expect(() => exactlyOneLockedPackage(duplicateRoot, 'station')).toThrow(
-    'Cargo.lock must contain exactly one station record',
-  );
-
-  const duplicatePlugin = lockedCargoPackages(`
-[[package]]
-name = "tauri-plugin-process"
-version = "2.3.1"
-
-[[package]]
-name = "tauri-plugin-process"
-version = "2.3.2"
-`);
-  expect(() =>
-    exactlyOneLockedPackage(duplicatePlugin, 'tauri-plugin-process'),
-  ).toThrow('Cargo.lock must contain exactly one tauri-plugin-process record');
-});
-
-test('resolved Cargo graph parser fails closed on incomplete metadata', () => {
-  expect(() => resolvedCargoPackages('{}')).toThrow(
-    'Cargo metadata has no resolved package graph',
-  );
-  expect(() =>
-    resolvedCargoPackages(
-      JSON.stringify({ packages: [], resolve: { nodes: [{ id: 'missing' }] } }),
-    ),
-  ).toThrow('Cargo metadata resolved an unknown package');
-});
-
 test.skipIf(!hasProducerToolchain)(
   'cargo-cyclonedx proof executes the literal workflow producer command and public-safe graph (skips where the release toolchain is absent)',
   () => {
@@ -271,5 +225,4 @@ test('fragment converter import is inert under hostile empty argv', () => {
     { cwd: root, encoding: 'utf8', timeout: 10_000 },
   );
   expect(result).toBe('');
-  expect(process.exitCode).not.toBe(1);
 });

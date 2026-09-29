@@ -71,10 +71,10 @@ describe('coding-layout utils', () => {
     ]);
   });
 
-  test('selectWorkflowPlanSession matches active chat by session id before falling back', () => {
-    const olderSession = {
-      id: 'session-older',
-      conversationId: 'conv-older',
+  test('selectWorkflowPlanSession matches active chat by session id before falling back to the most recent session', () => {
+    const recentSession = {
+      id: 'session-recent',
+      conversationId: 'conv-recent',
       messages: [{ timestamp: 10 }],
     };
     const activeSession = {
@@ -85,12 +85,22 @@ describe('coding-layout utils', () => {
 
     expect(
       selectWorkflowPlanSession(
-        [olderSession, activeSession],
+        [recentSession, activeSession],
         'session-active',
       ),
     ).toEqual(activeSession);
     expect(
-      selectWorkflowPlanSession([olderSession, activeSession], 'conv-older'),
-    ).toEqual(olderSession);
+      selectWorkflowPlanSession([recentSession, activeSession], 'conv-recent'),
+    ).toEqual(recentSession);
+
+    // No match, or no active chat: the session with the newest message, which
+    // is deliberately not the first in the list.
+    expect(
+      selectWorkflowPlanSession([activeSession, recentSession], 'nope'),
+    ).toEqual(recentSession);
+    expect(
+      selectWorkflowPlanSession([activeSession, recentSession], null),
+    ).toEqual(recentSession);
+    expect(selectWorkflowPlanSession([], 'session-active')).toBeNull();
   });
 });

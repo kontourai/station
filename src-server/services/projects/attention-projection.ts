@@ -1082,20 +1082,10 @@ export class AttentionProjectionService {
   }
 
   /**
-   * #2064 (D4): paused Survey/Flow gate review sessions with unresolved
-   * items.
-   *
-   * `summary.unresolved > 0` is the whole adjudication and it is a
-   * derivation: the store records review items and their state, never a
-   * "paused" or "needs attention" marker, so a session whose items are all
-   * resolved stops projecting because there is nothing left unresolved — not
-   * because anything cleared a flag. A session Station cannot read
-   * contributes nothing (the aggregate already degrades per project and
-   * reports its own unavailability to the Review surface); this projection
-   * does not invent an item for a project it could not read.
-   *
-   * Hosted reads project nothing, for the same reason proposed changes do
-   * not: the aggregate is built over the host's whole project inventory.
+   * Gate attention follows missing decisions, not summary status: escalated
+   * or resolved items can still need a decision (#2064, MED-2). Unreadable
+   * sources are reported separately from an empty queue. Hosted reads omit
+   * this aggregate because it spans the host's whole project inventory.
    */
   private async projectGateReviews(authority: SessionReadAuthority): Promise<{
     items: GateReviewAttentionItem[];
@@ -1424,10 +1414,10 @@ function projectGateOutcome(
 
 /**
  * archive#3203: everything a `session-failed` row needs to say WHAT failed,
- * WHY, and WHICH session it was. Pure and exported so the payload has direct
- * coverage without standing up the whole projection — every field is read off
- * the summary this projection already holds, and a field the summary did not
- * record is OMITTED rather than filled with a placeholder.
+ * WHY, and WHICH session it was. Every field is read off the summary this
+ * projection already holds, and a field the summary did not record is OMITTED
+ * rather than filled with a placeholder. Exported for the orchestration tests
+ * that check a failed summary's bell body.
  *
  * `title` is the session's own `displayTitle`. It used to be the literal
  * `'Session failed'`, which `attentionKindLabel` already renders as the row's

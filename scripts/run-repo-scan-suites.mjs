@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DOCS_FRESHNESS_MODE_ENV } from './lib/documentation-freshness.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { runFocusedTests } from './run-focused-tests.mjs';
 import { REPO_SCAN_SUITES } from './test-impact-manifest.mjs';
@@ -43,14 +44,21 @@ function buildCliBundle(root) {
 }
 
 /**
- * @param {{ run?: (args: string[]) => Promise<number>, ensureCli?: () => boolean }} [options]
+ * @param {{ run?: (args: string[]) => Promise<number>, ensureCli?: () => boolean, env?: NodeJS.ProcessEnv }} [options]
  * @returns {Promise<number>} the focused runner's exit code, unchanged
  */
 export async function runRepoScans({
   run = runFocusedTests,
   ensureCli = () => ensureCliBundle(),
+  env = process.env,
 } = {}) {
   ensureCli();
+  // #2923: two scan suites also read recorded documentation freshness. The
+  // repo-scans job checks out one commit, so it cannot compute the PR's own
+  // change scope, and the strict fallback would fail it on staleness other
+  // PRs introduced. The required fast-checks lane owns the scoped verdict
+  // (docs:truth:gate); here freshness is reported, unless a caller chose.
+  env[DOCS_FRESHNESS_MODE_ENV] ||= 'advisory';
   return run([...REPO_SCAN_SUITES]);
 }
 

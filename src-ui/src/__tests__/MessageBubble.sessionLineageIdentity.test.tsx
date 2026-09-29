@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { MessageBubble } from '../components/chat/MessageBubble';
 
@@ -157,7 +157,10 @@ describe('MessageBubble session-lineage identity (station#4240)', () => {
     });
   });
 
-  test('omits fork for an incomplete assistant turn', () => {
+  test('omits fork for an incomplete assistant turn', async () => {
+    // The overflow is a lazy chunk: preload it and let it settle, or its
+    // absence below would hold before it could have rendered.
+    await import('../components/chat/TurnActionsMenu');
     const message = {
       ...row('claude', 'Still streaming'),
       turnId: 'turn-open',
@@ -176,7 +179,17 @@ describe('MessageBubble session-lineage identity (station#4240)', () => {
         onForkFromTurn={vi.fn()}
       />,
     );
-    expect(screen.queryByRole('button', { name: 'Fork from here' })).toBeNull();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    // Fork is a menuitem behind the overflow. With no provenance or other
+    // action, an incomplete turn offers no overflow to hold it.
+    expect(
+      screen.queryByRole('button', { name: 'More answer actions' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('menuitem', { name: /Fork from here/ }),
+    ).toBeNull();
   });
 
   test('renders a historical Codex answer from its own Agent, never the current Claude Agent', () => {

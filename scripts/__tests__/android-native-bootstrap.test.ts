@@ -130,41 +130,20 @@ class MainActivity : TauriActivity() {
     ).toThrow(/Invalid/);
   });
 
-  it.each([
-    '.github/workflows/build-android.yml',
-    '.github/workflows/release.yml',
-    '.github/workflows/nightly-native-stage.yml',
-    'ops/nightly/install-android.zsh',
-  ])(
-    'applies the bootstrap after init and before build in %s',
-    (workflowPath) => {
-      const workflow = readFileSync(workflowPath, 'utf8');
-      const init = workflow.indexOf('tauri android init');
-      const bootstrap = workflow.indexOf(
-        'node scripts/apply-android-native-bootstrap.mjs',
-      );
-      const build = workflow.indexOf('tauri android build');
-      expect(init).toBeGreaterThanOrEqual(0);
-      expect(bootstrap).toBeGreaterThan(init);
-      expect(build).toBeGreaterThan(bootstrap);
-    },
-  );
-
-  it.each(['build:android', 'build:android:release', 'build:android:arm64'])(
-    'keeps the namespace bootstrap ahead of %s',
-    (scriptName) => {
-      const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
-        scripts: Record<string, string>;
-      };
-      const command = packageJson.scripts[scriptName];
-      expect(
-        command.indexOf('apply-android-native-bootstrap.mjs'),
-      ).toBeGreaterThanOrEqual(0);
-      expect(
-        command.indexOf('apply-android-native-bootstrap.mjs'),
-      ).toBeLessThan(command.indexOf('tauri android build'));
-    },
-  );
+  // The CI workflows and package scripts are ordered by
+  // android-channel-release-generation.test.ts; the nightly install script
+  // has no other owner.
+  it('applies the bootstrap after init and before build in the nightly install script', () => {
+    const script = readFileSync('ops/nightly/install-android.zsh', 'utf8');
+    const init = script.indexOf('tauri android init');
+    const bootstrap = script.indexOf(
+      'node scripts/apply-android-native-bootstrap.mjs',
+    );
+    const build = script.indexOf('tauri android build');
+    expect(init).toBeGreaterThanOrEqual(0);
+    expect(bootstrap).toBeGreaterThan(init);
+    expect(build).toBeGreaterThan(bootstrap);
+  });
 });
 
 describe('camera manifest restoration', () => {

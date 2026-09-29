@@ -97,7 +97,7 @@ export const CONTRIBUTOR_COMMANDS: readonly string[] = [
  * not found" and a stack trace from a missing `package.json` are both worse
  * than being told where the verb lives.
  */
-export function contributorCommandMessage(
+function contributorCommandMessage(
   command: string,
   args: readonly string[] = [],
 ): string {

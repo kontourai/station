@@ -18,10 +18,10 @@ const reservation: TaskDispatchReservation = {
 // Every graph seam member returns a Promise since archive#2646 (the durable
 // transitions await their cross-process lock), so the fakes are async too.
 function graph(
-  reserve: TaskDispatchGraphState['reserve'] = async () => ({
-    kind: 'reserved',
+  reserve: TaskDispatchGraphState['reserve'] = vi.fn(async () => ({
+    kind: 'reserved' as const,
     reservation,
-  }),
+  })),
 ): TaskDispatchGraphState {
   return {
     reserve,
@@ -95,13 +95,14 @@ describe('TaskDispatcher Interface', () => {
 
   test('rejects a monitor whose declared Task Agent differs before reservation', async () => {
     const state = graph();
+    const startOrSeed = vi.fn();
     const dispatcher = createTaskDispatcher(
       state,
       { claim: vi.fn(), compensate: vi.fn() },
       {
         readiness: () => ({ kind: 'ready' as const }),
         mayHaveStarted: () => false,
-        startOrSeed: vi.fn(),
+        startOrSeed,
       },
       telemetry,
     );
@@ -118,7 +119,13 @@ describe('TaskDispatcher Interface', () => {
           maxTokens: 1,
         },
       }),
-    ).resolves.toMatchObject({ kind: 'failed' });
+    ).resolves.toEqual({
+      kind: 'failed',
+      reason: 'Monitor Task Agent must exactly match the dispatched Task Agent',
+    });
+    expect(state.reserve).not.toHaveBeenCalled();
+    expect(state.releaseReservation).not.toHaveBeenCalled();
+    expect(startOrSeed).not.toHaveBeenCalled();
   });
 
   test('publishes the exact durable association after graph commit without changing dispatch success', async () => {
@@ -286,6 +293,10 @@ describe('TaskDispatcher Interface', () => {
       reason: 'Task dispatch aborted',
       retryable: true,
     });
+    // The post-reservation abort check returns the same outcome, so only the
+    // untouched graph proves the abort was taken before admission.
+    expect(state.reserve).not.toHaveBeenCalled();
+    expect(state.releaseReservation).not.toHaveBeenCalled();
     expect(state.markProviderStarting).not.toHaveBeenCalled();
   });
 

@@ -1,0 +1,1022 @@
+import { spawn } from 'node:child_process';
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  LAUNCHER_STOP_BUDGET_MS,
+  SYSTEMD_STOP_TIMEOUT_SECONDS,
+} from '../../packages/cli/src/commands/service-command.js';
+import {
+  serviceUpdatePaths,
+  writeServiceUpdateRequest,
+} from '../../packages/cli/src/commands/service-launcher-link.js';
+import {
+  lookupProcessBirthFingerprint,
+  ownProcessBirthProbeSchedule,
+  WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS,
+} from '../../packages/shared/src/process-identity.mjs';
+import { readServiceUpdateProgress } from '../../packages/shared/src/service-launcher-protocol.js';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { readRegistryInstances } from '../../src-server/tools/instance-registry-bridge.js';
+import {
+  addVersion,
+  bundleLauncherFixtureCli,
+  fixtureLog,
+  homeSchemaVersion,
+  INSTANCE,
+  type LauncherInstall,
+  makeLauncherInstall,
+  pointCurrent,
+  type RunningLauncher,
+  readState,
+  startLauncher,
+  waitFor,
+} from './fixtures/service-launcher-harness.js';
+
+// The launcher is plain ESM with no types of its own.
+type LauncherModule = {
+  DEFAULT_TIMINGS: Record<string, number>;
+  MAX_TRIAL_ATTEMPTS: number;
+  MAX_RESTORE_ATTEMPTS: number;
+  compareVersions: (left: string, right: string) => number | null;
+  processBirth: (pid: number) => string | null;
+  ownBirthSchedule: (platform: string) => {
+    retryDelayMs: number;
+    deadlineMs: number;
+    attempts: Array<{ timeoutMs: number; shell: 'powershell' | 'pwsh7' }>;
+  };
+  reclaimStaleLock: (lock: string, judged: string) => void;
+  recordServiceActiveVersion: (installRoot: string, version: string) => void;
+};
+
+async function launcherModule(): Promise<LauncherModule> {
+  return (await import(
+    '../../packaging/portable-server/bin/station-launcher.mjs'
+  )) as LauncherModule;
+}
+
+function lockPath(install: LauncherInstall): string {
+  return join(install.installRoot, 'runtime', 'service-state.lock');
+}
+
+/** A live process that is not a Station launcher, for pid-reuse cases. */
+function unrelatedProcess() {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    stdio: 'ignore',
+  });
+  return child;
+}
+
+const makeTempDir = trackTempDirs();
+let cli = '';
+const running: RunningLauncher[] = [];
+
+beforeAll(async () => {
+  cli = await bundleLauncherFixtureCli();
+}, 60_000);
+
+afterEach(async () => {
+  for (const launcher of running.splice(0)) {
+    if (
+      launcher.process.exitCode === null &&
+      launcher.process.signalCode === null
+    ) {
+      launcher.process.kill('SIGTERM');
+      // A launcher blocked in a synchronous step (a gated backup) handles the
+      // signal only afterwards; do not wait for it.
+      const timer = setTimeout(() => launcher.process.kill('SIGKILL'), 10_000);
+      await launcher.exited;
+      clearTimeout(timer);
+    }
+  }
+});
+
+function launch(install: LauncherInstall, env: Record<string, string> = {}) {
+  const launcher = startLauncher(install, env);
+  running.push(launcher);
+  return launcher;
+}
+
+function diagnostics(install: LauncherInstall, launcher?: RunningLauncher) {
+  return () =>
+    `state: ${JSON.stringify(readState(install))}\nlog:\n${fixtureLog(install).join('\n')}\nlauncher:\n${launcher?.output() ?? ''}`;
+}
+
+/** v1 active and running, v2 staged with `behavior`. */
+async function runningV1(
+  v2: Parameters<typeof addVersion>[3],
+  v1: Parameters<typeof addVersion>[3] = {},
+  env: Record<string, string> = {},
+) {
+  const install = makeLauncherInstall(makeTempDir('station-launcher-'));
+  addVersion(install, cli, '1.0.0', v1);
+  addVersion(install, cli, '1.1.0', v2);
+  pointCurrent(install, '1.0.0');
+  const launcher = launch(install, env);
+  await waitFor(
+    'v1 ready',
+    () => {
+      if (launcher.process.exitCode !== null)
+        throw new Error(`the launcher exited:\n${launcher.output()}`);
+      return fixtureLog(install).includes('1.0.0 ready');
+    },
+    30_000,
+    diagnostics(install, launcher),
+  );
+  return { install, launcher };
+}
+
+function finished(install: LauncherInstall) {
+  const update = readState(install)?.update;
+  return update && update.status !== 'pending' ? update : undefined;
+}
+
+function currentVersion(install: LauncherInstall): string {
+  return readlinkSync(join(install.installRoot, 'current')).split('/').at(-1)!;
+}
+
+describe('the fixed service launcher (#2675 D)', { timeout: 90_000 }, () => {
+  it('pins the production timings the plan requires', async () => {
+    const launcher = (await import(
+      '../../packaging/portable-server/bin/station-launcher.mjs'
+    )) as LauncherModule;
+    expect(launcher.DEFAULT_TIMINGS.stopGraceMs).toBe(65_000);
+    expect(launcher.DEFAULT_TIMINGS.preparedTimeoutMs).toBe(240_000);
+    expect(launcher.MAX_TRIAL_ATTEMPTS).toBe(2);
+    expect(launcher.MAX_RESTORE_ATTEMPTS).toBe(3);
+    // The unit's stop timeout covers the launcher's whole stop.
+    expect(LAUNCHER_STOP_BUDGET_MS).toBe(
+      launcher.DEFAULT_TIMINGS.stopGraceMs +
+        10_000 +
+        launcher.DEFAULT_TIMINGS.ownStopTimeoutMs,
+    );
+    // A stop during the liveness handoff no longer waits for it, and the
+    // unit's timeout still leaves more than that wait as margin.
+    expect(SYSTEMD_STOP_TIMEOUT_SECONDS * 1_000).toBeGreaterThan(
+      LAUNCHER_STOP_BUDGET_MS + launcher.DEFAULT_TIMINGS.handoffAckMs,
+    );
+    expect(
+      launcher.compareVersions('0.6.0-nightly.10', '0.6.0-nightly.9'),
+    ).toBe(1);
+    expect(launcher.compareVersions('1.0.0', '1.0.0-preview.3')).toBe(1);
+    // Another ring's prerelease cannot be ordered, so it is never "newer".
+    expect(
+      launcher.compareVersions('1.0.0-nightly.1', '1.0.0-preview.3'),
+    ).toBeNull();
+    expect(launcher.compareVersions('1.2.0', '1.10.0')).toBe(-1);
+  });
+
+  it('commits a trial that reports prepared: state, current and the backup follow', async () => {
+    const { install, launcher } = await runningV1({ trial: 'prepare' });
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    const update = await waitFor(
+      'the update to finish',
+      () => finished(install),
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(update).toMatchObject({
+      status: 'committed',
+      fromVersion: '1.0.0',
+      targetVersion: '1.1.0',
+      attempts: 1,
+    });
+    expect(readState(install)?.activeVersion).toBe('1.1.0');
+    // `current` moves and the backup goes right after the commit is recorded.
+    await waitFor(
+      'current and the backup to follow',
+      () =>
+        currentVersion(install) === '1.1.0' &&
+        !existsSync(
+          join(install.installRoot, 'runtime', 'update-backups', update.id),
+        ),
+    );
+    const log = fixtureLog(install);
+    // Stopped, backed up with the old version's own code, then trialled.
+    const order = [
+      '1.0.0 run active',
+      `1.0.0 handoff ${launcher.process.pid}`,
+      '1.0.0 term',
+      '1.0.0 update-home backup',
+      '1.1.0 run trial',
+      '1.1.0 ready',
+    ].map((line) => log.indexOf(line));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // A committed trial keeps what it wrote.
+    expect(existsSync(join(install.home, 'config', 'trial-wrote.json'))).toBe(
+      true,
+    );
+
+    launcher.process.kill('SIGTERM');
+    expect(await launcher.exited).toEqual({ code: 0, signal: null });
+    expect(fixtureLog(install)).toContain('1.1.0 term');
+  });
+
+  it('after a commit keeps only the new version and its rollback target, and never an installer stage', async () => {
+    const install = makeLauncherInstall(makeTempDir('station-launcher-'));
+    addVersion(install, cli, '0.9.0');
+    addVersion(install, cli, '1.0.0');
+    addVersion(install, cli, '1.1.0', { trial: 'prepare' });
+    // Sealed, as install.sh leaves every version.
+    chmodSync(join(install.installRoot, 'versions', '0.9.0', 'bin'), 0o555);
+    chmodSync(join(install.installRoot, 'versions', '0.9.0'), 0o555);
+    mkdirSync(join(install.installRoot, 'versions', '.stage.123'));
+    pointCurrent(install, '1.0.0');
+    const launcher = launch(install);
+    await waitFor('v1 ready', () =>
+      fixtureLog(install).includes('1.0.0 ready'),
+    );
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    await waitFor(
+      'the prune after the commit',
+      () =>
+        readdirSync(join(install.installRoot, 'versions')).sort().join(',') ===
+        '.stage.123,1.0.0,1.1.0',
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(finished(install)?.status).toBe('committed');
+  });
+
+  it('rolls back a trial that migrates the home schema and then crashes', async () => {
+    const { install, launcher } = await runningV1({
+      trial: 'exit',
+      homeSchemaVersion: 99,
+    });
+    const schemaBefore = homeSchemaVersion(install);
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    const update = await waitFor(
+      'the update to finish',
+      () => finished(install),
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(update).toMatchObject({
+      status: 'rolled-back',
+      reason: 'candidate-exited:3',
+    });
+    expect(fixtureLog(install)).toContain('1.1.0 schema 99');
+    await waitFor(
+      'v1 restarted',
+      () =>
+        fixtureLog(install).filter((line) => line === '1.0.0 run active')
+          .length === 2,
+    );
+    expect(homeSchemaVersion(install)).toBe(schemaBefore);
+    expect(existsSync(join(install.home, 'config', 'trial-wrote.json'))).toBe(
+      false,
+    );
+    expect(readFileSync(join(install.home, 'config', 'app.json'), 'utf8')).toBe(
+      '{"model":"before"}\n',
+    );
+    expect(readState(install)?.activeVersion).toBe('1.0.0');
+    expect(currentVersion(install)).toBe('1.0.0');
+  });
+
+  it('rolls back a trial that never reports prepared', async () => {
+    const { install, launcher } = await runningV1({ trial: 'hang' });
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    const update = await waitFor(
+      'the update to finish',
+      () => finished(install),
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(update).toMatchObject({
+      status: 'rolled-back',
+      reason: 'prepared-timeout',
+    });
+    expect(fixtureLog(install)).toContain('1.1.0 term');
+    expect(readState(install)?.activeVersion).toBe('1.0.0');
+  });
+
+  it("kills an old child that ignores TERM and runs its version's own stop before the backup", async () => {
+    const { install, launcher } = await runningV1(
+      { trial: 'prepare' },
+      { ignoreTerm: true },
+    );
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    const update = await waitFor(
+      'the update to finish',
+      () => finished(install),
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(update.status).toBe('committed');
+    const log = fixtureLog(install);
+    const ignored = log.indexOf('1.0.0 term-ignored');
+    const stop = log.indexOf('1.0.0 stop');
+    const backup = log.indexOf('1.0.0 update-home backup');
+    expect(ignored).toBeGreaterThanOrEqual(0);
+    expect(stop).toBeGreaterThan(ignored);
+    expect(backup).toBeGreaterThan(stop);
+    expect(launcher.output()).toContain('did not stop within');
+  });
+
+  it('keeps the home owned by a live service for the whole window, so a desktop app would not start a sidecar', async () => {
+    const gate = join(makeTempDir('station-launcher-gate-'), 'open');
+    const { install, launcher } = await runningV1(
+      { trial: 'prepare' },
+      {},
+      {
+        STATION_FIXTURE_BACKUP_GATE: gate,
+      },
+    );
+    const liveServices = () =>
+      readRegistryInstances(install.home).filter(
+        (entry) =>
+          entry.type === 'service' &&
+          typeof entry.port === 'number' &&
+          typeof entry.pid === 'number' &&
+          entry.pidAlive === true,
+      );
+    const [before] = liveServices();
+    expect(before?.id).toBe(INSTANCE);
+    expect(before?.pid).not.toBe(launcher.process.pid);
+
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    await waitFor(
+      'the backup to wait',
+      () =>
+        fixtureLog(install).includes(
+          '1.0.0 waiting STATION_FIXTURE_BACKUP_GATE',
+        ),
+      30_000,
+      diagnostics(install, launcher),
+    );
+    // Mid-window: the old child is gone, nothing new runs, and the entry
+    // the desktop app decides on names the launcher, alive.
+    expect(fixtureLog(install)).toContain('1.0.0 term');
+    const during = liveServices();
+    expect(during.map((entry) => [entry.id, entry.pid])).toEqual([
+      [INSTANCE, launcher.process.pid],
+    ]);
+
+    writeFileSync(gate, '');
+    const update = await waitFor('the update to finish', () =>
+      finished(install),
+    );
+    expect(update.status).toBe('committed');
+    await waitFor('v2 publishes itself', () => {
+      const [entry] = liveServices();
+      return entry && entry.pid !== launcher.process.pid ? entry : undefined;
+    });
+  });
+
+  it('answers a request for a version that is not newer without stopping anything', async () => {
+    const { install, launcher } = await runningV1({ trial: 'prepare' });
+    const request = writeServiceUpdateRequest(install.installRoot, '1.0.0');
+    const result = await waitFor(
+      'a result',
+      () => {
+        try {
+          return JSON.parse(
+            readFileSync(
+              join(
+                install.installRoot,
+                'runtime',
+                'update-request-result.json',
+              ),
+              'utf8',
+            ),
+          );
+        } catch {
+          return undefined;
+        }
+      },
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(result).toMatchObject({
+      requestId: request.id,
+      status: 'up-to-date',
+      version: '1.0.0',
+    });
+    expect(readState(install)?.update).toBeUndefined();
+    expect(fixtureLog(install)).not.toContain('1.0.0 term');
+  });
+
+  it('the launcher refuses a staged version that is not newer (a replayed older release)', async () => {
+    const { install, launcher } = await runningV1(
+      { trial: 'prepare' },
+      { stage: '0.9.0' },
+    );
+    addVersion(install, cli, '0.9.0', { trial: 'prepare' });
+    const request = writeServiceUpdateRequest(install.installRoot);
+    const result = await waitFor(
+      'a result',
+      () => {
+        try {
+          return JSON.parse(
+            readFileSync(
+              join(
+                install.installRoot,
+                'runtime',
+                'update-request-result.json',
+              ),
+              'utf8',
+            ),
+          );
+        } catch {
+          return undefined;
+        }
+      },
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(result).toMatchObject({
+      requestId: request.id,
+      status: 'rejected',
+      reason: 'Station 0.9.0 is not newer than the running 1.0.0.',
+    });
+    expect(readState(install)?.update).toBeUndefined();
+    expect(fixtureLog(install)).not.toContain('1.0.0 term');
+  });
+
+  it('refuses a second launcher on the same install root', async () => {
+    const { install } = await runningV1({ trial: 'prepare' });
+    const second = launch(install);
+    expect((await second.exited).code).toBe(1);
+    expect(second.output()).toContain('another Station launcher');
+  });
+
+  it('a backup that fails (the disk is full) keeps the old version running on an untouched home', async () => {
+    const { install, launcher } = await runningV1(
+      { trial: 'prepare' },
+      {},
+      {
+        STATION_FIXTURE_BACKUP_FAIL: '1',
+      },
+    );
+    const schemaBefore = homeSchemaVersion(install);
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    const update = await waitFor(
+      'the update to finish',
+      () => finished(install),
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(update).toMatchObject({
+      status: 'failed',
+      reason: 'backup-failed',
+      attempts: 0,
+    });
+    expect(launcher.output()).toContain('ENOSPC');
+    await waitFor(
+      'v1 restarted',
+      () =>
+        fixtureLog(install).filter((line) => line === '1.0.0 run active')
+          .length === 2,
+    );
+    expect(fixtureLog(install)).not.toContain('1.1.0 run trial');
+    expect(homeSchemaVersion(install)).toBe(schemaBefore);
+    expect(
+      readdirSync(join(install.installRoot, 'runtime', 'update-backups')),
+    ).toEqual([]);
+  });
+});
+
+/**
+ * The launcher is killed (SIGKILL, so nothing of it runs) right after each
+ * durable write of the update, and a new one is started as the service
+ * manager would. Every one must finish the same transaction.
+ */
+describe('a launcher killed after each durable write finishes the update (#2675 D)', {
+  timeout: 120_000,
+}, () => {
+  async function crashThenRecover(point: string, trial: 'prepare' | 'exit') {
+    const { install, launcher } = await runningV1(
+      {
+        trial,
+        homeSchemaVersion: 99,
+      },
+      {},
+      { STATION_LAUNCHER_TEST_CRASH_AFTER: point },
+    );
+    const schemaBefore = homeSchemaVersion(install);
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    expect((await launcher.exited).signal).toBe('SIGKILL');
+    // Its versioned child sees the channel close and stops (a service
+    // manager would also have killed it with the unit).
+    const crashed = readState(install);
+    const readyBefore = fixtureLog(install).length;
+    const recovered = launch(install);
+    // Serving again: some version reports ready after the recovery began.
+    const servingAgain = (version: string) =>
+      waitFor(
+        `${version} serving after recovery`,
+        () =>
+          fixtureLog(install).slice(readyBefore).includes(`${version} ready`),
+        60_000,
+        diagnostics(install, recovered),
+      );
+    const update = await waitFor(
+      'the recovered update to finish',
+      () => finished(install),
+      60_000,
+      diagnostics(install, recovered),
+    );
+    return { install, recovered, update, crashed, schemaBefore, servingAgain };
+  }
+
+  it.each(['pending', 'backup', 'attempt', 'committed', 'current'])(
+    'killed after %s: the trial is committed',
+    async (point) => {
+      const { install, update, crashed, servingAgain } = await crashThenRecover(
+        point,
+        'prepare',
+      );
+      expect(crashed?.update?.status).toBe(
+        point === 'committed' || point === 'current' ? 'committed' : 'pending',
+      );
+      expect(update.status).toBe('committed');
+      expect(update.attempts).toBeLessThanOrEqual(2);
+      await servingAgain('1.1.0');
+      expect(readState(install)?.activeVersion).toBe('1.1.0');
+      // `current` and the backup follow the committed state.
+      await waitFor(
+        'current and the backup to follow',
+        () =>
+          currentVersion(install) === '1.1.0' &&
+          readdirSync(join(install.installRoot, 'runtime', 'update-backups'))
+            .length === 0,
+      );
+    },
+  );
+
+  it.each(['restoring', 'rolled-back'])(
+    'killed after %s: the rollback restores the home and restarts the old version',
+    async (point) => {
+      const { install, update, schemaBefore, servingAgain } =
+        await crashThenRecover(point, 'exit');
+      expect(update.status).toBe('rolled-back');
+      // The interrupted rollback is finished, never retried as a new trial.
+      expect(update).toMatchObject({
+        reason: 'candidate-exited:3',
+        attempts: 1,
+      });
+      expect(
+        fixtureLog(install).filter((line) => line === '1.1.0 run trial'),
+      ).toHaveLength(1);
+      await servingAgain('1.0.0');
+      expect(readState(install)?.activeVersion).toBe('1.0.0');
+      expect(currentVersion(install)).toBe('1.0.0');
+      expect(homeSchemaVersion(install)).toBe(schemaBefore);
+      expect(existsSync(join(install.home, 'config', 'trial-wrote.json'))).toBe(
+        false,
+      );
+      expect(
+        readdirSync(join(install.installRoot, 'runtime', 'update-backups')),
+      ).toEqual([]);
+    },
+  );
+
+  it('gives a trial at most two attempts, then rolls back', async () => {
+    const { install, launcher } = await runningV1({
+      trial: 'hang',
+      homeSchemaVersion: 99,
+    });
+    const schemaBefore = homeSchemaVersion(install);
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    // The launcher dies during each trial, before the trial could prove
+    // itself (a trial that takes the host down, say).
+    let current = launcher;
+    for (const attempt of [1, 2]) {
+      await waitFor(
+        `trial attempt ${attempt}`,
+        () => {
+          const update = readState(install)?.update;
+          return update?.phase === 'trial' && update.attempts === attempt;
+        },
+        30_000,
+        diagnostics(install, current),
+      );
+      await waitFor(
+        'the trial to run',
+        () =>
+          fixtureLog(install).filter((line) => line === '1.1.0 run trial')
+            .length === attempt,
+      );
+      current.process.kill('SIGKILL');
+      await current.exited;
+      current = launch(install);
+    }
+    const update = await waitFor(
+      'the rollback',
+      () => finished(install),
+      30_000,
+      diagnostics(install, current),
+    );
+    expect(update).toMatchObject({
+      status: 'rolled-back',
+      reason: 'trial-attempts-exhausted',
+      attempts: 2,
+    });
+    expect(
+      fixtureLog(install).filter((line) => line === '1.1.0 run trial').length,
+    ).toBe(2);
+    expect(homeSchemaVersion(install)).toBe(schemaBefore);
+    expect(readState(install)?.activeVersion).toBe('1.0.0');
+  });
+});
+
+describe('the launcher lock survives reboots and pid reuse (#2675 D review F2)', {
+  timeout: 90_000,
+}, () => {
+  it('reads a process start time exactly as the shared process identity does', async () => {
+    const { processBirth } = await launcherModule();
+    const birth = processBirth(process.pid);
+    expect(birth).toBeTruthy();
+    expect(birth).toBe(lookupProcessBirthFingerprint(process.pid));
+    const other = unrelatedProcess();
+    try {
+      await waitFor('the other process', () => processBirth(other.pid!));
+      expect(processBirth(other.pid!)).toBe(
+        lookupProcessBirthFingerprint(other.pid!),
+      );
+      expect(processBirth(other.pid!)).not.toBe(birth);
+    } finally {
+      other.kill('SIGKILL');
+    }
+  });
+
+  it('probes its own start time on the shared schedule, including Windows (review L4)', async () => {
+    const { ownBirthSchedule } = await launcherModule();
+    for (const platform of ['win32', 'linux', 'darwin'] as const) {
+      const shared = ownProcessBirthProbeSchedule(platform);
+      const launcher = ownBirthSchedule(platform);
+      expect(
+        launcher.attempts.map(({ timeoutMs, shell }) => ({
+          timeoutMs,
+          // The shared schedule names the retry shell `pwsh.exe` and the
+          // default (System32 Windows PowerShell) `undefined`.
+          windowsShell: shell === 'pwsh7' ? 'pwsh.exe' : undefined,
+        })),
+      ).toEqual(shared.attempts);
+      expect(launcher.retryDelayMs).toBe(shared.retryDelayMs);
+      // resolveOwnProcessIdentity's overall deadline, on every platform.
+      expect(launcher.deadlineMs).toBe(WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS);
+    }
+    // Pinned literals beside the derived comparison.
+    expect(ownBirthSchedule('win32')).toEqual({
+      retryDelayMs: 250,
+      deadlineMs: 30_250,
+      attempts: [
+        { timeoutMs: 10_000, shell: 'powershell' },
+        { timeoutMs: 20_000, shell: 'pwsh7' },
+      ],
+    });
+    expect(ownBirthSchedule('linux').retryDelayMs).toBe(100);
+  });
+
+  it('takes over a lock whose pid now belongs to an unrelated live process', async () => {
+    const install = makeLauncherInstall(makeTempDir('station-launcher-'));
+    addVersion(install, cli, '1.0.0');
+    pointCurrent(install, '1.0.0');
+    const other = unrelatedProcess();
+    try {
+      // Left by a launcher before a reboot; its pid is someone else's now.
+      writeFileSync(
+        lockPath(install),
+        `${JSON.stringify({ pid: other.pid, birth: 'Mon Jan  1 00:00:00 2024', token: 't' })}\n`,
+      );
+      const launcher = launch(install);
+      await waitFor(
+        'v1 ready',
+        () => fixtureLog(install).includes('1.0.0 ready'),
+        30_000,
+        diagnostics(install, launcher),
+      );
+      expect(JSON.parse(readFileSync(lockPath(install), 'utf8'))).toMatchObject(
+        { pid: launcher.process.pid },
+      );
+    } finally {
+      other.kill('SIGKILL');
+    }
+  });
+
+  it('takes over a pid-only lock naming pid 1 (a container reboot)', async () => {
+    const install = makeLauncherInstall(makeTempDir('station-launcher-'));
+    addVersion(install, cli, '1.0.0');
+    pointCurrent(install, '1.0.0');
+    writeFileSync(lockPath(install), '{"pid":1}\n');
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lockPath(install), old, old);
+    const launcher = launch(install);
+    await waitFor(
+      'v1 ready',
+      () => fixtureLog(install).includes('1.0.0 ready'),
+      30_000,
+      diagnostics(install, launcher),
+    );
+  });
+
+  it('a stale-lock reclaim removes only the lock it judged, never one taken since', async () => {
+    const { reclaimStaleLock } = await launcherModule();
+    const root = makeTempDir('station-launcher-lock-');
+    const lock = join(root, 'service-state.lock');
+    // Another launcher reclaimed the stale lock and took it between this
+    // one's read and its removal.
+    writeFileSync(lock, '{"pid":2,"birth":"b","token":"fresh"}\n');
+    reclaimStaleLock(lock, '{"pid":1,"birth":"a","token":"stale"}\n');
+    expect(readFileSync(lock, 'utf8')).toBe(
+      '{"pid":2,"birth":"b","token":"fresh"}\n',
+    );
+    expect(readdirSync(root)).toEqual(['service-state.lock']);
+    // The lock it judged is removed.
+    reclaimStaleLock(lock, '{"pid":2,"birth":"b","token":"fresh"}\n');
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  it('install.sh records a version only under the lock, and never over an unfinished update (F9)', async () => {
+    const { recordServiceActiveVersion } = await launcherModule();
+    const { install, launcher } = await runningV1({ trial: 'prepare' });
+    // A running launcher holds the lock.
+    expect(() =>
+      recordServiceActiveVersion(install.installRoot, '1.1.0'),
+    ).toThrow(/another Station launcher/);
+    expect(readState(install)?.activeVersion).toBe('1.0.0');
+    launcher.process.kill('SIGTERM');
+    await launcher.exited;
+    const state = join(install.installRoot, 'runtime', 'service-state.json');
+    const pending = {
+      protocol: 1,
+      activeVersion: '1.0.0',
+      update: {
+        id: '00000000-0000-4000-8000-000000000000',
+        fromVersion: '1.0.0',
+        targetVersion: '1.1.0',
+        status: 'pending',
+        phase: 'trial',
+        attempts: 1,
+      },
+    };
+    writeFileSync(state, JSON.stringify(pending));
+    expect(() =>
+      recordServiceActiveVersion(install.installRoot, '1.1.0'),
+    ).toThrow(/unfinished/);
+    expect(JSON.parse(readFileSync(state, 'utf8'))).toEqual(pending);
+    writeFileSync(
+      state,
+      JSON.stringify({ protocol: 1, activeVersion: '1.0.0' }),
+    );
+    recordServiceActiveVersion(install.installRoot, '1.1.0');
+    expect(readState(install)).toEqual({ protocol: 1, activeVersion: '1.1.0' });
+    expect(existsSync(lockPath(install))).toBe(false);
+  });
+});
+
+describe('an update keeps moving when its pieces fail (#2675 D review F1, F4-F7)', {
+  timeout: 120_000,
+}, () => {
+  it('rolls back a real home: plugin links come back as links, repositories stay as they are (F1)', async () => {
+    const install = makeLauncherInstall(makeTempDir('station-launcher-'));
+    addVersion(install, cli, '1.0.0');
+    addVersion(install, cli, '1.1.0', { trial: 'exit' });
+    pointCurrent(install, '1.0.0');
+    const repo = join(install.home, 'workspaces', 'app');
+    mkdirSync(join(repo, 'node_modules', 'pkg'), { recursive: true });
+    mkdirSync(join(repo, 'node_modules', '.bin'));
+    writeFileSync(join(repo, 'node_modules', 'pkg', 'cli.js'), 'run()\n');
+    symlinkSync('../pkg/cli.js', join(repo, 'node_modules', '.bin', 'pkg'));
+    const generation = join(install.home, 'plugins', '.generations', 'k', 'g');
+    mkdirSync(generation, { recursive: true });
+    writeFileSync(join(generation, 'index.js'), 'export {}\n');
+    const alias = join(install.home, 'plugins', 'demo');
+    symlinkSync(generation, alias, 'dir');
+    const launcher = launch(install);
+    await waitFor('v1 ready', () =>
+      fixtureLog(install).includes('1.0.0 ready'),
+    );
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    const update = await waitFor(
+      'the update to finish',
+      () => finished(install),
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(update).toMatchObject({
+      status: 'rolled-back',
+      reason: 'candidate-exited:3',
+    });
+    expect(lstatSync(alias).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(alias)).toBe(generation);
+    expect(readlinkSync(join(repo, 'node_modules', '.bin', 'pkg'))).toBe(
+      '../pkg/cli.js',
+    );
+    expect(existsSync(join(install.home, 'config', 'trial-wrote.json'))).toBe(
+      false,
+    );
+  });
+
+  it('a restore that keeps failing ends in needs-operator, runs nothing, and a restart after the fix finishes it (F4)', async () => {
+    const { install, launcher } = await runningV1(
+      { trial: 'exit', homeSchemaVersion: 99 },
+      {},
+      { STATION_FIXTURE_RESTORE_FAIL: '1' },
+    );
+    const schemaBefore = homeSchemaVersion(install);
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    // Each failed restore exits the launcher; the service manager (this
+    // test) starts it again.
+    let current = launcher;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      expect((await current.exited).code).toBe(1);
+      expect(readState(install)?.update).toMatchObject({
+        status: 'pending',
+        phase: 'restoring',
+        restoreAttempts: attempt,
+      });
+      current = launch(install, { STATION_FIXTURE_RESTORE_FAIL: '1' });
+    }
+    const stuck = await waitFor(
+      'needs-operator',
+      () => {
+        const update = readState(install)?.update;
+        return update?.status === 'needs-operator' ? update : undefined;
+      },
+      30_000,
+      diagnostics(install, current),
+    );
+    expect(stuck).toMatchObject({
+      reason: 'candidate-exited:3',
+      restoreAttempts: 3,
+    });
+    // The server's reader (#2675 D3) reads the launcher's own record as
+    // needs-operator, never as unavailable.
+    expect(readServiceUpdateProgress(install.installRoot)).toEqual({
+      state: 'needs-operator',
+      requestId: expect.any(String),
+      fromVersion: '1.0.0',
+      targetVersion: '1.1.0',
+      reason: 'candidate-exited:3',
+      restoreAttempts: 3,
+      finishedAt: stuck.finishedAt,
+    });
+    // The recovery is logged right after the state is written.
+    await waitFor('the recovery instruction', () =>
+      current.output().includes('station service stop --instance='),
+    );
+    // It waits, serving nothing, instead of exiting into a restart loop.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    expect(current.process.exitCode).toBeNull();
+    expect(
+      fixtureLog(install).filter((line) => line === '1.0.0 run active'),
+    ).toHaveLength(1);
+    expect(
+      existsSync(
+        join(install.installRoot, 'runtime', 'update-backups', stuck.id),
+      ),
+    ).toBe(true);
+
+    // The operator fixes the cause and restarts the service.
+    current.process.kill('SIGTERM');
+    expect((await current.exited).code).toBe(0);
+    const fixed = launch(install);
+    const update = await waitFor(
+      'the rollback',
+      () => finished(install)?.status === 'rolled-back' && finished(install),
+      30_000,
+      diagnostics(install, fixed),
+    );
+    expect(update).toMatchObject({ reason: 'candidate-exited:3' });
+    await waitFor('v1 serving', () =>
+      fixtureLog(install).slice(-3).includes('1.0.0 ready'),
+    );
+    expect(homeSchemaVersion(install)).toBe(schemaBefore);
+  });
+
+  it('a claimed request whose child died is answered and no longer blocks the next one (F5)', async () => {
+    const install = makeLauncherInstall(makeTempDir('station-launcher-'));
+    addVersion(install, cli, '1.0.0');
+    addVersion(install, cli, '1.1.0', { trial: 'prepare' });
+    pointCurrent(install, '1.0.0');
+    const paths = serviceUpdatePaths(install.installRoot);
+    const orphan = {
+      id: '11111111-1111-4111-8111-111111111111',
+      requestedAt: new Date().toISOString(),
+      targetVersion: '1.1.0',
+    };
+    writeFileSync(paths.processing, JSON.stringify(orphan));
+    const launcher = launch(install);
+    await waitFor('v1 ready', () =>
+      fixtureLog(install).includes('1.0.0 ready'),
+    );
+    expect(existsSync(paths.processing)).toBe(false);
+    expect(JSON.parse(readFileSync(paths.result, 'utf8'))).toMatchObject({
+      requestId: orphan.id,
+      status: 'failed',
+    });
+    // The orphan did not become an update, and the next request runs.
+    expect(readState(install)?.update).toBeUndefined();
+    const request = writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    const update = await waitFor(
+      'the update to finish',
+      () => finished(install),
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(update).toMatchObject({
+      status: 'committed',
+      requestId: request.id,
+    });
+  });
+
+  it('sweeps a staged backup copy and orphaned backups left by a killed launcher (F6)', async () => {
+    const install = makeLauncherInstall(makeTempDir('station-launcher-'));
+    addVersion(install, cli, '1.0.0');
+    pointCurrent(install, '1.0.0');
+    const backups = join(install.installRoot, 'runtime', 'update-backups');
+    const stage = join(
+      backups,
+      '.22222222-2222-4222-8222-222222222222.4242.33333333-3333-4333-8333-333333333333.tmp',
+    );
+    mkdirSync(join(stage, 'home'), { recursive: true });
+    writeFileSync(join(stage, 'home', 'big.bin'), 'x'.repeat(1024));
+    mkdirSync(join(backups, '44444444-4444-4444-8444-444444444444'));
+    launch(install);
+    await waitFor('v1 ready', () =>
+      fixtureLog(install).includes('1.0.0 ready'),
+    );
+    expect(readdirSync(backups)).toEqual([]);
+  });
+
+  it('a stop during the liveness handoff does not wait for the handoff (F6)', async () => {
+    const { install, launcher } = await runningV1(
+      { trial: 'prepare' },
+      {},
+      {
+        STATION_FIXTURE_HANDOFF_BLOCK_MS: '20000',
+        STATION_LAUNCHER_TEST_TIMINGS: JSON.stringify({
+          stopGraceMs: 1_500,
+          ownStopTimeoutMs: 30_000,
+          handoffAckMs: 25_000,
+          preparedTimeoutMs: 6_000,
+        }),
+      },
+    );
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    await waitFor(
+      'the handoff to block',
+      () => fixtureLog(install).includes('1.0.0 handoff-blocked'),
+      30_000,
+      diagnostics(install, launcher),
+    );
+    const stoppedAt = Date.now();
+    launcher.process.kill('SIGTERM');
+    expect((await launcher.exited).code).toBe(0);
+    // Without the wakeup it would wait out the whole 25 s acknowledgement.
+    expect(Date.now() - stoppedAt).toBeLessThan(15_000);
+  });
+
+  it('refuses to snapshot a trial-modified home when the backup is gone (F7)', async () => {
+    const install = makeLauncherInstall(makeTempDir('station-launcher-'));
+    addVersion(install, cli, '1.0.0');
+    addVersion(install, cli, '1.1.0', { trial: 'prepare' });
+    pointCurrent(install, '1.0.0');
+    writeFileSync(
+      join(install.installRoot, 'runtime', 'service-state.json'),
+      JSON.stringify({
+        protocol: 1,
+        activeVersion: '1.0.0',
+        update: {
+          id: '55555555-5555-4555-8555-555555555555',
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          status: 'pending',
+          phase: 'trial',
+          attempts: 1,
+        },
+      }),
+    );
+    const launcher = launch(install);
+    const update = await waitFor(
+      'the update to finish',
+      () => finished(install),
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(update).toMatchObject({
+      status: 'failed',
+      reason: 'backup-missing',
+      attempts: 1,
+    });
+    await waitFor('v1 ready', () =>
+      fixtureLog(install).includes('1.0.0 ready'),
+    );
+    expect(fixtureLog(install)).not.toContain('1.0.0 update-home backup');
+    expect(fixtureLog(install)).not.toContain('1.1.0 run trial');
+  });
+});

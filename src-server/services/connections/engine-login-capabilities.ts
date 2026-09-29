@@ -210,41 +210,49 @@ interface CacheEntry {
   readonly value: EngineLoginCapabilities;
 }
 
-const cache = new Map<EnrolmentEngine, CacheEntry>();
-const inFlight = new Map<EnrolmentEngine, Promise<EngineLoginCapabilities>>();
+export type EngineLoginCapabilityObserver = (
+  engine: EnrolmentEngine,
+) => Promise<EngineLoginCapabilities>;
 
 /**
- * Ask this engine's CLI how it can be signed in.
+ * An observer that asks each engine's CLI how it can be signed in, and owns
+ * the cache and in-flight probes for its answers.
  *
  * Bounded (the probe inherits `runCliCommand`'s timeout), cached for
  * {@link ENGINE_LOGIN_CAPABILITY_TTL_MS}, and single-flight: concurrent
  * callers share one process rather than each spawning their own.
  */
-export async function engineLoginCapabilities(
-  engine: EnrolmentEngine,
+export function createEngineLoginCapabilityObserver(
   deps: EngineLoginCapabilityDeps = defaultEngineLoginCapabilityDeps(),
-): Promise<EngineLoginCapabilities> {
-  const nowMs = deps.now().getTime();
-  const cached = cache.get(engine);
-  if (cached && nowMs - cached.observedAtMs < ENGINE_LOGIN_CAPABILITY_TTL_MS) {
-    return cached.value;
-  }
-  const existing = inFlight.get(engine);
-  if (existing) return existing;
-  const pending = observeEngineLoginCapabilities(engine, deps)
-    .then((value) => {
-      cache.set(engine, { observedAtMs: nowMs, value });
-      return value;
-    })
-    .finally(() => {
-      inFlight.delete(engine);
-    });
-  inFlight.set(engine, pending);
-  return pending;
+): EngineLoginCapabilityObserver {
+  const cache = new Map<EnrolmentEngine, CacheEntry>();
+  const inFlight = new Map<EnrolmentEngine, Promise<EngineLoginCapabilities>>();
+  return async (engine) => {
+    const nowMs = deps.now().getTime();
+    const cached = cache.get(engine);
+    if (
+      cached &&
+      nowMs - cached.observedAtMs < ENGINE_LOGIN_CAPABILITY_TTL_MS
+    ) {
+      return cached.value;
+    }
+    const existing = inFlight.get(engine);
+    if (existing) return existing;
+    const pending = observeEngineLoginCapabilities(engine, deps)
+      .then((value) => {
+        cache.set(engine, { observedAtMs: nowMs, value });
+        return value;
+      })
+      .finally(() => {
+        inFlight.delete(engine);
+      });
+    inFlight.set(engine, pending);
+    return pending;
+  };
 }
 
-/** Test seam: forget every observation so the next call re-probes. */
-export function resetEngineLoginCapabilityCache(): void {
-  cache.clear();
-  inFlight.clear();
-}
+/**
+ * The one observer this process shares: the enrolment routes and device-code
+ * login read the same cache and join the same in-flight probe.
+ */
+export const engineLoginCapabilities = createEngineLoginCapabilityObserver();

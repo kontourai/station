@@ -72,9 +72,50 @@ for (const forge of ['github', 'gitlab'] as const)
       ).toBe(true);
     });
     test('keeps discussion readable when a bounded diff is unavailable', async () => {
+      // Each forge delivers its discussion newest-first; the snapshot reads
+      // oldest-first across comments and reviews.
       const run = vi.fn(async (args: string[]) => {
-        if (args[1] === 'view') return json(raw(forge));
-        if (args[1].includes('notes?')) return json([]);
+        if (args[1] === 'view')
+          return json(
+            forge === 'github'
+              ? {
+                  ...raw(forge),
+                  comments: [
+                    {
+                      id: 'IC_2',
+                      author: { login: 'alice' },
+                      body: 'Looks close.',
+                      createdAt: '2026-01-02T00:00:00Z',
+                    },
+                  ],
+                  reviews: [
+                    {
+                      id: 'PRR_1',
+                      author: { login: 'bob' },
+                      body: 'Needs a test.',
+                      submittedAt: '2026-01-01T00:00:00Z',
+                      state: 'CHANGES_REQUESTED',
+                    },
+                  ],
+                }
+              : raw(forge),
+          );
+        if (args[1].includes('notes?'))
+          return json([
+            {
+              id: 12,
+              author: { username: 'alice' },
+              body: 'Looks close.',
+              created_at: '2026-01-02T00:00:00Z',
+            },
+            {
+              id: 11,
+              author: { username: 'bob' },
+              body: 'Needs a test.',
+              created_at: '2026-01-01T00:00:00Z',
+            },
+          ]);
+        if (args[1].endsWith('/approvals')) return json({ approved_by: [] });
         return { stdout: 'x'.repeat(262145) };
       });
       const result = await readPullRequestReview(
@@ -89,12 +130,45 @@ for (const forge of ['github', 'gitlab'] as const)
       expect(result).toMatchObject({
         headSha: head,
         baseSha: base,
-        pullRequest: {
-          repository: context.repository.owner
-            ? { owner: 'group/nested', name: 'repo' }
-            : {},
-        },
+        pullRequest: { repository: { owner: 'group/nested', name: 'repo' } },
       });
+      expect(result.discussionPartial).toBe(false);
+      expect(result.discussion).toEqual(
+        forge === 'github'
+          ? [
+              {
+                id: 'PRR_1',
+                author: 'bob',
+                body: 'Needs a test.',
+                createdAt: '2026-01-01T00:00:00Z',
+                kind: 'review',
+                state: 'CHANGES_REQUESTED',
+              },
+              {
+                id: 'IC_2',
+                author: 'alice',
+                body: 'Looks close.',
+                createdAt: '2026-01-02T00:00:00Z',
+                kind: 'comment',
+              },
+            ]
+          : [
+              {
+                id: '11',
+                author: 'bob',
+                body: 'Needs a test.',
+                createdAt: '2026-01-01T00:00:00Z',
+                kind: 'comment',
+              },
+              {
+                id: '12',
+                author: 'alice',
+                body: 'Looks close.',
+                createdAt: '2026-01-02T00:00:00Z',
+                kind: 'comment',
+              },
+            ],
+      );
     });
     test('changed revision refuses before any provider write', async () => {
       const run = vi.fn(async (args: string[]) =>

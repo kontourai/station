@@ -19,8 +19,8 @@
  *
  * - It resolves EXPRESSIONS, not just the argument at the read call. The
  *   argument is frequently a callback parameter
- *   (`[join(__dirname, a), join(__dirname, b)].map((p) => readFileSync(p))`,
- *   `conversationContextBoundaryStatusCache.test.tsx`), and a dataflow
+ *   (`[join(__dirname, a), join(__dirname, b)].map((p) => readFileSync(p))`),
+ *   and a dataflow
  *   evaluator good enough for that is a much larger thing to trust than a
  *   superset that over-selects. Over-selection costs a scheduled test; the
  *   omission this exists to prevent costs a silent red on `main`.
