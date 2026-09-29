@@ -223,14 +223,20 @@ record command. Catch-up also reads the earlier single-file layout
 puts a record into a change's scope.
 
 A branch that recorded reviews in the old single file conflicts when it merges
-`main`: the file is modified on the branch and deleted on `main`. Keep the
-branch's version of the old file, then fold it into the new layout:
+`main`: the file is modified on the branch and deleted on `main`. Git leaves
+the branch's version in the working tree. Fold it into the new layout while
+the merge is still in progress:
 
 ```sh
-git checkout --ours -- docs/learn/review-ledger.json   # --theirs when the branch is the side being merged in
 node scripts/migrate-review-ledger.mjs --base "$(git merge-base HEAD MERGE_HEAD)"
 git add -A docs/learn && git commit --no-edit
 ```
+
+If the branch also re-reviewed a capture, `docs/learn/media.json` conflicts
+too. The command resolves that file itself. For each conflicting hunk it keeps
+the side that still has the old ledger, keeps the other side's clean edits,
+and then moves the review fields into the ledger. It judges bindings to
+`media.json` against the bytes it writes, not the conflicted working copy.
 
 The command applies each record the branch changed since that base. It merges
 bindings per source, adds the branch's appended checks as one new notes file
