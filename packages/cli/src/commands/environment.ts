@@ -665,8 +665,9 @@ async function runEnvironmentOfferCommand(
  * factory is injected, or when the SSH-side lookup itself fails.
  *
  * station#1123 slice 3 update: the credential provisioned here is no
- * longer unenforced in this case. `connectSshTarget` now also fetches this
- * same store entry and attaches its `Authorization: Bearer` header to
+ * longer unenforced in this case. The SSH target resolution (since #2377
+ * C2b, the runtime's `RemoteStationForwarder`) also reads this same store
+ * entry in-process and attaches its `Authorization: Bearer` header to
  * requests over the SSH tunnel, so its scope IS what governs access there
  * (the credential requirement in `runtime-http.ts` is what makes that
  * enforceable). SSH precedence now means only "connection routing (the

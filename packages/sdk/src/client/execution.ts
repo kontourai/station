@@ -24,6 +24,7 @@ import {
 } from './api-error-message';
 import { ChatHttpError, isStationEnvelope } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 /**
  * #2436: an approval-posture decision a send carries (a pick made before the
  * chat had a session, or while offline), and its compare-and-set basis: the
@@ -163,6 +164,7 @@ async function readExecutionBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
   } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) {
       const failed = `Execution API error: ${response.status}`;
       throw chatRefusal(response, undefined, failed);

@@ -4,6 +4,7 @@ import {
   parseLiveActivityProjection,
 } from '@kontourai/station-contracts/live-activity';
 import { authenticatedFetch } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export class LiveActivityProtocolError extends Error {
   constructor(message: string) {
@@ -27,7 +28,8 @@ export async function fetchLiveActivity(
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new LiveActivityProtocolError('Live activity response is not JSON');
   }
   if (

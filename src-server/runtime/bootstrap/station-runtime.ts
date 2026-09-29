@@ -172,6 +172,7 @@ import {
   terminalWorktreeStateForExit,
   WorktreeProvisioningService,
 } from '../../services/projects/worktree-provisioning-service.js';
+import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
   FileSecretBindingAdministration,
@@ -1320,6 +1321,18 @@ export class StationRuntime {
           projectHomeDir,
         });
       this.unattendedGrantStore = new UnattendedGrantStore(projectHomeDir);
+      // #2377 slice C2b: a bound Discord conversation on a saved Environment
+      // forwards through the remote seam, as the routes do. Built once, here;
+      // the SSH service is assigned later in startup, so it is read at call
+      // time rather than captured now.
+      const remoteStations = createRemoteStationForwarder({
+        ssh: {
+          list: () => this.sshEnvironmentService.list(),
+          connect: (id) => this.sshEnvironmentService.connect(id),
+        },
+        peers: new PeerCredentialStore(projectHomeDir),
+        warn: (message) => this.logger.warn(message),
+      });
       this.discordGatewayService = new DiscordGatewayService({
         homeDir: projectHomeDir,
         logger: this.logger,
@@ -1335,7 +1348,11 @@ export class StationRuntime {
           // itself; its loopback calls run as server code.
           const orchestrationService = this.orchestrationService;
           return runAsStationServer(() =>
-            continueExecutionTargetMessage(input, orchestrationService),
+            continueExecutionTargetMessage(
+              input,
+              orchestrationService,
+              remoteStations,
+            ),
           );
         },
         readTranscript: ({ sessionId, turnId }) =>
