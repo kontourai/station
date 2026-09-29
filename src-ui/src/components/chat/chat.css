@@ -844,6 +844,14 @@
   opacity: 0.85;
 }
 
+/* On a fine pointer the bubble's actions button sits inside its bottom-right
+   corner (`.message__copy-btn`), which is where this last line ends. */
+@media (min-width: 769px) and (pointer: fine) {
+  .message__steer-note {
+    padding-inline-end: 32px;
+  }
+}
+
 .message__thinking {
   display: flex;
   align-items: center;
