@@ -29522,7 +29522,7 @@
         "Integration source review through 84d56b9a8: e1af43c2c added the 'Recorded versus acknowledged decisions' section to cli.md. The README's links to cli.md and its claims about timeouts, streams and published-CLI boundaries are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) extended the service and upgrade sections of docs/reference/cli.md (fixed launcher, stage-and-handoff upgrade, client-started update). The merged reference is coherent. The README's claims still hold: packaged service status|start|stop, and a prebuilt archive's own lifecycle CLI installing a service and running upgrade. Prose accurate. Source review is separate from executed test evidence.",
         "Re-read '@kontourai/station-cli' against C2b: environment.ts changes only a comment naming the forwarder. The document makes no claim about those behaviours, so its statements still hold.",
-        "#2966 delta: new connections profile-env command documented in docs/reference/cli.md; this README does not enumerate connections actions (its profiles.json text is saved-Station profiles, unrelated). No change."
+        "#2966 delta: new connections profile-env command documented in docs/reference/cli.md; this README does not enumerate connections actions (its profiles.json text describes saved Stations, unrelated). No change."
       ]
     },
     {
