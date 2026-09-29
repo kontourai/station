@@ -4774,6 +4774,10 @@ button.tool-call__line:hover {
    --color-bg-tertiary alias: the alias was never defined and painted nothing
    (station#1246). */
 .tool-call__status-badge {
+  /* A one- or two-word outcome ("Cancelled", "Output truncated") never
+     breaks mid-word in a narrow row; the label beside it ellipsizes instead. */
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 0.7em;
   padding: 2px 6px;
   background: var(--bg-tertiary);
