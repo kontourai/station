@@ -172,7 +172,10 @@ describe('useChatInput last-chosen model memory', () => {
     availableModels = [fastModel],
     catalogSource: RuntimeCatalogSource = provider === 'acp' ? 'live' : 'none',
     conversationId: string | undefined = undefined,
-    conversationAwaitingFirstTurn = false,
+    orchestrationSession: {
+      draft?: boolean;
+      terminalAttribution?: { kind: 'send_refused'; detail: string };
+    } | null = null,
   ) {
     activeChatsStore.updateChat(SESSION_ID, {
       provider,
@@ -191,7 +194,7 @@ describe('useChatInput last-chosen model memory', () => {
           sessionId: SESSION_ID,
           agentSlug: (mockAgent as AgentData | null)?.slug ?? null,
           conversationId,
-          conversationAwaitingFirstTurn,
+          orchestrationSession,
           availableModels,
           bindingStatus: {
             catalogSource,
@@ -247,6 +250,13 @@ describe('useChatInput last-chosen model memory', () => {
     );
   });
 
+  const refusedFirstSend = {
+    terminalAttribution: {
+      kind: 'send_refused' as const,
+      detail: 'Station refused the send before it started.',
+    },
+  };
+
   // A conversation whose only send was refused (or that never sent) has no
   // engine history: the server starts the next send on a successor session
   // with the chosen model (`conversation-lineage.ts` `needsModelRestart`),
@@ -259,11 +269,27 @@ describe('useChatInput last-chosen model memory', () => {
       [fastModel],
       'live',
       'existing-conversation',
-      true,
+      refusedFirstSend,
     );
 
     expect(result.current.canModelSelect).toBe(true);
     expect(result.current.modelSelectionReason).toBeUndefined();
+  });
+
+  // The summary is a read that lags: a first turn now running must not read
+  // as a Draft and reopen a picker the engine cannot honour mid-conversation.
+  test('a turn in flight outranks a stale never-ran summary', () => {
+    mockAgent = externalAgent;
+    activeChatsStore.updateChat(SESSION_ID, { status: 'sending' });
+    const { result } = renderWithProvider(
+      'acp',
+      [fastModel],
+      'live',
+      'existing-conversation',
+      { draft: true },
+    );
+
+    expect(result.current.canModelSelect).toBe(false);
   });
 
   test('an ACP connection with no observed model catalog keeps the picker disabled (#2848)', () => {

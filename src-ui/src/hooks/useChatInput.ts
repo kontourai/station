@@ -2,6 +2,7 @@ import {
   ACP_MODEL_OVERRIDE_PER_TURN,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
@@ -23,6 +24,7 @@ import {
   useActiveChatSelector,
 } from '../contexts/ActiveChatsContext';
 import { useAgent } from '../contexts/AgentsContext';
+import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../contexts/conversation-open-policy';
@@ -43,6 +45,7 @@ import {
   isFullAccessRefusal,
   supersededPickNote,
 } from '../utils/approvalMode';
+import { conversationAwaitsFirstTurn } from '../utils/conversationFirstTurn';
 import {
   type BindingStatus,
   type EffectiveModelSource,
@@ -88,13 +91,14 @@ type ComposerChatSlice = Pick<
   | 'providerId'
   | 'defaultProviderId'
   | 'orchestrationProvider'
->;
+> & { turnInFlight: boolean };
 
 function selectComposerSlice(
   state: ChatUIState | null,
 ): ComposerChatSlice | null {
   if (!state) return null;
   return {
+    turnInFlight: isTurnInFlight(state),
     conversationOpenState: state.conversationOpenState,
     conversationOpenPending: state.conversationOpenPending,
     conversationOpenFailed: state.conversationOpenFailed,
@@ -122,11 +126,15 @@ interface UseChatInputOptions {
   agentSlug: string | null;
   conversationId?: string;
   /**
-   * The server says this conversation has never run a turn: a Draft, or a
-   * session whose only sends were refused or failed (`isFirstSendFailure`).
-   * Such a conversation has no engine history a model switch could strand.
+   * The server's summary of the chat's current Session. With the chat's own
+   * turn state it says whether the conversation has never run a turn (see
+   * `conversationAwaitsFirstTurn`): such a conversation has no engine history
+   * a model switch could strand.
    */
-  conversationAwaitingFirstTurn?: boolean;
+  orchestrationSession?: Pick<
+    OrchestrationSessionSummary,
+    'draft' | 'terminalAttribution'
+  > | null;
   availableModels: SelectableModel[];
   modelsStale?: boolean;
   bindingStatus?: BindingStatus;
@@ -182,7 +190,7 @@ export function useChatInput({
   sessionId,
   agentSlug,
   conversationId,
-  conversationAwaitingFirstTurn = false,
+  orchestrationSession,
   availableModels,
   modelsStale = false,
   bindingStatus,
@@ -395,7 +403,10 @@ export function useChatInput({
     Boolean(conversationId) &&
     activeChatState?.provider === 'acp' &&
     !ACP_MODEL_OVERRIDE_PER_TURN &&
-    !conversationAwaitingFirstTurn;
+    !conversationAwaitsFirstTurn(
+      orchestrationSession,
+      activeChatState?.turnInFlight ?? false,
+    );
   const modelSelectionReason = continuationOverrideUnsupported
     ? 'This engine can choose a model for a new chat, but cannot change it in an existing conversation.'
     : engineModelSelection.state === 'unsupported'

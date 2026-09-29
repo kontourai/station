@@ -865,6 +865,13 @@ export function useSendMessage(
         if (err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE) {
           invalidate(['connections', 'engines']);
         }
+        // A send that did not take can turn a Draft into a first-send failure
+        // (or leave one). The composer reads that from the session list, which
+        // is otherwise fetched once — without this the model picker a refused
+        // first send should unlock stayed locked until a reload.
+        if (!foregroundIndeterminate && !dispatchClaim) {
+          invalidate(['orchestration-sessions']);
+        }
         if (foregroundIndeterminate) {
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);

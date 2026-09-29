@@ -1,5 +1,4 @@
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
-import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import {
   type ConnectionConfig,
   EXECUTION_MODE,
@@ -955,11 +954,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionId: activeSessionId,
     agentSlug: activeSessionForHook?.agentSlug || null,
     conversationId: activeSessionForHook?.conversationId,
-    conversationAwaitingFirstTurn: Boolean(
-      activeOrchestrationSession &&
-        (activeOrchestrationSession.draft === true ||
-          isFirstSendFailure(activeOrchestrationSession)),
-    ),
+    orchestrationSession: activeOrchestrationSession,
     availableModels: effectiveModels,
     modelsStale,
     bindingStatus,
