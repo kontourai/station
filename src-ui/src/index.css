@@ -4084,6 +4084,11 @@ button:hover {
 
 .message.assistant .chat-markdown-table table {
   margin: 0;
+  /* Inside its scroller a table sizes to its content, each column up to the
+     cell cap below, instead of splitting the viewport between columns: a
+     prose column squeezed to its longest word made rows several hundred
+     pixels tall on a phone. */
+  width: max-content;
 }
 
 .message.assistant table th,
@@ -4094,10 +4099,10 @@ button:hover {
   vertical-align: top;
   overflow-wrap: normal;
   word-break: normal;
-  /* A floor per column so a prose column is not squeezed to its longest
-     word (a very tall row) once the table is wider than the phone anyway;
-     the wrapper scrolls. */
-  min-width: 9rem;
+  /* A readable measure per column: at least 6rem, at most 20rem before a
+     cell wraps. */
+  min-width: 6rem;
+  max-width: 20rem;
 }
 
 .message.assistant table td code,
