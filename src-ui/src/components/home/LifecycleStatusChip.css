@@ -67,7 +67,7 @@
 
 /* A state that changed under the user's eyes morphs in (transform/opacity
    only; no layout moves — the chip's box is the same size in and out). */
-.lifecycle-chip[data-lifecycle-morph='true'] {
+.lifecycle-chip[data-lifecycle-morph="true"] {
   animation: lifecycle-chip-morph var(--motion-slow) var(--ease-spring) both;
 }
 
