@@ -236,18 +236,25 @@ const MCP_TOOL_NAME = /^mcp__(.+?)__(.+)$/;
 
 /**
  * The label of the session-grant decision (`acceptForSession`), shared by the
- * approval toast and the inline card (#2316). The grant is a standing grant
- * for EVERY later call to the same tool in this session (#2299), so the label
- * names both the tool and the session scope: "Always Allow" overstated its
- * duration and hid its breadth. Name the tool only when the request reported
- * one — adapter display text (Codex's is a whole command line) would mislead
- * about the grant's scope.
+ * approval toast, the durable inbox card and the inline card (#2316). When the
+ * request reports a tool name, the adapter records a standing grant for EVERY
+ * later call to that tool in this session (#2299), so the label names both
+ * the tool and the session scope: "Always Allow" overstated its duration and
+ * hid its breadth.
+ *
+ * When the request reports NO tool name, Station records no tool grant at
+ * all: the decision is forwarded as the engine's own session-scoped option
+ * (ACP `allow_always`, Codex `acceptForSession`), whose breadth the engine
+ * decides — for Codex it is the one command, not the tool. So the nameless
+ * label claims only the session scope. It never names adapter display text
+ * either: a title (Codex's and OpenCode's are the whole command line) would
+ * misstate the grant as covering exactly that string.
  */
 export function toolRequestGrantLabel(toolName: string | undefined): string {
   const displayName = toolRequestDisplayName(toolName);
   return displayName
     ? `Allow ${displayName} for this session`
-    : 'Allow this tool for this session';
+    : 'Allow for this session';
 }
 
 /**

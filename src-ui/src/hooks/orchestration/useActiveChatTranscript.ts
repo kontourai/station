@@ -499,6 +499,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             toolCallId: part.toolCallId,
             sourceEventId: part.sourceEventId,
             toolName: part.toolName,
+            ...(part.toolKind !== undefined ? { toolKind: part.toolKind } : {}),
             args: part.args,
             result: part.result,
             output: part.output,
@@ -513,6 +514,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             approvalId: part.approvalId,
             approvalThreadId: part.approvalThreadId,
             approvalEventId: part.approvalEventId,
+            ...(part.approvalToolName !== undefined
+              ? { approvalToolName: part.approvalToolName }
+              : {}),
             approvalStatus: part.approvalStatus,
           };
           // Preserve the same tool-result identity and sanitized blocks as

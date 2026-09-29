@@ -85,6 +85,7 @@ function showApprovalToast(
   };
   const toastId = toastStore.showToolApproval({
     sessionId: event.threadId,
+    requestId: event.requestId,
     toolName: view.toolName,
     ...(view.toolPreview ? { toolPreview: view.toolPreview } : {}),
     agentName: view.agentName,

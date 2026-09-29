@@ -6,8 +6,8 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
-  toolRequestDisplayName,
   toolRequestFromPayload,
+  toolRequestGrantLabel,
 } from '@kontourai/station-shared/tool-request-preview';
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
 import { approvalInboxOps } from '../../telemetry/metrics.js';
@@ -424,12 +424,12 @@ export function wireApprovalInboxNotifications(
         // only way the durable card says it — fixing the live toast alone left
         // the inbox row still reading "Allow for Session".
         //
-        // `toolRequestDisplayName` collapses an `mcp__<server>__<tool>` wire
+        // `toolRequestGrantLabel` collapses an `mcp__<server>__<tool>` wire
         // name and bounds it. When the payload reported no tool name, stay
         // generic rather than reaching for `event.title`: that is adapter
         // display text (for Codex, the literal shell command), and a grant
         // label built from it would misstate the grant's scope.
-        const grantToolName = toolRequestDisplayName(
+        const grantLabel = toolRequestGrantLabel(
           toolRequestFromPayload(event.payload).toolName,
         );
         const notification = await notificationService.schedule(
@@ -443,9 +443,8 @@ export function wireApprovalInboxNotifications(
               { id: 'accept', label: 'Allow Once', variant: 'primary' },
               {
                 id: 'acceptForSession',
-                label: grantToolName
-                  ? `Allow ${grantToolName} for this session`
-                  : 'Allow this tool for this session',
+                // The one label every approval surface uses (#2316).
+                label: grantLabel,
                 variant: 'secondary',
               },
               { id: 'decline', label: 'Deny', variant: 'danger' },
@@ -468,7 +467,7 @@ export function wireApprovalInboxNotifications(
               sessionKind: ORCHESTRATION_SESSION_KIND,
               threadId: event.threadId,
               // Raw, not the display form: this is provenance for consumers,
-              // and `grantToolName` above is the display form for the button.
+              // and `grantLabel` above is the display form for the button.
               toolName: toolRequestFromPayload(event.payload).toolName,
             },
           },

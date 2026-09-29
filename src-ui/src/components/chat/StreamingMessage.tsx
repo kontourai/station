@@ -267,10 +267,12 @@ export function StreamingMessageView({
               elapsedMs !== undefined ||
               workingStartedAt !== undefined ? (
                 <ElapsedWait
-                  label={
-                    statusLabel ??
-                    `${workingLabel.replace(/[.\u2026]+$/u, '')} for`
-                  }
+                  // The clock is the TURN's (server open-turn start), so the
+                  // timed label names the turn, never the current phase:
+                  // "Thinking for 6:59" claimed seven minutes of thinking
+                  // across a turn that spent them running a command. What
+                  // the turn is doing now is the progress row's to say.
+                  label={statusLabel ?? 'Working for'}
                   separator={statusLabel ? ' · ' : ' '}
                   startedAt={statusLabel ? mountedAt : workingStartedAt}
                   elapsedMs={elapsedMs}

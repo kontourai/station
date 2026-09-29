@@ -182,7 +182,12 @@ function ChatMessageListComponent({
             approvalEvents
               .map((item) => item.event)
               .filter((event) => Boolean(event.eventId)),
-            activeSession.orchestrationTurnOpen
+            // Only the live streaming shell holds an open turn's row without
+            // an answerable card. When the transcript window projects the
+            // open turn instead (`suppressStreamingRow`), that row carries the
+            // bound request and renders Allow/Deny itself — unexpanded, even
+            // inside a batch — so the strip must not render a second one.
+            activeSession.orchestrationTurnOpen && !suppressStreamingRow
               ? activeSession.openTurnId
               : undefined,
           )
@@ -192,6 +197,7 @@ function ChatMessageListComponent({
       activeSession.replay,
       activeSession.orchestrationTurnOpen,
       activeSession.openTurnId,
+      suppressStreamingRow,
       approvalEvents,
     ],
   );

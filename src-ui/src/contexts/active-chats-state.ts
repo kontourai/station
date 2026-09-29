@@ -94,6 +94,8 @@ export type ChatContentPart = {
   sourceEventId?: string;
   // Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
   toolName?: string;
+  /** See `MessagePart.toolKind`: the engine's own category, when reported. */
+  toolKind?: string;
   purpose?: string;
   server?: string;
   originalName?: string;
@@ -111,6 +113,8 @@ export type ChatContentPart = {
   approvalThreadId?: string;
   /** #2316: see `MessagePart.approvalEventId`. */
   approvalEventId?: string;
+  /** See `MessagePart.approvalToolName`. */
+  approvalToolName?: string;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'

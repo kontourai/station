@@ -516,11 +516,34 @@ export interface ContentReasoningDeltaEvent extends CanonicalRuntimeEventBase {
   delta: string;
 }
 
+/**
+ * The engine's own category for a tool call, when it reports one. This is the
+ * Agent Client Protocol `ToolKind` vocabulary verbatim: ACP engines send it on
+ * `tool_call`/`tool_call_update` so a client can pick an icon and a verb
+ * without guessing from `toolName`. That matters because an ACP call with no
+ * programmatic name reports its human `title` as `toolName` — for OpenCode's
+ * shell tool that is the whole command line, which no name heuristic can
+ * classify.
+ */
+export type EngineToolKind =
+  | 'read'
+  | 'edit'
+  | 'delete'
+  | 'move'
+  | 'search'
+  | 'execute'
+  | 'think'
+  | 'fetch'
+  | 'switch_mode'
+  | 'other';
+
 export interface ToolStartedEvent extends CanonicalRuntimeEventBase {
   method: 'tool.started';
   itemId: string;
   toolCallId: string;
   toolName: string;
+  /** See {@link EngineToolKind}. Absent when the engine reported no kind. */
+  toolKind?: EngineToolKind;
   arguments?: unknown;
   /** Bounded, untrusted model-stated intent; never approval evidence. */
   purpose?: string;
@@ -571,6 +594,8 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   itemId: string;
   toolCallId: string;
   toolName: string;
+  /** See {@link EngineToolKind}. Absent when the engine reported no kind. */
+  toolKind?: EngineToolKind;
   purpose?: string;
   /**
    * The observed outcome of the call.

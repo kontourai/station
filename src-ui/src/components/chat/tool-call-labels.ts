@@ -15,7 +15,10 @@
  * module the streaming progress indicator uses) is the shared fallback so
  * this doesn't invent a second naming scheme.
  */
-import { formatToolName } from '../../utils/chat-progress';
+import {
+  formatToolName,
+  isProgrammaticToolName,
+} from '../../utils/chat-progress';
 import { toolDisplayView } from './tool-display-view';
 
 export type ToolCallKind = 'read' | 'write' | 'exec' | 'search' | 'other';
@@ -168,6 +171,88 @@ export function classifyToolName(toolName: string | undefined): ToolCallKind {
   return 'other';
 }
 
+/**
+ * The engine's own category (ACP `ToolKind`) in this row taxonomy. `fetch`,
+ * `think` and `switch_mode` have no verb of their own here and stay `other`.
+ */
+const ENGINE_KIND: Readonly<Record<string, ToolCallKind>> = {
+  read: 'read',
+  edit: 'write',
+  delete: 'write',
+  move: 'write',
+  search: 'search',
+  execute: 'exec',
+  fetch: 'other',
+  think: 'other',
+  switch_mode: 'other',
+  other: 'other',
+};
+
+function stringField(args: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return undefined;
+}
+
+/**
+ * Classify by the arguments' SHAPE, for a call whose name is display text.
+ * The field names are the ones the engines actually send: OpenCode's shell
+ * tool `{command, description}`, its file tools `{filePath, ...}` with
+ * `content`/`oldString`/`newString` for a write, `{pattern, path}` for
+ * grep/glob.
+ */
+function classifyToolArgs(args: unknown): ToolCallKind {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return 'other';
+  const a = args as Record<string, unknown>;
+  const command = a.command ?? a.cmd;
+  if (
+    (typeof command === 'string' && command.trim()) ||
+    (Array.isArray(command) && command.length > 0)
+  )
+    return 'exec';
+  const path = stringField(a, ['file_path', 'filePath', 'filepath', 'path']);
+  if (
+    path &&
+    ['content', 'oldString', 'newString', 'old_string', 'new_string', 'patch']
+      .map((key) => a[key])
+      .some((value) => typeof value === 'string')
+  )
+    return 'write';
+  if (stringField(a, ['pattern', 'query', 'glob'])) return 'search';
+  if (path) return 'read';
+  return 'other';
+}
+
+export interface ToolCallIdentity {
+  toolName?: string;
+  toolKind?: unknown;
+  args?: unknown;
+}
+
+/**
+ * The row kind for one call, most authoritative evidence first:
+ *
+ * 1. the engine's own `toolKind` (ACP engines report one per call);
+ * 2. a programmatic tool name (`Bash`, `shell_exec`, `mcp__x__read_file`);
+ * 3. the shape of the arguments, when the "name" is display text.
+ *
+ * Step 3 exists because tokenizing a title guessed from whatever words the
+ * command happened to contain: `cd /tmp && gh api … > gsd.mjs` classified as
+ * a read in one render and a search in another, and a plain shell command
+ * with no `run`/`grep` in it fell through to `other`.
+ */
+export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
+  if (typeof call.toolKind === 'string' && call.toolKind in ENGINE_KIND) {
+    return ENGINE_KIND[call.toolKind]!;
+  }
+  if (isProgrammaticToolName(call.toolName)) {
+    return classifyToolName(call.toolName);
+  }
+  return classifyToolArgs(call.args);
+}
+
 const MAX_TARGET_LENGTH = 60;
 
 function truncate(value: string, max = MAX_TARGET_LENGTH): string {
@@ -186,6 +271,22 @@ function firstLine(value: string): string {
   return idx >= 0 ? value.slice(0, idx) : value;
 }
 
+/** `A=1 B='x y' npm test` → `npm test`. */
+const LEADING_ENV_ASSIGNMENTS =
+  /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|"[^"]*"|[^\s'"]*)\s+)+/;
+
+/**
+ * The collapsed row's form of a shell command: its first line, with any
+ * leading `NAME=value` environment assignments dropped so the command itself
+ * is what fits (`STATION_DOCS_FRESHNESS=scoped npm run docs:check` →
+ * `npm run docs:check`). The expanded row still prints the command verbatim.
+ */
+function commandTarget(command: string): string {
+  const line = firstLine(command).trim();
+  const withoutEnv = line.replace(LEADING_ENV_ASSIGNMENTS, '');
+  return truncate(withoutEnv || line);
+}
+
 /** A concise, human target for one call — "app.tsx" for a Read, a truncated
  * command for a Bash/shell_exec call. Falls back to the change list on
  * patch-style edits that carry no top-level path. A raw STRING argument (an
@@ -194,7 +295,8 @@ function firstLine(value: string): string {
  * visible in the collapsed row on that path too. */
 function extractTarget(kind: ToolCallKind, args: unknown): string | null {
   if (typeof args === 'string') {
-    return args.trim() ? truncate(firstLine(args)) : null;
+    if (!args.trim()) return null;
+    return kind === 'exec' ? commandTarget(args) : truncate(firstLine(args));
   }
   if (!args || typeof args !== 'object') return null;
   const a = args as Record<string, unknown>;
@@ -227,9 +329,9 @@ function extractTarget(kind: ToolCallKind, args: unknown): string | null {
   }
 
   if (kind === 'exec') {
-    const command = a.command;
+    const command = a.command ?? a.cmd;
     if (typeof command === 'string' && command.trim()) {
-      return truncate(firstLine(command));
+      return commandTarget(command);
     }
     if (Array.isArray(command) && command.length > 0) {
       return truncate(command.join(' '));
@@ -269,6 +371,12 @@ export function callLabel(
         : cfg.verb;
   const target = extractTarget(kind, args);
   if (target) return `${verb} ${target}`;
+  // No argument named a target, so the name is the target. Display text (an
+  // ACP title: the command line, the path) is shown as the engine wrote it,
+  // env-trimmed for a command exactly like an argument would be.
+  if (toolName.trim() && !isProgrammaticToolName(toolName)) {
+    return `${verb} ${kind === 'exec' ? commandTarget(toolName) : truncate(toolName)}`;
+  }
   const fallbackName = formatToolName(toolName);
   return fallbackName ? `${verb} ${fallbackName}` : verb;
 }

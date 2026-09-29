@@ -733,15 +733,19 @@ function MessageBubbleComponent({
         {!isMobile && metadataAfter}
         {msg.role === 'assistant' && isLastMessage && (
           <>
-            {activeSession.isThinking && textContent && (
-              <div className="message__thinking">
-                <span className="loading-dots">
-                  <span style={{ animationDelay: '0s' }}>●</span>
-                  <span style={{ animationDelay: '0.2s' }}>●</span>
-                  <span style={{ animationDelay: '0.4s' }}>●</span>
-                </span>
-              </div>
-            )}
+            {/* Paused on a decision is not working: the typing dots beside
+                "Awaiting tool approval" told two stories at once. */}
+            {activeSession.isThinking &&
+              textContent &&
+              (activeSession.pendingApprovalCount ?? 0) === 0 && (
+                <div className="message__thinking">
+                  <span className="loading-dots">
+                    <span style={{ animationDelay: '0s' }}>●</span>
+                    <span style={{ animationDelay: '0.2s' }}>●</span>
+                    <span style={{ animationDelay: '0.4s' }}>●</span>
+                  </span>
+                </div>
+              )}
             {activeSession.pendingApprovalCount !== undefined &&
               activeSession.pendingApprovalCount > 0 && (
                 <div className="message__pending-approval">

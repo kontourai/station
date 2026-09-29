@@ -253,6 +253,35 @@ function ToastCard({
   );
 }
 
+/**
+ * Scroll the first pending approval that has an answerable card on screen
+ * (`ToolCallDisplay` marks one with its request's thread and id) into view
+ * and focus its first decision button. Returns whether it found one.
+ */
+function revealTranscriptApproval(approvals: readonly Notification[]): boolean {
+  for (const approval of approvals) {
+    const threadId = approval.sessionId;
+    const requestId = approval.approvalRequestId;
+    if (!threadId || !requestId) continue;
+    const card = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-approval-id]'),
+    ).find(
+      (element) =>
+        element.dataset.approvalId === requestId &&
+        element.dataset.approvalThread === threadId,
+    );
+    if (!card) continue;
+    card.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    card
+      .querySelector<HTMLButtonElement>(
+        '.tool-call__approve-btn:not(:disabled)',
+      )
+      ?.focus({ preventScroll: true });
+    return true;
+  }
+  return false;
+}
+
 export function NotificationContainer() {
   const history = useNotificationHistory();
   const { dismissToast } = useToast();
@@ -471,6 +500,9 @@ export function NotificationContainer() {
                 closeApprovalQueue();
                 return;
               }
+              // The request's own card, when this screen is showing it: go
+              // there rather than open a second copy of the same decision.
+              if (revealTranscriptApproval(approvals)) return;
               returnFocusRef.current = captureReturnFocus(
                 approvalQueueTriggerRef.current,
               );

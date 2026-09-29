@@ -140,7 +140,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     const toast = approvalToast();
     expect(toast.toolName).toBe('Allow Bash');
-    expect(toast.actions[1].label).toBe('Allow this tool for this session');
+    expect(toast.actions[1].label).toBe('Allow for this session');
     expect(toast.toolPreview).toBeUndefined();
   });
 
@@ -175,7 +175,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     const toast = approvalToast();
     expect(toast.toolPreview).toBe('git status');
-    expect(toast.actions[1].label).toBe('Allow this tool for this session');
+    expect(toast.actions[1].label).toBe('Allow for this session');
   });
 
   // Codex has no Station pre-tool seam, so its payload is the app-server's raw

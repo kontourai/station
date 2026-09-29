@@ -16,7 +16,7 @@ import {
 } from './bounded-tool-result';
 import {
   callLabel,
-  classifyToolName,
+  classifyToolCall,
   isToolCallAwaitingApproval,
   type ToolCallKind,
   toolCallPhase,
@@ -35,6 +35,8 @@ export interface ToolCallData {
   toolCallId?: string;
   name?: string;
   toolName?: string;
+  /** The engine's own category (ACP `ToolKind`), when it reported one. */
+  toolKind?: string;
   server?: string;
   originalName?: string;
   purpose?: string;
@@ -49,6 +51,10 @@ export interface ToolCallData {
   outputTruncated?: boolean;
   needsApproval?: boolean;
   approvalId?: string;
+  /** #2316: the thread of the request that set `approvalId`. */
+  approvalThreadId?: string;
+  /** See `MessagePart.approvalToolName` — what the session grant names. */
+  approvalToolName?: string;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -148,7 +154,11 @@ function ToolCallDisplayComponent({
   const failed = Boolean(error) || state === 'error';
   const awaitingApproval = isToolCallAwaitingApproval(toolCall);
 
-  const kind = classifyToolName(toolName);
+  const kind = classifyToolCall({
+    toolName,
+    toolKind: toolCall.toolKind,
+    args,
+  });
   const denied =
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
   const phase = toolCallPhase(toolCall);
@@ -242,8 +252,17 @@ function ToolCallDisplayComponent({
     </>
   );
 
+  // The header "Approval needed" pill brings the user here: an answerable
+  // card names the request it answers.
+  const answerable = awaitingApproval && Boolean(onApprove);
   return (
-    <div className={revealClass ? `tool-call ${revealClass}` : 'tool-call'}>
+    <div
+      className={revealClass ? `tool-call ${revealClass}` : 'tool-call'}
+      data-approval-thread={
+        answerable ? (toolCall.approvalThreadId ?? undefined) : undefined
+      }
+      data-approval-id={answerable ? toolCall.approvalId : undefined}
+    >
       <div className="tool-call__row">
         {hasDetail && allowDetails ? (
           <button
@@ -266,7 +285,7 @@ function ToolCallDisplayComponent({
           <div className="tool-call__actions">
             <ToolApprovalButtons
               onApprove={onApprove}
-              toolName={toolCall.toolName}
+              grantToolName={toolCall.approvalToolName}
             />
           </div>
         )}
@@ -306,10 +325,11 @@ function ToolCallDisplayComponent({
  */
 function ToolApprovalButtons({
   onApprove,
-  toolName,
+  grantToolName,
 }: {
   onApprove: ToolApprovalHandler;
-  toolName?: string;
+  /** The request's reported tool name — never the row's display name. */
+  grantToolName?: string;
 }) {
   const [phase, setPhase] = useState<
     'idle' | 'sending' | 'sent' | 'already-settled'
@@ -359,9 +379,10 @@ function ToolApprovalButtons({
         disabled={busy}
         className="tool-call__approve-btn tool-call__approve-btn--secondary"
       >
-        {/* #2316: the same words as the toast for the same grant — every
-            later call to this tool in this session, not "always". */}
-        {toolRequestGrantLabel(toolName)}
+        {/* #2316: the same words as the toast and the inbox card for the same
+            grant, from the same field: the request's own tool name. The row's
+            `toolName` can be an ACP title — a whole command line. */}
+        {toolRequestGrantLabel(grantToolName)}
       </button>
       <button
         type="button"

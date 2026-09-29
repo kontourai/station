@@ -171,6 +171,8 @@ export interface ChatMessage {
     name?: string;
     // Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
     toolName?: string;
+    /** See `MessagePart.toolKind`: the engine's own category, when reported. */
+    toolKind?: string;
     server?: string;
     originalName?: string;
     args?: any;
@@ -187,6 +189,8 @@ export interface ChatMessage {
     approvalThreadId?: string;
     /** #2316: see `MessagePart.approvalEventId`. */
     approvalEventId?: string;
+    /** See `MessagePart.approvalToolName`. */
+    approvalToolName?: string;
     cancelled?: boolean;
     approvalStatus?:
       | 'auto-approved'

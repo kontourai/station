@@ -130,6 +130,7 @@ import {
 import {
   AcpToolUpdateGlobalBudget,
   AcpToolUpdateSupervisor,
+  engineToolKind,
 } from './acp-tool-update-supervisor.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
@@ -1826,6 +1827,25 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.pendingRequests.clear();
   }
 
+  /**
+   * An ACP permission request belongs to the prompt that raised it: once
+   * `session/prompt` settles, the engine has stopped waiting and will never
+   * read the answer. Left open, it stayed open everywhere that folds
+   * `request.opened`/`request.resolved` — the approval inbox and its header
+   * count, the approval toast queue, the chat's pending-approval banner —
+   * while the transcript had already retired the card at `turn.completed`
+   * (`approvalRetiredBy`). Settling it here as `cancelled` is the same
+   * terminal the interrupt path publishes, and it is what every one of those
+   * consumers already clears on.
+   */
+  private settleRequestsAtPromptEnd(
+    record: AcpSessionRecord,
+    threadId: string,
+  ): void {
+    if (record.pendingRequests.size === 0) return;
+    this.cancelPendingRequests(record, threadId);
+  }
+
   private prepareRecordForStop(record: AcpSessionRecord): void {
     const threadId = record.session.threadId;
     record.toolUpdateSupervisor.dispose();
@@ -2031,6 +2051,11 @@ export class AcpAdapter implements ProviderAdapterShape {
         payload: {
           toolCallId: params.toolCall?.toolCallId,
           rawInput: params.toolCall?.rawInput,
+          // The engine's ACP kind, so a card with no bound transcript row
+          // still says whether it gates a command, an edit or a read.
+          ...(engineToolKind(params.toolCall?.kind)
+            ? { toolKind: engineToolKind(params.toolCall?.kind) }
+            : {}),
           options: params.options,
         },
       });
@@ -2431,6 +2456,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
+        this.settleRequestsAtPromptEnd(record, threadId);
         this.publish({
           eventId: crypto.randomUUID(),
           provider: this.provider,
@@ -2455,6 +2481,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         const quota = classifyProviderQuotaFailure(error);
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
+        this.settleRequestsAtPromptEnd(record, threadId);
         if (quota) {
           this.publish({
             eventId: crypto.randomUUID(),

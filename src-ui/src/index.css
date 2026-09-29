@@ -4161,12 +4161,32 @@ button:hover {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  min-width: 0;
   color: var(--text-secondary);
   font-size: 0.88em;
   line-height: 1.35;
 }
 .streaming-activity .elapsed-wait {
   font-variant-numeric: tabular-nums;
+}
+/* The progress row names a tool, and a tool's name can be a whole command
+   line ("Last: npm run gate:for … 2>&1 | tail"). The name alone shrinks to
+   an ellipsis inside the column, so the outcome after it ("· done") and the
+   elapsed time stay on screen; the full text stays in the row's title. */
+.turn-activity-progress__tool {
+  display: inline-flex;
+  min-width: 0;
+  overflow: hidden;
+}
+.turn-activity-progress__fixed {
+  flex-shrink: 0;
+  white-space: pre;
+}
+.turn-activity-progress__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Streaming-aliveness motion primitives (archive#2651) ──────────────────
@@ -4647,8 +4667,12 @@ button.tool-call__line:hover {
   white-space: nowrap;
 }
 
+/* Right-aligned whatever the label's length: a short label ("Ran npm test")
+   used to leave the chevron trailing its text, out of line with the
+   full-width labels and batch summaries above and below it. */
 .tool-call__chevron {
   flex-shrink: 0;
+  margin-inline-start: auto;
   opacity: 0.5;
   font-size: 0.9em;
 }

@@ -199,6 +199,78 @@ describe('NotificationContainer', () => {
     ).toBeTruthy();
   });
 
+  test("the pill takes the user to the request's own card on screen instead of opening a second copy", () => {
+    notifications = [
+      {
+        id: 'approval-1',
+        message: 'OpenCode wants to use cd /tmp && gh api x',
+        type: 'tool-approval',
+        sessionId: 'thread-7',
+        approvalRequestId: 'req-7',
+        timestamp: Date.now(),
+        dismissed: false,
+        actions: [
+          { label: 'Allow Once', variant: 'primary', onClick: vi.fn() },
+        ],
+      },
+    ];
+    const scrollIntoView = vi.fn();
+    render(
+      <div>
+        {/* The transcript card for ANOTHER thread's same request id, then
+            this request's own card (as ToolCallDisplay marks them). */}
+        <div
+          className="tool-call"
+          data-approval-thread="thread-other"
+          data-approval-id="req-7"
+        >
+          <button type="button" className="tool-call__approve-btn">
+            Wrong
+          </button>
+        </div>
+        <div
+          className="tool-call"
+          data-approval-thread="thread-7"
+          data-approval-id="req-7"
+          ref={(element) => {
+            if (element) element.scrollIntoView = scrollIntoView;
+          }}
+        >
+          <button type="button" className="tool-call__approve-btn">
+            Allow Once
+          </button>
+        </div>
+        <NotificationContainer />
+      </div>,
+    );
+
+    const pill = screen.getByRole('button', { name: '1 pending approval' });
+    fireEvent.click(pill);
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(document.activeElement?.textContent).toBe('Allow Once');
+    expect(pill.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('the pill opens the queue when no card for the request is on screen', () => {
+    notifications = [
+      {
+        id: 'approval-1',
+        message: 'OpenCode wants to use cd /tmp && gh api x',
+        type: 'tool-approval',
+        sessionId: 'thread-7',
+        approvalRequestId: 'req-7',
+        timestamp: Date.now(),
+        dismissed: false,
+        actions: [],
+      },
+    ];
+    render(<NotificationContainer />);
+    const pill = screen.getByRole('button', { name: '1 pending approval' });
+    fireEvent.click(pill);
+    expect(pill.getAttribute('aria-expanded')).toBe('true');
+  });
+
   test('an approval card with no derivable preview renders no empty preview row', () => {
     notifications = [
       {

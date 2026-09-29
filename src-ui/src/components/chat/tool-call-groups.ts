@@ -19,10 +19,9 @@
  */
 import {
   callLabel,
-  classifyToolName,
+  classifyToolCall,
   isToolCallAwaitingApproval,
   isToolCallBatchPending,
-  KIND_VERBS,
   type ToolCallKind,
   type ToolCallPhase,
   toolCallPhase,
@@ -32,17 +31,46 @@ import { toolDisplayView } from './tool-display-view';
 
 export type { ToolCallKind, ToolCallLike };
 
-interface KindNouns {
-  singularNoun: string;
-  pluralNoun: string;
-}
+const plural = (count: number, one: string, many: string) =>
+  `${count} ${count === 1 ? one : many}`;
 
-const KIND_NOUNS: Record<ToolCallKind, KindNouns> = {
-  read: { singularNoun: 'file', pluralNoun: 'files' },
-  write: { singularNoun: 'file', pluralNoun: 'files' },
-  exec: { singularNoun: 'command', pluralNoun: 'commands' },
-  search: { singularNoun: 'search', pluralNoun: 'searches' },
-  other: { singularNoun: 'tool', pluralNoun: 'tools' },
+/**
+ * One kind's segment of the inventory phrase, per tense. `done` and
+ * `running` are verb phrases; `pending` is a bare noun phrase, because a
+ * batch holding a proposed, cancelled, denied or unresolved call cannot take
+ * a verb that claims the work happened or is happening — and the bare
+ * infinitive ("Run 2 commands", "search 1 search") read as an instruction.
+ * Searches take "ran", never "searched 2 searches".
+ */
+const KIND_PHRASES: Record<
+  ToolCallKind,
+  Record<'done' | 'running' | 'pending', (count: number) => string>
+> = {
+  read: {
+    done: (n) => `Read ${plural(n, 'file', 'files')}`,
+    running: (n) => `Reading ${plural(n, 'file', 'files')}`,
+    pending: (n) => plural(n, 'file read', 'file reads'),
+  },
+  write: {
+    done: (n) => `Edited ${plural(n, 'file', 'files')}`,
+    running: (n) => `Editing ${plural(n, 'file', 'files')}`,
+    pending: (n) => plural(n, 'file edit', 'file edits'),
+  },
+  exec: {
+    done: (n) => `Ran ${plural(n, 'command', 'commands')}`,
+    running: (n) => `Running ${plural(n, 'command', 'commands')}`,
+    pending: (n) => plural(n, 'command', 'commands'),
+  },
+  search: {
+    done: (n) => `Ran ${plural(n, 'search', 'searches')}`,
+    running: (n) => `Running ${plural(n, 'search', 'searches')}`,
+    pending: (n) => plural(n, 'search', 'searches'),
+  },
+  other: {
+    done: (n) => `Used ${plural(n, 'tool', 'tools')}`,
+    running: (n) => `Using ${plural(n, 'tool', 'tools')}`,
+    pending: (n) => plural(n, 'tool call', 'tool calls'),
+  },
 };
 
 /** Fixed rendering order for multi-kind summaries — stable output, not
@@ -117,8 +145,8 @@ function classifyCall<P extends ToolCallLike>(
   index: number,
 ): ClassifiedToolCall<P> {
   const toolName = toolNameOf(part);
-  const kind = classifyToolName(toolName);
   const args = toolDisplayView(part).args;
+  const kind = classifyToolCall({ toolName, toolKind: part.toolKind, args });
   const phase = toolCallPhase(part);
   const inProgress = phase === 'running';
   const unresolved = part.state === 'unresolved';
@@ -173,23 +201,21 @@ function summarizeCalls(
     counts.set(call.kind, (counts.get(call.kind) ?? 0) + 1);
   }
 
+  const tense = pending ? 'pending' : inProgress ? 'running' : 'done';
   const segments: string[] = [];
   for (const kind of KIND_ORDER) {
     const count = counts.get(kind) ?? 0;
     if (count === 0) continue;
-    // station#1569 (item 3): a mixed batch that includes an unresolved OR
-    // proposed call cannot take past or progressive tense — both claim
-    // work the expanded rows refuse. The bare infinitive is the only form
-    // honest for the mix; the count badges name which.
-    const verbForm = pending
-      ? KIND_VERBS[kind].pendingVerb
-      : inProgress
-        ? KIND_VERBS[kind].progressiveVerb
-        : KIND_VERBS[kind].verb;
-    const verb = segments.length === 0 ? verbForm : verbForm.toLowerCase();
-    const nouns = KIND_NOUNS[kind];
-    const noun = count === 1 ? nouns.singularNoun : nouns.pluralNoun;
-    segments.push(`${verb} ${count} ${noun}`);
+    // station#1569 (item 3): a batch that includes an unresolved OR proposed
+    // call cannot take past or progressive tense — both claim work the
+    // expanded rows refuse. It takes the noun inventory; the count badges
+    // name which calls did not run.
+    const phrase = KIND_PHRASES[kind][tense](count);
+    segments.push(
+      segments.length === 0 || tense === 'pending'
+        ? phrase
+        : `${phrase[0]!.toLowerCase()}${phrase.slice(1)}`,
+    );
   }
 
   const joined = segments.join(', ');

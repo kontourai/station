@@ -587,6 +587,7 @@ export function projectRuntimeEventsToMessages(
           if (lateExisting) {
             // Same upsert-by-call-id rule as the ordinary path below.
             if (ev.toolName !== undefined) lateExisting.toolName = ev.toolName;
+            if (ev.toolKind !== undefined) lateExisting.toolKind = ev.toolKind;
             if (ev.arguments !== undefined) lateExisting.args = ev.arguments;
             lateExisting.state = 'call';
             break;
@@ -595,6 +596,7 @@ export function projectRuntimeEventsToMessages(
             type: 'tool-invocation',
             toolCallId: ev.toolCallId,
             toolName: ev.toolName,
+            ...(ev.toolKind !== undefined ? { toolKind: ev.toolKind } : {}),
             args: ev.arguments,
             state: 'call',
           };
@@ -615,6 +617,7 @@ export function projectRuntimeEventsToMessages(
         const existing = toolsByCallId.get(ev.toolCallId);
         if (existing) {
           if (ev.toolName !== undefined) existing.toolName = ev.toolName;
+          if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           if (ev.arguments !== undefined) existing.args = ev.arguments;
           if (ev.purpose !== undefined) existing.purpose = ev.purpose;
           existing.state = 'call';
@@ -624,6 +627,7 @@ export function projectRuntimeEventsToMessages(
           type: 'tool-invocation',
           toolCallId: ev.toolCallId,
           toolName: ev.toolName,
+          ...(ev.toolKind !== undefined ? { toolKind: ev.toolKind } : {}),
           args: ev.arguments,
           purpose: ev.purpose,
           state: 'call',
@@ -721,6 +725,7 @@ export function projectRuntimeEventsToMessages(
           ) {
             existing.toolName = ev.toolName;
           }
+          if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           existing.state = derivedState;
           existing.output = ev.output;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
@@ -800,6 +805,7 @@ export function projectRuntimeEventsToMessages(
             toolCallId: ev.toolCallId,
             sourceEventId: ev.eventId,
             toolName: ev.toolName,
+            ...(ev.toolKind !== undefined ? { toolKind: ev.toolKind } : {}),
             purpose: ev.purpose,
             state: derivedState,
             output: ev.output,
@@ -890,6 +896,9 @@ export function projectRuntimeEventsToMessages(
           target.approvalId = ev.requestId;
           target.approvalThreadId = ev.threadId;
           target.approvalEventId = ev.eventId;
+          if (typeof toolName === 'string' && toolName.trim())
+            target.approvalToolName = toolName;
+          else delete target.approvalToolName;
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
           openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {

@@ -160,6 +160,64 @@ describe('classifyToolCallRun', () => {
     expect(group.summary).toBe('Read 1 file, ran 2 commands');
   });
 
+  test('searches read as searches in every tense, never "searched 2 searches"', () => {
+    const grep = (id: string, state = 'completed') =>
+      toolCall({
+        toolCallId: id,
+        toolName: 'Grep',
+        args: { pattern: 'x' },
+        state,
+      });
+    expect(classifyFirstRun([grep('a'), grep('b')]).summary).toBe(
+      'Ran 2 searches',
+    );
+    expect(
+      classifyFirstRun([toolCall({ toolCallId: 'r' }), grep('s')]).summary,
+    ).toBe('Read 1 file, ran 1 search');
+    expect(
+      classifyFirstRun([grep('a', 'running'), grep('b', 'running')])
+        .aggregateSummary,
+    ).toBe('Running 2 searches…');
+  });
+
+  test('a finished batch with a cancelled call is an inventory, not an instruction', () => {
+    const group = classifyFirstRun([
+      toolCall({ toolCallId: 'a', toolName: 'Bash', args: { command: 'a' } }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'b' },
+        state: 'cancelled',
+        cancelled: true,
+      }),
+    ]);
+    expect(group.summary).toBe('2 commands');
+    expect(group.cancelledCount).toBe(1);
+  });
+
+  test('an ACP call is classified by the kind its engine reported, not by the words in its title', () => {
+    const command = 'cd /tmp && gh api x | base64 -d > gsd.mjs && cat gsd.mjs';
+    const group = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: command,
+        toolKind: 'execute',
+        args: { command, description: 'Fetch' },
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'git status --short; echo; grep -n x y',
+        toolKind: 'execute',
+        args: {},
+      }),
+    ]);
+    expect(group.calls.map((call) => call.kind)).toEqual(['exec', 'exec']);
+    expect(group.summary).toBe('Ran 2 commands');
+    expect(group.calls[1]!.label).toBe(
+      'Ran git status --short; echo; grep -n x y',
+    );
+  });
+
   test('a single call still groups sanely, labeled by its own target', () => {
     const parts = [
       toolCall({
@@ -254,7 +312,7 @@ describe('classifyToolCallRun', () => {
     ];
     const group = classifyFirstRun(parts);
     expect(group.awaitingApprovalCount).toBe(1);
-    expect(group.summary).toBe('Read 1 file, edit 1 file');
+    expect(group.summary).toBe('1 file read, 1 file edit');
     expect(group.aggregateSummary).toBe(group.summary);
     expect(group.summary).not.toMatch(/edited/i);
     expect(group.calls.map((call) => call.awaitingApproval)).toEqual([
@@ -281,7 +339,7 @@ describe('classifyToolCallRun', () => {
     ];
     const group = classifyFirstRun(parts);
     expect(group.inProgress).toBe(true);
-    expect(group.summary).toBe('Read 1 file, edit 1 file');
+    expect(group.summary).toBe('1 file read, 1 file edit');
     expect(group.summary).not.toContain('…');
   });
 
@@ -326,7 +384,7 @@ describe('classifyToolCallRun', () => {
     ];
     const group = classifyFirstRun(parts);
     expect(toolCallPhase(parts[1])).toBe('unresolved');
-    expect(group.summary).toBe('Read 1 file, edit 1 file');
+    expect(group.summary).toBe('1 file read, 1 file edit');
     expect(group.summary).not.toMatch(/edited/i);
   });
 
@@ -347,7 +405,7 @@ describe('classifyToolCallRun', () => {
       }),
     ];
     const group = classifyFirstRun(parts);
-    expect(group.summary).toBe('Read 1 file, edit 1 file');
+    expect(group.summary).toBe('1 file read, 1 file edit');
     expect(group.summary).not.toMatch(/edited/i);
   });
 
@@ -428,7 +486,7 @@ describe('classifyToolCallRun', () => {
 
     test('takes the bare verb, never the past tense', () => {
       const group = classifyFirstRun(unresolvedBatch());
-      expect(group.summary).toBe('Run 2 commands');
+      expect(group.summary).toBe('2 commands');
       expect(group.unresolvedCount).toBe(1);
       // Not a failure claim either: nothing observed the tool fail.
       expect(group.failedCount).toBe(0);
@@ -456,7 +514,7 @@ describe('classifyToolCallRun', () => {
       // "Running 2 commands…" would be as false for the unresolved call as
       // "Ran" was; the bare verb is the only form true of both, and the
       // ellipsis (which means "still going") is dropped with it.
-      expect(group.summary).toBe('Run 2 commands');
+      expect(group.summary).toBe('2 commands');
       expect(group.inProgress).toBe(true);
       expect(group.unresolvedCount).toBe(1);
     });
@@ -562,7 +620,7 @@ describe('classifyToolCallRun', () => {
           state: 'unresolved',
         }),
       ]);
-      expect(group.summary).toBe('Read 2 files, run 1 command');
+      expect(group.summary).toBe('2 file reads, 1 command');
     });
   });
 

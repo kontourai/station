@@ -542,6 +542,7 @@ export function AttachedSessionDetail({
                 content: part.text,
                 toolCallId: part.toolCallId,
                 toolName: part.toolName,
+                toolKind: part.toolKind,
                 args: part.args,
                 result: part.result,
                 state: part.state,
