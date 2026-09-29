@@ -1449,7 +1449,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1475,7 +1475,7 @@
         },
         {
           "path": "docs/contexts/workspace-surfaces/CONTEXT.md",
-          "digest": "0dc5d09f1bee6c9c34b0013563a73c04f484f2ee36b4c4f29058696d71dfcadb"
+          "digest": "4857d7c6b89854ba2a9f4d135bead55a3f5a9428b50d845f08bbb87ff7c13522"
         },
         {
           "path": "docs/glossary.md",
@@ -1504,7 +1504,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map.md and the extension-ecosystem/workspace-surfaces contexts removed the deleted CollaborativeEditorPane controller and PluginForegroundRuns entries in favor of ProjectTaskRoom. The five context links and relationship statements do not name either; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "Re-checked after the workspace-surfaces context's Coding pane entry changed for the coding stack: this document only routes to that context (Workspace Surfaces: coding surfaces, navigation) and its summary still holds; no prose change."
       ]
     },
     {
@@ -1512,7 +1513,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1538,7 +1539,7 @@
         },
         {
           "path": "docs/contexts/workspace-surfaces/CONTEXT.md",
-          "digest": "0dc5d09f1bee6c9c34b0013563a73c04f484f2ee36b4c4f29058696d71dfcadb"
+          "digest": "4857d7c6b89854ba2a9f4d135bead55a3f5a9428b50d845f08bbb87ff7c13522"
         },
         {
           "path": "docs/glossary.md",
@@ -1567,7 +1568,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map replaced the CollaborativeEditorPane entry with ProjectTaskRoom and removed PluginForegroundRuns, and the two child CONTEXT files follow suit. The root CONTEXT names neither module and routes only to the child contexts and guides, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "Re-checked after the workspace-surfaces context's Coding pane entry changed for the coding stack: this document only routes to that context (Workspace Surfaces: coding surfaces, navigation) and its summary still holds; no prose change."
       ]
     },
     {
@@ -6121,8 +6123,8 @@
     },
     {
       "path": "docs/contexts/workspace-surfaces/CONTEXT.md",
-      "documentDigest": "0dc5d09f1bee6c9c34b0013563a73c04f484f2ee36b4c4f29058696d71dfcadb",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "documentDigest": "4857d7c6b89854ba2a9f4d135bead55a3f5a9428b50d845f08bbb87ff7c13522",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full context vocabulary and relationships; added actual composition routing, ambient/mode/region semantics, Task declaration vs real owner view, UI availability merge and persistence/rollback boundaries, authorized Session-directory previews and separately composed coding panes.",
@@ -6166,7 +6168,7 @@
         },
         {
           "path": "src-ui/src/contexts/navigation-store.ts",
-          "digest": "cf597b2f3a9007f5815654875462f15e988e10fc88a1be2260d095d692526ba7"
+          "digest": "da8c2eaa373faf62d8345bea73be528702c3d65160e0cbb66aefb0828f97ec63"
         },
         {
           "path": "src-ui/src/regions/region-arrangement-record.ts",
@@ -6174,7 +6176,7 @@
         },
         {
           "path": "src-ui/src/regions/region-model.ts",
-          "digest": "b951fc3827a50994cac8111c8136768d61f67cc42225f79bcf6ce4401f51d65f"
+          "digest": "7bd8d2ccb721d74c18887d2fc67ba40f2531ff21752c874fde8a29b81bd3516e"
         },
         {
           "path": "src-ui/src/regions/region-surface-panes.ts",
@@ -6190,7 +6192,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/CodingChatPane.tsx",
-          "digest": "3d24fdee7f037afaba080df8862c32d69b22fab49acf901cea8bb22305ca5872"
+          "digest": "c257163f58fc88a9b1e882cc1a9f6b6a7457a1d12002aa507e532d141ac8a6c6"
         },
         {
           "path": "src-ui/src/workspace-panes/FilePreviewPane.tsx",
@@ -6222,7 +6224,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/workspacePaneHostNavigation.ts",
-          "digest": "3f065ca6b44c4da536fcafef8f9ee13d439203f386651674ab8f11fced0d23f3"
+          "digest": "959ec0e4253f400118565eb8f22d571ccaffc9dc74b9dc4aff286f8c394e3523"
         },
         {
           "path": "src-ui/src/workspace-panes/workspacePaneHostRuntime.ts",
@@ -6240,7 +6242,8 @@
       "checks": [
         "775 focused tests across 44 files passed; local source/caller and controlled UI/runtime evidence.",
         "Integration source review through e0314c727: the document's own delta repoints the module-map link from #collaborativeeditorpane to #projecttaskroom and records that the unmounted editor controller was deleted. The anchor resolves to '## ProjectTaskRoom' and src-shared/collaborative-editor-pane.ts is gone, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: a290454b4 (#2919) made FilePreviewPane helpers module-private and made AMBIENT_CHAT_DOCK_DOCUMENT_ID private. It also removed createAmbientChatDockPaneDocument and dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry. There is no behavior change, the linked files still exist, and the doc names none of the removed exports. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: a290454b4 (#2919) made FilePreviewPane helpers module-private and made AMBIENT_CHAT_DOCK_DOCUMENT_ID private. It also removed createAmbientChatDockPaneDocument and dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry. There is no behavior change, the linked files still exist, and the doc names none of the removed exports. Prose accurate. Source review is separate from executed test evidence.",
+        "Rewrote the Coding pane entry and the coding-workspace composition bullet for the coding stack: the Coding occurrence gates the host but is the stack's Chat page; CodingChatPane keeps useCodingChatPositionEffects (phone dock, File Preview intent) run by CodingWorkbench on its Chat page; the drill-in host is chromeless with navigationSelection='explicit'. Checked navigation-store (adjacentLocation is additive; selection still written only through the store), region-model suspension (read view only), workspacePaneHostNavigation (workspacePaneHostSelectionIsNamed). Executed CodingWorkbench, ProjectLayoutRenderer and WorkspacePaneHost vitest suites."
       ]
     },
     {
@@ -7549,7 +7552,7 @@
     {
       "path": "docs/design/developer-surface.md",
       "documentDigest": "3e059dd4826272938ae5312a05969db0217074a7592bba4c2edd8586ed35b616",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the full route/tab/redirect and shortcut note against routing, App registrations, DeveloperView and the Telemetry wrapper.",
@@ -7557,7 +7560,7 @@
       "sources": [
         {
           "path": "src-ui/src/App.tsx",
-          "digest": "6ef4c426651d75c5154177265ef355c68a17c1deb19b08a4da6764e9364481a6"
+          "digest": "3c8bd0e4d4aa0e5ad47504de008989bece222f9da58cc83d6fa8a99524a85fd6"
         },
         {
           "path": "src-ui/src/app-shell/routing.ts",
@@ -7584,7 +7587,8 @@
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Current short note corrected directly; no dated measurement or decision removed.",
         "154 Developer view/body and routing tests passed.",
-        "Reviewed integration deltas: src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged."
+        "Reviewed integration deltas: src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged.",
+        "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended."
       ]
     },
     {
@@ -8747,8 +8751,8 @@
     },
     {
       "path": "docs/design/placement.md",
-      "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "documentDigest": "4505edecd02c3ebbbffe60e7dba03086386938a0cfcd0de0d79c7c12a9ecb55b",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8788,7 +8792,7 @@
         },
         {
           "path": "src-ui/src/App.tsx",
-          "digest": "6ef4c426651d75c5154177265ef355c68a17c1deb19b08a4da6764e9364481a6"
+          "digest": "3c8bd0e4d4aa0e5ad47504de008989bece222f9da58cc83d6fa8a99524a85fd6"
         },
         {
           "path": "src-ui/src/__tests__/region-model.test.ts",
@@ -8796,11 +8800,11 @@
         },
         {
           "path": "src-ui/src/app-shell/ProjectLayoutRenderer.tsx",
-          "digest": "a4794be13e631aa2539945c1d84903d89e990383dd51ed58d68dab0fcaa421fb"
+          "digest": "ff74ad068e05d7a510537ec17283dbdd9f02cbf52394402069cec1967b0ab510"
         },
         {
           "path": "src-ui/src/app-shell/RegionShells.tsx",
-          "digest": "782b94981bc53ab58b8ada06351569af5e6ce0ab60e63e064b17e718cedb46da"
+          "digest": "1ef7d183b06ac39f704660542495e0fddd62bdaffb1d2d1ea38847d3b06af8e3"
         },
         {
           "path": "src-ui/src/app-shell/destination-registry.ts",
@@ -8808,11 +8812,11 @@
         },
         {
           "path": "src-ui/src/app-shell/project-layout-kind.ts",
-          "digest": "52a2ac480f4f0dcb908f39c3829e22636bda1bde4d254908235b2fcbf1ca54ce"
+          "digest": "7bcad7adebc9f9b0c3270523bfb6b5976b2fc85177d36237afe00631fb826305"
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDock.tsx",
-          "digest": "5ec5ec9d227abcbe9e1530e9900f7dcb345b8da2250df3e38ea74f0b11bac6eb"
+          "digest": "69b87aed0f9d074240a0f333e5cb4370a03611fb83ad33a8730547dbee5cb095"
         },
         {
           "path": "src-ui/src/components/chat-dock/DockShell.tsx",
@@ -8840,11 +8844,11 @@
         },
         {
           "path": "src-ui/src/components/header/RegionToolbarControls.tsx",
-          "digest": "d790d700bbef6faa61f1068f87de0ffc282b5b41edc9a1ee87a164f852b221b5"
+          "digest": "35c20732eafa59a6809be32b09b8fb7ecaf070a7d74d823942b8c856c5d178f4"
         },
         {
           "path": "src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx",
-          "digest": "3bca43407a402bca78f0a77bd6b338aa7e2250bed248ad851275873abb4f0aa8"
+          "digest": "20ac29aaa45741a37706c81a7531675a23bdcbe9e82f61e92ddd46a47e6d1877"
         },
         {
           "path": "src-ui/src/components/header/useRegionSurfaceMenu.ts",
@@ -8868,7 +8872,7 @@
         },
         {
           "path": "src-ui/src/contexts/RegionModelContext.tsx",
-          "digest": "599becaa8adb097282c2303ff7606968594cb0837d5810c4ed89979e2f6e621f"
+          "digest": "b853b6386918e278a2884d89d3e39b04119cc43ce8cadd73d6dc3e384b695372"
         },
         {
           "path": "src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx",
@@ -8892,7 +8896,7 @@
         },
         {
           "path": "src-ui/src/contexts/navigation-store.ts",
-          "digest": "cf597b2f3a9007f5815654875462f15e988e10fc88a1be2260d095d692526ba7"
+          "digest": "da8c2eaa373faf62d8345bea73be528702c3d65160e0cbb66aefb0828f97ec63"
         },
         {
           "path": "src-ui/src/contexts/useDismissPhoneLayer.ts",
@@ -8904,7 +8908,7 @@
         },
         {
           "path": "src-ui/src/contexts/useShowSurface.ts",
-          "digest": "e67ed04d250fe5af41dd3b8ceadef168e12b7322a1a09afd8ef97a39d2ccba8f"
+          "digest": "daaef1feade493609a108b05caceca894e81ca8bb2633cdbff7ab94565162cd7"
         },
         {
           "path": "src-ui/src/hooks/useDockShellChrome.ts",
@@ -8944,7 +8948,7 @@
         },
         {
           "path": "src-ui/src/regions/region-model.ts",
-          "digest": "b951fc3827a50994cac8111c8136768d61f67cc42225f79bcf6ce4401f51d65f"
+          "digest": "7bd8d2ccb721d74c18887d2fc67ba40f2531ff21752c874fde8a29b81bd3516e"
         },
         {
           "path": "src-ui/src/regions/region-surface-panes.ts",
@@ -9020,7 +9024,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/workspacePaneHostController.ts",
-          "digest": "780ff40c25751cfa7fa6ced177370f5d672a3addb2a28e29983c9a3d6e495c8d"
+          "digest": "7211478190a50176c0fe93ea693a217260a9482af29c6fa3a9c9c81cee8a1172"
         },
         {
           "path": "src-ui/src/workspace-panes/workspacePaneHostStorage.ts",
@@ -9049,7 +9053,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The maximized-region dock-hiding rule is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Its disabled-row claims are about pane chooser/coding rows (aria-disabled reasons), not the approval card; no tool-call or approval-button styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Its disabled claims concern pane chooser rows and its dockSlotPlacement right/left dock claims are unchanged by this CSS; no approval-button claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "Added the dated coding-stack amendment (2026-09-29) and traced each claim to source: resolveLayoutChatPlacement (project-layout-kind.ts) and App's LayoutChatPlacementContext; SuspendRegionSurfaces/useSuspendedRegionModel/withSuspendedSurfaces/restoreSuspendedPanes (RegionModelContext.tsx, region-model.ts) as used by RegionShells and RegionToolbarControls; requestCenterChatPage/deliverSurfaceIntent in useShowSurface and the toolbar chord; ChatWorkspacePane conversationScope/onScreen/ownsDockShortcuts; CodingWorkbench + codingStackPage page derivation, explicit selection mode in workspacePaneHostController, chromeless host, rail/breadcrumb/chords, navigation-store adjacentLocation bound; persisted-document restore via restoreWorkspacePaneHostDocument. Executed: vitest suites RegionShells.centerChat, CodingWorkbench, ProjectLayoutRenderer, WorkspacePaneHost, codingStackPersistedDocument, navigation-store-adjacent-entries, AppHomeRoute, RegionToolbarControls; Playwright coding-stack-navigation (1280/390). Earlier sections left as dated history; the amendment states its supersession. Limits: bottom-only devices and session-bound docks unchanged; not re-measured on physical devices."
       ]
     },
     {
@@ -13974,7 +13979,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14046,7 +14051,7 @@
         },
         {
           "path": "tests/agents-pane.spec.ts",
-          "digest": "a73b7bc4881123e0f5e9d50b57aede3c352d285d99f48de900a2405da875d101"
+          "digest": "8fd2f45e57980348671a765d1f010f2624ebb63aeedc0fbec41cf438ebc6efe5"
         },
         {
           "path": "tests/agents-readiness-board.spec.ts",
@@ -14058,7 +14063,7 @@
         },
         {
           "path": "tests/coding-layout-plan-panel.spec.ts",
-          "digest": "47e9fa69bdd7a255fb11cac907781343146e7d5fab962ad5fb8e371db5e39668"
+          "digest": "3eb6fdaefd45a205b80b988270e401978996b71e779b743dccb33cfa463f3eab"
         },
         {
           "path": "tests/connect-modal.spec.ts",
@@ -14082,7 +14087,7 @@
         },
         {
           "path": "tests/e2e-manifest.mjs",
-          "digest": "02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa"
+          "digest": "d1ec068be558d8cc87f82151ec37a5e79732f4424f69ea72318ec3682aa82b60"
         },
         {
           "path": "tests/mobile-chat-composer.spec.ts",
@@ -14147,7 +14152,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) deleted tests/plugin-system.spec.ts and tests/plugin-dependency-lifecycle.spec.ts and removed them from tests/e2e-manifest.mjs. The commit gives plugin-pane-sdk-context, minimal-workspace-example and bundled-plugin-registry-lifecycle ownership of installed-plugin pane rendering. The same commits added tests/authenticated-request-canary.spec.ts (smoke-live), refactored run-e2e-suite.mjs evidence retention into settleStartedE2ERun, dropped plugin-update's update-banner test and monitoring's redaction assertion, and changed the agents-editor-gates/readiness-board rationale. None of these other changes alter the matrix's claims. Corrected the Plugins row: removed plugin-system, added the three owning specs, and changed 'installed layout loading' to 'installed plugin panes rendering'. The ledger may want to add tests/plugin-pane-sdk-context.spec.ts, tests/minimal-workspace-example.spec.ts and tests/bundled-plugin-registry-lifecycle.spec.ts as sources. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): tests/e2e-manifest.mjs adds tests/branding-theme-boot.spec.ts to the product bucket (parallel-safe, surface Shell, tier full); PR_BROWSER_SMOKE_CONTRACT and suite runner behavior are unchanged. The matrix names no Shell/theming row and claims no exhaustive coverage. Prose accurate. Source review is separate from executed test evidence.",
-        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose."
+        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
+        "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended."
       ]
     },
     {
@@ -21626,7 +21632,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -22247,7 +22253,7 @@
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDock.tsx",
-          "digest": "5ec5ec9d227abcbe9e1530e9900f7dcb345b8da2250df3e38ea74f0b11bac6eb"
+          "digest": "69b87aed0f9d074240a0f333e5cb4370a03611fb83ad33a8730547dbee5cb095"
         },
         {
           "path": "src-ui/src/components/chat-dock/retry-attachments.ts",
@@ -22335,7 +22341,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Added a theme paragraph under Get Branding Config: flat and per-mode shape, the route passes it through unvalidated, and the UI applies it only when every key is allowlisted, every value hex and every contrast check passes in both modes. Checked against src-server/routes/system/branding.ts and src-ui/src/lib/branding-theme.ts (added as a source). Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/chat/chat.ts, src-server/routes/orchestration/orchestration.ts, src-server/routes/system/install-provenance.ts, src-server/routes/system/system-update-routes.ts, covered by its notes above; this branch changed the document, src-ui/src/lib/branding-theme.ts (added), covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
-        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended."
       ]
     },
     {
@@ -22760,7 +22767,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23005,7 +23012,7 @@
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDock.tsx",
-          "digest": "5ec5ec9d227abcbe9e1530e9900f7dcb345b8da2250df3e38ea74f0b11bac6eb"
+          "digest": "69b87aed0f9d074240a0f333e5cb4370a03611fb83ad33a8730547dbee5cb095"
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
@@ -23036,7 +23043,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read leaf to pairing-route-scopes. a290454b4 (#2919) makes ChatDock's agentIdentityFromSession private. Neither changes the config fields, the diagnostics-logs scope tier or the chat-dock re-send claims; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); strands-tool-loader.ts now imports the shared tool-load-failure classifier instead of its private copy of the same redaction decision; mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected.",
-        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended."
       ]
     },
     {
@@ -26583,7 +26591,7 @@
     {
       "path": "docs/testing/browser-smoke.md",
       "documentDigest": "2bc25a448c6189b75253f9b26a10665f40107d168858254c46752f8a2f559412",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "PR smoke manifest, fixture boundaries, browser-health scope and CI execution policy. Full 40-line baseline read. Traced all seven manifest selections, real HTTP Ollama-shaped fixture versus page-routed streams, explicit monitor installations/assertions/exceptions, worker/retry runner flags, CI step timeout and nonblocking artifact retention. Existing mutation protocol remains a maintenance instruction; not executed in this doc-only pass. Final follow-up scopes required fast-checks to same-repository PRs/merge groups, with fork routing distinct.",
@@ -26643,7 +26651,7 @@
         },
         {
           "path": "tests/e2e-manifest.mjs",
-          "digest": "02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa"
+          "digest": "d1ec068be558d8cc87f82151ec37a5e79732f4424f69ea72318ec3682aa82b60"
         },
         {
           "path": "tests/helpers/browser-health.ts",
@@ -26655,7 +26663,7 @@
         },
         {
           "path": "tests/orchestration-chat-flow.spec.ts",
-          "digest": "a15f142cc2cb2eff65419fb97a1adae668a2f6afecbc6466d576bad1d4beca2f"
+          "digest": "e663d76d8e6b16f43744bc0c6d8519e95de6b433470c9770e6d16520bf4cf759"
         },
         {
           "path": "tests/pr-smoke-live-chat-send.spec.ts",
@@ -26685,7 +26693,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed scripts/__tests__/run-ci-fast.test.ts, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. orchestration-chat-flow journey row ('Transcript, tool activity, and approval UI driven by synthetic canonical events') remains accurate; the added #2917 test is the same spec and fixture style; manifest selection count unchanged.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. orchestration-chat-flow journey row remains accurate; the spec gained a right-dock case inside the same mocked approval test; manifest and selection count unchanged.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). orchestration-chat-flow row still accurate; manifest unchanged by either side. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). orchestration-chat-flow row still accurate; manifest unchanged by either side. No prose change.",
+        "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended."
       ]
     },
     {
@@ -30608,7 +30617,7 @@
     },
     {
       "path": "src-ui/AGENTS.md",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to canonical module/test guidance. The navigation store and useUnsavedGuard support the single route-guard ownership rule; shared controls and physical layout claims remain distinct from DOM tests.",
@@ -30637,7 +30646,7 @@
         },
         {
           "path": "src-ui/src/contexts/navigation-store.ts",
-          "digest": "cf597b2f3a9007f5815654875462f15e988e10fc88a1be2260d095d692526ba7"
+          "digest": "da8c2eaa373faf62d8345bea73be528702c3d65160e0cbb66aefb0828f97ec63"
         },
         {
           "path": "src-ui/src/hooks/useUnsavedGuard.tsx",
@@ -30660,7 +30669,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: the module map dropped the CollaborativeEditorPane and PluginForegroundRuns sections and added ProjectTaskRoom. This policy only routes to the module map and names no removed module, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended."
       ]
     },
     {
@@ -30751,7 +30761,7 @@
     },
     {
       "path": "tests/fixtures/plugin-pane-sdk-context/README.md",
-      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "sourceRevision": "ecad55d134dbc7894c842b7cdfa3730bd02bb669",
       "kind": "fixture",
       "state": "classified",
       "summary": "Manifest declares the test-only Pane without global actions/default Agent/execution authority. Renderer reads public Agent/navigation/toast/plugin identity contexts. The owning E2E source uses real preview-consent-install helpers and direct/placed Project occurrences; it does not migrate examples.",
@@ -30772,12 +30782,13 @@
         },
         {
           "path": "tests/plugin-pane-sdk-context.spec.ts",
-          "digest": "9c7dae827f31537ac3078cbdce667f43fd8891df09ffba435f41bf301c282308"
+          "digest": "a63a3c61aebbf377c44c90d035b07bd9640654c0c830964083e17b7ca7da7dad"
         }
       ],
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
-        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+        "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended."
       ]
     }
   ]
