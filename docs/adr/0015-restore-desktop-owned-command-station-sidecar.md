@@ -132,7 +132,7 @@ published, because they contain local paths and unrelated desktop content.
 | Resource-directory resolution | **EXECUTED**: sidecar ran `<bundle>/Contents/Resources/dist-server/command-station.js` | **EXECUTED**: sidecar ran `%LOCALAPPDATA%\Station Nightly\dist-server\command-station.js` |
 | PATH-resolved `node` from GUI launchers | **EXECUTED** for `open` with a scrubbed environment (`PATH=/usr/bin:/bin:/usr/sbin:/sbin`), a proxy for Finder and Dock: the login-shell probe recovered a version-manager `node`. A Finder or Dock launch itself is NOT_VERIFIED. The rejection path is **EXECUTED**: a login shell reporting a node-free PATH produced the "Check that Node 24 is installed" dialog, started no backend, and exited only on **Exit** | **EXECUTED** for a scheduled-task launch (registry-derived user environment): `node` resolved to the version manager's `node.exe`. Explorer is NOT_VERIFIED: that launch used the default root and was refused before any `node` lookup (see findings) |
 | `Info.nightly.plist` port injection | **EXECUTED**: in the scrubbed-environment run, the launch environment had no port and the app process carried `STATION_DESKTOP_PORT=38141` and `STATION_DESKTOP_CHANNEL=nightly` from `LSEnvironment`. The listener port alone cannot prove this, because the channel default is also 38141 | Not applicable (no plist). The generated channel default placed the sidecar on 38141 |
-| Clean-home first launch reaches an interactive UI | **EXECUTED**: empty home, sidecar claim, registry `type: sidecar` upsert, interactive Home view. Quit reaped the sidecar and emptied the registry | NOT_VERIFIED (UI not observed; the console session was covered by a full-screen shell). Native readiness epoch 1 timed out at 30 s. The sidecar's first ticket arrived about 51 s after its claim, when the epoch had already failed (`phase=Failed`). Server logs show renderer pairing, event streams, and focus reports from about 55 s, so a late recovery is plausible but unconfirmed |
+| Clean-home first launch reaches an interactive UI | **EXECUTED**: empty home, sidecar claim, registry `type: sidecar` upsert, interactive Home view. Quit reaped the sidecar and emptied the registry | NOT_VERIFIED (UI not observed; the console session was covered by a full-screen shell). Native readiness epoch 1 timed out at 30 s. The sidecar's first ticket arrived about 51 s after its claim, when the epoch had already failed (`phase=Failed`). Server logs show pairing requests from about 51 s, then event streams and focus reports from about 68 s. The log does not attribute their origin, so a late UI recovery is plausible but unconfirmed |
 | OS service install/handoff | **EXECUTED** with a nightly portable install and `station service install --instance=<test>` against a desktop-initialized home: a live `type: service` entry made the desktop spawn no sidecar, and quitting the desktop left the LaunchAgent's process running. The tray showed `Status: Not installed`. It only reports a service bound to a saved profile, and this run never bound one (`station setup local` was not run; the home's `local` profile still named the earlier sidecar). That stale profile pointed at the service's port, and the service refused its credential ("approval needed"). The desktop's service-owner status text was not observed, so reporting the owner is NOT_VERIFIED | NOT_VERIFIED |
 | Reboot persistence | NOT_VERIFIED (no reboot was run). Proxy, **EXECUTED**: `launchctl bootout` then `bootstrap` of the installed plist brought the service back on its port without a kickstart (`KeepAlive=true`; no `RunAtLoad` key) | NOT_VERIFIED |
 | Tray delivery in a live webview | **EXECUTED**: the status menu showed `Status: Running · Local server: built into desktop app`; its **Connections…** item navigated the live webview from Home to Connections | NOT_VERIFIED |
@@ -140,12 +140,13 @@ published, because they contain local paths and unrelated desktop content.
 
 ### Findings outside the original list
 
-- **Abrupt desktop death.** On Windows, the force-killed desktop's sidecar
-  watchdog logged the missing supervisor about 14 s after the kill. The kill
-  time is inferred from the sidecar's last client-stream close. Graceful
-  shutdown then logged a provider-adapter cleanup failure, and the process was
-  still alive 91 s after the kill. Its final log line came about 100 s after
-  detection, not within the 20 s force-exit this ADR records. On macOS, the
+- **Abrupt desktop death.** On Windows, the sidecar watchdog logged the
+  missing supervisor about 14 s after the kill, measured from the sidecar's
+  last client-stream close because the log has no kill timestamp. Graceful
+  shutdown then logged a provider-adapter cleanup failure. The test script's
+  own clock found the process still alive 91 s after it issued the kill. The
+  final log line came about 100 s after detection, not within the 20 s
+  force-exit this ADR records. On macOS, the
   same `kill -9` test ended the sidecar 7 s after the kill. On both platforms,
   the dead desktop's `type: sidecar` registry entry remained afterwards,
   because only the supervisor removes it. Whether the next launch recovers

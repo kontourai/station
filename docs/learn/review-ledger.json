@@ -2726,12 +2726,12 @@
     },
     {
       "path": "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
-      "sourceRevision": "06f38267e4e8cbb0705998dcf23d51c6558618ef",
+      "sourceRevision": "e9e828f46c92819a2e8d56397494839d09a115e4",
       "kind": "design",
       "state": "classified",
       "summary": "Decision text unchanged. A dated #2957 addendum records packaged-build runs of nightly 0.1.11-nightly.2463.2 against the NOT_VERIFIED list: signed and notarized macOS items executed, unsigned Windows NSIS partly executed, MSI/Linux/AppImage and real reboot NOT_VERIFIED. It also records findings: Windows readiness and watchdog timings, stale sidecar entries after abrupt death, and shared roots without saved metadata refusing first launch.",
       "limits": "Addendum claims rest on the author's unpublished run logs, re-checked by an independent verifier on macOS (artifact identity, signing, source constants, one clean-home launch). Single runs: no Finder/Dock or Explorer launch proof, no real reboot, no Windows service, tray, or observed UI, and no MSI, Linux, or AppImage artifact. The Windows installer was unsigned. Historic review counts and behavioral receipts are retained, not re-proven.",
-      "documentDigest": "8ae1aa58a01a77c07cf86635294068de12480596aceee8d9a647c1a62f70a5ba",
+      "documentDigest": "ae630ad46482a84ef322e83bf470c9936219e5ba452eeff3a7e45ecc047d43d4",
       "sources": [
         {
           "path": "docs/design/instance-registry.md",
@@ -2767,7 +2767,8 @@
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through e0314c727: lib.rs removed the dormant notification_watch commands and state and added a rustls TLS test. service_action in service_state.rs is still checkout/tsx-bound and the sidecar/watchdog decisions are untouched; ADR accurate. Source review is separate from executed test evidence.",
         "Added the #2957 packaged-build evidence addendum. Checked each NOT_VERIFIED item against runs of nightly 0.1.11-nightly.2463.2 (macOS signed+notarized; Windows NSIS unsigned) plus source: build_sidecar_command/command_station_script_path and resolve_login_shell_path (lib.rs), resolve_station_home_for_channel/station_root_from_env (service_state.rs), exit_desktop_home_preparation_failure dialog, tray_backend_snapshot trusted-manifest gate (tray.rs). Decision text unchanged; addendum reports observed divergences (tray service-owner report, Windows watchdog exit latency, Windows readiness timeout) as findings, and MSI/Linux/AppImage/reboot as NOT_VERIFIED.",
-        "Review fix round: corrected tray-owner claim (unbound profile, owner status NOT_VERIFIED), Windows first launch to NOT_VERIFIED with log detail, scrubbed-env scope, Finder/Explorer proxies, port-injection evidence (app process env), stale registry entries after abrupt death; updated summary and limits."
+        "Review fix round: corrected tray-owner claim (unbound profile, owner status NOT_VERIFIED), Windows first launch to NOT_VERIFIED with log detail, scrubbed-env scope, Finder/Explorer proxies, port-injection evidence (app process env), stale registry entries after abrupt death; updated summary and limits.",
+        "Delta-review fix: withdraws the earlier 'tray service-owner report' divergence (unbound profile, not a tray defect). Windows first-launch timing split into pairing (~51 s) and streams/focus (~68 s) with unattributed origin; abrupt-death clocks stated. Windows stale-entry and reboot-proxy port claims rest on transcribed session output retained with the run logs."
       ]
     },
     {
