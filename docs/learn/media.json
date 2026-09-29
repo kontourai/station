@@ -180,7 +180,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "bef4d5230e321a78f9764cdcb3081df3d145462a",
+      "reviewedRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -188,7 +188,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "6374e55a2b76f3a55fc0ddcc13d9644b165bcbf4909a8937cbe6a75fe96f431a"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -231,6 +231,9 @@
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
         "docs/user/getting-started.md"
+      ],
+      "reviewNotes": [
+        "fix/chat-send-attachments review: orchestration-service.ts changed only by adding AttachmentInputUnsupportedError to the codes forwarded through OrchestrationCommandDispatchError on a failed send dispatch. The capture depicts Notifications -> Inspect request with no decision; request routes, the request inspector and the controlled request fixture do not reach that branch. Capture bytes unchanged; not re-captured; depicted behavior unaffected."
       ]
     },
     {
@@ -242,7 +245,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "bef4d5230e321a78f9764cdcb3081df3d145462a",
+      "reviewedRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -250,7 +253,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "6374e55a2b76f3a55fc0ddcc13d9644b165bcbf4909a8937cbe6a75fe96f431a"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -292,6 +295,9 @@
       "documents": [
         "docs/user/getting-started.md",
         "docs/guides/starter-work.md"
+      ],
+      "reviewNotes": [
+        "fix/chat-send-attachments review: orchestration-service.ts changed only by adding AttachmentInputUnsupportedError to the codes forwarded through OrchestrationCommandDispatchError on a failed send dispatch. The capture depicts Notifications -> Inspect request with no decision; request routes, the request inspector and the controlled request fixture do not reach that branch. Capture bytes unchanged; not re-captured; depicted behavior unaffected."
       ]
     },
     {
