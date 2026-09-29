@@ -568,7 +568,8 @@ export function createConfigRoutes(
       // overlay is persisted only as its value-free marker (#2966).
       if (
         accepted.agentConnections &&
-        typeof accepted.agentConnections === 'object'
+        typeof accepted.agentConnections === 'object' &&
+        !Array.isArray(accepted.agentConnections)
       ) {
         accepted.agentConnections = persistPublicSafeProfiles(
           accepted.agentConnections as Record<string, any>,

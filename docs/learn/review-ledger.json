@@ -7438,8 +7438,8 @@
     },
     {
       "path": "docs/design/connections-onboarding.md",
-      "documentDigest": "5daea7640bf198033c51568c8477f542f6897f76fc1c296656c5719f8193f41e",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "documentDigest": "22976133ad334bce89176bd32f9417337d15bb31e01bf261e90d59569af581d5",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7475,7 +7475,7 @@
         },
         {
           "path": "src-server/providers/app-home/credential-profile-registry.ts",
-          "digest": "1275658eb80794c0a1a717afb10e94b3d7911a022375a2ed55016dd70da7742b"
+          "digest": "beebae380db019040de393fbdc3fb01e6c5d14069a2cae712dba198c9527ddf1"
         },
         {
           "path": "src-server/providers/auth/claude-auth.ts",
@@ -7570,7 +7570,8 @@
         "Re-read 'Design: Connections onboarding & capability passthrough' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
         "Updated §1.2: persisted record may carry a non-secret env overlay; selected-profile failure (explicit ref or active profile, incl. invalid persisted overlay) fails closed; automatic selection refuses environment_mismatch. Re-checked §1.1 spawn-env table and adoption/discovery exclusions against claude-adapter/codex-adapter: unchanged and still accurate.",
         "Updated §1.2 for heuristic wording and invalid-overlay preservation/envInvalid projection; checked against credential-profile-registry.ts profileRecord/projectProfile and connection-recovery-policy credentialProfilesRouteAlike (invalid never alike). Contract CredentialProfileRecord/CredentialProfileProjection match.",
-        "#2966 marker round: replaced 'invalid overlay kept as written' with the value-free envInvalid marker; checked credential-profile-registry.ts profileRecord (drops values, keeps marker, setCredentialProfileEnv clears it), credential-profile-env.ts resolver refusing the marker, and contract CredentialProfileRecord."
+        "#2966 marker round: replaced 'invalid overlay kept as written' with the value-free envInvalid marker; checked credential-profile-registry.ts profileRecord (drops values, keeps marker, setCredentialProfileEnv clears it), credential-profile-env.ts resolver refusing the marker, and contract CredentialProfileRecord.",
+        "Updated: an invalid saved overlay becomes a value-free envInvalid marker; values not retained by the next registry write or a PUT /config/app that includes the profiles. Matches persistableCredentialProfiles in config.ts PUT and registry normalization."
       ]
     },
     {
@@ -8690,7 +8691,7 @@
     {
       "path": "docs/design/offline-outbound-queue.md",
       "documentDigest": "f8f6a1469892804fdb6c546d5c1554601734f2eaff93883e4adb3deee049e106",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "policy",
       "state": "classified",
       "summary": "Queue admission/exclusion policy with implementation notes and a bounded log-level exception.",
@@ -8702,7 +8703,7 @@
         },
         {
           "path": "src-server/routes/system/config.ts",
-          "digest": "eb2fdca6fabd8be159b0174fc566fa8d4e36c7294d05df8b705304aef072e35b"
+          "digest": "c9df06223c89f33eb595cc69fe7e511487bcefab39c0fea136372c690724ef91"
         },
         {
           "path": "src-server/services/config/log-level-edit-service.ts",
@@ -8723,7 +8724,8 @@
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 swaps the config route's full-access 403 body for fullAccessRefusal(); the log-level route is untouched. The send caller in useActiveChatSessionMessaging now treats a full-access refusal of a non-queued send as idle, restores the draft and offers an explicit 'Send without full access' action. A queued-dispatch refusal gets canned copy. The policy still holds: chat turns only are queued, configuration is excluded, log-level is the one bounded revisioned exception, and approvals are never queued. Prose accurate. Source review is separate from executed test evidence.",
         "Re-read 'Offline outbound queue scope' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
-        "#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change."
+        "#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change.",
+        "Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change."
       ]
     },
     {
@@ -9846,7 +9848,7 @@
     {
       "path": "docs/design/settings-architecture.md",
       "documentDigest": "eb80eac4602bdb8376220ce11f8f5dcd4155c90315b250fa45e0a777afc068ce",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the full design, separating the dated problem inventory/target slices from current implementation. Checked registry descriptors, three Project overrides, provenance-only GET scope, independent Save writes, device migration ownership and canonical reveal behavior. Corrected the inert Knowledge flag claim and replaced the obsolete example with an actual registry entry.",
@@ -9890,7 +9892,7 @@
         },
         {
           "path": "src-server/routes/system/config.ts",
-          "digest": "eb2fdca6fabd8be159b0174fc566fa8d4e36c7294d05df8b705304aef072e35b"
+          "digest": "c9df06223c89f33eb595cc69fe7e511487bcefab39c0fea136372c690724ef91"
         },
         {
           "path": "src-ui/src/lib/device-settings-store.ts",
@@ -9913,7 +9915,8 @@
         "Reviewed integration deltas: src-ui/src/views/settings/settings-catalog.ts: Removed test-only visibleCatalogIds helper; actual Settings catalog and palette projection are unchanged; tests now own their expected-ID fixture.",
         "Integration source review through d72f79b08: #2904 added a `defaultApprovalMode` row to config.md, covering its full-access authority and the 403 approval-full-access-not-granted refusal. The CLI's parseFullEnvelope in config.ts now keeps the envelope code, status and details. The config route returns fullAccessRefusal(). The design does not describe defaultApprovalMode or refusal shapes. Its dated problem inventory, including the #175 'config set bypasses the route' item that line 309 records as closed, is still correctly framed as history. Prose accurate. Source review is separate from executed test evidence.",
         "Re-read 'Settings Architecture: scope-first settings for Station' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
-        "#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change."
+        "#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change.",
+        "Weak-write-path claim (PUT /config/app validates as z.record(z.unknown())) remains true: the route schema is unchanged; profile normalization runs after validation for credentialRecovery.profiles only. No prose change."
       ]
     },
     {
@@ -10661,7 +10664,7 @@
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "7d865d177cd57a733bba5caad0e3c575dcb98ae752733dc26194bba6af92ba3f",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10845,7 +10848,7 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "39756900182d0d755387168024294457985e01248f434c4da14a2a4732b591a0"
+          "digest": "0609bd61104218ab026326e060766f5cb333ea9f14b240e5bed2e7e2b08363c6"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
@@ -10993,7 +10996,8 @@
         "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines.",
         "#2966 delta: checked for connection env/app-home/credential-profile claims; none present (agent credentialProfileRef semantics unchanged). No change.",
         "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.",
-        "#2966 marker round delta: connection-env.ts adds sanitizeCredentialProfileEnvInvalidNames and bounds the URL-userinfo scheme run (linear time); connection env map sanitizer unchanged. Searched this document for connection env / profile overlay claims; none affected, no prose change."
+        "#2966 marker round delta: connection-env.ts adds sanitizeCredentialProfileEnvInvalidNames and bounds the URL-userinfo scheme run (linear time); connection env map sanitizer unchanged. Searched this document for connection env / profile overlay claims; none affected, no prose change.",
+        "Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change."
       ]
     },
     {
@@ -11905,8 +11909,8 @@
     },
     {
       "path": "docs/guides/connections.md",
-      "documentDigest": "d5fcadc317e7cc858188a0c325c1f475ff7a22cd09731e5b158a7c2c9d1e96e1",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "documentDigest": "f55ed77784d56e5e9bde50a4e5b6eaa8eb7b151a6f7c67f3fb506602b8391da3",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12186,7 +12190,7 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "39756900182d0d755387168024294457985e01248f434c4da14a2a4732b591a0"
+          "digest": "0609bd61104218ab026326e060766f5cb333ea9f14b240e5bed2e7e2b08363c6"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
@@ -12428,7 +12432,8 @@
         "Re-read 'Connections Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; pairing-route-scopes.ts drops the /station-control/caller/delegation entry; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
         "Added the credential-profile env overlay section and checked each claim against connection-env.ts (validateCredentialProfileEnv: names, 64 entries, 32,768 code units, NUL, credential-shaped non-empty refusal, TMPDIR/CLAUDE_CONFIG_DIR/CODEX_HOME/internal names), credential-profile-env.ts (overlay under home key; fail closed), claude-adapter/codex-adapter merges (ambient < connection env < overlay < home key < TMPDIR; codex TMPDIR in spawnCodexProcess), exclusions (listModelCatalog, adoption/source affinity, readiness, credential-enrolment), connection-recovery-policy environment_mismatch, and the app-home.ts PUT route. Existing proxy-section claims unchanged.",
         "Rewrote heuristic paragraph against connection-env.ts CREDENTIAL_SHAPED_ENV_NAME/VALUE_PATTERNS (KEYS/TOKENS/SECRETS/PASSWORDS/PASSWD/CREDENTIALS/AUTH/HEADERS, (^|_)PAT, URL userinfo, authorization/api-key header, bearer/basic); added credential-usage exclusion (app-home.ts reads profile home directly); envInvalid + server-log diagnostic (credential-profile-env.ts warn with storage id and names); visibility beyond access:manage verified: GET /api/connections(/agents) and GET /config/app resolve to orchestration:read, PUT /config/app to orchestration:operate via requiredPairingScope.",
-        "#2966 marker round: rewrote invalid-overlay paragraph (values not retained after the next profile write, GET /config/app never returns them, marker keeps profile refused); checked registry profileRecord/projectPublicCredentialProfiles, config.ts projectPublicAppConfig, resolver credentialProfileOverlayEnv. URL-userinfo heuristic change (bounded scheme run) does not change documented heuristic list."
+        "#2966 marker round: rewrote invalid-overlay paragraph (values not retained after the next profile write, GET /config/app never returns them, marker keeps profile refused); checked registry profileRecord/projectPublicCredentialProfiles, config.ts projectPublicAppConfig, resolver credentialProfileOverlayEnv. URL-userinfo heuristic change (bounded scheme run) does not change documented heuristic list.",
+        "Updated: invalid overlay values are rewritten to the envInvalid marker by the next profile change or a settings save/import that includes the profiles; a hand-edited value stays in config/app.json until then; GET /config/app never returns them. URL-userinfo heuristic wording unchanged and still accurate for the widened regex."
       ]
     },
     {
@@ -14620,7 +14625,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14656,7 +14661,7 @@
         },
         {
           "path": "docs/reference/api.md",
-          "digest": "474f3000fede7adc9b7391481a0a10ea4e4787cd22599891dcc21d591fd524d8"
+          "digest": "d74a1ece1e3e6bdce5d113269802377d4489da2dc94d9c1ac749c6eb76088911"
         },
         {
           "path": "docs/reference/cli.md",
@@ -14718,7 +14723,8 @@
         "#2966 delta: api.md/cli.md gained the profile env route/command; this guide's profile mentions are deployment profiles, not credential profiles. No change.",
         "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.",
         "Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.",
-        "#2966 marker round delta: api.md changes are limited to the credential-profile env 413 bound and /config/app invalid-overlay projection; searched this guide's routing to api.md and found no claim about either, no prose change."
+        "#2966 marker round delta: api.md changes are limited to the credential-profile env 413 bound and /config/app invalid-overlay projection; searched this guide's routing to api.md and found no claim about either, no prose change.",
+        "Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change."
       ]
     },
     {
@@ -15290,7 +15296,7 @@
     {
       "path": "docs/guides/machine-relationships.md",
       "documentDigest": "69873a4bf7c123c8bb46b4a0014745b8725334684e864ae804226275accf966d",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented direction/authority/persistence distinctions across paired Devices, server-owned SSH, remote visibility, fleet inference and account/Project sharing. Traced the shared-work and guest administration boundaries; archived issue references corrected. No behavioral prose correction was otherwise needed.",
@@ -15350,7 +15356,7 @@
         },
         {
           "path": "src-server/routes/system/config.ts",
-          "digest": "eb2fdca6fabd8be159b0174fc566fa8d4e36c7294d05df8b705304aef072e35b"
+          "digest": "c9df06223c89f33eb595cc69fe7e511487bcefab39c0fea136372c690724ef91"
         },
         {
           "path": "src-server/routes/system/relay-enrollment-routes.ts",
@@ -15492,7 +15498,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) returns 403 rather than 401 when an ordinary device credential is recognized but not admitted (e.g. /api/pairing device inventory), so the browser session is not revoked; prose accurate: the guide describes scoped, revocable device credentials and named refusals without claiming a status code or that an out-of-scope request ends the session. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added lastDecision/earlierUnacknowledgedDecisions and request.delivery projection to station-control-delegation.ts. Remote target admission and authenticated forwarding are unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Corrected the See-also for the delegation caller: a tool names the saved Environment to this Station's route, which forwards through the remote forwarder with the bearer attached in-process and a per-request bound. | Restored src-server/services/remote-stations/remote-station-forwarder.ts as a recorded source: it was cited by this branch's review before the merge with main and was dropped when main's ledger file was taken. No prose changed; the earlier review of this page's forwarding claims stands.",
-        "#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change."
+        "#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change.",
+        "Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change."
       ]
     },
     {
@@ -18423,7 +18430,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "618c04635531af10ce95cda65be2bd40e5b361f98b0fde1a8ae999b125bfb6a0",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18579,7 +18586,7 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "39756900182d0d755387168024294457985e01248f434c4da14a2a4732b591a0"
+          "digest": "0609bd61104218ab026326e060766f5cb333ea9f14b240e5bed2e7e2b08363c6"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
@@ -18721,7 +18728,8 @@
         "Corrected: forwarding to a saved Environment now says the tool never contacts the other Station, it names the Environment to this Station's route, and remote task listings share the bound-operator restriction (C2b added it on GET /delegations).",
         "#2966 delta: no connection env, app-home or credential-profile claims. No change.",
         "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.",
-        "#2966 marker round delta: connection-env.ts adds sanitizeCredentialProfileEnvInvalidNames and bounds the URL-userinfo scheme run (linear time); connection env map sanitizer unchanged. Searched this document for connection env / profile overlay claims; none affected, no prose change."
+        "#2966 marker round delta: connection-env.ts adds sanitizeCredentialProfileEnvInvalidNames and bounds the URL-userinfo scheme run (linear time); connection env map sanitizer unchanged. Searched this document for connection env / profile overlay claims; none affected, no prose change.",
+        "Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change."
       ]
     },
     {
@@ -21821,12 +21829,12 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
       "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
-      "documentDigest": "474f3000fede7adc9b7391481a0a10ea4e4787cd22599891dcc21d591fd524d8",
+      "documentDigest": "d74a1ece1e3e6bdce5d113269802377d4489da2dc94d9c1ac749c6eb76088911",
       "sources": [
         {
           "path": "packages/cli/src/commands/environment.ts",
@@ -22230,7 +22238,7 @@
         },
         {
           "path": "src-server/routes/system/config.ts",
-          "digest": "eb2fdca6fabd8be159b0174fc566fa8d4e36c7294d05df8b705304aef072e35b"
+          "digest": "c9df06223c89f33eb595cc69fe7e511487bcefab39c0fea136372c690724ef91"
         },
         {
           "path": "src-server/routes/system/configuration-activation.ts",
@@ -22535,7 +22543,8 @@
         "Added the PUT credential-recovery profiles/:ref/env section; checked 400 via credentialProfileEnvRequestSchema + validateCredentialProfileEnv (violation text names variables only), 404 for unknown profile/unsupported connection, 409 conflict path, response projection with profiles[].env, and access:manage via the credential-recovery prefix entry in pairing-route-scopes.ts. Other sections unaffected by surfaces.ts/connection-service delta.",
         "Checked the env route section against app-home.ts (404/409 paths, maxBodyBytes CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES=2MiB+64KiB -> 413 via schema-validation readRequestText), schema heuristic list against connection-env.ts, envInvalid projection in credential-profile-registry.ts, scopes via requiredPairingScope (credential-recovery access:manage; listings and GET /config/app orchestration:read; PUT /config/app orchestration:operate), and upsert env refusal in credentialProfileUpsertRequestSchema.",
         "Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.",
-        "#2966 marker round: corrected the 413 body-bound claim to what the 2 MiB + 64 KiB bound guarantees (unescaped printable-ASCII values at caps, names <= 65,143 bytes compact JSON; pinned by app-home.routes.test.ts), and the GET/PUT /config/app invalid-overlay claim to the envInvalid marker (config.ts projectPublicAppConfig via projectPublicCredentialProfiles)."
+        "#2966 marker round: corrected the 413 body-bound claim to what the 2 MiB + 64 KiB bound guarantees (unescaped printable-ASCII values at caps, names <= 65,143 bytes compact JSON; pinned by app-home.routes.test.ts), and the GET/PUT /config/app invalid-overlay claim to the envInvalid marker (config.ts projectPublicAppConfig via projectPublicCredentialProfiles).",
+        "Updated: PUT /config/app does not refuse an invalid overlay but normalizes the profiles it is given, persisting only the envInvalid marker; GET/PUT responses show only the marker; hand-edited values remain until a registry write or a PUT including profiles. Checked against config.ts."
       ]
     },
     {
@@ -22968,7 +22977,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23073,7 +23082,7 @@
         },
         {
           "path": "src-server/routes/system/config.ts",
-          "digest": "eb2fdca6fabd8be159b0174fc566fa8d4e36c7294d05df8b705304aef072e35b"
+          "digest": "c9df06223c89f33eb595cc69fe7e511487bcefab39c0fea136372c690724ef91"
         },
         {
           "path": "src-server/routes/system/diagnostics.ts",
@@ -23247,7 +23256,8 @@
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Re-read 'config reference' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route; pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold.",
         "#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change.",
-        "#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change."
+        "#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change.",
+        "Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change."
       ]
     },
     {
@@ -26129,7 +26139,7 @@
     {
       "path": "docs/security/remote-access-threat-model.md",
       "documentDigest": "5545f52b980d2071732503351ddbd811e19d4c6e333c7e02b294db00a197a147",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented HTTP capability, proxy/Origin, scope, mutation budget, SSH host-key/probe, fleet, credential and recovery boundaries. Historical pairing probes remain explicitly historical. Corrected custom capability/query-token exceptions, unmapped-route refusal, retained loopback WS scope limits, and SSH handshake versus authenticated-session reachability.",
@@ -26185,7 +26195,7 @@
         },
         {
           "path": "src-server/routes/system/config.ts",
-          "digest": "eb2fdca6fabd8be159b0174fc566fa8d4e36c7294d05df8b705304aef072e35b"
+          "digest": "c9df06223c89f33eb595cc69fe7e511487bcefab39c0fea136372c690724ef91"
         },
         {
           "path": "src-server/routes/system/deployment-authentication-routes.ts",
@@ -26364,7 +26374,8 @@
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks (strengthens the documented bounded limiting of repeated authentication failures, including for IPv4 peers on a dual-stack listener). Station-control MCP token and loopback WebSocket statements remain accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked the SSH delegation row (paired outbound bearer attached to the tunnel request) and the cross-station reads section (remote session reader supplied the peer store by runtime composition): both still hold with the bearer now attached by the forwarder in-process; no deleted route is listed.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change."
+        "#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change.",
+        "Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change."
       ]
     },
     {
@@ -28743,7 +28754,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "94a49d032947c6907b4b723d17eb23ae02da5418",
+      "sourceRevision": "583277c3feaea350d025dfa9cce17006b1a56960",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28899,7 +28910,7 @@
         },
         {
           "path": "src-server/services/connections/connection-env.ts",
-          "digest": "39756900182d0d755387168024294457985e01248f434c4da14a2a4732b591a0"
+          "digest": "0609bd61104218ab026326e060766f5cb333ea9f14b240e5bed2e7e2b08363c6"
         },
         {
           "path": "src-server/services/connections/credential-enrolment.ts",
@@ -29041,7 +29052,8 @@
         "Re-read 'Self-Configuring Agent Example' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
         "#2966 delta: no connection env, app-home or credential-profile claims. No change.",
         "#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.",
-        "#2966 marker round delta: connection-env.ts adds sanitizeCredentialProfileEnvInvalidNames and bounds the URL-userinfo scheme run (linear time); connection env map sanitizer unchanged. Searched this document for connection env / profile overlay claims; none affected, no prose change."
+        "#2966 marker round delta: connection-env.ts adds sanitizeCredentialProfileEnvInvalidNames and bounds the URL-userinfo scheme run (linear time); connection env map sanitizer unchanged. Searched this document for connection env / profile overlay claims; none affected, no prose change.",
+        "Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change."
       ]
     },
     {

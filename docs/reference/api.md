@@ -944,8 +944,9 @@ normalizes the profiles it is given, so it persists such an overlay only as
 its `envInvalid` marker. A saved overlay that breaks the rules (for example
 after hand-editing `config/app.json`) makes sessions under that profile fail
 closed; `GET /config/app` and the `PUT /config/app` response show it only as
-`envInvalid` with variable names, and the next registry write persists only
-that marker. Until then the hand-edited values remain in the file.
+`envInvalid` with variable names, and the next registry write, or a
+`PUT /config/app` that includes the profiles, persists only that marker. Until
+then the hand-edited values remain in the file.
 
 `POST /api/connections/agent/:id/credential-recovery/profiles` (profile upsert)
 manages the ref and label only; a body that includes `env` is refused with 400
