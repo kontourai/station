@@ -3040,11 +3040,20 @@ already sent to Chromium. Closing a viewer only stops its capture subscription.
 Host exit/restart produces `needs-reopen`, and old-generation live surfaces are
 unregistered. Idle host shutdown runs after its last live target closes,
 not merely when nobody watches.
+`browser-live-surfaces.ts` also owns per-generation page tools: a JavaScript
+dialog opened while a person holds the lease is held in
+`ChromiumScreencastProducer` for that person (answered through
+`POST /api/browser/sessions/:id/dialog`, never by an Agent, which is refused
+`dialog-open` meanwhile); dialogs under an Agent or no holder are answered
+automatically. `browser-console-log.ts` keeps a bounded in-memory console, and
+the registry's `captureScreenshot` serves the pane's screenshot.
 
 **Evidence and limits.** Synthetic tests include `chromium-acquisition.test.ts`,
 `browser-session-registry.test.ts`, `egress-policy.test.ts`,
-`browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`, and
-`BrowserPane.test.tsx`; real-host suites are separate `.real.test.ts` files.
+`browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`,
+`browser-pane-page.routes.test.ts`, `BrowserPane.test.tsx` and
+`BrowserPane.pageTools.test.tsx`; real-host suites are separate
+`.real.test.ts` files.
 Synthetic PASS is not browser-version compatibility, hostile-page completeness,
 Windows process-tree cleanup, mobile viewing or release evidence. Keep
 `desktop-cef`/peer-host plans and the ADR's original research distinct from the
