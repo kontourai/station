@@ -19,10 +19,18 @@ import { type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
  * row that followed it (by the last observed order), then the one before
  * it, then `root` itself (which must be focusable, e.g. `tabIndex={-1}`).
  *
- * Deliberately inert when focus left the rows on purpose: focusing anything
- * that is not a row inside `root` clears the record, and a row the user
- * blurred to `<body>` by clicking empty space is still connected, so nothing
- * fires.
+ * Deliberately inert when focus left the rows on purpose. Focusing anything
+ * that is not a row inside `root` clears the record, and so does a blur to
+ * nowhere (`focusout` with no `relatedTarget`, e.g. clicking empty space)
+ * whose element is still connected afterwards. That connectedness check is
+ * what separates a deliberate blur from a removal: some engines fire
+ * `focusout` on removal and some (Chrome) fire nothing, so the decision is
+ * deferred to a microtask — after React's commit and this hook's restore —
+ * and only a still-connected element counts as the user leaving.
+ *
+ * A candidate that cannot take focus (e.g. inside a closed `<details>`) is
+ * skipped: focus is confirmed with `document.activeElement` before moving
+ * on to the next candidate and finally `root`.
  */
 export function useRowFocusPreservation(
   rootRef: RefObject<HTMLElement | null>,
@@ -51,8 +59,27 @@ export function useRowFocusPreservation(
         order: rowKeys(root),
       };
     };
+    const onFocusOut = (event: FocusEvent) => {
+      const root = rootRef.current;
+      const next = event.relatedTarget as Node | null;
+      if (next && root?.contains(next)) return;
+      const left = event.target as HTMLElement | null;
+      if (next) {
+        lastRef.current = null;
+        return;
+      }
+      queueMicrotask(() => {
+        if (left?.isConnected && lastRef.current?.element === left) {
+          lastRef.current = null;
+        }
+      });
+    };
     document.addEventListener('focusin', onFocusIn);
-    return () => document.removeEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+    };
   }, [rootRef]);
 
   // Every commit: cheap (one isConnected read) unless focus was just lost.
@@ -62,12 +89,9 @@ export function useRowFocusPreservation(
     if (!root || !last || last.element.isConnected) return;
     const active = document.activeElement;
     if (active && active !== document.body) return;
-    const target =
-      focusTargetIn(root, last.key, focusTargetSelector) ??
-      neighbourTarget(root, last, focusTargetSelector);
-    if (target) {
+    for (const target of candidateTargets(root, last, focusTargetSelector)) {
       target.focus();
-      return;
+      if (document.activeElement === target) return;
     }
     lastRef.current = null;
     root.focus();
@@ -93,19 +117,21 @@ function focusTargetIn(
   return null;
 }
 
-function neighbourTarget(
+function candidateTargets(
   root: HTMLElement,
   last: { key: string; order: string[] },
   selector: string,
-): HTMLElement | null {
+): HTMLElement[] {
   const index = last.order.indexOf(last.key);
-  const candidates = [
+  const keys = [
+    last.key,
     ...last.order.slice(index + 1),
     ...last.order.slice(0, Math.max(index, 0)).reverse(),
   ];
-  for (const key of candidates) {
+  const targets: HTMLElement[] = [];
+  for (const key of keys) {
     const target = focusTargetIn(root, key, selector);
-    if (target) return target;
+    if (target) targets.push(target);
   }
-  return null;
+  return targets;
 }

@@ -180,6 +180,33 @@ describe('ChatDockInboxPanel', () => {
       );
     });
 
+    it('does not steal focus back after the user deliberately blurred to the page', async () => {
+      const running = item('moving', 'Running', NOW - 60_000);
+      const other = item('other', 'Ready', NOW - 5 * 60_000);
+      const view = renderPanel({
+        items: [running, other],
+        openChatSessionIds: [],
+      });
+      const row = screen.getByRole('button', {
+        name: 'moving title, moving project',
+      });
+      row.focus();
+      // Clicking non-focusable space: focus goes nowhere, no focusin.
+      row.blur();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(document.activeElement).toBe(document.body);
+
+      view.rerender(
+        <ChatDockInboxPanel
+          {...view.props}
+          items={[{ ...running, lifecycleLabel: 'Ready' }, other]}
+        />,
+      );
+      expect(document.activeElement).toBe(document.body);
+    });
+
     it('falls back to the next row when the focused row disappears', () => {
       const a = item('a', 'Running', NOW - 60_000);
       const b = item('b', 'Running', NOW - 2 * 60_000);

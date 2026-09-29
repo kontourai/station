@@ -127,3 +127,48 @@ describe('MobileTaskSwitcher answerability basis', () => {
     expect(screen.getByRole('heading', { name: /^Running/ })).toBeTruthy();
   });
 });
+
+describe('MobileTaskSwitcher lane-move focus', () => {
+  test('a focused row that moves Running -> Idle keeps focus in the sheet', () => {
+    const props = {
+      open: true,
+      activeChatSessionId: null,
+      visualViewportStyle: {},
+      triggerRef: createRef<HTMLButtonElement>(),
+      onClose: vi.fn(),
+      onFocusChat: vi.fn(),
+      onOpenConversation: vi.fn(),
+      onOpenSession: vi.fn(),
+      now: Date.now(),
+    };
+    const running = task({
+      id: 'chat:moving',
+      chatSessionId: 'moving',
+      title: 'Moving row',
+      lifecycleLabel: 'Running',
+      unanswerableNotice: undefined,
+    });
+    const other = task({
+      id: 'chat:other',
+      chatSessionId: 'other',
+      title: 'Other row',
+      lifecycleLabel: 'Ready',
+      unanswerableNotice: undefined,
+    });
+    const view = render(
+      <MobileTaskSwitcher {...props} tasks={[running, other]} />,
+    );
+    const name = 'Moving row, Station';
+    screen.getByRole('button', { name }).focus();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name }));
+
+    view.rerender(
+      <MobileTaskSwitcher
+        {...props}
+        tasks={[{ ...running, lifecycleLabel: 'Ready' }, other]}
+      />,
+    );
+    expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name }));
+  });
+});
