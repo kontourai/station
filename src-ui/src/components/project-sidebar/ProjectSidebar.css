@@ -694,8 +694,13 @@
   color: var(--text-primary);
 }
 
+/* The current page reads the same on every place row: Home's current
+   treatment (`.sidebar__project-btn--active`) — accent-tinted fill and a
+   left accent bar — so Home and Activity, the panel's two places, cannot
+   look current in two different ways. */
 .sidebar__nav-btn--active {
-  background: var(--bg-tertiary);
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
+  border-left: 2px solid var(--accent-primary);
   color: var(--text-primary);
 }
 

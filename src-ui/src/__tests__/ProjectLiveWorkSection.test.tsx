@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   focus: vi.fn(),
   navigate: vi.fn(),
   showSurface: vi.fn(),
+  showSurfacePage: vi.fn(),
   roomDiscoveries: new Map<string, Record<string, unknown>>(),
   roomStreams: new Map<
     string,
@@ -40,6 +41,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 vi.mock('../contexts/RegionModelContext', () => ({}));
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => mocks.showSurface,
+  useShowSurfacePage: () => mocks.showSurfacePage,
 }));
 vi.mock('../contexts/open-chats-store', () => ({
   openChatsStore: { focus: mocks.focus },
@@ -90,6 +92,7 @@ beforeEach(() => {
   mocks.focus.mockClear();
   mocks.navigate.mockClear();
   mocks.showSurface.mockClear();
+  mocks.showSurfacePage.mockClear();
   mocks.roomDiscoveries.clear();
   mocks.roomStreams.clear();
   mocks.roomStreamCalls.mockClear();
@@ -429,7 +432,8 @@ describe('ProjectLiveWorkSection', () => {
 
     render(<ProjectLiveWorkSection slug="station" />);
     fireEvent.click(screen.getByRole('button', { name: 'All activity' }));
-    expect(mocks.showSurface).toHaveBeenCalledWith('activity');
+    expect(mocks.showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(mocks.showSurface).not.toHaveBeenCalled();
     // The retired surface name (archive#3280) renders no second affordance.
     expect(
       screen.queryAllByRole('button', {

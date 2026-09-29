@@ -539,6 +539,14 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // `toggleSurface` is declared above the layer's exits; it reaches the
   // current one through this.
   const closePhoneLayerRef = useRef<() => void>(() => {});
+  // The layer's restore, for `openSurfaceInRegion`'s page open of the pane
+  // the layer shows (declared above the restore, like the ref above).
+  const restorePhoneLayerRef = useRef<() => void>(() => {});
+  // The dock region a surface was taken from when it was opened as the
+  // `main` page, keyed by surface. Transient like the phone layer's origin:
+  // it is not part of the persisted arrangement record, so a reload returns
+  // the chord to the surface's `defaultRegion`.
+  const mainOriginRef = useRef(new Map<string, DockRegionId>());
   // The Back an unsaved-changes guard is deciding, if any
   // (`leavePhoneLayerByBack`). While set, the layer is reinstated and neither
   // navigation's inbound sync nor the dismissal effect may act on it.
@@ -596,17 +604,35 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
    * Apply an arrangement a reveal or open produced: the fold's last shown
    * region follows it, and a landing in `main` navigates to the outlet.
    */
-  const commit = useCallback((next: RegionArrangement, region: RegionId) => {
-    regionsRef.current = next;
-    setLastShownRegion(region);
-    setRegions(next);
-    if (region === 'main') navigateToMainOutlet();
-  }, []);
+  const commit = useCallback(
+    (arrangement: RegionArrangement, region: RegionId) => {
+      let next = arrangement;
+      // A page opened in `main` on a phone (or any folded device) has to be
+      // SEEN: a maximized dock owns the whole viewport there
+      // (`isMobileDockFullscreenState`), so the Activity or Home row would
+      // otherwise change `main` behind a full-screen Chat and nothing on
+      // screen would move. The dock is restored, not closed — Chat stays
+      // where the reader left it, below the page. A fine-pointer desktop
+      // keeps its maximize: `main` there is not hidden by the dock rule.
+      if (region === 'main' && (bottomOnly || isMobile))
+        for (const id of DOCK_REGION_IDS)
+          if (next[id].maximized)
+            next = updateRegion(next, id, { maximized: false });
+      regionsRef.current = next;
+      setLastShownRegion(region);
+      setRegions(next);
+      if (region === 'main') navigateToMainOutlet();
+    },
+    [bottomOnly, isMobile],
+  );
 
   const placeSurface = useCallback((surfaceId: string, regionId: RegionId) => {
     // A refused placement (the surface does not declare this region) must not
     // navigate either: nothing was placed, so there is nothing to go and see.
     if (!surfaceMayOccupy(surfaceId, regionId)) return;
+    // An explicit placement is the user's own: any dock region remembered
+    // for a `main` page return is superseded by it.
+    mainOriginRef.current.delete(surfaceId);
     const next = placeSurfaceInArrangement(
       regionsRef.current,
       surfaceId,
@@ -657,9 +683,16 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       if (!surface) return { ok: false, reason: 'no-surface' };
       if (options.placement === 'split')
         return { ok: false, reason: 'unsupported-placement' };
+      const target = options.region;
+      // Opening as the page a pane the phone layer is showing over Chat ends
+      // that layer first, through its own restore (the pane goes back to
+      // where the layer found it, Chat's region to its pre-layer state), so
+      // the page placement below starts from the arrangement the reader had
+      // before the layer — and the layer's history entry goes with it.
+      if (target === 'main' && phoneLayerRef.current?.surfaceId === surfaceId)
+        restorePhoneLayerRef.current();
       const current = regionsRef.current;
       const held = occupiedRegion(current, surfaceId);
-      const target = options.region;
       // The phone layer: on a bottom-only device, a pane opened with no
       // explicit region — or with a side region the fold does not offer,
       // which used to be refused `region-unavailable` — opens OVER Chat, as
@@ -728,6 +761,12 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
           !(available as readonly RegionId[]).includes(target)
         )
           return { ok: false, reason: 'region-unavailable' };
+        // A page taken from a dock region remembers that region, so the
+        // chord's return (`toggleSurface`'s `main` case) goes back to where
+        // the user had docked it rather than to `defaultRegion`.
+        if (target === 'main' && held && isDockRegion(held))
+          mainOriginRef.current.set(surfaceId, held);
+        else mainOriginRef.current.delete(surfaceId);
         let next = placeSurfaceInArrangement(current, surfaceId, target);
         if (bottomOnly && isDockRegion(target))
           for (const id of DOCK_REGION_IDS)
@@ -811,12 +850,23 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         closePhoneLayerRef.current();
         return;
       }
+      // A `main` page returns to the dock region it was taken from, when
+      // this device still offers it; otherwise to its default.
+      const remembered = mainOriginRef.current.get(surfaceId);
+      const returnRegion =
+        remembered &&
+        occupiedRegion(regionsRef.current, surfaceId) === 'main' &&
+        (available as readonly RegionId[]).includes(remembered)
+          ? remembered
+          : surface.defaultRegion;
       const toggled = toggleSurfaceInArrangement(
         regionsRef.current,
         surfaceId,
-        surface.defaultRegion,
+        returnRegion,
         { lastShownRegion, bottomOnly },
       );
+      if (toggled.kind === 'arrangement')
+        mainOriginRef.current.delete(surfaceId);
       if (toggled.kind === 'none') return;
       if (toggled.kind === 'show') {
         // Showing is `showSurface`'s: it owns the unplaced landing, the
@@ -828,7 +878,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       if (toggled.shownRegion) setLastShownRegion(toggled.shownRegion);
       setRegions(toggled.arrangement);
     },
-    [bottomOnly, lastShownRegion, showSurface],
+    [available, bottomOnly, lastShownRegion, showSurface],
   );
 
   // Counted rather than a boolean: React can commit a replacement host before
@@ -873,6 +923,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     regionsRef.current = next;
     setRegions(next);
   }, [setPhoneLayer]);
+  restorePhoneLayerRef.current = restorePhoneLayer;
 
   // Anything else that takes the layer's pane off screen — "Show Chat" in the
   // folded menu, the tab closed, the region hidden, another tab adopting a

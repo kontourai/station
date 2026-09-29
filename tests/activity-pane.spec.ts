@@ -445,4 +445,38 @@ test.describe('Activity surface at 390x844', () => {
     ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await expect(mainHeading(page, 'Activity')).toHaveCount(0);
   });
+
+  // Review round 1: the page must be SEEN on a phone. A maximized Chat owns
+  // the whole viewport (the route outlet is hidden under it), and a layer
+  // over Chat is maximized too, so the row has to restore the dock — the
+  // assertion is the Activity heading being visible in the primary area,
+  // not model state.
+  for (const [label, start] of [
+    ['a maximized Chat', '/?dock=open&maximize=true'],
+    ['Activity open over Chat', '/?surface=activity'],
+  ] as const) {
+    test(`the drawer Activity row shows the page from ${label}`, async ({
+      page,
+    }) => {
+      await page.goto(start);
+      const menu = page.getByRole('button', { name: 'Toggle menu' });
+      await expect(menu).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+      await menu.click();
+      await page
+        .getByRole('navigation', { name: 'Mobile navigation' })
+        .getByRole('button', { name: 'Activity', exact: true })
+        .click();
+      await expect(mainHeading(page, 'Activity')).toBeVisible({
+        timeout: FIRST_RENDER_TIMEOUT_MS,
+      });
+      await expect(
+        page.getByRole('button', { name: 'Back to Chat', exact: true }),
+      ).toHaveCount(0);
+      await expectBoxWithinViewport(
+        page,
+        mainHeading(page, 'Activity'),
+        'the Activity page heading',
+      );
+    });
+  }
 });

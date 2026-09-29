@@ -223,4 +223,81 @@ describe('the Activity row opens Activity as the page', () => {
     expect(current().regions.main.occupant).toBeNull();
     expect(activityRow().getAttribute('aria-current')).toBeNull();
   });
+
+  // Review round 1: a page opened on a phone has to be SEEN. `App.tsx`
+  // hides the whole route outlet while the phone dock is maximized
+  // (`isMobileDockFullscreenState` over navigation's dock state), so the
+  // row must restore the dock, or `main` changes behind a full-screen Chat.
+  test('on a phone with Chat maximized, the page open restores the dock', async () => {
+    stubDevice({ phone: true });
+    await mount();
+    act(() => navigationStore.setDockState(true, true));
+    await waitFor(() => expect(current().regions.bottom.maximized).toBe(true));
+
+    fireEvent.click(activityRow());
+    await waitFor(() =>
+      expect(current().regions.main.occupant).toBe('activity'),
+    );
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(false),
+    );
+    expect(current().regions.bottom.maximized).toBe(false);
+    expect(activityRow().getAttribute('aria-current')).toBe('page');
+
+    // Home shares the path (`showSurface('home')` lands in `main`).
+    act(() => navigationStore.setDockState(true, true));
+    await waitFor(() => expect(current().regions.bottom.maximized).toBe(true));
+    act(() => current().showSurface('home'));
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(false),
+    );
+    expect(current().regions.main.occupant).toBe('home');
+  });
+
+  test('on a phone with Activity open over Chat, the row ends the layer and opens the page', async () => {
+    stubDevice({ phone: true });
+    await mount();
+    act(() => current().showSurface('activity'));
+    await waitFor(() => expect(current().phoneLayer).not.toBeNull());
+    expect(current().regions.bottom.maximized).toBe(true);
+
+    fireEvent.click(activityRow());
+    await waitFor(() =>
+      expect(current().regions.main.occupant).toBe('activity'),
+    );
+    expect(current().phoneLayer).toBeNull();
+    expect(current().regions.bottom.panes).not.toContain('activity');
+    expect(current().regions.bottom.maximized).toBe(false);
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(false),
+    );
+  });
+
+  // Review round 1: a user's own dock placement survives the round trip
+  // through the page — the chord returns Activity to the region it came
+  // from, not to its `defaultRegion`.
+  test('the chord returns a page to the dock region it was taken from', async () => {
+    await mount();
+    act(() => current().placeSurface('activity', 'left'));
+    await waitFor(() =>
+      expect(current().regions.left).toMatchObject({
+        occupant: 'activity',
+        visible: true,
+      }),
+    );
+
+    fireEvent.click(activityRow());
+    await waitFor(() =>
+      expect(current().regions.main.occupant).toBe('activity'),
+    );
+    act(() => current().toggleSurface('activity'));
+    await waitFor(() =>
+      expect(current().regions.left).toMatchObject({
+        occupant: 'activity',
+        visible: true,
+      }),
+    );
+    expect(current().regions.right.panes).not.toContain('activity');
+    expect(current().regions.main.occupant).toBeNull();
+  });
 });

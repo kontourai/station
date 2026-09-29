@@ -5,7 +5,10 @@ import { type ReactNode, useMemo } from 'react';
 import { AgentIcon } from '../../components/icons/AgentIcon';
 import { useAgents } from '../../contexts/AgentsContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
-import { useShowSurface } from '../../contexts/useShowSurface';
+import {
+  useShowSurface,
+  useShowSurfacePage,
+} from '../../contexts/useShowSurface';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 import { sessionStatusWord } from '../../utils/session-state';
 import {
@@ -94,6 +97,9 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
   const { data: sessions = [] } = useOrchestrationSessionsQuery();
   const agents = useAgents();
   const showSurface = useShowSurface();
+  // "All activity" is Home's "View Activity" verb: go to the page. A row's
+  // session link stays the contextual reveal (`showSurface` with an intent).
+  const showSurfacePage = useShowSurfacePage();
   // Read once per render, the same shape `SessionsView` uses: `now` only
   // separates Recently finished from Earlier — neither of which this section
   // renders — so it is not a memo input.
@@ -189,7 +195,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
             <button
               type="button"
               className="project-page__add-btn"
-              onClick={() => showSurface('activity')}
+              onClick={() => showSurfacePage('activity')}
             >
               All activity
             </button>

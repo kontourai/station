@@ -103,19 +103,41 @@ every other route. These rules make it a region rather than a special case
   (`regionSurface: 'home'`) therefore reveals Home by placing it, rather than
   navigating to `/` and showing whatever occupies `main`.
 - **A place row opens its surface as the page.** The sidebar's Activity
-  row, the palette's Activity entry and Home's "View Activity" open Activity
-  in `main` (`useShowSurfacePage`: the model's `showSurface` with
-  `region: 'main'`), on every device — on a phone that is the page, not a
-  layer over Chat — and the model navigates to `/`. The row is then the
-  current page (`aria-current="page"`, derived like Home's row from `main`'s
-  occupant at `/`, so exactly one of the two is current) and pressing it
-  again keeps the page. A docked Activity moves to `main`; a surface is in
-  at most one region. Every contextual producer — the `?surface=activity`
-  link that notifications and evidence mint, a session intent, the chord —
-  keeps `showSurface`'s reveal, which is why Activity's `defaultRegion` is
-  still `right`. Swapping Home and Activity at `/` writes placement, not a
-  URL, so it adds no history entry (as Home's row never did); from another
-  route the navigation to `/` is one entry.
+  row, the palette's Activity entry, Home's "View Activity" and a Project
+  page's "All activity" open Activity in `main` (`useShowSurfacePage`: the
+  model's `showSurface` with `region: 'main'`), on every device, and the
+  model navigates to `/`. The row is then the current page
+  (`aria-current="page"`, derived like Home's row from `main`'s occupant at
+  `/`, so exactly one of the two is current) and pressing it again keeps the
+  page. Every contextual producer — the `?surface=activity` link that
+  notifications and evidence mint, a session intent, the chord — keeps
+  `showSurface`'s reveal, which is why Activity's `defaultRegion` is still
+  `right`.
+  - **On a phone the page is seen, not layered.** A landing in `main` on a
+    folded or phone-sized device restores any maximized dock region
+    (`commit` in `RegionModelContext`), because a maximized dock owns the
+    whole phone viewport and would hide the page; Chat stays open below it.
+    This holds for Home's row as well, which shares the path. When the phone
+    layer is showing the very pane being opened as the page, the layer is
+    ended through its own restore first, and its history entry goes with it.
+  - **A docked Activity moves to `main`** (a surface is in at most one
+    region), and the provider remembers the dock region it came from: the
+    chord (`toggleSurface`'s `main` case) returns it there rather than to
+    `defaultRegion`, when the device still offers that region. The memory is
+    transient, like the phone layer's origin — it is not in the persisted
+    arrangement record, so after a reload the chord returns to
+    `defaultRegion`. An explicit placement clears it.
+  - **Accepted gap: swapping `main` at `/` adds no history entry.** The page
+    is placement, not a URL, as Home's row always was. From another route
+    the navigation to `/` is one entry, and Back returns to that route. At
+    `/`, Back after the swap leaves `/` for the previous entry rather than
+    returning to Home — and on a phone, where Back used to close Activity's
+    layer back to Chat, Back from the Activity page now leaves the page
+    (in the Android app, from the first entry, that can close the app).
+    A history entry per swap would need a restore-on-popstate rule for
+    `main` that survives reload, forward and interleaved route navigation;
+    that is a design decision for `main`'s URL identity, not part of this
+    rule.
 - **`main` has no toolbar control on any device** (it is always visible;
   since #2143 the toolbar is per DOCK region). A surface that declares `main`
   (Activity) also reaches it through its place row (above) and **Move to Main**,

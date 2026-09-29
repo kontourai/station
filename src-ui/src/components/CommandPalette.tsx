@@ -473,7 +473,9 @@ export function CommandPalette() {
         group: 'Navigation',
         keywords: destination.keywords ? [...destination.keywords] : undefined,
         run: () => {
-          // A place (Activity) is a page, the same verb as its sidebar row.
+          // A `regionSurface` destination is a place (Activity; Home, when a
+          // palette entry is registered for it): go to its page, the same
+          // verb as its sidebar row.
           if (destination.regionSurface) {
             showSurfacePage(destination.regionSurface);
             return;
