@@ -352,6 +352,7 @@ describe('chat-model-override helpers', () => {
 
   test('a model provider error while creating the override agent is returned as outward text', async () => {
     const { APICallError } = await import('@ai-sdk/provider');
+    const { RetryError } = await import('ai');
     const secret = 'sk-live-SECRET-2b1a0f';
     const result = await resolveChatAgentModelOverride({
       ctx: {
@@ -370,13 +371,20 @@ describe('chat-model-override helpers', () => {
           getLaunchabilityRevision: () => 3,
         },
         framework: {
+          // Wrapped the way ai-sdk's retry wrapper reports it.
           createModel: vi.fn().mockRejectedValue(
-            new APICallError({
-              message: `refused ${secret}`,
-              url: `https://provider.example.test/?key=${secret}`,
-              requestBodyValues: {},
-              statusCode: 401,
-              responseBody: secret,
+            new RetryError({
+              message: `Failed after 2 attempts. Last error: refused ${secret}`,
+              reason: 'maxRetriesExceeded',
+              errors: [
+                new APICallError({
+                  message: `refused ${secret}`,
+                  url: `https://provider.example.test/?key=${secret}`,
+                  requestBodyValues: {},
+                  statusCode: 401,
+                  responseBody: secret,
+                }),
+              ],
             }),
           ),
           createTempAgent: vi.fn(),

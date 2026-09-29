@@ -1,4 +1,4 @@
-import { APICallError } from 'ai';
+import { APICallError, RetryError } from 'ai';
 
 /**
  * Outward-safe wording for a model provider's refusal, composed from its HTTP
@@ -71,19 +71,74 @@ export function modelProviderFailureMessage(httpStatus: number): string {
 export const MODEL_PROVIDER_REQUEST_FAILED =
   'The model provider request failed.';
 
+const PROVIDER_ERROR_SEARCH_DEPTH = 4;
+const PROVIDER_ERROR_SEARCH_BREADTH = 8;
+
 /**
- * Outward text for a model provider's error (an ai-sdk `APICallError`):
- * the status sentence, or {@link MODEL_PROVIDER_REQUEST_FAILED} without a
- * status. Undefined for any other error, which the caller keeps handling as
- * before — Station-authored refusals ("Agent not found", configuration
- * conflicts) stay readable because they are not provider errors.
+ * The model provider's error (an ai-sdk `APICallError`) at or inside
+ * `error`: through a `RetryError`'s `lastError`/`errors` ("Failed after N
+ * attempts. Last error: <provider text>") and `cause` chains, bounded in
+ * depth and breadth so a cyclic or huge chain cannot run away.
  */
+export function findModelProviderError(
+  error: unknown,
+  depth = 0,
+): APICallError | undefined {
+  if (APICallError.isInstance(error)) return error;
+  if (
+    depth >= PROVIDER_ERROR_SEARCH_DEPTH ||
+    !error ||
+    typeof error !== 'object'
+  )
+    return undefined;
+  const nested: unknown[] = [];
+  if (RetryError.isInstance(error)) {
+    nested.push(
+      error.lastError,
+      ...error.errors.slice(-PROVIDER_ERROR_SEARCH_BREADTH),
+    );
+  }
+  nested.push((error as { cause?: unknown }).cause);
+  for (const candidate of nested) {
+    const found = findModelProviderError(candidate, depth + 1);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** A credential refusal named in an error's own wording (no status). */
+export function isCredentialShapedMessage(text: string): boolean {
+  return (
+    text.includes('credential') ||
+    text.includes('accessKeyId') ||
+    text.includes('secretAccessKey')
+  );
+}
+
+/**
+ * Outward wording for an error that is, or wraps, a model provider's error.
+ * `credentialsInferred` is true only when the provider supplied no status
+ * and the wording names credentials, the one case a caller may still answer
+ * as a 401. Undefined for any error with no provider error inside it.
+ */
+export function outwardModelProviderError(
+  error: unknown,
+): { text: string; credentialsInferred: boolean } | undefined {
+  const providerError = findModelProviderError(error);
+  if (!providerError) return undefined;
+  const status = modelProviderErrorStatus(providerError);
+  if (status !== undefined) {
+    return {
+      text: modelProviderFailureMessage(status),
+      credentialsInferred: false,
+    };
+  }
+  return { text: MODEL_PROVIDER_REQUEST_FAILED, credentialsInferred: false };
+}
+
+/** {@link outwardModelProviderError}'s text alone. */
 export function outwardModelProviderErrorText(
   error: unknown,
 ): string | undefined {
-  if (!APICallError.isInstance(error)) return undefined;
-  const status = modelProviderErrorStatus(error);
-  return status === undefined
-    ? MODEL_PROVIDER_REQUEST_FAILED
-    : modelProviderFailureMessage(status);
+  return outwardModelProviderError(error)?.text;
 }

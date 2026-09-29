@@ -16,7 +16,10 @@ import { WORKSPACE_PANE_HOST_ACTION_METADATA_KEY } from '@kontourai/station-cont
 import { Hono } from 'hono';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { resolveMaxSteps } from '../../constants.js';
-import { outwardModelProviderErrorText } from '../../providers/model-provider-failure.js';
+import {
+  isCredentialShapedMessage,
+  outwardModelProviderError,
+} from '../../providers/model-provider-failure.js';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
@@ -378,15 +381,17 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
       ctx.logger.error('Chat error', { error });
       chatErrors.add(1, { agent: slug, plugin });
       // A model provider's error (a launch or model resolution that called
-      // the provider) is returned as its outward sentence: its own text can
-      // carry the request URL and response body, and the station-agent relay
-      // republishes this reason as a durable runtime.error.
-      const errMsg =
-        outwardModelProviderErrorText(error) ?? errorMessage(error);
-      const isCredentialError =
-        errMsg.includes('credential') ||
-        errMsg.includes('accessKeyId') ||
-        errMsg.includes('secretAccessKey');
+      // the provider), found through RetryError/cause wrappers, is returned
+      // as its outward sentence: its own text can carry the request URL and
+      // response body, and the station-agent relay republishes this reason
+      // as a durable runtime.error. Station-authored errors keep their text.
+      const providerFailure = outwardModelProviderError(error);
+      const errMsg = providerFailure?.text ?? errorMessage(error);
+      // A credential 401 is inferred from wording only when no provider
+      // status exists (statusInferred); a provider status is not overridden.
+      const isCredentialError = providerFailure
+        ? providerFailure.credentialsInferred
+        : isCredentialShapedMessage(errMsg);
       const status =
         error instanceof RuntimeConfigurationConflictError
           ? 409
