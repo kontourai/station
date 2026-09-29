@@ -1,5 +1,4 @@
 import type { GitReadLocation } from '@kontourai/station-sdk';
-import { Badge } from '@kontourai/ui/react';
 import {
   useCallback,
   useEffect,
@@ -462,12 +461,12 @@ export function InboxRow({
           </span>
         )}
         <span className="chat-dock-inbox__state">
+          {/* Quiet on purpose: a local reminder, in the same neutral chip
+              treatment as Draft / "Can't answer here" beside it. */}
           {hasUnsentDraft && (
-            <Badge
-              value="Unsent draft"
-              tone="neutral"
-              className="chat-dock-inbox__draft-cue"
-            />
+            <span className="lifecycle-chip lifecycle-chip--idle">
+              Unsent draft
+            </span>
           )}
           {item.controlMode !== 'read-only-attached' &&
           hasLifecycleChip(item.lifecycleLabel) ? (

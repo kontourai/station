@@ -98,7 +98,14 @@ describe('ChatDockInboxPanel', () => {
       'Snoozed (0)',
       'Earlier',
     ]);
-    expect(screen.getByText('Active')).not.toBeNull();
+    // The Running row's chip says the lane's word, never "Active".
+    expect(
+      within(screen.getByRole('region', { name: 'Running' })).getByText(
+        'Running',
+        { selector: '.lifecycle-chip' },
+      ),
+    ).not.toBeNull();
+    expect(screen.queryByText('Active')).toBeNull();
     expect(screen.getByText('Attention needed')).not.toBeNull();
     expect(screen.getByText('Done')).not.toBeNull();
   });
@@ -714,8 +721,9 @@ describe('ChatDockInboxPanel answerability basis (station#1783)', () => {
   });
 
   it('speaks the user’s language, not the wire enum', () => {
-    // Every sibling chip translates (`Running` -> "Active", `Completed` ->
-    // "Done"); `Unanswerable` was the only member leaking its enum text.
+    // Sibling chips translate where the enum is not user vocabulary
+    // (`Completed` -> "Done"); `Unanswerable` was the only member leaking its
+    // enum text.
     renderPanel({ items: [unanswerableItem()] });
     expect(screen.getByText("Can't answer here")).toBeTruthy();
     expect(screen.queryByText('Unanswerable')).toBeNull();

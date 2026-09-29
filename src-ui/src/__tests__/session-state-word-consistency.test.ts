@@ -1,5 +1,12 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
+import { LifecycleStatusChip } from '../components/home/LifecycleStatusChip';
+import {
+  HOME_LIFECYCLE_LABELS,
+  type HomeLifecycleLabel,
+} from '../utils/lifecycle-priority';
 import { sessionStatusWord } from '../utils/session-state';
 import {
   partitionSessionLanes,
@@ -222,5 +229,61 @@ describe('a row word can never contradict its lane heading', () => {
 
     expect(laneOf('a1-unanswerable')).toBe('idle');
     expect(wordOf('a1-unanswerable')).toBe("Can't answer here");
+  });
+});
+
+/**
+ * The same invariant for the lifecycle CHIP (Home rows, the dock inbox, the
+ * mobile switcher), which does not go through `sessionStatusWord`. The owner's
+ * report — "'Active' feels incorrect when there's no activity" — held for the
+ * chip too: rows under the Running lane read "Active". Lane and permitted
+ * chip words are written out here, independently of `liveLaneFor` and the
+ * chip, so neither can agree with this table by construction.
+ */
+describe('a lifecycle chip never contradicts its lane', () => {
+  const CHIP_LANE: Record<HomeLifecycleLabel, string> = {
+    'Needs attention': 'needsYou',
+    Running: 'running',
+    Ready: 'idle',
+    Recent: 'idle',
+    Current: 'idle',
+    Unanswerable: 'idle',
+    Draft: 'drafts',
+    Completed: 'finished',
+    Failed: 'finished',
+    Stopped: 'finished',
+  };
+  // '' = no chip (the row shows only its recency).
+  const CHIP_VOCABULARY: Record<string, ReadonlySet<string>> = {
+    needsYou: new Set(['Attention needed']),
+    running: new Set(['Running']),
+    idle: new Set(['', "Can't answer here"]),
+    drafts: new Set(['Draft']),
+    finished: new Set(['Done', 'Failed', 'Stopped']),
+  };
+  const chipWord = (lifecycle: HomeLifecycleLabel) =>
+    renderToStaticMarkup(createElement(LifecycleStatusChip, { lifecycle }))
+      .replace(/<svg[\s\S]*?<\/svg>/g, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&#x27;|&#39;/g, "'")
+      .trim();
+
+  test.each([...HOME_LIFECYCLE_LABELS])(
+    '%s renders a word its lane permits',
+    (lifecycle) => {
+      const lane = CHIP_LANE[lifecycle];
+      const word = chipWord(lifecycle);
+      expect(
+        CHIP_VOCABULARY[lane].has(word),
+        `${lifecycle} sits in ${lane} but its chip says "${word}"`,
+      ).toBe(true);
+    },
+  );
+
+  test('a Running-lane row reads "Running", never "Active"', () => {
+    expect(chipWord('Running')).toBe('Running');
+    for (const lifecycle of HOME_LIFECYCLE_LABELS) {
+      expect(chipWord(lifecycle)).not.toBe('Active');
+    }
   });
 });

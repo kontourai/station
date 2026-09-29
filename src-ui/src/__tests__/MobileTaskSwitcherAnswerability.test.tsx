@@ -115,13 +115,15 @@ describe('MobileTaskSwitcher answerability basis', () => {
       }),
     ]);
     expect(screen.queryByTestId('inbox-row-answerability')).toBeNull();
-    // The shared row renders the lifecycle CHIP ("Active"), not the raw
-    // 'Running' wire enum the old bespoke row leaked (#3312 richness parity).
-    // Scoped to the row: "Running" is now also the GROUP heading above it
-    // (the live lanes split), which is lane vocabulary, not a leaked enum.
+    // The shared row renders the lifecycle CHIP, not a bare status string
+    // (#3312 richness parity). The chip's word is the lane's word, "Running"
+    // (never "Active"), and it appears once, inside the chip.
     const row = screen.getByTestId('inbox-row');
-    expect(within(row).getByText('Active')).toBeTruthy();
-    expect(within(row).queryByText('Running')).toBeNull();
+    expect(
+      within(row).getByText('Running', { selector: '.lifecycle-chip' }),
+    ).toBeTruthy();
+    expect(within(row).getAllByText('Running')).toHaveLength(1);
+    expect(within(row).queryByText('Active')).toBeNull();
     expect(screen.getByRole('heading', { name: /^Running/ })).toBeTruthy();
   });
 });
