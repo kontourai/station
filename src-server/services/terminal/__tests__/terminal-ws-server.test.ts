@@ -48,6 +48,19 @@ async function closesWithin(ws: WebSocket, timeoutMs = 200): Promise<boolean> {
   ]);
 }
 
+/** The close reason the server sent within the window, if it closed. */
+async function closeReasonWithin(
+  ws: WebSocket,
+  timeoutMs = 200,
+): Promise<string | undefined> {
+  return Promise.race([
+    once(ws, 'close').then(([, reason]) => String(reason)),
+    new Promise<undefined>((resolve) =>
+      setTimeout(() => resolve(undefined), timeoutMs),
+    ),
+  ]);
+}
+
 describe('terminal websocket health', () => {
   it('does not resolve stop until the websocket listener has closed', async () => {
     const service = { subscribe: vi.fn(() => vi.fn()), close: vi.fn() };
@@ -583,22 +596,23 @@ describe('terminal websocket remote authentication', () => {
       open: vi.fn(),
       close: vi.fn(),
     };
-    const terminal = new (TerminalWebSocketServer as any)(
-      service,
-      remoteAuthOptions(),
-    ) as TerminalWebSocketServer;
+    // A long auth timeout, so only the query-credential refusal can close it.
+    const terminal = new (TerminalWebSocketServer as any)(service, {
+      ...remoteAuthOptions(),
+      authTimeoutMs: 10_000,
+    }) as TerminalWebSocketServer;
     const { port, wss } = await listeningPort(terminal);
     const ws = new WebSocket(
       `ws://127.0.0.1:${port}/?credential=${encodeURIComponent(TEST_CREDENTIAL)}`,
     );
     await once(ws, 'open');
     ws.send(JSON.stringify({ type: 'open', cwd: '/tmp' }));
-    const closed = await closesWithin(ws);
+    const reason = await closeReasonWithin(ws);
 
-    if (!closed) ws.close();
-    if (!closed) await once(ws, 'close');
+    if (reason === undefined) ws.close();
+    if (reason === undefined) await once(ws, 'close');
     await closeServer(terminal, wss);
-    expect(closed).toBe(true);
+    expect(reason).toBe('query_credential_rejected');
     expect(service.open).not.toHaveBeenCalled();
   });
 
@@ -630,7 +644,8 @@ describe('terminal websocket remote authentication', () => {
       open: vi.fn(),
       close: vi.fn(),
     };
-    const auth = remoteAuthOptions();
+    // A long auth timeout, so only the failure count can close it.
+    const auth = { ...remoteAuthOptions(), authTimeoutMs: 10_000 };
     const terminal = new (TerminalWebSocketServer as any)(
       service,
       auth,
@@ -647,12 +662,13 @@ describe('terminal websocket remote authentication', () => {
         }),
       );
     }
-    const closed = await closesWithin(ws);
+    const reason = await closeReasonWithin(ws);
 
-    if (!closed) ws.close();
-    if (!closed) await once(ws, 'close');
+    if (reason === undefined) ws.close();
+    if (reason === undefined) await once(ws, 'close');
     await closeServer(terminal, wss);
-    expect(closed).toBe(true);
+    expect(reason).toBe('authentication_failed');
+    expect(auth.verifyCredential).toHaveBeenCalledTimes(auth.maxAuthFailures);
     expect(service.open).not.toHaveBeenCalled();
   });
 });

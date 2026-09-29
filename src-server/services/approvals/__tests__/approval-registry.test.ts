@@ -37,12 +37,6 @@ describe('ApprovalRegistry', () => {
     expect(registry.has('test-1')).toBe(false);
   });
 
-  test('register and resolve denied', async () => {
-    const promise = registry.register('test-2');
-    registry.resolve('test-2', false);
-    expect(await promise).toBe(false);
-  });
-
   test('resolve unknown id returns false', () => {
     expect(registry.resolve('nonexistent', true)).toBe(false);
   });

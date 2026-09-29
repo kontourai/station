@@ -227,10 +227,9 @@ describe('VoiceTurnRuns', () => {
     ).resolves.toEqual([voiceRun]);
   });
 
-  test('fails closed for unmatched terminal events and makes documented non-END_TURN ends indeterminate', () => {
+  test('makes a documented non-END_TURN end an indeterminate failure', () => {
     const store = createStore();
     const runs = store.voiceTurnRunAuthority();
-    expect('indeterminateSession' in runs).toBe(false);
     const started = runs.observeStart({
       voiceSessionId: 'voice-session-a',
       providerSessionId: 'nova-session-a',
@@ -258,17 +257,13 @@ describe('VoiceTurnRuns', () => {
     const directory = mkdtempSync(join(tmpdir(), 'voice-turn-postwrite-'));
     directories.push(directory);
     const path = join(directory, 'events.sqlite');
-    const store = new EventStore(
-      path,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      () => {
+    let faults = 0;
+    const store = new EventStore(path, undefined, undefined, {
+      voiceTurnTransition: () => {
+        faults += 1;
         throw new Error('post-write boundary unavailable');
       },
-    );
+    });
     stores.push(store);
     const started = store.voiceTurnRunAuthority().observeStart({
       voiceSessionId: 'voice-postwrite',
@@ -285,6 +280,8 @@ describe('VoiceTurnRuns', () => {
         stopReason: 'END_TURN',
       }),
     ).toEqual({ kind: 'applied' });
+    // The completion answered through its readback: the fault did fire.
+    expect(faults).toBeGreaterThan(0);
     expect(store.voiceTurnRunReader().read(started.handle.runId)).toMatchObject(
       {
         kind: 'available',

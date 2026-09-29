@@ -576,8 +576,7 @@ describe('recognising a refused content lock after it has been rewrapped', () =>
 
   test('the operator message names every plugin in the cycle', () => {
     const message = pluginContentLockCycleMessage(cycle);
-    expect(message).toContain('app');
-    expect(message).toContain('shared-lib');
+    expect(message).toContain('app and shared-lib');
     expect(message).toContain('refused');
   });
 

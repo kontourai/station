@@ -4,7 +4,6 @@ import { describe, expect, test } from 'vitest';
 import { BOOT_INTERNAL_SECRET_ENV_KEYS } from '../../../utils/child-process-environment.js';
 import {
   appHomeActive,
-  CONNECTION_CONFIG_HOME_ENV_KEYS,
   connectionSpawnEnv,
   sanitizeConnectionConfigHome,
   sanitizeConnectionEnvMap,
@@ -152,10 +151,5 @@ describe('connectionSpawnEnv (station#2072)', () => {
     expect(
       connectionSpawnEnv({ useAppHome: true, defaultModel: 'x' }, 'claude'),
     ).toBeUndefined();
-  });
-
-  test('both engines have a config-home key', () => {
-    expect(CONNECTION_CONFIG_HOME_ENV_KEYS.claude).toBe('CLAUDE_CONFIG_DIR');
-    expect(CONNECTION_CONFIG_HOME_ENV_KEYS.codex).toBe('CODEX_HOME');
   });
 });

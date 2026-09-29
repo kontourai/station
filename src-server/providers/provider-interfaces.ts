@@ -146,12 +146,7 @@ export interface ISchedulerProvider {
   addJob(opts: AddJobOpts): Promise<string>;
   editJob(target: string, opts: Record<string, unknown>): Promise<string>;
   removeJob(target: string): Promise<void>;
-  /**
-   * Legacy internally composed providers returned only user-facing output.
-   * Keep that source-compatible while SchedulerService normalizes it to a
-   * confirmed legacy result with no invented run identity or receipt.
-   */
-  runJob(target: string): Promise<string | SchedulerManualRunReceipt>;
+  runJob(target: string): Promise<SchedulerManualRunReceipt>;
   enableJob(target: string): Promise<void>;
   disableJob(target: string): Promise<void>;
   getJobLogs(target: string, count?: number): Promise<SchedulerLogEntry[]>;

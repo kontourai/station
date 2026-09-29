@@ -1,12 +1,11 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type { CliCommandResult } from '../../../providers/auth/cli-auth.js';
 import {
+  createEngineLoginCapabilityObserver,
   ENGINE_LOGIN_CAPABILITY_TTL_MS,
   type EngineLoginCapabilityDeps,
-  engineLoginCapabilities,
   loginMechanisms,
   mechanismEvidence,
-  resetEngineLoginCapabilityCache,
 } from '../engine-login-capabilities.js';
 import {
   CLAUDE_LOGIN_HELP_STDOUT,
@@ -51,16 +50,13 @@ function stubDeps(
   } as never;
 }
 
-beforeEach(() => {
-  resetEngineLoginCapabilityCache();
-});
-
 describe('a login mechanism is observed, never declared', () => {
   test('codex declares device-code because codex itself prints the flag', async () => {
     const deps = stubDeps({
       'codex login --help': CODEX_LOGIN_HELP_STDOUT,
     });
-    const capabilities = await engineLoginCapabilities('codex', deps);
+    const capabilities =
+      await createEngineLoginCapabilityObserver(deps)('codex');
 
     expect(loginMechanisms(capabilities).sort()).toEqual([
       'api-key-stdin',
@@ -76,7 +72,8 @@ describe('a login mechanism is observed, never declared', () => {
     const deps = stubDeps({
       'claude auth login --help': CLAUDE_LOGIN_HELP_STDOUT,
     });
-    const capabilities = await engineLoginCapabilities('claude', deps);
+    const capabilities =
+      await createEngineLoginCapabilityObserver(deps)('claude');
 
     expect(loginMechanisms(capabilities)).toEqual([]);
     expect(mechanismEvidence(capabilities, 'device-code')).toBeUndefined();
@@ -93,7 +90,8 @@ describe('a login mechanism is observed, never declared', () => {
         '--device-code',
       ),
     });
-    const capabilities = await engineLoginCapabilities('codex', deps);
+    const capabilities =
+      await createEngineLoginCapabilityObserver(deps)('codex');
 
     expect(mechanismEvidence(capabilities, 'device-code')?.argument).toBe(
       '--device-code',
@@ -107,7 +105,8 @@ describe('a login mechanism is observed, never declared', () => {
         '--browser-auth',
       ),
     });
-    const capabilities = await engineLoginCapabilities('codex', deps);
+    const capabilities =
+      await createEngineLoginCapabilityObserver(deps)('codex');
 
     expect(loginMechanisms(capabilities)).toEqual(['api-key-stdin']);
   });
@@ -116,7 +115,8 @@ describe('a login mechanism is observed, never declared', () => {
 describe('a CLI that cannot be asked is unavailable, not unsupported', () => {
   test('an absent binary reports why, and nothing is executed', async () => {
     const deps = stubDeps({}, { binary: () => null });
-    const capabilities = await engineLoginCapabilities('codex', deps);
+    const capabilities =
+      await createEngineLoginCapabilityObserver(deps)('codex');
 
     expect(capabilities.unavailableReason).toMatch(
       /was not found on this host/,
@@ -127,7 +127,8 @@ describe('a CLI that cannot be asked is unavailable, not unsupported', () => {
 
   test('a probe that produced no result reports why, rather than reporting absence', async () => {
     const deps = stubDeps({});
-    const capabilities = await engineLoginCapabilities('codex', deps);
+    const capabilities =
+      await createEngineLoginCapabilityObserver(deps)('codex');
 
     expect(capabilities.unavailableReason).toMatch(/could not be asked/);
     expect(loginMechanisms(capabilities)).toEqual([]);
@@ -137,9 +138,10 @@ describe('a CLI that cannot be asked is unavailable, not unsupported', () => {
 describe('probing is bounded work', () => {
   test('concurrent callers share one probe', async () => {
     const deps = stubDeps({ 'codex login --help': CODEX_LOGIN_HELP_STDOUT });
+    const observe = createEngineLoginCapabilityObserver(deps);
     const [first, second] = await Promise.all([
-      engineLoginCapabilities('codex', deps),
-      engineLoginCapabilities('codex', deps),
+      observe('codex'),
+      observe('codex'),
     ]);
 
     expect(deps.runCommand).toHaveBeenCalledTimes(1);
@@ -153,13 +155,15 @@ describe('probing is bounded work', () => {
       { nowMs: () => nowMs },
     );
 
-    await engineLoginCapabilities('codex', deps);
+    const observe = createEngineLoginCapabilityObserver(deps);
+
+    await observe('codex');
     nowMs += ENGINE_LOGIN_CAPABILITY_TTL_MS - 1;
-    await engineLoginCapabilities('codex', deps);
+    await observe('codex');
     expect(deps.runCommand).toHaveBeenCalledTimes(1);
 
     nowMs += 2;
-    await engineLoginCapabilities('codex', deps);
+    await observe('codex');
     expect(deps.runCommand).toHaveBeenCalledTimes(2);
   });
 });

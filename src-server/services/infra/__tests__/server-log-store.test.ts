@@ -101,13 +101,6 @@ describe('createServerLogStore — NDJSON writes', () => {
     expect(statSync(directory).mode & 0o777).toBe(0o700);
     expect(statSync(path).mode & 0o777).toBe(0o600);
   });
-
-  it('flushSync is a safe no-op (writes are already synchronous)', () => {
-    const directory = createTempDir();
-    const store = createServerLogStore({ directory });
-    store.writeLine('{"msg":"durable"}');
-    expect(() => store.flushSync()).not.toThrow();
-  });
 });
 
 describe('createServerLogStore — day rollover', () => {

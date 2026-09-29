@@ -280,17 +280,13 @@ scheduler_run_indeterminate` and must not be automatically retried.
 
 ### Scheduler Service (`services/scheduling/scheduler-service.ts`)
 
-Core-server router over internally composed scheduler providers. The built-in
-scheduler is currently the only production registration. There is no plugin
-scheduler-provider registration API: plugins must not treat
-`ISchedulerProvider` or `addProvider` as a supported extension seam.
-The internal compatibility Adapter still accepts a legacy provider's
-`Promise<string>` manual result and projects only `data.output`; it cannot
-invent a `RunSummary.runId` or receipt for that source shape.
+Core-server router over scheduler providers. The built-in scheduler is the
+only registration, and there is no scheduler-provider registration API:
+plugins must not treat `ISchedulerProvider` as an extension seam. Every
+manual run returns a `SchedulerManualRunReceipt`.
 
 **Public API:**
 ```typescript
-service.addProvider(provider)              // internal runtime composition only
 service.listProviders()                    // → [{ id, displayName, capabilities, formFields }]
 service.listJobs()                         // aggregated from all providers
 service.addJob(opts)                       // routes to opts.provider (default: built-in)

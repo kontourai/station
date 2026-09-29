@@ -519,8 +519,12 @@ describe('Draft lifecycle derivation (#2310)', () => {
       receipt(ROOT, 'rejected', 1, 'execution');
       const summary = summaryFor(ROOT, session);
       expect(summary.lifecycleState).toBe('failed');
-      expect(summary.terminalAttribution?.kind).not.toBe('send_refused');
-      expect(summary.blockedReason).not.toBe(REFUSED);
+      // The fold's own cause survives the later refused receipt, verbatim.
+      expect(summary.blockedReason).toBe('engine boom');
+      expect(summary.terminalAttribution).toEqual({
+        kind: 'runtime_error',
+        detail: 'The engine reported an error: engine boom',
+      });
     });
 
     test('a session the event fold already stopped stays finished, not Failed', () => {

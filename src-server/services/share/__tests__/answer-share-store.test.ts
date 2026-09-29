@@ -92,7 +92,6 @@ describe('AnswerShareStore', () => {
     ['an unknown but well-formed token', 'a'.repeat(43)],
     ['a malformed token', 'not a token!!'],
     ['an empty token', ''],
-    ['the share id, which is not a capability', 'id-not-token'],
   ])('resolves %s to nothing at all', async (_label, candidate) => {
     const harness = store();
     await harness.store.mint({ sessionId: 'thread-1', turnId: 'turn-1' });

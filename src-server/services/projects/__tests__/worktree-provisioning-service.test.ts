@@ -16,11 +16,8 @@ import {
 import { execGitSync } from '../../../utils/git-exec.js';
 import {
   assertWorktreeMetadataSessionBinding,
-  buildWorktreeBranchName,
   type GitCommandRunner,
-  shouldUseWorktreeIsolation,
   terminalWorktreeStateForExit,
-  validateWorktreePolicy,
   WorktreeProvisioningService,
   WorktreeRepositoryConfigError,
 } from '../worktree-provisioning-service.js';
@@ -61,35 +58,64 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('worktree isolation helpers', () => {
-  test('detects worktree isolation mode', () => {
-    expect(shouldUseWorktreeIsolation({ mode: 'worktree' })).toBe(true);
-    expect(shouldUseWorktreeIsolation({ mode: 'shared' })).toBe(false);
-    expect(shouldUseWorktreeIsolation(undefined)).toBe(false);
+describe('worktree isolation policy and session binding', () => {
+  test('provisions nothing unless the session asked for worktree isolation', async () => {
+    const service = new WorktreeProvisioningService();
+    for (const isolation of [{ mode: 'shared' as const }, undefined]) {
+      await expect(
+        service.provision({
+          repoPath: '/nonexistent-repo',
+          threadId: 'shared-session',
+          providerKind: 'codex',
+          isolation,
+        }),
+      ).resolves.toBeNull();
+    }
   });
 
-  test('normalizes branch policy and rejects unsafe refs', () => {
-    expect(validateWorktreePolicy({ branchPrefix: ' agent/session ' })).toEqual(
+  test('trims the branch prefix, sanitizes the session id into the branch, and defaults the policy', async () => {
+    const repoPath = createRepo();
+    const service = new WorktreeProvisioningService();
+    const metadata = await service.provision({
+      repoPath,
+      threadId: 'thread:abc 123',
+      providerKind: 'codex',
+      isolation: {
+        mode: 'worktree',
+        policy: { branchPrefix: ' agent/session ' },
+      },
+    });
+
+    expect(metadata).toEqual(
       expect.objectContaining({
-        branchPrefix: 'agent/session',
+        // The suffix is the first 32 hex of sha256('thread:abc 123').
+        branch: 'agent/session/thread-abc-123-8c7bf363be5932bfdb399163005a316a',
         baseRef: 'HEAD',
         cleanupPolicy: 'cleanup',
         preserveOnFailure: true,
       }),
     );
-
-    expect(() => validateWorktreePolicy({ branchPrefix: '../bad' })).toThrow(
-      /Invalid worktree branchPrefix/,
-    );
+    await service.cleanup({ metadata: metadata!, terminalState: 'completed' });
   });
 
-  test('builds stable branch names from session ids', () => {
-    expect(
-      buildWorktreeBranchName({
-        branchPrefix: 'station/session',
-        threadId: 'thread:abc 123',
+  test('refuses an unsafe branch prefix before touching the repository', async () => {
+    const calls: string[] = [];
+    const runner: GitCommandRunner = {
+      async run(args) {
+        calls.push(args.join(' '));
+        throw new Error(`unexpected git call: ${args.join(' ')}`);
+      },
+    };
+
+    await expect(
+      new WorktreeProvisioningService(runner).provision({
+        repoPath: '/nonexistent-repo',
+        threadId: 'unsafe-prefix',
+        providerKind: 'codex',
+        isolation: { mode: 'worktree', policy: { branchPrefix: '../bad' } },
       }),
-    ).toMatch(/^station\/session\/thread-abc-123-[a-f0-9]{32}$/);
+    ).rejects.toThrow(/Invalid worktree branchPrefix/);
+    expect(calls).toEqual([]);
   });
 
   test('binds cleanup metadata to the owning session and rejects a complete transplant', async () => {
@@ -304,7 +330,8 @@ describe('WorktreeProvisioningService', () => {
       },
     });
 
-    const branch = buildWorktreeBranchName({ threadId: 'session runner' });
+    const branch = metadata!.branch;
+    expect(branch).toMatch(/^station\/session\/session-runner-[a-f0-9]{32}$/);
     const segment = branch.split('/').at(-1)!;
     expect(metadata?.path).toBe(join(worktreeBaseDir, segment));
     expect(calls.map((call) => call.args.join(' '))).toEqual([
@@ -347,11 +374,20 @@ describe('WorktreeProvisioningService', () => {
       expect.objectContaining({
         mode: 'worktree',
         repoPath: repoRealPath,
-        branch: buildWorktreeBranchName({ threadId: 'session-1' }),
+        // The suffix is the first 32 hex of sha256('session-1').
+        branch: 'station/session/session-1-84097828fc31a8c8d29210df48901a85',
         cleanupPolicy: 'cleanup',
       }),
     );
     expect(metadata?.path && existsSync(metadata.path)).toBe(true);
+    expect(
+      git(repoPath, [
+        'branch',
+        '--list',
+        '--format=%(refname:short)',
+        metadata!.branch,
+      ]).trim(),
+    ).toBe(metadata!.branch);
     expect(worktreeProvisionTotal.add).toHaveBeenCalledWith(1, {
       outcome: 'success',
       provider_kind: 'codex',
@@ -364,11 +400,7 @@ describe('WorktreeProvisioningService', () => {
         terminalState: 'completed',
       }),
     ).resolves.toBe('removed');
-    const branchList = git(repoPath, [
-      'branch',
-      '--list',
-      'station/session/session-1',
-    ]);
+    const branchList = git(repoPath, ['branch', '--list', metadata!.branch]);
     expect(existsSync(metadata!.path)).toBe(false);
     expect(branchList.trim()).toBe('');
     expect(worktreeCleanupTotal.add).toHaveBeenCalledWith(1, {
@@ -464,11 +496,17 @@ describe('WorktreeProvisioningService', () => {
 
   test('blocks provisioning when the branch already exists', async () => {
     const repoPath = createRepo();
-    git(repoPath, [
-      'branch',
-      buildWorktreeBranchName({ threadId: 'existing-session' }),
-    ]);
     const service = new WorktreeProvisioningService();
+    // Provision once, then remove only the worktree: the session's branch
+    // stays behind, exactly as a crashed cleanup would leave it.
+    const earlier = await service.provision({
+      repoPath,
+      threadId: 'existing-session',
+      providerKind: 'claude',
+      isolation: { mode: 'worktree' },
+    });
+    git(repoPath, ['worktree', 'remove', '--force', earlier!.path]);
+    vi.clearAllMocks();
 
     await expect(
       service.provision({
@@ -570,8 +608,9 @@ describe('repository-defined programs (#2411)', () => {
       "this repository's own .git/config sets filter.marker.smudge, which git would run while checking files out. Remove them, or start the chat without worktree isolation.",
     );
     expect(existsSync(marker)).toBe(false);
-    const branch = buildWorktreeBranchName({ threadId: 'session-smudge' });
-    expect(git(repoPath, ['branch', '--list', branch]).trim()).toBe('');
+    expect(
+      git(repoPath, ['branch', '--list', 'station/session/session-smudge-*']),
+    ).toBe('');
     expect(git(repoPath, ['worktree', 'list', '--porcelain'])).not.toContain(
       'session-smudge',
     );

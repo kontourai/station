@@ -27,18 +27,9 @@ function directory() {
   return value;
 }
 function open(path = join(directory(), 'events.sqlite'), fault?: () => void) {
-  const store = new EventStore(
-    path,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    fault,
-  );
+  const store = new EventStore(path, undefined, undefined, {
+    packageMcpCommit: fault,
+  });
   stores.push(store);
   return { store, journal: store.createPackageMcpAdmissionJournal(), path };
 }
