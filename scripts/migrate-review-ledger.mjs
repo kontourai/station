@@ -147,23 +147,28 @@ function foldEntry(base, ours, theirs, current, fields, notesKey) {
   for (const [file, theirBinding] of t)
     if (!o.has(file) && !b.has(file)) sources.push(theirBinding);
   data.sources = sources;
-  // The branch may also have edited earlier notes in place, such as a
-  // redaction. Carry each edit where ours still has the base text; anything
-  // else would silently drop or overwrite a note, so report it instead.
-  const [baseNotes, ourNotes, theirNotes] = [base, data, theirs].map(
+  // The old single file was merged as text, so a branch's checks are the
+  // base's plus its own, not always in base order. Compare them as sets: a
+  // check the base lacks is new, and a base check the branch lacks was edited
+  // in place (such as a redaction) or removed.
+  const [baseNotes, theirNotes] = [base, theirs].map(
     (entry) => entry[notesKey] ?? [],
   );
-  if (theirNotes.length < baseNotes.length) report.edited = true;
-  else {
-    const carried = [...ourNotes];
-    baseNotes.forEach((note, index) => {
-      if (theirNotes[index] === note) return;
-      if (carried[index] === note) carried[index] = theirNotes[index];
-      else if (carried[index] !== theirNotes[index]) report.edited = true;
-    });
-    data[notesKey] = carried;
+  const added = theirNotes.filter((note) => !baseNotes.includes(note));
+  const carried = [...(data[notesKey] ?? [])];
+  for (const [index, note] of baseNotes.entries()) {
+    if (theirNotes.includes(note)) continue;
+    // Carry a one-for-one replacement of a note ours still holds unchanged;
+    // notes files are append-only, and anything else is ambiguous.
+    const replacement = theirNotes[index];
+    const at = carried.indexOf(note);
+    if (added.includes(replacement) && at !== -1) {
+      carried[at] = replacement;
+      added.splice(added.indexOf(replacement), 1);
+    } else report.edited = true;
   }
-  report.notes = theirNotes.slice(baseNotes.length);
+  data[notesKey] = carried;
+  report.notes = added;
   return { data, ...report };
 }
 

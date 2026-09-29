@@ -1266,6 +1266,12 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
   it('carries an in-place edit to an earlier check, and reports one both sides edited', () => {
     const f = fixture();
     const { legacyLedger, legacyMedia } = legacyLayout(f.root);
+    // Main appended a check to C after the layout's records were written.
+    const legacyC = (ledger: any) =>
+      ledger.records.find(
+        (entry: { path: string }) => entry.path === 'docs/c.md',
+      );
+    legacyC(legacyLedger).checks.push('Main appended.');
     git(f.root, ['switch', '-qc', 'legacy-base', 'main']);
     rmSync(join(f.root, REVIEW_LEDGER_DIR), { recursive: true });
     f.write(LEGACY_REVIEW_LEDGER, `${JSON.stringify(legacyLedger, null, 2)}\n`);
@@ -1277,6 +1283,12 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     for (const entry of theirLedger.records)
       if (['docs/a.md', 'docs/b.md'].includes(entry.path))
         entry.checks[0] = 'Redacted evidence.';
+    // A text merge of the old file ordered their append before main's.
+    legacyC(theirLedger).checks = [
+      'Fixture evidence.',
+      'Their appended.',
+      'Main appended.',
+    ];
     f.write(LEGACY_REVIEW_LEDGER, `${JSON.stringify(theirLedger, null, 2)}\n`);
     commit(f.root, 'redact checks in the old file');
     // Ours migrates and edits A's first check differently.
@@ -1298,6 +1310,15 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     expect(compiled(f.root, 'docs/b.md').checks[0]).toBe('Redacted evidence.');
     expect(compiled(f.root, 'docs/a.md').checks[0]).toBe('Our edit.');
     expect(compiled(f.root, 'docs/b.md').notes ?? []).toEqual([]);
+    // Reordering is not an edit: only their own check is new.
+    expect(
+      compiled(f.root, 'docs/c.md').checks.filter(
+        (check: string) => check === 'Their appended.',
+      ),
+    ).toEqual(['Their appended.']);
+    expect(compiled(f.root, 'docs/c.md').checks).not.toContain(
+      'Redacted evidence.',
+    );
     expect(check(f.root, strict).status).toBe(0);
   });
 
