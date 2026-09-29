@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 // Convert the single-file review ledger to the per-record layout (#2936).
 //
 //   node scripts/migrate-review-ledger.mjs
@@ -11,16 +11,16 @@ import { execFileSync, spawnSync } from 'node:child_process';
 //
 // A branch that recorded reviews in the old file conflicts with the migration
 // when it merges main (the old file is modified on one side and deleted on the
-// other). Resolve that conflict by keeping the branch's old file
-// (`git checkout --ours -- docs/learn/review-ledger.json` when merging main
-// into the branch, `--theirs` when the branch is the side being merged in),
-// then run this command with `--base` set to the merge base. Each record the branch changed since the base is folded into
-// the per-record files: changed bindings and source edits are applied, and
-// appended checks become one new notes file. Where both sides rebound one
-// binding differently, the binding whose hash matches the current bytes
-// wins; if neither does, the record stays stale for the freshness check.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+// other; Git leaves the branch's version in the working tree). Run this command
+// during that merge with `--base` set to the merge base. Each record the branch
+// changed since the base is folded into the per-record files: changed bindings
+// and source edits are applied, in-place edits to earlier checks are carried,
+// and appended checks become one new notes file. Where both sides rebound one
+// binding differently, the binding whose hash matches the current bytes wins;
+// if neither does, the record stays stale for the freshness check. A conflicted
+// media.json is merged field by field, the old-layout side keeping its review
+// fields; a field both sides changed differently stops the command.
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -187,50 +187,134 @@ function unmergedStages(root, file) {
   );
 }
 
+/** The side (`ours`/`theirs`) whose media.json blob still has review fields. */
+const hasReviewFields = (manifest) =>
+  (manifest?.captures ?? []).some((capture) =>
+    REVIEW_FIELDS.some((field) => Object.hasOwn(capture, field)),
+  );
+
+/**
+ * Three-way merge of one value: the side that changed it wins; both changing
+ * it differently is a conflict (reported as `CONFLICT`).
+ */
+const CONFLICT = Symbol('conflict');
+function mergeValue(base, branch, migrated) {
+  if (same(branch, base)) return migrated;
+  if (same(migrated, base) || same(branch, migrated)) return branch;
+  return CONFLICT;
+}
+
+const withoutReview = (capture) =>
+  capture &&
+  Object.fromEntries(
+    Object.entries(capture).filter(([key]) => !REVIEW_FIELDS.includes(key)),
+  );
+
+/**
+ * Merge media.json field by field. The branch (the side that still has the
+ * old ledger) owns the review fields; every other field merges three-way, so
+ * an edit on either side survives however close it sits to the review block.
+ * Throws, naming each field, where both sides changed one differently.
+ */
+function mergeManifests(base, branch, migrated) {
+  const conflicts = [];
+  const merged = {};
+  for (const key of new Set([...Object.keys(migrated), ...Object.keys(branch)]))
+    if (key !== 'captures') {
+      const value = mergeValue(base[key], branch[key], migrated[key]);
+      if (value === CONFLICT) conflicts.push(key);
+      else if (value !== undefined) merged[key] = value;
+    }
+  const byPath = (manifest) =>
+    new Map(
+      (manifest.captures ?? []).map((capture) => [capture.path, capture]),
+    );
+  const [b, x, m] = [base, branch, migrated].map(byPath);
+  const paths = [
+    ...m.keys(),
+    ...[...x.keys()].filter((capturePath) => !m.has(capturePath)),
+  ];
+  merged.captures = [];
+  for (const capturePath of paths) {
+    const [baseCapture, branchCapture, migratedCapture] = [b, x, m].map(
+      (captures) => captures.get(capturePath),
+    );
+    const metadata = mergeValue(
+      withoutReview(baseCapture),
+      withoutReview(branchCapture),
+      withoutReview(migratedCapture),
+    );
+    if (metadata === undefined) continue;
+    if (!branchCapture || !migratedCapture) {
+      // Added on one side, or deleted on one side and left alone on the other.
+      if (metadata === CONFLICT)
+        conflicts.push(
+          `${capturePath} (deleted on one side, edited on the other)`,
+        );
+      else merged.captures.push({ ...metadata, ...reviewOf(branchCapture) });
+      continue;
+    }
+    const capture = {};
+    for (const key of new Set([
+      ...Object.keys(migratedCapture),
+      ...Object.keys(branchCapture),
+    ])) {
+      if (REVIEW_FIELDS.includes(key)) continue;
+      const value = mergeValue(
+        baseCapture?.[key],
+        branchCapture[key],
+        migratedCapture[key],
+      );
+      if (value === CONFLICT) conflicts.push(`${capturePath} ${key}`);
+      else if (value !== undefined) capture[key] = value;
+    }
+    merged.captures.push({ ...capture, ...reviewOf(branchCapture) });
+  }
+  if (conflicts.length)
+    throw new Error(
+      `${LEARNING_MEDIA_MANIFEST}: both sides changed ${conflicts.join(', ')}; resolve those by hand, keeping the old-layout side's review fields, and rerun`,
+    );
+  return merged;
+}
+
+const reviewOf = (capture) =>
+  Object.fromEntries(
+    Object.entries(capture ?? {}).filter(([key]) =>
+      REVIEW_FIELDS.includes(key),
+    ),
+  );
+
 /**
  * During the merge, media.json conflicts where one side removed the capture
- * review fields and the other edited them. Keep the side that still has the
- * old ledger for each conflicting hunk, and every clean hunk of the other
- * side; the review fields then move out below. Returns whether it resolved.
+ * review fields and the other edited them. Merge it structurally (see
+ * mergeManifests) and write the result, review fields included; they move
+ * out below. Returns whether it resolved a conflict.
  */
 function resolveConflictedManifest(root) {
-  const media = unmergedStages(root, LEARNING_MEDIA_MANIFEST);
-  if (media.size === 0) return false;
-  const ledger = unmergedStages(root, LEGACY_REVIEW_LEDGER);
-  const side =
-    ledger.has('2') && !ledger.has('3')
-      ? 'ours'
-      : ledger.has('3') && !ledger.has('2')
-        ? 'theirs'
-        : undefined;
-  if (side === undefined || !['1', '2', '3'].every((stage) => media.has(stage)))
+  const stages = unmergedStages(root, LEARNING_MEDIA_MANIFEST);
+  if (stages.size === 0) return false;
+  if (!['1', '2', '3'].every((stage) => stages.has(stage)))
     throw new Error(
-      `${LEARNING_MEDIA_MANIFEST} conflicts outside the layout change; resolve it and rerun`,
+      `${LEARNING_MEDIA_MANIFEST} was added or deleted on one side; resolve it and rerun`,
     );
-  const blobs = readGitObjects(
+  const [base, ours, theirs] = readGitObjects(
     root,
-    ['2', '1', '3'].map((stage) => `:${stage}:${LEARNING_MEDIA_MANIFEST}`),
-  );
-  const dir = mkdtempSync(path.join(tmpdir(), 'review-ledger-fold-'));
-  try {
-    const files = blobs.map((bytes, index) => {
-      const file = path.join(dir, String(index));
-      writeFileSync(file, bytes);
-      return file;
-    });
-    const merged = spawnSync(
-      'git',
-      ['merge-file', '-p', `--${side}`, ...files],
-      { cwd: root, windowsHide: true, maxBuffer: 256 * 1024 * 1024 },
+    ['1', '2', '3'].map((stage) => `:${stage}:${LEARNING_MEDIA_MANIFEST}`),
+  ).map((bytes) => JSON.parse(bytes.toString('utf8')));
+  const [branch, migrated] =
+    hasReviewFields(ours) && !hasReviewFields(theirs)
+      ? [ours, theirs]
+      : hasReviewFields(theirs) && !hasReviewFields(ours)
+        ? [theirs, ours]
+        : [];
+  if (!branch)
+    throw new Error(
+      `${LEARNING_MEDIA_MANIFEST} conflicts, but not between the old and new layouts; resolve it and rerun`,
     );
-    if (merged.status !== 0)
-      throw new Error(
-        `git merge-file could not resolve ${LEARNING_MEDIA_MANIFEST}: ${merged.stderr}`,
-      );
-    writeFileSync(path.join(root, LEARNING_MEDIA_MANIFEST), merged.stdout);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  writeFileSync(
+    path.join(root, LEARNING_MEDIA_MANIFEST),
+    serializeLearningMedia(mergeManifests(base, branch, migrated)),
+  );
   return true;
 }
 
@@ -257,9 +341,14 @@ function migrateReviewLedger({
 } = {}) {
   const resolvedManifest = resolveConflictedManifest(root);
   const reader = createLearningSourceReader(root);
-  if (!reader.exists(LEGACY_REVIEW_LEDGER))
+  const hasLedger = reader.exists(LEGACY_REVIEW_LEDGER);
+  // A branch that re-reviewed only captures left the old ledger alone, so the
+  // merge deleted it cleanly; fold its captures against the base's records.
+  if (!hasLedger && !(resolvedManifest && base !== undefined))
     throw new Error(`No ${LEGACY_REVIEW_LEDGER} to migrate`);
-  const theirs = JSON.parse(reader.read(LEGACY_REVIEW_LEDGER).toString('utf8'));
+  const theirs = hasLedger
+    ? JSON.parse(reader.read(LEGACY_REVIEW_LEDGER).toString('utf8'))
+    : legacyAt(root, base).ledger;
   if (theirs?.version !== 1 || !Array.isArray(theirs.records))
     throw new Error(`${LEGACY_REVIEW_LEDGER} requires version 1 records`);
   const manifest = reader.exists(LEARNING_MEDIA_MANIFEST)
@@ -407,7 +496,7 @@ function migrateReviewLedger({
   }
   if (strippedManifest !== undefined)
     writeFileSync(path.join(root, LEARNING_MEDIA_MANIFEST), strippedManifest);
-  rmSync(path.join(root, LEGACY_REVIEW_LEDGER));
+  rmSync(path.join(root, LEGACY_REVIEW_LEDGER), { force: true });
   return {
     resolvedManifest,
     written: [...files.keys()].filter((file) => files.get(file) !== undefined),

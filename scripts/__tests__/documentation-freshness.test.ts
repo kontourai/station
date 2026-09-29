@@ -1301,6 +1301,60 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     expect(check(f.root, strict).status).toBe(0);
   });
 
+  it('folds a branch that re-reviewed only a capture, and stops on a field both sides changed', () => {
+    const f = fixture();
+    const { legacyLedger, legacyMedia } = legacyLayout(f.root);
+    git(f.root, ['switch', '-qc', 'legacy-base', 'main']);
+    rmSync(join(f.root, REVIEW_LEDGER_DIR), { recursive: true });
+    f.write(LEGACY_REVIEW_LEDGER, `${JSON.stringify(legacyLedger, null, 2)}\n`);
+    f.write(MEDIA, `${JSON.stringify(legacyMedia, null, 2)}\n`);
+    const base = commit(f.root, 'legacy base');
+    // Each branch re-reviews the capture and leaves the old ledger alone; the
+    // second also edits the caption.
+    for (const [branch, caption] of [
+      ['capture-only', 'A task.'],
+      ['caption-too', 'Their caption.'],
+    ]) {
+      git(f.root, ['switch', '-qc', branch, base]);
+      const media = structuredClone(legacyMedia);
+      media.captures[0].reviewNotes = ['Their capture review.'];
+      media.captures[0].caption = caption;
+      f.write(MEDIA, `${JSON.stringify(media, null, 2)}\n`);
+      commit(f.root, `re-review the capture on ${branch}`);
+    }
+    git(f.root, ['switch', '-qc', 'ours', base]);
+    git(f.root, ['rm', '-rq', LEGACY_REVIEW_LEDGER, MEDIA]);
+    git(f.root, ['checkout', 'main', '--', REVIEW_LEDGER_DIR, MEDIA]);
+    commit(f.root, 'migrate layout');
+    f.write(MEDIA, f.read(MEDIA).replace('"A task."', '"A task, open."'));
+    commit(f.root, 'edit a caption');
+    expect(
+      record_(f.root, ['docs/d.md', '--note', 'Our review of d.']).status,
+    ).toBe(0);
+    commit(f.root, 'record d');
+    const oursTip = git(f.root, ['rev-parse', 'HEAD']);
+    // The capture-only branch: only media.json conflicts, and it folds.
+    expect(merge(f.root, 'capture-only').status).toBe(1);
+    expect(conflicted(f.root)).toEqual([MEDIA]);
+    const folded = run(f.root, 'migrate-review-ledger.mjs', ['--base', base]);
+    expect(folded.status, folded.stderr).toBe(0);
+    commit(f.root, 'merge capture-only');
+    expect(JSON.parse(f.read(MEDIA)).captures[0].caption).toBe('A task, open.');
+    expect(compiledMedia(f.root).captures[0].reviewNotes).toContain(
+      'Their capture review.',
+    );
+    expect(check(f.root, strict).status).toBe(0);
+    // Both sides changed the caption: the command names it and stops.
+    git(f.root, ['reset', '-q', '--hard', oursTip]);
+    expect(merge(f.root, 'caption-too').status).toBe(1);
+    const refused = run(f.root, 'migrate-review-ledger.mjs', ['--base', base]);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain(
+      'both sides changed docs/learn/media/task.png caption',
+    );
+    expect(conflicted(f.root)).toEqual([MEDIA]);
+  });
+
   it('folds a branch that re-reviewed a capture in media.json, resolving that conflict too', () => {
     const f = fixture();
     const { legacyLedger, legacyMedia } = legacyLayout(f.root);
@@ -1337,8 +1391,16 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     git(f.root, ['rm', '-rq', LEGACY_REVIEW_LEDGER, MEDIA]);
     git(f.root, ['checkout', 'main', '--', REVIEW_LEDGER_DIR, MEDIA]);
     commit(f.root, 'migrate layout');
-    f.write(MEDIA, f.read(MEDIA).replace('"A task."', '"A task, open."'));
-    commit(f.root, 'edit a caption');
+    // It also recaptures and adds a page: edits beside the review fields.
+    f.write(
+      MEDIA,
+      f
+        .read(MEDIA)
+        .replace('"A task."', '"A task, open."')
+        .replace('a'.repeat(40), 'c'.repeat(40))
+        .replace('"docs/a.md"', '"docs/a.md",\n        "docs/b.md"'),
+    );
+    commit(f.root, 'edit a caption and recapture');
     expect(
       record_(f.root, ['docs/d.md', '--note', 'Our review of d.']).status,
     ).toBe(0);
@@ -1363,7 +1425,11 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
       commit(f.root, `merge into ${branch}`);
       expect(git(f.root, ['status', '--porcelain'])).toBe('');
       const media = f.read(MEDIA);
-      expect(media).toContain('"A task, open."');
+      expect(JSON.parse(media).captures[0]).toMatchObject({
+        caption: 'A task, open.',
+        capturedRevision: 'c'.repeat(40),
+        documents: ['docs/a.md', 'docs/b.md'],
+      });
       expect(media).not.toMatch(/reviewNotes|reviewedRevision|"sources"/);
       expect(compiledMedia(f.root).captures[0].reviewNotes).toContain(
         'Their capture review.',
