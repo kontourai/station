@@ -7214,7 +7214,7 @@
     {
       "path": "docs/design/collaborative-editor-pane.md",
       "documentDigest": "39b13443c5fd44c9c548a6563cb8840390f8df55533d03cd72637d812f06b06e",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Historical design for the deleted pure collaborative editor controller (#2900), marked not shipped. Only the server-owned editing capability remains current; the shipped Task path is ProjectTaskRoom.",
@@ -7230,7 +7230,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.tsx",
@@ -7248,7 +7248,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
         "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through e0314c727: batch 66 (#2900) deleted src-shared/collaborative-editor-pane.ts and its test, and this branch's e0314c727 already retitled the page 'not shipped'. Added an explicit statement that the body records the deleted controller's design and that only the server editing capability is current. Corrected the retained-capability sentence to the real `transformSelection` behavior (maps the selection into the projected text, `unavailable` on a stale revision) instead of controller `displayText` coordinates. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours."
       ]
     },
     {
@@ -8712,7 +8713,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8888,7 +8889,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/layouts/index.tsx",
@@ -9010,7 +9011,8 @@
         "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through 84d56b9a8: e1af43c2c adds a .chat-stream-status[data-chat-decision-delivery] column-layout rule to chat.css. The document's CSS claims (dock and maximized region ownership) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) unexports agentIdentityFromSession and AMBIENT_CHAT_DOCK_DOCUMENT_ID, removes createAmbientChatDockPaneDocument and its two tests. RegionPaneHost.test.tsx still pins the literal 'station:workspace-pane-host:v2:ambient:chat-dock' key and adoptLegacyChatDockDocument, and renderAmbientChatPane in ChatDock.tsx is unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The maximized-region dock-hiding rule is unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The maximized-region dock-hiding rule is unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours."
       ]
     },
     {
@@ -9596,7 +9598,7 @@
     {
       "path": "docs/design/session-tape-replay.md",
       "documentDigest": "4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9612,7 +9614,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "a0e76460c4d7e4c103c225d077d0d55f72fb6addf5c3fcce1d571f72b103179d"
+          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
         },
         {
           "path": "src-ui/src/components/chat/ChatSettingsPanel.tsx",
@@ -9680,7 +9682,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx",
@@ -9698,7 +9700,8 @@
         "Integration source review through d72f79b08: in active-chats-state.ts, #2904 only adds an optional fullAccessRefusal field to EphemeralMessage, rendered by FullAccessRefusalCard. Tape limits, replay registration and persistence exclusion, fold and effect fences, and fork identity are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added Codex approvalAcknowledgement and replyToApproval, an unacknowledgedDecisions ChatUIState field, and request.delivery dispatch in eventHandlers.ts. The replay coverage, redaction and steer-mechanism claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) makes createEphemeralMessageState take a required conversationId instead of falling back to chat.conversationId. Replay isolation (no conversationId copied from the source, not durable, effect no-ops) is unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours. The other changed sources since the recorded review are #2921 codex adapter comments and the delegation snapshot title marker (session-grant and approval-title handling); this page makes no claim about Codex session grants, permission replies or approval titles, so its claims still hold."
       ]
     },
     {
@@ -11731,7 +11734,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11739,7 +11742,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "206d177677e1ffde386fd1cfa6d630de7c124cbd1b576c3c87d6188401a9ec27"
+          "digest": "e84b88edd07c3fe405a8d53413e8d739c3c7c836d772a82562fcc0ce5e85bece"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -11863,11 +11866,11 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
-          "digest": "a6a1e3c9602a7314e06a2ceb33f89d7441eeca4daa8120c66c525fdab022265f"
+          "digest": "5a0d7172f0bbbc987c0571a3cef95ce9b562d6e6224e65d334513b07467edacf"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "a0e76460c4d7e4c103c225d077d0d55f72fb6addf5c3fcce1d571f72b103179d"
+          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
         },
         {
           "path": "src-server/providers/adapters/codex-approval-mode.ts",
@@ -12063,7 +12066,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-server/tools/station-control-operations-tools.ts",
@@ -12111,7 +12114,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -12238,7 +12241,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds one inherited /api/system read leaf, GET /api/system/core-update/service-update, in pairing-route-scopes.ts. The guide's pairing-scope description (read/operate/access scopes, and Origin checks as separate from scope) is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/orchestration/orchestration.ts, src-server/runtime/mcp/mcp-manager.ts, covered by its notes above; this branch changed docs/learn/media.json, src-ui/src/index.css, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose."
+        "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/orchestration/orchestration.ts, src-server/runtime/mcp/mcp-manager.ts, covered by its notes above; this branch changed docs/learn/media.json, src-ui/src/index.css, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours. The other changed sources since the recorded review are #2921 codex adapter comments and the delegation snapshot title marker (session-grant and approval-title handling); this page makes no claim about Codex session grants, permission replies or approval titles, so its claims still hold."
       ]
     },
     {
@@ -14565,7 +14569,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14573,7 +14577,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "206d177677e1ffde386fd1cfa6d630de7c124cbd1b576c3c87d6188401a9ec27"
+          "digest": "e84b88edd07c3fe405a8d53413e8d739c3c7c836d772a82562fcc0ce5e85bece"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14681,7 +14685,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -14722,7 +14726,8 @@
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through e0314c727: neo4j-connection.ts dropped the unused queryNeo4jGraphView stub and connection-type constant but keeps registerNeo4jGraphViewConnection and Neo4jGraphViewConnectionConfig; DELETE /roots/:id now returns 404 'Knowledge root not found' before the conversation-root 403. The guide cites only the retained registration surface and makes no root-delete claim, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours."
       ]
     },
     {
@@ -18015,7 +18020,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18123,7 +18128,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -18168,7 +18173,8 @@
         "Integration source review through e0314c727: pnpm-lock.yaml only removed the bearing and forage importer entries. The Dialog and responsive-surface guidance does not depend on them. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 adds a 403 insufficient_scope branch in runtime-http.ts for recognized but unadmitted credentials. The guide's Dialog, layer and viewport claims do not touch HTTP authentication. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) responsive-action-surfaces.txt's Dialog entry now also cites Dialog.chrome.geometry.test.tsx (the file exists). #2881 adds SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery, shared prebuilt-archive/service-launcher-protocol exports and a /api/system/core-update/service-update pairing leaf, none of which touch the guide's Dialog/inventory/ratchet claims; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. The visual-viewport publisher is still installed by main.tsx; dialog, focus and viewport contracts are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. The visual-viewport publisher is still installed by main.tsx; dialog, focus and viewport contracts are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours."
       ]
     },
     {
@@ -18711,7 +18717,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18719,7 +18725,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "206d177677e1ffde386fd1cfa6d630de7c124cbd1b576c3c87d6188401a9ec27"
+          "digest": "e84b88edd07c3fe405a8d53413e8d739c3c7c836d772a82562fcc0ce5e85bece"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -18751,7 +18757,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "a0e76460c4d7e4c103c225d077d0d55f72fb6addf5c3fcce1d571f72b103179d"
+          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
         },
         {
           "path": "src-server/routes/__tests__/starter-work.routes.test.ts",
@@ -18867,7 +18873,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/lib/starter-work-operation-store.ts",
@@ -18952,7 +18958,8 @@
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only recognizeCredential gate wiring in runtime-routes.ts. The Starter Work routes, readiness, dispatch fences, inspection and Scheduler owners are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata to the claude and codex adapters. 7cd4892e5 routes Codex approval replies and interrupt cancels through transport.replyToApproval and changes the unknown-request error copy. Neither touches how Claude or Codex continue an attached Session (independent children, Codex starting from the latest completed turn). Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours. The other changed sources since the recorded review are #2921 codex adapter comments and the delegation snapshot title marker (session-grant and approval-title handling); this page makes no claim about Codex session grants, permission replies or approval titles, so its claims still hold."
       ]
     },
     {
@@ -19600,8 +19607,8 @@
     },
     {
       "path": "docs/guides/theming.md",
-      "documentDigest": "95efeeef707ab2d72e422c1abc7ca33ad2a39e7b7c6b752fc513b61ca2547ce8",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "documentDigest": "6b1815a15e332e6f0799348d7c2c7c2d7c29fee226f4fb91ca081590207ca08c",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19709,7 +19716,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -19753,7 +19760,11 @@
         },
         {
           "path": "src-ui/src/__tests__/branding-role-cascade.test.ts",
-          "digest": "443eaf3c460897497a1b26dd493d676e87cb631f537d688420241b69728ab551"
+          "digest": "c5697e13e4385a5345f161abc890996275b6cb096f9b07835a4587803563fc38"
+        },
+        {
+          "path": "src-ui/src/__tests__/channel-text-contrast.test.tsx",
+          "digest": "ae37137be82680138d5a1dfbb3da27419d323373e665f179a9cb886641f366a5"
         }
       ],
       "checks": [
@@ -19770,7 +19781,8 @@
         "Integration source review through e0314c727: pnpm-lock.yaml only dropped the @kontourai/bearing and @kontourai/forage importers. No UI theming package changed, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds a 403 insufficient_scope branch for recognized but unadmitted credentials in runtime-http.ts; prose accurate: the theme selection, UI exports and contrast claims don't touch HTTP auth. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds SDK service-update exports, the shared prebuilt-archive and service-launcher-protocol subpaths, and a pairing-scope leaf. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. None changes token, shared-package or station-dialog chrome guidance; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Updated the channel-override paragraph for the interaction roles and their fallbacks, noted the accent hex refusal, and added a White-label branding theme section (inline brand-slot properties on the document element, all-or-nothing validation, pre-render cached apply and BrandingThemeBridge replacement). branding-theme.ts, BrandingThemeBridge.tsx and branding-role-cascade.test.ts added as sources; branding-theme unit tests and tests/branding-theme-boot.spec.ts EXECUTED (10/10 runs). Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Updated the channel-override paragraph for the interaction roles and their fallbacks, noted the accent hex refusal, and added a White-label branding theme section (inline brand-slot properties on the document element, all-or-nothing validation, pre-render cached apply and BrandingThemeBridge replacement). branding-theme.ts, BrandingThemeBridge.tsx and branding-role-cascade.test.ts added as sources; branding-theme unit tests and tests/branding-theme-boot.spec.ts EXECUTED (10/10 runs). Source review is separate from executed test evidence.",
+        "#2905: channel brand values are now text-safe per mode (brand, action and focus share one shade per channel mode, dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback. Added the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text on its real backdrops (page, panel, raised rows, sidebar hover). Ran branding-role-cascade and channel-text-contrast in Chromium."
       ]
     },
     {
@@ -20512,7 +20524,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20520,7 +20532,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "206d177677e1ffde386fd1cfa6d630de7c124cbd1b576c3c87d6188401a9ec27"
+          "digest": "e84b88edd07c3fe405a8d53413e8d739c3c7c836d772a82562fcc0ce5e85bece"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20640,7 +20652,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -20730,7 +20742,8 @@
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through d72f79b08: #2904's orchestration-service changes cover the full-access grantor, the grantor-current confinement check and the revocation reset. The Project/Task, Connections, request-inspection and Knowledge Library scenes and their captions are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). Media delta review: all eight captures are of the release web app with no channel class, where accent and focus values are unchanged, so each capture's index.css digest is refreshed without recapture. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). Media delta review: all eight captures are of the release web app with no channel class, where accent and focus values are unchanged, so each capture's index.css digest is refreshed without recapture. Prose accurate. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours. The scenes are release web captures; the #2843 hover-contrast note concerns the release selection style, which this change does not touch."
       ]
     },
     {
@@ -20762,7 +20775,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "bcae9c139d65732d7303df916b007009830c4e80bfe20601cf5f0b772c8f4952",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -20870,7 +20883,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -20915,13 +20928,14 @@
         "Integration source review through e0314c727: pnpm-lock.yaml only removed the root bearing/forage importer entries, which the backend patterns never mention, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds a configureRuntimeSecurity branch in runtime-http.ts that answers 403 insufficient_scope for a recognized but unadmitted credential. The patterns page describes runtime-http plus pairing route policy only as common admission that does not replace object-level checks. It also warns against inferring authentication from '403' in error text. Both statements remain correct. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read to the /api/system read tier in pairing-route-scopes.ts, the SDK exports requestServiceUpdateProgress and useServiceUpdateProgressQuery, and the shared subpaths prebuilt-archive and service-launcher-protocol. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. The doc's claims still hold: one route-scope table that does not replace object-level checks, and explicit shared helper subpaths. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. No backend pattern depends on these. Classification unchanged. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. No backend pattern depends on these. Classification unchanged. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "1b78efc57356ebb65549f9d1488d01371bf47adfb7939f06229268082b5d5523",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21029,7 +21043,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21078,7 +21092,8 @@
         "Integration source review through e0314c727: pnpm-lock.yaml only removed the bearing/forage importer entries. The frontend query/context patterns do not depend on them and remain accurate. Classification review only.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401 in runtime-http.ts, so the browser keeps its device session; prose accurate: the query/context and ApiRequestScope patterns make no claim about which status drops the session. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d responsive-action-surfaces.txt adds the Dialog geometry test (#2919); SDK adds service-update progress exports and shared package.json adds prebuilt-archive/service-launcher-protocol subpaths plus a pairing read leaf (#2881); the doc's generic Dialog/ResponsiveDialogSurface and package-boundary guidance is unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. The --k-* token guidance still holds. Classification unchanged. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. The --k-* token guidance still holds. Classification unchanged. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours."
       ]
     },
     {
@@ -21377,7 +21392,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21385,7 +21400,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "206d177677e1ffde386fd1cfa6d630de7c124cbd1b576c3c87d6188401a9ec27"
+          "digest": "e84b88edd07c3fe405a8d53413e8d739c3c7c836d772a82562fcc0ce5e85bece"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21429,7 +21444,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -21470,7 +21485,8 @@
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours."
       ]
     },
     {
@@ -23814,7 +23830,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -23822,7 +23838,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "206d177677e1ffde386fd1cfa6d630de7c124cbd1b576c3c87d6188401a9ec27"
+          "digest": "e84b88edd07c3fe405a8d53413e8d739c3c7c836d772a82562fcc0ce5e85bece"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -23854,7 +23870,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -23901,7 +23917,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through d72f79b08: #2904 makes TaskGraphService pass the dispatching request's clientOrigin to the start (for the receipt) alongside fullAccessGrant and ownerAttribution. The browser assertions (private control to real TaskDispatcher-seeded Session association, Agent edit, links, restart) and the seeded-versus-external distinction are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours."
       ]
     },
     {
@@ -26642,7 +26659,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26659,7 +26676,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "206d177677e1ffde386fd1cfa6d630de7c124cbd1b576c3c87d6188401a9ec27"
+          "digest": "e84b88edd07c3fe405a8d53413e8d739c3c7c836d772a82562fcc0ce5e85bece"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -26771,7 +26788,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -26834,7 +26851,8 @@
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes parseTsxVersion module-private in packages/cli/src/commands/lifecycle-doctor.ts without changing its behavior; prose accurate: the `./station doctor` guidance is unchanged. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2881 makes a same-channel installer rerun for a launcher-run archive service stage the version and hand off to the launcher, which trials it and rolls back on failure. It also adds the service launcher env passthrough in lifecycle.ts. #2914 makes isPortableDraftShortcut in ChatInputArea non-exported. 'Run the installer again in the same channel to update safely' remains true. Archive upgrade and service details are deferred to release-channel-ports.md, which is not in this group. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours. Its beta/Nightly install and channel text is about distribution, not colours."
       ]
     },
     {
@@ -27701,7 +27719,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -27709,7 +27727,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "206d177677e1ffde386fd1cfa6d630de7c124cbd1b576c3c87d6188401a9ec27"
+          "digest": "e84b88edd07c3fe405a8d53413e8d739c3c7c836d772a82562fcc0ce5e85bece"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -27789,7 +27807,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -27812,7 +27830,8 @@
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours."
       ]
     },
     {
@@ -30100,7 +30119,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "7ae20f199edb664403085dcd575bdbbf6046a862",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -30152,7 +30171,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "9d4567153115e369c8de17af929003674fb2eecb9d3f7548086b3b8bb0717808"
         }
       ],
       "checks": [
@@ -30168,7 +30187,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
         "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through 5731eba07: 8b48e2b35 (#2914) removed two negative source-text assertions from scripts/__tests__/ios-channel-icons.test.ts. The TestFlight apply/verify ordering assertions remain, and the README's apply/verify description is unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The is-dev-build favicon-dev.png swap in index.css is unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The is-dev-build favicon-dev.png swap in index.css is unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "#2905 index.css delta: only the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode) and two comments changed; release-channel tokens, layout and component rules are unchanged. Grepped the page for channel, brand, colour and contrast claims: none concern channel colours. The raster channel icons and the favicon-dev swap under is-dev-build are unchanged; the CSS brand stays an amber/indigo/violet shade per channel."
       ]
     },
     {
