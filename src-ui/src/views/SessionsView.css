@@ -1,28 +1,150 @@
-/* archive#3027: the active project filter, shown only while one is set. */
-.sessions-project-filter {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0.35rem 0.75rem 0.15rem;
+/* Activity filter bar: Kind / Project / Started from, in the shared
+   `.choice-trigger` picker treatment on native selects (BrowserPane's
+   viewport picker shape). */
+.activity-filters {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) var(--space-3) var(--space-1);
   min-width: 0;
 }
 
-.sessions-axis-tabs {
-  margin: 0.55rem 0.65rem 0;
+.activity-filters__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
-.sessions-axis-description {
-  margin: 0.3rem 0.75rem 0.45rem;
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  line-height: 1.4;
+.activity-filter {
+  display: grid;
+  flex: 1 1 7rem;
+  gap: 2px;
+  min-width: 0;
 }
 
-.session-origin-history {
-  display: block;
-  margin-top: 0.15rem;
+.activity-filter__label {
   color: var(--text-secondary);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.activity-filter__control {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.activity-filter__select {
+  width: 100%;
+  min-height: 32px;
+  padding-right: calc(var(--space-4) + 14px);
+  appearance: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-filter__select:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.activity-filter__caret {
+  position: absolute;
+  top: 50%;
+  right: var(--space-2);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.activity-filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity-filters__chip,
+.activity-filters__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.activity-filters__chip {
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.activity-filters__chip > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-filters__clear {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
+.activity-filters__chip:hover {
+  border-color: var(--accent-primary);
+}
+
+.activity-filters__chip:focus-visible,
+.activity-filters__clear:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .activity-filter__select,
+  .activity-filters__chip,
+  .activity-filters__clear {
+    min-height: 44px;
+  }
+}
+
+/* Row line 2: state (glyph + words) first, then who / where / from what,
+   as one inline run so the subtitle's single-line ellipsis trims the
+   quietest segment first. Colours inherit from the row, so the selected
+   treatment owns contrast. */
+.activity-row-meta__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  vertical-align: bottom;
+}
+
+.split-pane__item--selected .activity-row-meta .status-glyph {
+  color: var(--text-on-accent);
+}
+
+/* The row's time, on its first line and outside the row button. Tabular so
+   a column of times aligns, and never shrunk: the title yields first. */
+.activity-row__time {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .live-collaborators {
@@ -138,66 +260,6 @@
   margin: 0;
   color: var(--text-secondary);
   font-size: 0.72rem;
-}
-
-.sessions-project-filter__label {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.57rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.sessions-project-filter__clear {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-width: 0;
-  padding: 0.12rem 0.45rem;
-  border: 1px solid var(--accent-primary);
-  border-radius: 999px;
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  line-height: 1.5;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sessions-project-filter__clear:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-.session-member-status,
-.session-member-status__identity {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  min-width: 0;
-}
-
-.session-member-status {
-  flex-wrap: wrap;
-  column-gap: 0.55rem;
-  row-gap: 0.12rem;
-}
-
-.session-member-status > span:not(:last-child)::after {
-  content: "·";
-  margin-left: 0.55rem;
-  color: var(--text-muted);
-}
-
-.split-pane__item--selected
-  .session-member-status
-  > span:not(:last-child)::after,
-.split-pane__item--selected .status-glyph {
-  color: var(--text-on-accent);
 }
 
 /*

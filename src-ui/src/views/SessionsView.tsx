@@ -1,47 +1,70 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
+import {
+  interruptOrchestrationTurn,
+  useOrchestrationSessionsQuery,
+} from '@kontourai/station-sdk';
 import {
   captureReturnFocus,
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { ActionOperationsSection } from '../components/action-operations/ActionOperationsSection';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
 import { DiscardDraftButton } from '../components/drafts/DiscardDraftButton';
 import { AgentIcon } from '../components/icons/AgentIcon';
 import { LazyBoundary } from '../components/LazyBoundary';
-import { LiveCollaboratorsSection } from '../components/live-activity/LiveCollaboratorsSection';
+import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
-import { SessionEvidenceButton } from '../components/session/SessionEvidenceButton';
-import { SessionProjectPill } from '../components/session/SessionProjectPill';
 import { SessionPullRequestConflictChip } from '../components/session/SessionPullRequestConflictChip';
-import {
-  DelegatedTaskCoordinator,
-  DelegatedTaskStarter,
-} from '../components/session-detail/DelegatedTaskCoordinator';
 import type { SessionEvidenceReveal } from '../components/session-detail/MutableSessionDetail';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { StatusGlyph } from '../components/status/StatusGlyph';
-import { Tabs, tabElementId, tabPanelElementId } from '../components/Tabs';
 import { useAgents } from '../contexts/AgentsContext';
+import { navigationStore } from '../contexts/navigation-store';
 import { useOpenChats } from '../contexts/open-chats-store';
-import { clientOriginSummary } from '../utils/clientOrigin';
-import { modelIdentityLabel } from '../utils/modelCapabilities';
-import { relativeTimeAgo } from '../utils/relativeTime';
+import { useToast } from '../contexts/ToastContext';
+import { copyToClipboard } from '../lib/clipboard';
+import { relativeTime, relativeTimeAgo } from '../utils/relativeTime';
 import {
   activeTurnProgress,
   orchestrationLifecycleLabel,
   sessionStatusWord,
 } from '../utils/session-state';
 import {
-  humanizeId,
-  prioritizedDelegatedTasks,
+  isStreamingSession,
+  isTerminalSession,
   sessionIconAgent,
   sessionKindLabel,
   sessionProjectLabel,
   sessionRecency,
   sessionTitle,
 } from '../utils/sessionDisplay';
+import { ActivityFilterBar } from './activity/ActivityFilterBar';
+import {
+  type ActivityRowAction,
+  ActivityRowMenu,
+} from './activity/ActivityRowMenu';
+import {
+  type ActivityFilters,
+  activityChatTarget,
+  activityOriginOptions,
+  activityOriginShortLabel,
+  activityProjectOptions,
+  activityRunningDetail,
+  DATED_STREAM_ORDER,
+  datedStreamBucket,
+  matchesActivityKind,
+  matchesActivityOrigin,
+  NO_ACTIVITY_FILTERS,
+} from './activity/activity-list-model';
 import { olderDraftsLabel } from './home/draft-lane';
 import { isTerminalLifecycle } from './home/home-lane-model';
 import { foldConversationTurns } from './sessions/conversation-groups';
@@ -61,20 +84,15 @@ import './page-layout.css';
 /** Live-refresh cadence for the all-sessions list (the SSE feed is per-session). */
 const SESSION_LIST_REFRESH_MS = 5000;
 
-type ActivityAxis = 'task' | 'origin';
-const ACTIVITY_AXIS_TABS = [
-  { key: 'task', label: 'By task' },
-  { key: 'origin', label: 'By app' },
-] as const;
-
-function originSection(session: OrchestrationSessionSummary): string {
-  const origin = session.turnOrigin?.latest;
-  if (!origin)
-    return session.controlMode === 'read-only-attached'
-      ? `Started in ${session.provider === 'claude' ? 'Claude Code' : session.provider}`
-      : 'Origin not recorded';
-  return clientOriginSummary(origin);
-}
+/**
+ * The terminal history lane that reads as a dated stream ("what happened
+ * while I was away", docs/design/shell-ownership-and-boards.md). Typed as a
+ * lane id on purpose: if the lane model renames or drops it, this line stops
+ * compiling instead of silently rendering an undated lane. Every OTHER lane
+ * heading is rendered generically from `SESSION_LANE_ORDER` /
+ * `SESSION_LANE_LABELS`.
+ */
+const DATED_STREAM_LANE: SessionLaneId = 'earlier';
 
 // Keep the archive#4072 observation on the same lazy-boundary rail as Home. The
 // renderer, its relative-time wording, and the watchdog-owned silence
@@ -89,23 +107,27 @@ function isReadOnlyAttachedSession(
 }
 
 /**
- * What a sessions-list search matches on: every string this surface actually
- * puts on screen — the row's own name (`displayTitle`, or the delegated task
- * id it is built from), its project heading (either spelling), its working
- * directory and its agent — plus `threadId`, which is not printed as a name
- * any more but stays searchable because pasting an identifier is a real way
- * to find one session (archive#3139).
+ * What an Activity search matches on: every string this surface actually
+ * puts on screen — the row's own name, its project (either spelling), its
+ * agent and its short origin, the working directory the detail prints —
+ * plus `threadId`, which is not printed as a name but stays searchable
+ * because pasting an identifier is a real way to find one session
+ * (archive#3139).
  */
 function searchableSessionFields(
   session: OrchestrationSessionSummary,
+  agents: ReturnType<typeof useAgents>,
 ): string[] {
   return [
     session.threadId,
+    sessionTitle(session),
     session.provider,
     session.projectSlug,
     session.displayTitle,
     session.cwd,
     session.assignedAgentSlug,
+    sessionIconAgent(session, agents).name,
+    activityOriginShortLabel(session),
     session.delegation?.taskId,
     session.delegation?.targetId,
     session.delegation?.projectSlug,
@@ -113,99 +135,108 @@ function searchableSessionFields(
 }
 
 /**
- * The row's second line. Ordered loudest to quietest, and every segment is
- * omitted rather than defaulted when its fact is missing:
- * - the kind, only when it is a delegated session ("Session" on every row of
- *   the Sessions list is a word that distinguishes nothing);
- * - the state in words — kept even though a lane heading now names the coarse
- *   state, because "Recently finished" does not say Completed from Failed.
- *   It comes from `sessionStatusWord`, the same fold the lane heading is
- *   built from, so the finer word can never contradict the coarser one
- *   (archive#3227 A1: this row said *Running* under "Recently finished");
- * - a relative time, appended only when there is a parseable stamp.
+ * The row's second line: state first, then who, where and from what.
+ * Ordered loudest to quietest, and every segment is omitted rather than
+ * defaulted when its fact is missing:
+ * - the state in words from `sessionStatusWord` — the same fold the lane
+ *   heading is built from, so the finer word can never contradict the
+ *   coarser one (archive#3227 A1) — with the kit status glyph beside it, so
+ *   tone never carries the state alone; a Running row adds how long and
+ *   which tool (`activityRunningDetail`), a Failed/Stopped row the server's
+ *   own `terminalAttribution.detail`;
+ * - the kind, only for a delegated session;
+ * - the agent, the project as plain text, and the short origin;
+ * - how many turn-sessions the conversation fold collapsed (`foldConversationTurns`).
  *
- * NO SIZE SIGNAL HERE, deliberately (archive#3027). The ticket asked for an
- * at-a-glance "what does this chat contain" clue and the payload audit found
- * exactly one candidate: `eventCount`. It is honest as a number and wrong as
- * that clue — an event is not a message (one streaming turn emits hundreds of
- * `content.text-delta` rows, so the figure carries a provider-dependent
- * multiplier and cannot be compared across engines), and for a
- * `read-only-attached` transcript it is only a LOWER BOUND, because the Claude
- * transcript source cold-starts its ingest at `size - 2MB` and caps each read
- * at 512 events. Rendered, it also pushed the lifecycle label out of a 270px
- * list pane. A truthful "12 messages" needs a per-session message or turn
- * count on the sessions read-model; none exists today, and an untrue proxy on
- * every row is worse than an absent one.
+ * NO SIZE SIGNAL HERE, deliberately (archive#3027): `eventCount` is not a
+ * message count (streaming deltas multiply it by an engine-dependent factor
+ * and attached transcripts report only a lower bound), and an untrue proxy
+ * on every row is worse than an absent one.
  */
-function sessionMetaLine(
-  session: OrchestrationSessionSummary,
-  now: number,
-  foldedTurnCount?: number,
-): string {
-  const recency = sessionRecency(session);
-  const parts: string[] = [];
-  if (session.delegation) parts.push(sessionKindLabel(session));
-  parts.push(sessionStatusWord(session));
-  // NOT the `eventCount` proxy the docblock above refuses: this counts the
-  // sibling turn-sessions folded behind this conversation row
-  // (`foldConversationTurns`), each one a continuation session the lineage
-  // opened for a turn. A session that absorbed a queued/steered extra turn
-  // makes this a floor, not an exact transcript count — it says how many
-  // rows the fold collapsed, which is the fragmentation fact the reader
-  // needs, and is derived entirely from what this list is showing.
-  if (foldedTurnCount !== undefined && foldedTurnCount > 1) {
-    parts.push(`${foldedTurnCount} turns`);
-  }
-  if (recency > 0) parts.push(relativeTimeAgo(recency, now));
-  return parts.join(' · ');
-}
-
-function sessionMemberStatusLine(
-  session: OrchestrationSessionSummary,
-  agents: ReturnType<typeof useAgents>,
-  now: number,
-) {
+function ActivityRowMeta({
+  session,
+  agents,
+  now,
+  foldedTurnCount,
+}: {
+  session: OrchestrationSessionSummary;
+  agents: ReturnType<typeof useAgents>;
+  now: number;
+  foldedTurnCount?: number;
+}) {
   const state = orchestrationLifecycleLabel(session);
-  const agent = sessionIconAgent(session, agents);
-  const model =
-    session.reportedModel ?? session.effectiveModel ?? session.model;
+  const stateWord = sessionStatusWord(session);
+  const running =
+    state === 'Running' ? activityRunningDetail(session, now) : [];
   const turnProgress = activeTurnProgress(session);
-
+  const attached = isReadOnlyAttachedSession(session);
+  const agentName = attached ? null : sessionIconAgent(session, agents).name;
+  const project = sessionProjectLabel(session);
+  const originShort = activityOriginShortLabel(session);
+  // An attached row's state word already names its engine ("Started in
+  // Claude Code"); repeating it as the origin says nothing new.
+  const origin =
+    originShort && !stateWord.includes(originShort) ? originShort : null;
+  const originText = session.turnOrigin?.hasOtherOrigins
+    ? `${origin ?? 'Several origins'} (also another origin)`
+    : origin;
+  const recency = sessionRecency(session);
+  const segments: Array<{ key: string; text: string }> = [];
+  if (session.delegation)
+    segments.push({ key: 'kind', text: sessionKindLabel(session) });
+  if (agentName) segments.push({ key: 'agent', text: agentName });
+  if (project) segments.push({ key: 'project', text: project });
+  if (originText) segments.push({ key: 'origin', text: originText });
+  // NOT the `eventCount` proxy refused above: the sibling turn-sessions
+  // folded behind this conversation row, a floor rather than an exact count.
+  if (foldedTurnCount !== undefined && foldedTurnCount > 1)
+    segments.push({ key: 'turns', text: `${foldedTurnCount} turns` });
   return (
     <span
-      className="session-member-status"
+      className="activity-row-meta"
       data-session-id={session.threadId}
-      data-testid="session-member-status"
+      data-testid="activity-row-meta"
     >
-      <span className="session-member-status__identity">
-        <StatusGlyph state={state} />
-        <span>
-          {/* #1536 review M5: a row naming what a session RUNS takes the
-              shared identity rule, so an unresolved engine default reads
-              "Default" here and not the catalog's "Default (recommended)". */}
-          {agent.name} · {modelIdentityLabel(model)}
+      <span className="activity-row-meta__state">
+        {!attached && <StatusGlyph state={state} />}{' '}
+        <span data-testid="activity-row-state">
+          {[stateWord, ...running].join(' ')}
         </span>
       </span>
-      {turnProgress?.lastProgressEventAt && (
-        <span>
-          Last progress{' '}
-          {relativeTimeAgo(Date.parse(turnProgress.lastProgressEventAt), now)}
-        </span>
-      )}
       {turnProgress?.progressSilence && (
-        <LazyBoundary
-          load={loadProgressSilenceObservation}
-          pending={null}
-          componentProps={{ observation: turnProgress.progressSilence }}
-          unavailable={() => null}
-        />
+        <>
+          {' · '}
+          <LazyBoundary
+            load={loadProgressSilenceObservation}
+            pending={null}
+            componentProps={{ observation: turnProgress.progressSilence }}
+            unavailable={() => null}
+          />
+        </>
       )}
       {(state === 'Failed' || state === 'Stopped') &&
         session.terminalAttribution?.detail && (
-          <span data-testid="session-member-terminal-attribution">
-            {session.terminalAttribution.detail}
-          </span>
+          <>
+            {' · '}
+            <span
+              className="activity-row-meta__detail"
+              data-testid="session-member-terminal-attribution"
+            >
+              {session.terminalAttribution.detail}
+            </span>
+          </>
         )}
+      {segments.map((segment) => (
+        <Fragment key={segment.key}>
+          {' · '}
+          <span data-segment={segment.key}>{segment.text}</span>
+        </Fragment>
+      ))}
+      {recency > 0 && (
+        // The visible time sits on the row's first line, outside the row
+        // button (`trailing`); this copy keeps it in the row's description.
+        <span className="sr-only">{`, ${relativeTimeAgo(recency, now)}`}</span>
+      )}
     </span>
   );
 }
@@ -272,13 +303,10 @@ export function SessionsView({
   const [evidenceReveal, setEvidenceReveal] =
     useState<SessionEvidenceReveal | null>(null);
   const [search, setSearch] = useState('');
-  const [axis, setAxis] = useState<ActivityAxis>('task');
-  // Group from recorded session provenance. The device management registry is
-  // operator-only; reading it here can invalidate a valid browser session.
-  /** Active project filter, set by clicking a row's project pill. */
-  const [projectFilter, setProjectFilter] = useState<string | null>(null);
-  const [delegationParent, setDelegationParent] =
-    useState<OrchestrationSessionSummary | null>(null);
+  // Kind / Project / Started from. Origins come from recorded session
+  // provenance; the device management registry is operator-only and reading
+  // it here can invalidate a valid browser session.
+  const [filters, setFilters] = useState<ActivityFilters>(NO_ACTIVITY_FILTERS);
   const [isDelegationOpen, setIsDelegationOpen] = useState(false);
   const delegationReturnFocusRef = useRef<HTMLElement[]>([]);
   const postDelegateSelectRef = useRef<((threadId: string) => void) | null>(
@@ -428,43 +456,50 @@ export function SessionsView({
     armEvidenceReveal,
   ]);
 
-  const toggleProjectFilter = useCallback((filterKey: string) => {
-    setProjectFilter((current) => (current === filterKey ? null : filterKey));
-  }, []);
+  const { showToast } = useToast();
 
-  // The project filter and the free-text search COMPOSE: a session must pass
-  // both. Search is unchanged from archive#3139 — it matched
-  // threadId/provider/projectSlug only, so the only reliable way to find a
-  // session was to paste its hash back in; every field it reads now is one the
-  // list or its detail actually prints, with `threadId` retained because
-  // pasting an identifier is a legitimate power path.
-  // the CURRENT project filter's collection with
-  // no search query applied — so a project pill that itself has zero
-  // sessions reads as genuinely empty, never as "your search matched
-  // nothing" the moment a stale query also happens to be typed.
-  const projectFiltered = useMemo(
-    () => sessions.filter((s) => matchesProjectFilter(s, projectFilter)),
-    [sessions, projectFilter],
+  // Filters and the free-text search COMPOSE: a session must pass every
+  // active filter AND the search. `collectionFiltered` is the filtered
+  // collection with no query applied, kept apart so an empty result can say
+  // which of the two emptied it.
+  const collectionFiltered = useMemo(
+    () =>
+      sessions.filter(
+        (s) =>
+          matchesActivityKind(s, filters.kind) &&
+          matchesProjectFilter(s, filters.project) &&
+          matchesActivityOrigin(s, filters.origin),
+      ),
+    [sessions, filters],
   );
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return projectFiltered.filter(
+    return collectionFiltered.filter(
       (s) =>
         !q ||
-        searchableSessionFields(s).some((field) =>
+        searchableSessionFields(s, agents).some((field) =>
           field.toLowerCase().includes(q),
         ),
     );
-  }, [projectFiltered, search]);
+  }, [collectionFiltered, search, agents]);
+  const projectOptions = useMemo(
+    () => activityProjectOptions(sessions),
+    [sessions],
+  );
+  const originOptions = useMemo(
+    () => activityOriginOptions(sessions),
+    [sessions],
+  );
+  const clearSearchAndFilters = useCallback(() => {
+    setSearch('');
+    setFilters(NO_ACTIVITY_FILTERS);
+  }, []);
 
   /**
-   * archive#3027: the list groups by STATE, not by project. The server returns
-   * `createdAt` ASCENDING, so archive#3139's newest-first requirement is still
-   * satisfied view-locally — `partitionSessionLanes` sorts every lane by the
-   * same recency fold — and each lane emits exactly one heading because the
-   * lanes are contiguous and their headings unique (the run-length-encoded
-   * heading bug archive#3139 fixed cannot recur). The project moved onto the row as a
-   * pill, which is also the filter control.
+   * archive#3027: the list groups by STATE, through the shared Home
+   * classifier (`partitionSessionLanes` → `partitionHomeWorkItems`) — never a
+   * second one. Each lane is newest-first by the same recency fold, and each
+   * emits exactly one heading because its rows are contiguous.
    */
   const lanes = useMemo(
     () =>
@@ -496,6 +531,9 @@ export function SessionsView({
       presentation.kind === 'run'
         ? presentation.run.members
         : [presentation.session];
+    // A delegated run renders in the highest-priority lane any member is in:
+    // the run root row stays with its run, and a waiting child pulls the run
+    // up to "Needs you" rather than hiding below it.
     const laneId = members.reduce<SessionLaneId>((highest, member) => {
       const candidate = lanesByThreadId.get(member.threadId);
       return candidate &&
@@ -507,7 +545,8 @@ export function SessionsView({
     const order = Math.min(
       ...members.map((member) => orderByThreadId.get(member.threadId)!),
     );
-    return { presentation, members, laneId, order };
+    const recency = Math.max(...members.map(sessionRecency));
+    return { presentation, members, laneId, order, recency };
   });
   // #2312: Drafts untouched for a day fold under "N older drafts", collapsed
   // until opened. They are the Drafts lane's trailing rows (the lane is
@@ -520,7 +559,97 @@ export function SessionsView({
   // conversation's NEWEST Session. Old means the whole conversation is old.
   const isOlderDraft = (members: readonly OrchestrationSessionSummary[]) =>
     olderDraftThreadIds.has(members[0].threadId);
-  const laneItems = SESSION_LANE_ORDER.flatMap((laneId) => {
+
+  // "Stop…" always asks first: it ends a turn the reader may not be watching.
+  const [stopTarget, setStopTarget] =
+    useState<OrchestrationSessionSummary | null>(null);
+  const stopReturnFocusRef = useRef<HTMLElement | null>(null);
+  const stopTask = useMutation({
+    mutationFn: (target: { apiBase: string; threadId: string }) =>
+      interruptOrchestrationTurn(target),
+    onSuccess: () => {
+      setStopTarget(null);
+      void refetch();
+    },
+  });
+  const openStationChat = (session: OrchestrationSessionSummary) => {
+    const target = activityChatTarget(session);
+    navigationStore.navigate(target.pathname, target.params);
+  };
+
+  const rowActions = (
+    s: OrchestrationSessionSummary,
+    showEvidence: boolean,
+  ): ActivityRowAction[] => {
+    const actions: ActivityRowAction[] = [];
+    if (isReadOnlyAttachedSession(s)) {
+      // Attached transcripts keep their existing continuation, which lives
+      // in the detail ("Continue in Station"); "Open" is that detail.
+      actions.push({
+        id: 'open',
+        label: 'Open',
+        onSelect: () => selectWithIntent(s.threadId),
+      });
+    } else {
+      actions.push({
+        id: 'open-in-chat',
+        label: 'Open in chat',
+        onSelect: () => openStationChat(s),
+      });
+    }
+    if (showEvidence)
+      actions.push({
+        id: 'evidence',
+        label: 'Show details & evidence',
+        onSelect: () => {
+          selectionIntentRef.current += 1;
+          setSelection(s.threadId);
+          armEvidenceReveal(s.threadId);
+        },
+      });
+    const filterKey = sessionProjectFilterKey(s);
+    if (filterKey !== null && filterKey !== filters.project)
+      actions.push({
+        id: 'filter-project',
+        label: 'Filter to this project',
+        onSelect: () =>
+          setFilters((current) => ({ ...current, project: filterKey })),
+      });
+    actions.push({
+      id: 'copy-id',
+      label: 'Copy session ID',
+      onSelect: () => {
+        void copyToClipboard(s.threadId).then((copied) =>
+          showToast(
+            copied
+              ? 'Session ID copied'
+              : "Couldn't copy the session ID — this browser refused clipboard access.",
+          ),
+        );
+      },
+    });
+    // The coordinator's Stop gate, unchanged: a running turn on a session
+    // this Station controls. A peer record's turn is the paired Station's.
+    if (
+      !isReadOnlyAttachedSession(s) &&
+      s.delegation?.environmentKind !== 'peer' &&
+      isStreamingSession(s) &&
+      !isTerminalSession(s)
+    )
+      actions.push({
+        id: 'stop',
+        label: 'Stop…',
+        tone: 'danger',
+        onSelect: (trigger) => {
+          stopReturnFocusRef.current = trigger;
+          stopTask.reset();
+          setStopTarget(s);
+        },
+      });
+    return actions;
+  };
+
+  const items = SESSION_LANE_ORDER.flatMap((laneId) => {
     const lanePresentations = presentationRows
       .filter((row) => row.laneId === laneId)
       .sort((left, right) => left.order - right.order);
@@ -532,26 +661,49 @@ export function SessionsView({
               row.presentation.kind !== 'run' && isOlderDraft(row.members),
           ).length
         : 0;
-    // The lane count means presentation members CLASSIFIED into this lane.
-    // A mixed-state run RENDERS in its highest-priority member lane, but its
-    // members still count where their own state belongs: one waiting child
-    // in an otherwise-active run is 'Needs you · 1', never '· 2'. Stable
-    // across expand/collapse because classification, not visibility, is what
-    // is counted. Turn-sessions folded away by `foldConversationTurns` do
-    // NOT count: the folded conversation is the unit this list now shows,
-    // which is the same conversation-folded population Home and Project Live
-    // Work already count ("the same populations with the same words") — the
-    // per-turn count was the disagreement, not this.
-    const laneSessionCount = lanePresentations.reduce(
-      (total, row) =>
-        total +
-        row.members.filter(
-          (member) => lanesByThreadId.get(member.threadId) === laneId,
-        ).length,
-      0,
-    );
-    const section = `${SESSION_LANE_LABELS[laneId]} · ${laneSessionCount}`;
-    return lanePresentations.flatMap(({ presentation, members }) => {
+    // The dated stream: the terminal history lane splits into "Earlier
+    // today" / "Yesterday" / "This week" / "Older" by the same recency fold
+    // the lane sorts by. Sorting by bucket first keeps each sub-section
+    // contiguous even when a run's position and recency disagree.
+    const dated = laneId === DATED_STREAM_LANE;
+    const bucketOf = (row: (typeof lanePresentations)[number]) =>
+      datedStreamBucket(row.recency, now);
+    if (dated)
+      lanePresentations.sort(
+        (left, right) =>
+          DATED_STREAM_ORDER.indexOf(bucketOf(left)) -
+            DATED_STREAM_ORDER.indexOf(bucketOf(right)) ||
+          left.order - right.order,
+      );
+    // A section's count means members CLASSIFIED into this lane. A mixed-state
+    // run RENDERS in its highest-priority member lane, but its members still
+    // count where their own state belongs: one waiting child in an
+    // otherwise-active run is 'Needs you · 1', never '· 2'. Stable across
+    // expand/collapse because classification, not visibility, is counted.
+    // Turn-sessions folded away by `foldConversationTurns` do NOT count: the
+    // folded conversation is the unit this list shows, the same population
+    // Home and Project Live Work count.
+    const classifiedCount = (rows: typeof lanePresentations) =>
+      rows.reduce(
+        (total, row) =>
+          total +
+          row.members.filter(
+            (member) => lanesByThreadId.get(member.threadId) === laneId,
+          ).length,
+        0,
+      );
+    const sectionFor = (row: (typeof lanePresentations)[number]) => {
+      if (!dated)
+        return `${SESSION_LANE_LABELS[laneId]} · ${classifiedCount(lanePresentations)}`;
+      const bucket = bucketOf(row);
+      return `${bucket} · ${classifiedCount(
+        lanePresentations.filter((other) => bucketOf(other) === bucket),
+      )}`;
+    };
+    return lanePresentations.flatMap((row) => {
+      const { presentation, members } = row;
+      const section = sectionFor(row);
+      const subtaskCount = members.length - 1;
       const group =
         presentation.kind !== 'run' &&
         olderDraftCount > 0 &&
@@ -564,7 +716,7 @@ export function SessionsView({
           : presentation.kind === 'run'
             ? {
                 id: presentation.run.id,
-                label: `Run · ${presentation.run.members.length - 1} delegated ${presentation.run.members.length === 2 ? 'session' : 'sessions'}`,
+                label: `${subtaskCount} ${subtaskCount === 1 ? 'subtask' : 'subtasks'}`,
                 renderSummary: (focusMember: (memberId: string) => void) => (
                   <RunBoardSummary
                     members={presentation.run.members}
@@ -574,159 +726,103 @@ export function SessionsView({
               }
             : undefined;
       return members.map((s) => {
-        const filterKey = sessionProjectFilterKey(s);
-        const projectLabel = sessionProjectLabel(s);
-        // The affordance appears only when both halves of its promise hold:
-        // the session genuinely ENDED — the canonical lifecycle fold
-        // (`orchestrationLifecycleLabel`) through the ONE terminal predicate
-        // (`isTerminalLifecycle`, archive#3227 A6), never a private
-        // re-derivation — and its detail is the mutable one that actually
-        // renders the receipts/diagnostics region. A read-only attached
-        // transcript has no such region, and `revealHomeRegion`'s rule
-        // applies: never offer a control whose target may be absent.
+        // "Show details & evidence" appears only when both halves of its
+        // promise hold: the session genuinely ENDED — the canonical fold
+        // through the ONE terminal predicate (archive#3227 A6) — and its
+        // detail is the mutable one that renders the evidence region. A
+        // read-only attached transcript has no such region.
         const showEvidence =
           !isReadOnlyAttachedSession(s) &&
           isTerminalLifecycle(orchestrationLifecycleLabel(s));
         // #2312: the server's Draft fold, read through the same label the
-        // Drafts lane files by. Discarding is the server command, so every
-        // device's next list read agrees.
+        // Drafts lane files by. Discarding is the server command, no confirm.
         const showDiscard = orchestrationLifecycleLabel(s) === 'Draft';
+        const recency = sessionRecency(s);
         return {
           id: s.threadId,
           name: sessionTitle(s),
           subtitle: (
-            <>
-              {presentation.kind === 'run'
-                ? sessionMemberStatusLine(s, agents, now)
-                : sessionMetaLine(s, now, turnCounts.get(s.threadId))}
-              {s.turnOrigin?.hasOtherOrigins && (
-                <span className="session-origin-history">
-                  Also driven from another origin
-                </span>
-              )}
-            </>
+            <ActivityRowMeta
+              session={s}
+              agents={agents}
+              now={now}
+              foldedTurnCount={turnCounts.get(s.threadId)}
+            />
           ),
-          // EVERY row in the lane carries the lane section —
-          // the layout emits a heading only when section CHANGES between
-          // neighbors, so a member with undefined reset the comparison and a
-          // following row re-emitted a duplicate lane heading.
+          // EVERY row carries its section — the layout emits a heading only
+          // when section CHANGES between neighbours.
           section,
           icon: <AgentIcon agent={sessionIconAgent(s, agents)} size="small" />,
           openChat: openConversationIds.has(s.threadId),
           badge: <SessionPullRequestConflictChip session={s} />,
           ...(group ? { group } : {}),
-          // Left undefined — not an element that renders nothing — when this
-          // Station knows no project for the session AND no evidence control
-          // applies: `SplitPaneLayout` then emits the row's original markup
-          // with no empty trailing slot, so an unattributed row is not
-          // silently narrower than its neighbours. Interactive controls live
-          // HERE, not in the row button — `trailing` is the slot
-          // `SplitPaneLayout` renders as a sibling precisely because a button
-          // may not contain interactive content (archive#3027).
-          trailing:
-            showEvidence || showDiscard || projectLabel ? (
-              <>
-                {showDiscard && (
-                  <DiscardDraftButton
-                    threadId={s.threadId}
-                    title={sessionTitle(s)}
-                    className="session-discard-draft"
-                    closeSessionIds={sessions
-                      .filter(
-                        (other) =>
-                          (other.conversationId ?? other.threadId) ===
-                          (s.conversationId ?? s.threadId),
-                      )
-                      .map((other) => other.threadId)
-                      .concat(s.conversationId ? [s.conversationId] : [])}
-                  />
-                )}
-                {showEvidence && (
-                  <SessionEvidenceButton
-                    sessionTitle={sessionTitle(s)}
-                    onActivate={() => {
-                      selectionIntentRef.current += 1;
-                      setSelection(s.threadId);
-                      armEvidenceReveal(s.threadId);
-                    }}
-                  />
-                )}
-                {projectLabel ? (
-                  <SessionProjectPill
-                    label={projectLabel}
-                    filterKey={filterKey}
-                    active={filterKey !== null && filterKey === projectFilter}
-                    onToggle={toggleProjectFilter}
-                  />
-                ) : undefined}
-              </>
-            ) : undefined,
+          // Interactive controls live in `trailing`, a sibling of the row
+          // button, because a button may not contain interactive content.
+          trailing: (
+            <>
+              {recency > 0 && (
+                <time
+                  className="activity-row__time"
+                  dateTime={new Date(recency).toISOString()}
+                  aria-hidden="true"
+                >
+                  {relativeTime(recency, now)}
+                </time>
+              )}
+              {showDiscard && (
+                <DiscardDraftButton
+                  threadId={s.threadId}
+                  title={sessionTitle(s)}
+                  className="session-discard-draft"
+                  closeSessionIds={sessions
+                    .filter(
+                      (other) =>
+                        (other.conversationId ?? other.threadId) ===
+                        (s.conversationId ?? s.threadId),
+                    )
+                    .map((other) => other.threadId)
+                    .concat(s.conversationId ? [s.conversationId] : [])}
+                />
+              )}
+              <ActivityRowMenu
+                itemTitle={sessionTitle(s)}
+                actions={rowActions(s, showEvidence)}
+              />
+            </>
+          ),
         };
       });
     });
   });
 
-  const delegatedTaskIds = new Set(
-    presentationRows
-      .filter((row) => row.members.some((member) => member.delegation))
-      .flatMap((row) => row.members.map((member) => member.threadId)),
-  );
-  const delegatedCount = laneItems.filter((item) =>
-    delegatedTaskIds.has(item.id),
-  ).length;
-  const operatorCount = laneItems.length - delegatedCount;
-  const taskSectionById = new Map<string, string>();
-  for (const row of presentationRows) {
-    const isDelegated = row.members.some((member) => member.delegation);
-    const section = isDelegated
-      ? `Delegated/background work · ${delegatedCount}`
-      : `Conversations · ${operatorCount}`;
-    for (const member of row.members) {
-      taskSectionById.set(member.threadId, section);
-    }
-  }
-  const originSectionById = new Map(
-    sessions.map((session) => [session.threadId, originSection(session)]),
-  );
-  const items = laneItems
-    .map((item) => ({
-      ...item,
-      section:
-        axis === 'task'
-          ? taskSectionById.get(item.id)
-          : originSectionById.get(item.id),
-    }))
-    .sort((left, right) => {
-      if (axis === 'task') {
-        const leftDelegated = left.section?.startsWith('Delegated/') ? 0 : 1;
-        const rightDelegated = right.section?.startsWith('Delegated/') ? 0 : 1;
-        return leftDelegated - rightDelegated;
-      }
-      return (left.section ?? '').localeCompare(right.section ?? '');
-    });
-  const emptySections: string[] = [];
-
   const selected = sessions.find((s) => s.threadId === selectedId) ?? null;
-  const delegatedTasks = useMemo(
-    () => prioritizedDelegatedTasks(sessions),
-    [sessions],
-  );
 
-  const openDelegation = (
-    parent: OrchestrationSessionSummary | null,
-    selectTask: (threadId: string) => void,
-    trigger: HTMLButtonElement,
-  ) => {
-    // Found by archive#1245's sweep, not listed on the issue. The trigger is a
-    // per-row button in the sessions list, and delegating invalidates that list
-    // so the row that opened the launcher is exactly the kind of node the
-    // launcher's own action removes (archive#1126). The old restore was
-    // `requestAnimationFrame( => delegationTriggerRef.current?.focus)`,
-    // with no guard at all. Capture the whole ancestor chain while it is still
-    // attached so the fallback has something to walk.
-    delegationReturnFocusRef.current = captureReturnFocus(trigger);
-    postDelegateSelectRef.current = selectTask;
-    setDelegationParent(parent);
+  const closeStopConfirm = () => {
+    setStopTarget(null);
+    stopTask.reset();
+    const trigger = stopReturnFocusRef.current;
+    stopReturnFocusRef.current = null;
+    if (trigger?.isConnected) trigger.focus();
+  };
+
+  // Captured from the skeleton's own `selectItem` (via `listIntro`) so a
+  // newly started task is selected through the path that keeps the mobile
+  // return-focus capture (archive#1259), exactly as the footer card did.
+  const selectItemRef = useRef<((threadId: string) => void) | null>(null);
+
+  const openTopLevelDelegation = () => {
+    // Found by archive#1245's sweep: delegating invalidates the list, so the
+    // control that opened the launcher may not survive it. Capture the whole
+    // ancestor chain while it is still attached so the restore has a
+    // fallback to walk.
+    const trigger =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    delegationReturnFocusRef.current = trigger
+      ? captureReturnFocus(trigger)
+      : [];
+    postDelegateSelectRef.current = selectItemRef.current;
     setIsDelegationOpen(true);
   };
 
@@ -737,109 +833,69 @@ export function SessionsView({
     restoreReturnFocus(chain);
   };
 
-  const delegationProjectSlug =
-    delegationParent?.delegation?.projectSlug ?? delegationParent?.projectSlug;
-  const delegationParentTaskId = delegationParent
-    ? (delegationParent.delegation?.taskId ?? delegationParent.threadId)
-    : undefined;
+  const searchActive = search.trim().length > 0;
+  const collectionEmpty = sessions.length === 0;
+  const resultsEmpty = !collectionEmpty && filtered.length === 0;
+  const filteredEmptyTitle = searchActive
+    ? `No activity matches “${search.trim()}”`
+    : 'No activity matches these filters';
 
   return (
     <>
-      {/* empty-state action: delegation starter and filter reset are adjacent */}
       <SplitPaneLayout
         heightResponsive
         items={items}
-        emptySections={emptySections}
         selectedId={selectedId}
         onSelect={selectWithIntent}
         onDeselect={() => selectWithIntent(null)}
         onSearch={setSearch}
         searchValue={search}
-        searchPlaceholder="Search conversations…"
+        searchPlaceholder="Search activity…"
         loading={isLoading}
         error={sessionsError}
         onRetry={() => void refetch()}
-        listEmptyTitle="Nothing has run yet"
-        listEmptyDescription="Your conversations and tasks will appear here."
-        listFilteredEmptyNoun="sessions"
-        collectionEmpty={projectFiltered.length === 0}
-        /* The only thing above the rows is the active project filter, and only
-           when there is one — a permanent filter bar would cost every reader
-           space to tell most of them nothing. */
-        listIntro={
-          <>
-            <Tabs
-              id="activity-axis"
-              items={ACTIVITY_AXIS_TABS}
-              activeKey={axis}
-              onSelect={(key) => setAxis(key as ActivityAxis)}
-              aria-label="Group Activity"
-              activation="automatic"
-              className="sessions-axis-tabs"
-            />
-            <div
-              role="tabpanel"
-              id={tabPanelElementId('activity-axis', axis)}
-              aria-labelledby={tabElementId('activity-axis', axis)}
-              className="sessions-axis-description"
-            >
-              {axis === 'task'
-                ? 'Tasks and conversations, grouped by what you are working on.'
-                : 'Conversations grouped by the app or client where they were started.'}
-            </div>
-            <ActionOperationsSection />
-            <LiveCollaboratorsSection />
-            {projectFilter ? (
-              <div className="sessions-project-filter">
-                <span className="sessions-project-filter__label">
-                  Filtered to
-                </span>
-                <button
-                  type="button"
-                  className="sessions-project-filter__clear"
-                  aria-label={`Clear the ${projectFilter} project filter`}
-                  onClick={() => setProjectFilter(null)}
-                >
-                  {projectFilter}
-                  <span aria-hidden="true">✕</span>
-                </button>
-              </div>
-            ) : null}
-          </>
+        listEmptyTitle={
+          resultsEmpty ? filteredEmptyTitle : 'Nothing has run yet'
         }
-        /* archive#3027: the delegation card is "start something new", not a
-           session, so it sits BELOW the list rather than on top of it — and
-           the "Needs you" lane now shows every waiting delegated session,
-           which is what the card's single `tasks[0]` slot could never do. */
-        sidebarActions={(selectTask) =>
-          delegatedTasks.length > 0 ? (
-            <DelegatedTaskCoordinator
-              key={delegatedTasks[0].threadId}
-              apiBase={apiBase}
-              tasks={delegatedTasks}
-              onOpen={selectTask}
-              onDelegate={(trigger) =>
-                openDelegation(delegatedTasks[0], selectTask, trigger)
-              }
-              onTaskChanged={() => void refetch()}
-            />
-          ) : (
-            <DelegatedTaskStarter
-              onDelegate={(trigger) =>
-                openDelegation(null, selectTask, trigger)
-              }
-            />
-          )
+        listEmptyDescription={
+          resultsEmpty
+            ? 'Try another search, or clear the search and filters.'
+            : 'Start a task with New task, or open a chat. What runs shows up here.'
         }
-        /* station: sessions moved under Home. The surface is named Activity —
-           "monitor the AI sessions on this host" — while each row stays a
-           session, because that is what the list actually shows
-           (`useOrchestrationSessionsQuery`: this Station's sessions, including
-           read-only attached external-engine ones). */
+        /* Always the plain empty state: Activity's filtered-empty copy and
+           its reset ("Clear search and filters", in the filter bar just
+           above) cover filters as well as the query, which the layout's own
+           search-only FilteredEmpty cannot. */
+        collectionEmpty
+        onAdd={openTopLevelDelegation}
+        addLabel="New task"
+        listIntro={(selectItem) => {
+          selectItemRef.current = selectItem;
+          return (
+            <>
+              {!collectionEmpty && (
+                <ActivityFilterBar
+                  filters={filters}
+                  projectOptions={projectOptions}
+                  originOptions={originOptions}
+                  onChange={setFilters}
+                  onClearAll={clearSearchAndFilters}
+                  searchActive={searchActive}
+                  resultsEmpty={resultsEmpty}
+                />
+              )}
+              <ActionOperationsSection />
+            </>
+          );
+        }}
+        /* The surface is named Activity; each row stays a session, because
+           that is what the list shows (`useOrchestrationSessionsQuery`: this
+           Station's sessions, including read-only attached external-engine
+           ones). */
         label="Activity"
         title="Activity"
-        subtitle="Conversations and work across your AI apps"
-        emptyDescription="Select a conversation to read messages and review its activity."
+        subtitle="What's running, what needs you, and what happened."
+        emptyDescription="Select an item to read what happened and review its evidence."
         firstRunAnchor="activity"
       >
         {selected && (
@@ -867,30 +923,44 @@ export function SessionsView({
         )}
       </SplitPaneLayout>
 
+      {/* "New task" is always a TOP-LEVEL task: no parent, so the launcher
+          never silently files it as someone else's subtask. Delegating a
+          subtask belongs to a task's own detail. */}
       <DelegationLauncher
         isOpen={isDelegationOpen}
         apiBase={apiBase}
-        projectSlug={delegationProjectSlug}
-        projectName={
-          delegationProjectSlug ? humanizeId(delegationProjectSlug) : null
-        }
-        currentAgentId={
-          delegationParent?.delegation?.targetId ??
-          delegationParent?.assignedAgentSlug
-        }
-        currentModel={delegationParent?.model}
-        parentTaskId={delegationParentTaskId}
-        parentTaskLabel={
-          delegationParentTaskId
-            ? humanizeId(delegationParentTaskId)
-            : undefined
-        }
         onClose={closeDelegation}
         onDelegated={(task) => {
           setIsDelegationOpen(false);
           void refetch().finally(() => {
             postDelegateSelectRef.current?.(task.sessionId);
           });
+        }}
+      />
+
+      <ConfirmModal
+        isOpen={stopTarget !== null}
+        role="alertdialog"
+        variant="danger"
+        title="Stop this turn?"
+        message={
+          stopTarget
+            ? `“${sessionTitle(stopTarget)}” stops working on its current turn. You can send it a new message afterwards.`
+            : ''
+        }
+        confirmLabel="Stop"
+        pending={stopTask.isPending}
+        error={
+          stopTask.error
+            ? stopTask.error instanceof Error
+              ? stopTask.error.message
+              : 'Unable to stop this turn'
+            : null
+        }
+        onCancel={closeStopConfirm}
+        onConfirm={() => {
+          if (!stopTarget || stopTask.isPending) return;
+          stopTask.mutate({ apiBase, threadId: stopTarget.threadId });
         }}
       />
     </>

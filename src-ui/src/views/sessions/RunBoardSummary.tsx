@@ -118,9 +118,12 @@ export function RunBoardSummary({
               ? (bucket.firstQuietMemberId ?? bucket.firstMemberId)
               : bucket.firstMemberId,
           );
+        // The name leads with what the cluster COUNTS, then what pressing it
+        // does ("1 stopped — focus first stopped"), so a reader moving
+        // through the board hears the tally before the verb.
         const clusterName = silenceDriven
-          ? `Focus ${label} member with no recent progress (${bucket.count} ${label})`
-          : `Focus first ${label} member (${bucket.count})`;
+          ? `${bucket.count} ${label} — focus the one with no recent progress`
+          : `${bucket.count} ${label} — focus first ${label}`;
         return (
           <button
             key={bucket.state}
