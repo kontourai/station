@@ -345,7 +345,11 @@ node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write -
 
 Each token is scoped to the `station` repository and the requested
 permissions, lives about an hour, and is never cached or written anywhere.
-The helper fails closed (exit 78) and points here when it is not set up.
+The helper fails closed (exit 78) and points here when it is not set up. It
+refuses to print a token to a terminal, so a bare run cannot leak one into a
+session transcript; capture it with `$(...)` or run a command after `--`.
+Each refusal starts with a stable reason code, such as
+`gh-app-token: key-in-repository:`.
 
 **Prefer REST for status reads.** `gh pr view`, `gh pr checks` and
 `gh pr status` are GraphQL calls. Read state over REST instead:

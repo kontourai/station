@@ -207,14 +207,21 @@ a test that reads a source file's text selects on that file, and a test that
 spawns a `scripts/*.mjs` entry point (itself, or through a test helper)
 selects on the script and on every file the script imports, directly or
 transitively (#2922). Vitest's import graph sees neither edge; the
-hand-maintained manifest keeps the edges these derivations cannot see.
+hand-maintained manifest keeps the edges these derivations cannot see. A
+file imported by the scripts of more than 16 spawning tests, such as the
+`module-entry.mjs` entry shim, defers those tests to the `test-full` lane
+instead of running them inline, so one shared-helper edit cannot exceed the
+`ci:fast` budget.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
 and the Station variables workflows derive from the event
 (`scripts/lib/ci-event-environment.mjs`). A test therefore behaves the same
 in a pull request's checks, in the merge queue and locally; a test about an
-event sets the variables it needs explicitly.
+event sets the variables it needs explicitly. The one deliberate exception is
+the real-ledger documentation freshness checks: `vitest.setup.ts` keeps the
+removed variables on the process object, and their `JOB_ENV` adds them back,
+so a pull request stays scoped and the merge queue stays advisory.
 The subset uses the same resource groups and worker limits as `test:full`:
 ordinary files use four workers, process-heavy files use two, and exclusive
 or shared-output groups run serially. Groups run in sequence. Deferred lanes
