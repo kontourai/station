@@ -451,7 +451,11 @@ The workflow declarations require these GitHub Environments. Their current
 reviewers and branch/tag policies must be inspected separately:
 
 - `native-release`: signing, native-cohort and Stable iOS jobs.
-- `native-release-publish`: manual publication.
+- `native-release-publish`: manual publication. It also holds the
+  `STATION_PORTABLE_RELEASE_MANIFEST_SIGNING_KEY` secret that signs the
+  host-stream manifest, read only when the repository variable
+  `STATION_PORTABLE_RELEASE_PUBLISH` is `enabled` (see
+  [signed host-stream manifests](release-rings.md#signed-host-stream-manifests)).
 - `ios-beta` and `ios-nightly`: the corresponding reusable TestFlight channels;
   Stable iOS uses `native-release`.
 
@@ -539,7 +543,8 @@ protocol roots because they cannot hash each other; the inventory covers every
 other uploaded sidecar and payload.
 
 Publish resolves the tag again and normally requires the release to still be a draft,
-downloads every `station-*` asset, verifies every asset's GitHub provenance and
+downloads every `station-*` asset, verifies every asset's GitHub provenance
+(except the signed host-stream manifest, described below) and
 the inventory/checksums, and compares the live `sha-<source-sha>` image to the
 digest recorded in `station-container-release.json`. It promotes only
 `image@recorded-digest` to the recorded version/channel aliases, then changes
@@ -560,6 +565,21 @@ workflow-crossing ref. Leave the new release public and empty, then explicitly e
 `latest.json` on a non-empty rolling release is treated as damage and fails
 closed. A failed draft is fixed with a new tag; never replace an immutable tag
 release asset under the same tag.
+
+The draft also carries the host stream: the five `station-server-*` archives
+and `station-server-manifest-payload.json`, attested by release.yml. Publish
+checks the payload against the tag and the archive bytes and dry-run signs it
+on every run. The attestation loop skips one asset,
+`station-portable-<ring>-manifest.json`. Publish attaches that signed
+manifest itself, so it carries no release.yml attestation; the inventory
+revalidation verifies it against the pinned release key and the attested
+payload instead. Behind `STATION_PORTABLE_RELEASE_PUBLISH`, the host-stream
+steps attach the manifest before publication. After the desktop pointer they
+re-verify the public versioned assets, refuse a non-newer version, and replace
+the `portable-<ring>` pointer last. A rerun that finds the manifest already
+attached compares its bytes and never replaces it. Details and the owner
+actions are in
+[signed host-stream manifests](release-rings.md#signed-host-stream-manifests).
 
 Stable and Preview desktop builds embed the endpoint for their rolling release.
 The default branch's policy checkout runs the updater manifest assembly and

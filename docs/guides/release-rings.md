@@ -68,6 +68,57 @@ manifests use `releases/` and run dependencies/build steps. This does not change
 the default GitHub-attested source path described above. See the
 [manifest consumer table](../../packaging/manifest/README.md#formats-and-consumers).
 
+## Signed host-stream manifests
+
+Every tag also builds the host stream (#2959): the five
+`station-server-<os>-<arch>` prebuilt archives for the tag's ring, and the
+schema v2 payload that names them. The `host-manifest` job in
+[`release.yml`](../../.github/workflows/release.yml) assembles the payload
+from the archive descriptors with
+[`ecosystem-manifest.mjs assemble`](../../scripts/ecosystem-manifest.mjs),
+signs it with a throwaway key, verifies that signature, and fails if the
+throwaway envelope verifies against the pinned key table. It reads no secret.
+The archives and `station-server-manifest-payload.json` are attested and
+join the draft through the ordinary inventory, which checks that the payload
+names this release's ring, version, source SHA and exact archive bytes.
+
+[`publish-release.yml`](../../.github/workflows/publish-release.yml) repeats
+that dry run on every publish. It signs with the release key only when the
+repository variable `STATION_PORTABLE_RELEASE_PUBLISH` is exactly `enabled`.
+The key is the `STATION_PORTABLE_RELEASE_MANIFEST_SIGNING_KEY` secret in the
+`native-release-publish` environment. Its public half is
+`station-portable-release-2026-09` in
+[`config/release-manifest-keys.json`](../../config/release-manifest-keys.json),
+and it may sign `stable` and `preview` only. With the variable enabled and the
+secret missing, the job fails before the release is published. With the gate
+on, the job:
+
+1. signs the payload and verifies it with the pinned table;
+2. requires the owner's rolling pointer release to exist and be public;
+3. refuses a candidate that is not newer than the rolling manifest;
+4. attaches `station-portable-<ring>-manifest.json` to the versioned release,
+   which the existing publish step then makes public;
+5. re-downloads the versioned archives and manifest and compares them with the
+   payload;
+6. repeats the not-regressing check, replaces the rolling pointer's manifest
+   last, and re-fetches and re-verifies it with the pinned key.
+
+The locations come from one base,
+[`scripts/lib/public-release-locations.mjs`](../../scripts/lib/public-release-locations.mjs):
+`https://github.com/kontourai/station/releases/download/`. The versioned
+manifest is `v<version>/station-portable-<ring>-manifest.json`. The rolling
+pointers are `portable-stable/station-portable-stable-manifest.json` and
+`portable-preview/station-portable-preview-manifest.json`. Nightly's
+`portable-nightly` pointer derives from the same base. Stable and preview
+versions order numerically on `X.Y.Z` and `X.Y.Z-preview.N`.
+
+Nothing has been published this way yet. These remain owner actions: add the
+secret, create the `portable-stable` and `portable-preview` pointer releases
+(public), set the variable, and cut a tagged release that completes (#1243).
+The installer's defaults are unchanged. `install.sh` already accepts a stable
+or preview manifest through `STATION_INSTALL_PUBLIC_MANIFEST_URL`, and making
+these URLs its default is #2960.
+
 ## Publish a preview
 
 Release actions below require an authorized release handoff. Use a clean
