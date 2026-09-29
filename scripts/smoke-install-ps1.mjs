@@ -21,8 +21,14 @@
 //   3. `irm | iex` style (the script text through Invoke-Expression): the
 //      active version again is "nothing to do", and the caller's session
 //      survives;
-//   4. refusals on this host: archive bytes that differ from the signed
-//      sha256, and a manifest signed by another key; neither stages anything.
+//   4. a caller script that runs the text through Invoke-Expression and was
+//      itself given an argument: install.ps1 neither exits the caller nor
+//      takes the caller's arguments;
+//   5. refusals on this host: archive bytes that differ from the signed
+//      sha256; a manifest signed by another key; a copy of install.ps1 whose
+//      pinned Node.js digest is wrong; and a Station root outside the user
+//      profile, whose planted `current\runtime\node.exe` must not run before
+//      verification. None stages anything.
 // Windows only: it drives powershell.exe, pwsh.exe and NTFS junctions.
 import { spawn, spawnSync } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
@@ -34,6 +40,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
 import { join, resolve, win32 } from 'node:path';
@@ -234,7 +241,7 @@ function runAsync(program, args, env) {
   });
 }
 
-function runFile(shell, env) {
+function runFile(shell, env, script = installScript, args = ['install']) {
   return runAsync(
     shell,
     [
@@ -243,8 +250,8 @@ function runFile(shell, env) {
       '-ExecutionPolicy',
       'Bypass',
       '-File',
-      installScript,
-      'install',
+      script,
+      ...args,
     ],
     env,
   );
@@ -287,7 +294,9 @@ function assertStagedVersion(installRoot, archive) {
 try {
   // Long enough that versions\<v>\<deepest path> crosses MAX_PATH.
   const suffix = `\\installs\\${first.runtime}\\versions\\${first.version}\\`;
-  const base = join(work, 'r');
+  // Beneath the (smoke's) user profile: install.ps1 refuses any other root
+  // until it checks install-root permissions (#2675 W2).
+  const base = join(profile, 'r');
   const pad = Math.max(
     1,
     LONG_PATH_TARGET - (base.length + 1 + suffix.length + first.longest),
@@ -371,7 +380,38 @@ try {
     'Invoke-Expression ended the calling session',
   );
 
-  // 4. Refusals on this host; each uses a fresh root and stages nothing.
+  // 4. A caller script, given its own argument, that runs install.ps1's text
+  // through Invoke-Expression: install.ps1 must not take the caller's
+  // argument (a usage error) nor exit the caller (the marker is lost).
+  const setup = join(work, 'setup.ps1');
+  writeFileSync(
+    setup,
+    `Invoke-Expression ([IO.File]::ReadAllText('${installScript.replaceAll("'", "''")}'))\r\nWrite-Output 'SETUP-CONTINUED'\r\n`,
+  );
+  const four = await runFile(
+    windowsPowerShell,
+    environment(stationRoot, publish('caller', first)),
+    setup,
+    ['--caller-only-argument'],
+  );
+  check(four.status === 0, 'the caller script failed');
+  check(
+    four.stdout.includes(
+      `Station ${first.tag} is already installed; nothing to do.`,
+    ),
+    'the caller script did not run the installer',
+  );
+  check(
+    lastLine(four.stdout) === 'SETUP-CONTINUED',
+    'install.ps1 ended the caller script',
+  );
+  check(
+    !four.stderr.includes('unexpected argument') &&
+      !four.stderr.includes('usage:'),
+    "install.ps1 took the caller's argument",
+  );
+
+  // 5. Refusals on this host; each uses a fresh root and stages nothing.
   const tampered = Buffer.from(readFileSync(first.path));
   tampered[Math.floor(tampered.length / 2)] ^= 0x01;
   const refusals = [
@@ -388,11 +428,49 @@ try {
       message: 'public ecosystem manifest signature did not verify',
     },
   ];
+  // A copy of install.ps1 whose pinned Node.js digest is wrong: the
+  // downloaded zip must be refused before its node.exe runs. (No production
+  // override exists; only an edited copy can do this.)
+  const badPin = join(work, 'install-bad-pin.ps1');
+  const pristineScript = readFileSync(installScript, 'utf8');
+  const pinLine = /^\$PinnedNodeSha256 = '[0-9a-f]{64}'$/m;
+  check(pinLine.test(pristineScript), 'install.ps1 has no pinned digest line');
+  writeFileSync(
+    badPin,
+    pristineScript.replace(pinLine, `$PinnedNodeSha256 = '${'0'.repeat(64)}'`),
+  );
+  refusals.push({
+    name: 'a pinned Node.js zip that does not match its digest',
+    manifest: publish('bad-pin', first),
+    message: 'node-v',
+    script: badPin,
+    stderrIncludes: 'does not match its pinned sha256',
+  });
+  // A Station root outside the profile, with a `current` whose
+  // runtime\node.exe is planted there (a real Node.js here, standing in for
+  // one another local user wrote): the script must not run it, and the core
+  // must refuse the root.
+  const outside = join(work, 'outside');
+  const outsideInstall = join(outside, 'installs', first.runtime);
+  mkdirSync(outsideInstall, { recursive: true });
+  symlinkSync(
+    join(installRoot, 'versions', first.version),
+    join(outsideInstall, 'current'),
+    'junction',
+  );
+  refusals.push({
+    name: 'a Station root outside the user profile',
+    manifest: publish('outside', first),
+    message: 'on Windows, install.ps1 installs only beneath your user profile',
+    root: outside,
+    forbidStdout: 'Using the Node.js of the installed Station',
+  });
   for (const [index, refusal] of refusals.entries()) {
-    const root = join(work, `refused-${index}`);
+    const root = refusal.root ?? join(profile, `refused-${index}`);
     const result = await runFile(
       windowsPowerShell,
       environment(root, refusal.manifest),
+      refusal.script,
     );
     check(
       result.status === 1,
@@ -402,6 +480,16 @@ try {
       result.stderr.includes(`Station install failed: ${refusal.message}`),
       `${refusal.name}: expected "${refusal.message}"`,
     );
+    if (refusal.stderrIncludes)
+      check(
+        result.stderr.includes(refusal.stderrIncludes),
+        `${refusal.name}: expected "${refusal.stderrIncludes}"`,
+      );
+    if (refusal.forbidStdout)
+      check(
+        !result.stdout.includes(refusal.forbidStdout),
+        `${refusal.name}: printed "${refusal.forbidStdout}"`,
+      );
     check(
       versionsOf(join(root, 'installs', first.runtime)).length === 0,
       `${refusal.name}: something was staged`,

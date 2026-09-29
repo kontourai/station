@@ -228,9 +228,19 @@ REASONED means I read it from the code or the platform documentation.
     `versions\<v>`, self-check, sentinel, seal. The downgrade check against
     an existing `current` is in W1 too, since stage-only reports "nothing to
     do" for the active version.
-  - Not in W1: ACLs on the install root (a fresh root under
-    `%USERPROFILE%` inherits the profile's user/SYSTEM/Administrators ACL),
-    the `current` junction swap, the launcher, state, uninstall.
+  - Not in W1: ACLs on the install root, the `current` junction swap, the
+    launcher, state, uninstall. Instead, on Windows the core refuses any
+    install root outside the user profile (a root like `C:\station` usually
+    inherits write access for every local user, who could plant a version
+    the installer reuses), and install.ps1 runs the installed
+    `current\runtime\node.exe` only for a root beneath the profile with no
+    reparse point on the way. W2's ACL checks lift the restriction.
+  - Accepted gaps in W1: the download guard that refuses a redirect away
+    from HTTPS has no test (a loopback HTTPS server needs a certificate for
+    127.0.0.1); the zip reader does not fold Unicode case pairs beyond
+    `toLowerCase` and caps neither total size nor entry count. Both fail
+    closed: files are created exclusively (`wx`) and the archive's bytes are
+    pinned by the signed sha256 first.
   - A test-only `STATION_INSTALL_TEST_HOST_TARGET` (refused without the
     test-only flag) lets the Linux tests stage the win32-x64 artifact.
   - Tests: vectors on Linux, a Windows smoke that stages both generations,
@@ -262,11 +272,15 @@ REASONED means I read it from the code or the platform documentation.
 Decided 2026-09-29: **D1** option B (thin bootstrap plus a shared bundled
 core). **D2** Windows PowerShell 5.1 and PowerShell 7. **D4** option (a),
 `node.exe` frozen beside the launcher; the no-reparse trust check stays
-strict. **D5** the Windows install-smoke leg becomes a required check after
-it has run green for a while (a ruleset change for the owner). **D3** print a
-PATH hint, no PATH writes. **D6** ship install.ps1 as a release asset beside
-install.sh; no Authenticode now. **D7** keep refusing to share the Nightly
-desktop app's home and ports. **D8** out of scope for W. The Task Scheduler
+strict. **D5** the Windows install-smoke leg stays advisory: install-smoke is a
+path-filtered `pull_request_target` workflow, so a required check there would
+never report on unrelated pull requests; it can become required only behind an
+always-reporting wrapper. **D3** print a PATH hint, no PATH writes. **D6**
+install.ps1 is fetched the way install.sh is, raw from `main`, not as a
+release asset; W1 publishes nothing. No Authenticode now. **D7** keep refusing
+to share the Nightly desktop app's home and ports. **D8** out of scope for
+install.sh; install.ps1 honors only `STATION_INSTALL_*_PORT` (accepted
+divergence). The Task Scheduler
 72 h limit and missing restart-on-failure are #2970, which W3 depends on.
 
 The options as originally posed:

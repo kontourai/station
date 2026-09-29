@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -8,6 +9,11 @@ import {
   DownloadTooLarge,
   downloadCapped,
 } from '../../packages/shared/src/installer/download.js';
+import { windowsInstallRootRefusal } from '../../packages/shared/src/installer/install.js';
+import {
+  ManifestRefusal,
+  verifyInstallManifest,
+} from '../../packages/shared/src/installer/manifest.js';
 import { compareReleaseTags } from '../../packages/shared/src/installer/release-order.js';
 import {
   readNamedEntry,
@@ -85,6 +91,10 @@ describe('installer zip reader', () => {
     ['station/CON', 'names a Windows device'],
     ['station/dir/nul.txt', 'names a Windows device'],
     ['station/com1.log', 'names a Windows device'],
+    ['station/CONIN$', 'names a Windows device'],
+    ['station/conout$.txt', 'names a Windows device'],
+    ['station/CLOCK$', 'names a Windows device'],
+    ['station/nul .txt', 'names a Windows device'],
   ])('refuses the entry name %j', (name, reason) => {
     expect(unsafeEntryName(name, 'station')).toBe(reason);
     expect(() => openZip(zipOf([{ name, data: 'x' }]))).toThrow(
@@ -330,5 +340,64 @@ describe('installer release order', () => {
     ['1.2.3', 'v1.2.4', null],
   ])('%s -> %s is %s', (installed, candidate, expected) => {
     expect(compareReleaseTags(installed, candidate, rings)).toBe(expected);
+  });
+});
+
+describe('installer Windows install-root rule (#2675 W1)', () => {
+  it('accepts a root beneath the profile and refuses one outside it, or the profile itself', () => {
+    expect(
+      windowsInstallRootRefusal('/home/u/.station/installs/nightly', '/home/u'),
+    ).toBeNull();
+    expect(
+      windowsInstallRootRefusal('/srv/station/installs/nightly', '/home/u'),
+    ).toBe(
+      'on Windows, install.ps1 installs only beneath your user profile (/home/u) until it checks install-root permissions (#2675 slice W2); /srv/station/installs/nightly is outside it',
+    );
+    expect(windowsInstallRootRefusal('/home/u', '/home/u')).not.toBeNull();
+    // A sibling that shares the profile's prefix is not inside it.
+    expect(
+      windowsInstallRootRefusal('/home/user2/.station', '/home/u'),
+    ).not.toBeNull();
+  });
+});
+
+describe('installer test-only key gate', () => {
+  it('refuses a test-only key without the test-only flag, after the key id checks', () => {
+    const pair = generateKeyPairSync('ed25519');
+    const pem = pair.publicKey.export({
+      format: 'pem',
+      type: 'spki',
+    }) as string;
+    const keys = {
+      keys: [
+        {
+          keyId: 'fixture-nightly',
+          algorithm: 'ed25519',
+          publicKeySpkiPem: pem,
+          channels: ['nightly'],
+        },
+      ],
+    };
+    const envelope = {
+      schemaVersion: 1,
+      algorithm: 'ed25519',
+      keyId: 'fixture-nightly',
+      payload: { channel: 'nightly' },
+      signature: 'AAAA',
+    };
+    let caught: unknown;
+    try {
+      verifyInstallManifest(envelope, keys, {
+        expectedChannel: 'nightly',
+        allowTestUrls: false,
+        testKeyPem: pem,
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ManifestRefusal);
+    expect((caught as Error).message).toBe(
+      'a test-only key needs the test-only flag',
+    );
   });
 });

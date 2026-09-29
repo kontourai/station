@@ -283,6 +283,23 @@ type Paths = {
   current: string;
 };
 
+/**
+ * Why `installRoot` may not be used on Windows, or null. Until install.ps1
+ * applies and checks the install root's ACL (#2675 slice W2), the only
+ * directories this installer trusts on Windows are those beneath the user's
+ * profile, which Windows gives the user, SYSTEM and Administrators alone. A
+ * root elsewhere (C:\station, say) typically inherits write access for every
+ * local user, who could then plant a version the installer reuses. Both
+ * paths are canonical (links resolved).
+ */
+export function windowsInstallRootRefusal(
+  installRoot: string,
+  profile: string,
+): string | null {
+  if (inside(installRoot, profile) && !same(installRoot, profile)) return null;
+  return `on Windows, install.ps1 installs only beneath your user profile (${profile}) until it checks install-root permissions (#2675 slice W2); ${installRoot} is outside it`;
+}
+
 function resolvePaths(env: InstallerEnv, channel: string, ring: string): Paths {
   const stationRoot = canonicalize(
     (env.STATION_ROOT ?? '').trim() || join(homedir(), '.station'),
@@ -296,6 +313,13 @@ function resolvePaths(env: InstallerEnv, channel: string, ring: string): Paths {
     channel,
     rawInstallRoot,
   );
+  if (process.platform === 'win32') {
+    const refusal = windowsInstallRootRefusal(
+      installRoot,
+      canonicalize(homedir()),
+    );
+    if (refusal) fail(refusal);
+  }
   return {
     channel,
     ring,

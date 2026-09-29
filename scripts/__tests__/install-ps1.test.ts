@@ -420,6 +420,16 @@ describe('install.ps1 installer core: stage-only (#2675 W1)', () => {
         'STATION_INSTALL_TEST_HOST_TARGET is a test-only override and requires STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1',
     },
     {
+      name: 'the test-only key without the test-only flag',
+      run: (f) =>
+        stage(f, signed(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12')), {
+          STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '0',
+          STATION_INSTALL_TEST_HOST_TARGET: '',
+        }),
+      message:
+        'Station install failed: STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL is a test-only override and requires STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1',
+    },
+    {
       name: 'a full install, which W1 does not implement yet',
       run: (f) =>
         stage(f, signed(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12')), {

@@ -263,8 +263,10 @@ export function readZipDirectory(fd: number): ZipEntry[] {
 }
 
 // Device names Windows resolves in any directory, with or without an
-// extension, and characters it forbids or reinterprets in a name.
-const RESERVED_NAME = /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\..*)?$/i;
+// extension (and with spaces before it: `nul .txt`), including the console
+// and clock devices, and characters it forbids or reinterprets in a name.
+const RESERVED_NAME =
+  /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$|clock\$) *(?:\..*)?$/i;
 const FORBIDDEN_CHARACTER = /[<>:"|?*\\]/;
 
 /**
