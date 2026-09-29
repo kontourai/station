@@ -1655,9 +1655,12 @@ GET  /api/plugins/command-effects/uncaptured
 POST /api/plugins/command-effects/effects/:effectId/abandon
 ```
 
-A plugin command row in the palette grants nothing (kontourai/station#1418).
-Before a browser document applies an argument-free `navigate` or
-`seed-composer` command it asks Station to admit the effect:
+A plugin command row in the palette grants nothing. Before a browser document
+applies an argument-free `navigate` or `seed-composer` command it asks Station
+to admit the effect. The
+[command effect routes](../../src-server/routes/plugins/plugin-command-effect-routes.ts)
+and [effect ledger](../../src-server/services/plugins/plugin-command-effects.ts)
+own these results:
 
 ```json
 {
@@ -1672,8 +1675,8 @@ Before a browser document applies an argument-free `navigate` or
 }
 ```
 
-`200` returns `{ "receipt": { effectId, requestId, pluginId, commandId,
-installationGeneration, effect } }`, where `effect` is what Station read from
+`200` returns `{ "success": true, "receipt": { effectId, requestId, pluginId,
+commandId, installationGeneration, effect } }`, where `effect` is what Station read from
 the installed declaration (`navigate` with a destination id, or
 `seed-composer` with a session id and text).
 
@@ -1685,6 +1688,10 @@ the installed declaration (`navigate` with a destination id, or
   either direction, is refused with `request-expired`.
 - **Visibility.** A plugin the caller cannot see answers exactly as an absent
   one (`404`).
+- **Person only.** Admission uses the
+  [person-approval predicate](../../src-server/routes/plugins/plugin-person-approval.ts):
+  internal agent tools and unconfirmed person-device callers receive `403`
+  with `code: "person-approval-required"`. An unresolved principal returns `400`.
 - **Requirements.** `active-chat` and `session` are satisfied only by a session
   the caller can read (the same predicate every session read uses); one it
   cannot read is `requirement-not-satisfied`, exactly like one that does not
@@ -1694,15 +1701,20 @@ the installed declaration (`navigate` with a destination id, or
   `generation-changed`, `command-not-declared`, `command-not-executable`,
   `target-mismatch`, `requirement-not-satisfied`, `permission-unavailable`,
   `capacity`, `cancelled`, or `request-conflict`. `400` is `invalid-request`;
-  `503` means the ledger or grants are unavailable.
+  `503` (`unavailable`) means the ledger, grants, plugin visibility or a
+  requirement check could not be read, or the admission's audit event could
+  not be published.
 - **Capacity.** At most 16 outstanding effects per principal, 8 per plugin and
   64 in total. A full bound refuses new admissions with `capacity`; it never
   evicts an outstanding effect.
 - **Hosted deployments** refuse every route here with `403`.
 
-The document reports how it ended each effect with up to 16 items of
-`{ requestId, effectId?, outcome }`, where `outcome` is `applied`, `aborted`,
-`cancelled` or `abandoned`. Per-item results:
+The document reports how it ended each effect with
+`POST /api/plugins/command-effects/settlements` and
+`{ documentId, documentKey, items }`, where `items` holds 1 to 16
+`{ requestId, effectId?, outcome }` entries with distinct `requestId`s and
+`outcome` is `applied`, `aborted`, `cancelled` or `abandoned`. A malformed
+body returns `400`. Per-item results:
 
 | Status | Meaning |
 | --- | --- |
@@ -1710,7 +1722,7 @@ The document reports how it ended each effect with up to 16 items of
 | `already-settled` | The same outcome was already recorded. |
 | `cancel-recorded` | No admission exists yet (a `cancelled` without `effectId`); a later admission of that request is refused. |
 | `cancel-refused` | No admission exists and this document's cancels are at capacity. Nothing was recorded; retry once the admission lands. |
-| `recorded-late` | The operator already closed the effect; the report is counted, never applied. |
+| `recorded-late` | The operator already closed the effect; the first such report is recorded and audited as late, never applied. |
 | `conflict` | A different terminal outcome was already recorded. Any conflict makes the response `409`. |
 | `not-found` | No effect for this principal, document key, document and request, or the `effectId` does not match. |
 
@@ -1721,17 +1733,19 @@ cancel past a bound is refused rather than displacing one.
 
 #### Withdrawal on lifecycle changes
 
-Removing, updating or installing over a plugin (through `/api/plugins` or
-`/api/registry/plugins`), and withdrawing `plugin.server` from it (revocation, a
-grant or host approval against changed content), capture the plugin's
-outstanding effects. The change commits at once and is never refused or rolled
-back because of command effects.
+Removing, updating or installing over a plugin (through `/api/plugins`,
+`/api/registry/plugins`, or a plugin-backed `DELETE /api/registry/agents/:id`
+or `DELETE /api/registry/layouts/:id`), and withdrawing `plugin.server` from it
+(revocation, a grant or host approval against changed content), capture the
+plugin's outstanding effects. The change commits at once and is never refused
+or rolled back because of command effects.
 
 - When the change captured something, the response carries
   `commandEffects: { withdrawalId, status, outstanding }`, and
   `dependencyCommandEffects` lists the same summary for dependencies the change
-  removed. The response is `202` until every captured effect settles and `200`
-  once all have.
+  removed. After releasing its locks the route waits up to two seconds for
+  settlements; a response that would otherwise be `200` is `202` if any
+  captured effect is still outstanding then.
 - **One open withdrawal per plugin.** A later change to a plugin whose
   withdrawal is still open joins it: its newly captured effects and its cause
   are added and the same `withdrawalId` is answered. A completed or closed
@@ -1741,10 +1755,10 @@ back because of command effects.
   `commandEffectsUnavailable: true` and no summary. That is never completion.
 - `status` is `completed` (every captured effect settled with document or
   Station proof), `winding-down` (effects outstanding, newest capture younger
-  than the wait), `indeterminate` (still outstanding after the wait; not
+  than 60 seconds), `indeterminate` (still outstanding after 60 seconds; not
   terminal) or `closed-indeterminate` (an operator resolved this withdrawal and
   accepted that its outstanding effects' outcomes are unknown; never a
-  completed state, and later reports are still counted).
+  completed state, and a later document report is still recorded as late).
 - A host approval carries the summary in its `reconciliation` projection.
   `GET /api/plugins/host-approvals/:id` re-reads it from the ledger, and the
   reconciliation never reads `completed` while the effects are outstanding
@@ -1754,15 +1768,16 @@ back because of command effects.
 
 The operator (every other caller receives `403`) lists withdrawals — every
 open one, then the 16 most recent closed ones — and reads one (at most 16
-outstanding effect ids). `POST …/:id/resolve` with
+outstanding effect ids).
+`POST /api/plugins/command-effects/withdrawals/:id/resolve` (person only) with
 `{ "disposition": "accept-indeterminate" }` is accepted only for an
 `indeterminate` withdrawal (`409` otherwise) and abandons exactly its
 outstanding effects.
 
 `GET /api/plugins/command-effects/uncaptured` lists outstanding effects no open
-withdrawal captured, with `abandonable: true` once one is older than the wait.
-`POST /api/plugins/command-effects/effects/:effectId/abandon` abandons such an
-effect: `404` when it is not outstanding, `409` with `reason: "captured"`
+withdrawal captured, with `abandonable: true` once one is older than 60
+seconds. `POST /api/plugins/command-effects/effects/:effectId/abandon` (person
+only) abandons such an effect: `404` when it is not outstanding, `409` with `reason: "captured"`
 (and its `withdrawalId`; resolve that instead) or `reason: "too-recent"`.
 
 Admissions and settlements are also recorded as
@@ -1787,11 +1802,13 @@ The body names permissions to withdraw. The grant store commits withdrawal befor
 runtime reconciliation. Lifecycle permissions can additionally retire the
 captured generation's server module, subscriptions, providers/adapters, and
 engine connections. The response contains `success`, `revoked`, `granted`, and
-`reconciliation`.
+`reconciliation`, plus [command effect withdrawal](#withdrawal-on-lifecycle-changes)
+fields when revoking `plugin.server` captured outstanding effects.
 
 `winding-down` returns 202. A terminal `completed`, `superseded`, or `incomplete`
-reconciliation returns 200, so HTTP success alone does not prove all cleanup
-completed. An unavailable grant store returns 503. The
+reconciliation returns 200 unless withdrawn command effects are still
+outstanding or could not be recorded, which returns 202. HTTP success alone
+does not prove all cleanup completed. An unavailable grant store returns 503. The
 [permission routes](../../src-server/routes/plugins/plugin-public-routes.ts)
 and [reconciliation service](../../src-server/services/plugins/plugin-grant-reconciliation.ts)
 own those results. Host-approval reads retain reconciliation separately from

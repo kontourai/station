@@ -3218,6 +3218,18 @@ uses `installation-pending` or `installation-unavailable` diagnostics, separate
 from distribution-policy disablement. Readiness notifications refresh the
 Project Pane and host-action catalogs as well as the installed-plugin list.
 
+For a `ready` row, `listPlugins` also reports the plugin's validated palette
+`commands` (an empty array when it declares none), an opaque
+`installationGeneration` that a command request echoes back, and
+`commandsRejected: { reason }` when Station dropped invalid declarations.
+Pending and unavailable rows omit all three. The generation is not authority:
+Station admits each command effect against the installed declaration (see
+[Plugin Command Effects](api.md#plugin-command-effects)). `listPlugins` rejects
+a response whose `installationGeneration` is not bounded text or whose
+`commands` is not an array. Station's palette admits and settles effects
+through `@kontourai/station-sdk/client/plugin-command-effects`
+(`admitPluginCommandEffect`, `settlePluginCommandEffects`).
+
 `listPlugins` includes optional `retainedOnRemoval` metadata for packages using
 retained code generations. Normal package updates keep their stable data
 scope. `usePluginInstallMutation` accepts optional `dataPolicy`: `preserve`

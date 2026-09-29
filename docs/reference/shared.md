@@ -96,7 +96,7 @@ interface PluginPreview {
 }
 
 interface PluginComponent {
-  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'command' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   name?: string; // declared display name, e.g. a Pane's `name`
   detail?: string;
