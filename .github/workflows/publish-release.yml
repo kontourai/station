@@ -606,7 +606,8 @@ jobs:
   # host-pointer failure never skips publish's deploy ledger or
   # release-availability, and "Re-run failed jobs" retries it alone. It runs
   # once publish reports the release public (`released`), even if a later
-  # publish step failed. It holds no secret: it takes the signed manifest
+  # publish step failed, unless the run was cancelled. The fetched payload
+  # must name this run's version, tag and source SHA. It holds no secret: it takes the signed manifest
   # and its payload from the public versioned release and verifies them with
   # the pinned key table before any pointer write. It replaces the pointer
   # last, and only when the plan says the candidate is newer (or an explicit
@@ -617,7 +618,7 @@ jobs:
   host-pointer:
     name: Replace the rolling host-stream pointer
     needs: [resolve, publish]
-    if: ${{ always() && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' && needs.resolve.result == 'success' && needs.publish.outputs.released == 'true' }}
+    if: ${{ !cancelled() && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' && needs.resolve.result == 'success' && needs.publish.outputs.released == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: native-release-publish
@@ -627,6 +628,7 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag }}
       RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
       RELEASE_RING: ${{ needs.resolve.outputs.channel }}
+      RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
     steps:
       - name: Check out default-branch release policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -649,6 +651,8 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/host-manifest"
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/host-manifest" --pattern "$MANIFEST_ASSET" --pattern station-server-manifest-payload.json
+      - name: Confirm the fetched payload is this run's release
+        run: node release-policy/scripts/portable-release-publication.mjs check-payload --ring "$RELEASE_RING" --payload "$RUNNER_TEMP/host-manifest/station-server-manifest-payload.json" --version "$RELEASE_VERSION" --source-sha "$RELEASE_SHA" --repository "$GITHUB_REPOSITORY"
       - name: Verify the fetched host-stream manifest with the pinned key table
         env:
           MANIFEST_ASSET: ${{ steps.host_plan.outputs.manifest_asset }}

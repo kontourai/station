@@ -93,6 +93,8 @@ export function assertReleasePayload(
  *   run's (a rerun after the pointer already moved), refused otherwise;
  * - newer than the candidate (publishing or repairing an older tag, such as a
  *   desktop rollback): `skip-older`; the host pointer stays where it is.
+ *
+ * The signed bytes must verify with `keys` and name `candidateVersion`.
  */
 export function planRollingPointer({
   ring,
@@ -104,6 +106,17 @@ export function planRollingPointer({
   rollingTag,
 }) {
   parseRingVersion(releaseRing(ring), candidateVersion);
+  // The manifest about to be served must be this run's version: a validly
+  // signed manifest for another release cannot ride on this candidate.
+  const candidate = verifyReleaseManifest(
+    JSON.parse(signedBytes.toString('utf8')),
+    keys,
+    { expectedChannel: ring },
+  );
+  if (candidate.version !== candidateVersion)
+    throw new Error(
+      `the signed manifest names ${candidate.version}, not the candidate ${candidateVersion}; refusing to plan the ${rollingTag} pointer with it`,
+    );
   if (currentBytes === null) {
     if (allowEmptyBootstrap !== true)
       throw new Error(

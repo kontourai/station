@@ -520,6 +520,10 @@ describe('publication checks for stable and preview', () => {
       expect(() =>
         plan(newer, signed(newer), { keys: keyring(ring).keyTable }),
       ).toThrow('manifest signature did not verify');
+      // A validly signed manifest for another version is not this candidate.
+      expect(() => plan(newer, signed(older))).toThrow(
+        `the signed manifest names ${older}, not the candidate ${newer}`,
+      );
       // An empty pointer needs the owner's explicit bootstrap.
       expect(() => plan(newer, signed(newer), { currentBytes: null })).toThrow(
         `the rolling pointer portable-${ring} serves no ${ring} manifest; confirm it is new, then re-run with allow_empty_host_manifest_bootstrap for its first publish only`,
@@ -899,6 +903,7 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     'Fetch the signed host-stream manifest and payload from the versioned release';
   const VERIFY_FETCHED =
     'Verify the fetched host-stream manifest with the pinned key table';
+  const CHECK_FETCHED = "Confirm the fetched payload is this run's release";
 
   it('gates every signing and host publication step on the literal owner variable', () => {
     const gated = steps.filter((step) => step.if?.includes(GATE_VARIABLE));
@@ -912,7 +917,7 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     for (const step of gated) expect(step.if, step.name).toBe(GATE);
     // The pointer job carries the same literal as a top-level conjunct.
     expect(conjuncts(pointerJob.if ?? '')).toEqual([
-      'always()',
+      '!cancelled()',
       `vars.${GATE_VARIABLE} == 'enabled'`,
       "needs.resolve.result == 'success'",
       "needs.publish.outputs.released == 'true'",
@@ -961,9 +966,10 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     gate: string;
     resolve: string;
     released: string;
+    cancelled?: boolean;
   }) {
     return conjuncts(pointerJob.if ?? '').every((part) => {
-      if (part === 'always()') return true;
+      if (part === '!cancelled()') return scenario.cancelled !== true;
       const known: Record<string, string> = {
         [`vars.${GATE_VARIABLE}`]: scenario.gate,
         'needs.resolve.result': scenario.resolve,
@@ -987,6 +993,8 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       { ...enabled, resolve: 'failure' },
       // publish failed or was skipped before the release became public.
       { ...enabled, released: '' },
+      // The owner cancelled the run, even after the release became public.
+      { ...enabled, cancelled: true },
     ])
       expect(pointerJobRuns(scenario), JSON.stringify(scenario)).toBe(false);
     // `released` is written only by its own step, after the release is
@@ -1053,6 +1061,7 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
         expect(JSON.stringify(step), step.name).not.toContain('host-manifest');
     const pointerOrder = [
       FETCH,
+      CHECK_FETCHED,
       VERIFY_FETCHED,
       'Re-download the versioned host-stream assets and compare them with the manifest',
       PLAN,
@@ -1222,18 +1231,23 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
         corruptUpload?: boolean;
         failUpload?: boolean;
         fetch?: boolean;
+        /** Serve another version's validly signed manifest and payload. */
+        swapTo?: string;
       } = {},
     ) {
       const keys = keyring('stable');
       const base = workspace('stable', candidate);
-      const signed = keys.sign(base.payload);
+      const servedPayload = options.swapTo
+        ? assemblePayload('stable', options.swapTo).output
+        : base.payload;
+      const signed = keys.sign(servedPayload);
       const releases = freshDir('releases');
       const versioned = join(releases, `v${candidate}`);
       mkdirSync(versioned);
       writeFileSync(join(versioned, ASSET), readFileSync(signed));
       writeFileSync(
         join(versioned, 'station-server-manifest-payload.json'),
-        readFileSync(base.payload),
+        readFileSync(servedPayload),
       );
       const rolling = join(releases, 'portable-stable');
       mkdirSync(rolling);
@@ -1288,6 +1302,7 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
         summary,
         env: {
           ...base.env,
+          RELEASE_SHA: SHA,
           PATH: `${bin}:${nodeShim()}:${process.env.PATH ?? ''}`,
           REAL_NODE: process.execPath,
           SHIM_KEYS: keys.keysPath,
@@ -1454,6 +1469,32 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
         expect(
           readFileSync(join(workspace.releases, '.log'), 'utf8'),
         ).not.toMatch(/^upload /m);
+    });
+
+    it("refuses another release's validly signed manifest before any pointer write", () => {
+      const ws = pointerWorkspace('1.2.3', '1.2.1', { swapTo: '1.2.2' });
+      const checked = runStep(stepRun(CHECK_FETCHED), ws);
+      expect(checked.status).toBe(1);
+      expect(checked.stderr).toContain(
+        "payload is not this release's stable host build: version 1.2.2 (expected 1.2.3)",
+      );
+      // The pinned verify alone cannot tell: manifest and payload agree.
+      const verified = runStep(stepRun(VERIFY_FETCHED), ws);
+      expect(verified.status, verified.stderr).toBe(0);
+      // The plan refuses it independently.
+      const plan = runStep(stepRun(PLAN), ws);
+      expect(plan.status).toBe(1);
+      expect(plan.stderr).toContain(
+        'the signed manifest names 1.2.2, not the candidate 1.2.3',
+      );
+      expect(readFileSync(ws.output, 'utf8')).toBe('');
+      expect(readFileSync(join(ws.releases, '.log'), 'utf8')).not.toMatch(
+        /^upload /m,
+      );
+      // The matching release passes the same check.
+      const own = pointerWorkspace('1.2.3', '1.2.1');
+      const ok = runStep(stepRun(CHECK_FETCHED), own);
+      expect(ok.status, ok.stderr).toBe(0);
     });
 
     it('records the release as public in the step output the pointer job keys on', () => {
