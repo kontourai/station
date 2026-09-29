@@ -144,6 +144,86 @@ test.describe('Activity surface deep link', () => {
   });
 });
 
+test.describe('The sidebar Activity row is a place', () => {
+  /**
+   * The panel's Activity row opens Activity as the PAGE — it takes `main`
+   * the way Home does — and becomes the current page; Home's row gives that
+   * state up. Every contextual producer (the `?surface=activity` link that
+   * notifications and evidence mint) still reveals it in its dock beside
+   * the page. Both halves are observed here in one journey so a regression
+   * of either reds by name.
+   */
+  function primaryNav(page: import('@playwright/test').Page) {
+    return page.getByRole('navigation', { name: 'Primary navigation' });
+  }
+  function activityRow(page: import('@playwright/test').Page) {
+    return primaryNav(page).getByRole('button', {
+      name: 'Activity',
+      exact: true,
+    });
+  }
+  function homeRow(page: import('@playwright/test').Page) {
+    return primaryNav(page).getByRole('button', { name: 'Home', exact: true });
+  }
+  function homeRegion(page: import('@playwright/test').Page) {
+    return page.locator('#station-main').getByRole('region', { name: 'Home' });
+  }
+
+  test('opens Activity as the page, hands it back to Home, and leaves the deep link docking right', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(homeRegion(page)).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    await expect(homeRow(page)).toHaveAttribute('aria-current', 'page');
+    await expect(activityRow(page)).not.toHaveAttribute('aria-current', /.*/);
+
+    await activityRow(page).click();
+    await expect(mainHeading(page, 'Activity')).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    await expect(homeRegion(page)).toHaveCount(0);
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'the page is not also a dock region',
+    ).toHaveCount(0);
+    await expect(activityRow(page)).toHaveAttribute('aria-current', 'page');
+    await expect(homeRow(page)).not.toHaveAttribute('aria-current', /.*/);
+    await expect(page).toHaveURL(/\/$/);
+
+    // Pressing the current page again keeps it the page.
+    await activityRow(page).click();
+    await expect(mainHeading(page, 'Activity')).toBeVisible();
+    await expect(activityRow(page)).toHaveAttribute('aria-current', 'page');
+
+    await homeRow(page).click();
+    await expect(homeRegion(page)).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    await expect(mainHeading(page, 'Activity')).toHaveCount(0);
+    await expect(homeRow(page)).toHaveAttribute('aria-current', 'page');
+    await expect(activityRow(page)).not.toHaveAttribute('aria-current', /.*/);
+
+    // A notification-style link is a contextual reveal: Activity docks on
+    // the right beside Home, and Home stays the page.
+    await page.goto('/?surface=activity');
+    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
+      /chat-dock--right/,
+      { timeout: FIRST_RENDER_TIMEOUT_MS },
+    );
+    await expect(homeRegion(page)).toBeVisible();
+    await expect(homeRow(page)).toHaveAttribute('aria-current', 'page');
+    await expect(activityRow(page)).not.toHaveAttribute('aria-current', /.*/);
+
+    // From the dock, the row still goes to the page (the dock gives it up).
+    await activityRow(page).click();
+    await expect(mainHeading(page, 'Activity')).toBeVisible();
+    await expect(surfaceDockShell(page, 'Activity')).toHaveCount(0);
+    await expect(activityRow(page)).toHaveAttribute('aria-current', 'page');
+  });
+});
+
 test.describe('An empty region is a chooser', () => {
   /**
    * #2154: a VISIBLE, EMPTY dock region renders a chooser in its body —

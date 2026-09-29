@@ -149,8 +149,19 @@ interface RegionModelValue {
    * or place it where it belongs (`revealSurface`/`showSurfaceAlone`): the
    * surface-keyed form of `openInRegion` with no options, plus the intent
    * outbox. Since #2048 it is `openSurfaceInRegion` underneath.
+   *
+   * `options.region` names the region instead of the surface's rule. Its one
+   * caller is `useShowSurfacePage`, which asks for `main`: a place row (the
+   * sidebar's Activity, the palette's Activity, Home's "View Activity") goes
+   * to the surface's page rather than revealing it where it last was. The
+   * outbox is handled the same either way, so a page open with no intent
+   * clears an undelivered record exactly as a plain reveal does.
    */
-  showSurface(surfaceId: string, intent?: SurfaceIntent): void;
+  showSurface(
+    surfaceId: string,
+    intent?: SurfaceIntent,
+    options?: Pick<OpenInRegionOptions, 'region'>,
+  ): void;
   /**
    * Open a surface in a dock region (#2048): the model half of
    * `openInRegion` (`useOpenInRegion.ts`), which is the one producer callers
@@ -743,8 +754,15 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   );
 
   const showSurface = useCallback(
-    (surfaceId: string, intent?: SurfaceIntent) => {
-      const opened = openSurfaceInRegion(surfaceId);
+    (
+      surfaceId: string,
+      intent?: SurfaceIntent,
+      options?: Pick<OpenInRegionOptions, 'region'>,
+    ) => {
+      const opened = openSurfaceInRegion(
+        surfaceId,
+        options?.region ? { region: options.region } : undefined,
+      );
       // An unregistered id was never a reveal; the intent outbox is left
       // alone for it, as before #2048.
       if (!opened.ok) return;
