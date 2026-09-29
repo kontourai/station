@@ -18,9 +18,9 @@ import type { ApnsEnvironment } from './apns-request.ts';
 import type { Ledger } from './channel-ledger.ts';
 
 /** Subrequests one sweep run may make (Free allows 50 per invocation). */
-export const MAX_SWEEP_SUBREQUESTS = 45;
+const MAX_SWEEP_SUBREQUESTS = 45;
 /** Channel deletes one sweep run may make, within that budget. */
-export const MAX_SWEEP_DELETES = 40;
+const MAX_SWEEP_DELETES = 40;
 
 export interface SweepReport {
   listed: number;

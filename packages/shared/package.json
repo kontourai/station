@@ -94,7 +94,9 @@
     "./environment-security-record": "./src/environment-security-record.ts",
     "./plugin-registry-signature": "./src/plugin-registry-signature.ts",
     "./portable-server-targets": "./src/portable-server-targets.mjs",
-    "./release-manifest": "./src/release-manifest.mjs"
+    "./release-manifest": "./src/release-manifest.mjs",
+    "./prebuilt-archive": "./src/prebuilt-archive.ts",
+    "./service-launcher-protocol": "./src/service-launcher-protocol.ts"
   },
   "publishConfig": {
     "access": "public"

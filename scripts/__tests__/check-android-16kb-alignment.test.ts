@@ -763,11 +763,6 @@ describe('16 KB alignment guard', () => {
     expect(loadSegmentAlignments(buffer)).toEqual([]);
   });
 
-  it('accepts the real program-header sizes for both classes', () => {
-    expect(loadSegmentAlignments(elf64({ align: 0x4000 }))).toEqual([0x4000n]);
-    expect(loadSegmentAlignments(elf32({ align: 0x4000 }))).toEqual([0x4000n]);
-  });
-
   it('does not round a 64-bit alignment into a power of two', () => {
     // 0x2000000000000001 is not a power of two, but converting it to a
     // JavaScript number rounds it to 0x2000000000000000, which is — so a

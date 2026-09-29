@@ -1,5 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { setClientCredentialResolver } from '../client/http';
+import {
+  StationRequestAuthorityError,
+  setClientCredentialResolver,
+} from '../client/http';
 import { fetchCodingFileMentionCandidates } from '../query-domains/chatRuntimeCoding';
 
 afterEach(() => {
@@ -74,5 +77,5 @@ test('rejects a late response after the captured authority is revoked', async ()
       'a',
       scope,
     ),
-  ).rejects.toThrow();
+  ).rejects.toBeInstanceOf(StationRequestAuthorityError);
 });

@@ -1,12 +1,15 @@
 # @kontourai/station-contracts
 
-Station is Kontour's local-first agent workspace: you direct agent work, and the
-gate verdicts, evidence, and trust state stay in the same context as the work.
+This package owns cross-package domain shapes used by Station's server, SDK,
+CLI and extensions. Import the owning domain subpath rather than an application
+internal or a compatibility re-export.
 
-This package holds Station's runtime, provider, and orchestration contracts —
-the TypeScript types and constants shared between the Station host, the plugin
-SDK, and plugin authors. It is types and constants only; there is no runtime
-behavior here.
+The current surface includes types, constants and executable pure contract
+helpers: for example, [child-work reducers](./src/child-work.ts),
+[live-surface parsers](./src/live-surface.ts) and
+[Task Basis page builders](./src/task-basis-mcp.ts). It is not a service or
+transport implementation. Parsing a shape or slicing an already-authorized
+collection does not grant access or establish that an operation occurred.
 
 ## Installation
 
@@ -14,25 +17,18 @@ behavior here.
 npm install @kontourai/station-contracts
 ```
 
-It is normally installed transitively as a dependency of
-`@kontourai/station-sdk` or `@kontourai/station-shared`; install it directly
-only when you need a contract subpath those packages do not re-export.
+Declare it directly when your package imports its subpaths, even if the SDK or
+shared package also depends on it. Use a release containing the required export;
+this checkout's source is not evidence that a particular npm version is live.
 
-## Requires a bundler (ships TypeScript source)
+## Source distribution
 
-This package publishes **raw TypeScript**. Every entry in `exports` points at a
-`.ts` file under `src/`; there is no compiled `dist/`. That is deliberate — the
-supported consumer is a Station plugin, whose `npm run build` calls
-`buildPlugin()` from `@kontourai/station-shared/build` and bundles the plugin
-with esbuild, which reads `.ts` from `node_modules` directly.
-
-- **Supported:** esbuild, Vite, webpack, Rollup, or any TS-aware loader/runtime
-  (`tsx`, `ts-node`, Bun, Deno).
-- **Not supported today:** plain-Node `require()` / `import` of this package
-  without a TS-aware step.
-
-This is a disclosed constraint, not an accident. If you need a precompiled
-build for a non-bundled runtime, open an issue.
+The [export map and file list](./package.json) expose `.ts` source under `src/`;
+they do not select a compiled `dist/` package. Type-only imports can be erased
+by the consumer; runtime constants and parsers need a toolchain that handles
+the source and its imports. Station's esbuild plugin build is one such consumer.
+Do not treat the source suffix alone as proof of compatibility with every
+Node loader, bundler or alternate runtime.
 
 ## Usage
 
@@ -41,12 +37,14 @@ import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { DEFAULT_GUARDRAILS } from '@kontourai/station-contracts/agent';
 ```
 
-The root export (`@kontourai/station-contracts`) re-exports the common
-contracts; the subpath exports listed in `package.json` give you one module per
-contract domain (`/agent`, `/plugin`, `/runtime`, `/workflow`, …).
+The root export re-exports a compatibility selection. The subpaths listed in
+`package.json` are the authoritative domain inventory; the root does not imply
+that every opt-in contract is re-exported. See the
+[contracts reference](../../docs/reference/contracts.md) for ownership and
+domain descriptions.
 
 For the plugin walkthrough these contracts describe, see the
-[`@kontourai/station-sdk`](https://www.npmjs.com/package/@kontourai/station-sdk)
+[`@kontourai/station-sdk`](../sdk/README.md)
 README.
 
 ## License

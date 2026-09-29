@@ -3,12 +3,15 @@
 Station channels are separate local runtimes. Their homes, launchers, install
 roots, and loopback ports are deliberately distinct so a stable session can
 remain live while beta, nightly, or a development worktree runs beside it.
+The table describes configured identities, not a receipt that every platform
+has been installed together or published. Mobile clients use their package
+identity and connect to a selected server; they do not host these local listeners.
 
 | Runtime channel | UI | Server | Home | Launcher | Provenance |
 | --- | ---: | ---: | --- | --- | --- |
 | development worktree | 40141-40640 | 39141-39640 | `~/.station/instances/dev/<worktree-id>` | worktree command | the checked-out worktree |
-| stable | 18000 | 18141 | `~/.station/instances/stable` | `station` | signed stable tag |
-| beta | 28000 | 28141 | `~/.station/instances/beta` | `station-beta` | signed preview tag |
+| stable | 18000 | 18141 | `~/.station/instances/stable` | `station` | stable release tag and verified release metadata |
+| beta | 28000 | 28141 | `~/.station/instances/beta` | `station-beta` | preview release tag and verified release metadata |
 | nightly | 38000 | 38141 | `~/.station/instances/nightly` | `station-nightly` | signed nightly manifest (`vX.Y.Z-nightly.N` from `origin/main`) |
 
 Development worktrees use the `40141-40640` UI and `39141-39640` server bands
@@ -17,16 +20,27 @@ resolves an offset within those bands from the worktree contract. The release in
 names `stable` and `preview`, then maps verified provenance to runtime names:
 stable becomes `stable`; preview becomes `beta`. A branch name is never a
 release provenance source: worktrees are development only, nightlies follow
-`origin/main`, beta requires a signed preview tag, and stable requires a signed
-stable tag.
+`origin/main`, beta uses the preview release protocol, and stable uses the
+stable release protocol. Release tag/commit binding and signature verification
+of release metadata/artifacts are distinct checks; a channel name does not
+prove a cryptographically signed Git tag.
 
 `STATION_ROOT` defaults to `~/.station` and owns shared client profiles at
-`config/profiles.json`, `cache/`, and `installs/<channel>`; it is not changed
-by `STATION_HOME`, `--home`, or `--base`. The installer's
+`config/profiles.json`, `cache/`, and `installs/<channel>`. An explicit
+`STATION_ROOT` remains independent of home selection. With no explicit root,
+the shared runtime resolver can derive it from `STATION_HOME`: a channel home
+under `instances/` identifies its containing root, while an external raw home
+is self-rooted. Do not export an inferred self-root as an explicit root equal
+to the home; runtime admission rejects that ambiguous ownership. See
+[`runtime-path-resolver.ts`](../../packages/shared/src/runtime-path-resolver.ts).
+The release installer separately defaults its root before deriving channel
+home/install paths. Its
 `STATION_INSTALL_SERVER_PORT` and `STATION_INSTALL_UI_PORT`
 are explicit local overrides. They are useful for a disposable test instance,
 but callers must set both values and keep a matching `STATION_HOME` and
 `STATION_INSTALL_ROOT`; an override does not change the channel's provenance.
+The install state records the ports Station was installed with, and a later
+installer run or upgrade that names no port reuses them.
 The owned launcher exports the exact channel, home, and install root on every
 later command and upgrade. Do not use the retired `STATION_CHANNEL=preview`:
 run `STATION_CHANNEL=beta` instead.
@@ -36,14 +50,16 @@ run `STATION_CHANNEL=beta` instead.
 each installable ring to the runtime it installs as (`preview` installs as
 `beta`), whether it is a prerelease, and its launcher. `install.sh` must stay
 one standalone file, so `scripts/install-script-generated.mjs` projects that
-table (and the pinned signing keys from `config/release-manifest-keys.json`)
-into generated blocks; `npm run install-script:check` fails when they are
+table, the pinned signing keys from `config/release-manifest-keys.json`,
+portable targets from `packages/shared/src/portable-server-targets.mjs`, and
+Node.js pins from `config/portable-server-node-runtime.json` into generated
+blocks; `npm run install-script:check` fails when they are
 stale, and `node scripts/install-script-generated.mjs --sync` rewrites them.
 
 `STATION_CHANNEL=nightly` installs only from a signed public manifest
 (`STATION_INSTALL_PUBLIC_MANIFEST_URL`) whose envelope names the pinned
 nightly key; the authenticated GitHub-release path serves stable and beta
-only. No nightly standalone release is published yet (#2675). Nightly has no
+only. This is the installer contract; publication is tracked separately in #2675. Nightly has no
 public/runtime name split: the ring, the runtime, and the provenance channel
 are all `nightly`, and its version is `X.Y.Z-nightly.<code>` with `<code>`
 reserved by `nightly-version-code`. `STATION_VERSION` accepts an exact
@@ -62,8 +78,11 @@ yet guard those channels.
 
 ## Prebuilt archives and source releases
 
-A signed public manifest (schema 2) names one prebuilt server archive per
-platform (`station-server-<os>-<arch>`). `install.sh` verifies the manifest
+A signed public manifest (schema 2) names prebuilt server archives by
+platform (`station-server-<os>-<arch>`). The shell installer supports macOS
+and Linux on x64 or arm64 and requires a matching tar.gz artifact and a
+compatible launcher-protocol range; the manifest's Windows zip is not a
+shell-installer target. `install.sh` verifies the manifest
 against the pinned keys, picks this host's archive, checks its size and
 sha256, its `.station-prebuilt-archive` marker and its `.station-release.json`
 provenance, and extracts it to
@@ -90,8 +109,27 @@ the manifest URL when the install came from a public manifest. The
 authenticated GitHub-release path records no URL and keeps writing schema 3,
 which released installers and CLIs read. A packaged `station upgrade` re-runs the installed version's
 `install.sh` with that URL, so it needs no environment variable. An explicit
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins. Under an installed service,
-`station upgrade` refuses, as it does for every packaged install.
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins.
+
+A service installed from an archive's active version (`station service
+install` run through the launcher) runs `<install root>/current`, and its
+service manifest records `kind: "archive"` and that install root. On Linux and
+macOS the unit runs through the fixed service launcher that `service install`
+copies to `<install root>/runtime/station-launcher.mjs`. Such a service does
+not block `station upgrade`. For a running launcher service, the installer
+only stages the new version, asks the service to switch, and reports the
+outcome; the launcher trials the new version and keeps the previous one if the
+trial fails. Otherwise the installer stops the service, switches `current`,
+and starts it again, restoring the previous version if the service does not
+come back as the new release. A registered unit that is not running is left
+stopped, and no separate Station is started beside it. The unit keeps its
+installed ports; an explicitly named different port refuses the upgrade. An
+unfinished or operator-blocked launcher update refuses the upgrade until the
+service has finished or restored it.
+Installing a service from an inactive `versions/<version>` directory is
+refused. Any other installed service, including one on a source release, still
+blocks `station upgrade`. See the [CLI reference](../reference/cli.md) for
+the service details.
 
 Source releases are still supported and are built on the host. They come from
 the authenticated GitHub-release path, which is how stable and beta install
@@ -121,8 +159,8 @@ Known limits until later #2675 slices:
 - An `install.sh` from before prebuilt archives (for example the copy inside
   an old source release) cannot remove a read-only version directory left in
   the install root. Uninstall with a current `install.sh`.
-- Installed services (`station service install`) still run the source-release
-  layout. Service units that run an archive arrive with slice C.
+- Uninstall refuses while a service runs the archive install; remove the
+  service first. A source release cannot replace an archive a service runs.
 
 ## Platform identity matrix
 
@@ -135,10 +173,29 @@ The Android release workflows reapply the selected channel icon to both the
 `main` and `debug` source sets after `tauri android init`, preventing Gradle
 source-set precedence from showing a Dev icon in Beta or Nightly.
 
-iOS is intentionally not described as aligned yet. Stable remains
-`io.kontourai.station` and retains the existing signing path. Beta and Nightly
-reserve `io.kontourai.station.beta` and `io.kontourai.station.nightly` in the
-matrix, but release jobs remain gated until those App IDs have their own
-provisioning profiles, signing secrets, icons, and App Store Connect/TestFlight
-listings. Development similarly needs an isolated iOS bundle/signing contract
-before it can coexist with installed Stable.
+iOS Stable, Beta and Nightly now have source-configured bundle identifiers,
+pairing schemes and separate icon catalogs. The actual delivery owner is
+[`ios-testflight-channel.mjs`](../../scripts/ios-testflight-channel.mjs) and
+the reusable [TestFlight workflow](../../.github/workflows/testflight-delivery.yml).
+The release workflow selects Stable or Beta; Nightly staging selects Nightly.
+These are implemented routes, not merely reserved identifiers. Their protected
+profiles, App Store Connect records, tester groups and successful provider
+receipts remain separate operational prerequisites; the matrix's
+`provider-NOT_VERIFIED` label does not prove they are absent or delivered today.
+
+Development has a narrower, explicit simulator path:
+[`tauri.ios.dev.conf.json`](../../src-desktop/tauri.ios.dev.conf.json) uses
+`io.kontourai.station.dev.instance` and `station-dev-instance`.
+`npm run build:ios:simulator` owns its simulator build and entitlement checks;
+see [native shell verification](native-shell-verification.md#build-a-development-ios-simulator-app).
+The matrix's older `development.iosStatus` still says no isolated contract;
+that description does not account for this simulator overlay. It is not a
+general per-worktree iOS device-signing or TestFlight contract, and multiple
+Dev simulator builds share that fixed identifier.
+
+Port defaults and generated copies are owned by
+[`channel-ports.json`](../../config/channel-ports.json) and checked by
+`npm run channel-ports:check`. Worktree allocation lives in
+[`dev-ports.ts`](../../packages/cli/src/commands/dev-ports.ts): the deterministic
+offset is a starting point, and occupied ports can cause a forward scan.
+Configuration parity does not prove listener availability or coexistence.

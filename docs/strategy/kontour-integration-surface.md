@@ -1,6 +1,31 @@
 # Kontour Integration Surface
 
-> The exact public contracts Station consumes from the Kontour product family. Every claim in this document was verified against the sibling repos (not recalled from memory) on the date below. Re-verify against the pinned package versions before implementing against any contract listed here.
+The package manifest and `pnpm-lock.yaml` define Station's installed contract.
+Read published exports, schemas and file-format documentation for that version;
+a sibling checkout or a package asset does not establish an importable API.
+
+## Current reading routes
+
+| Responsibility | Current Station owner |
+| --- | --- |
+| Flow execution and evidence | [Flow run service](../../src-server/services/flow/flow-run-service.ts) and [Evidence Governance](../contexts/evidence-governance/CONTEXT.md) |
+| Repository readiness | [Veritas for Station](../../.veritas/README.md) and [Evidence Governance](../contexts/evidence-governance/CONTEXT.md) |
+| Knowledge records and source observation | [Knowledge guide](../guides/knowledge.md) and the Knowledge branch of the [module map](../architecture/module-map.md) |
+| Framework lifecycle projection | [Host conformance matrix](../conformance/station-runtime-conformance.md), including its unavailable and approximated cells |
+| Extension delivery and public host contracts | [Extension Ecosystem](../contexts/extension-ecosystem/CONTEXT.md), [SDK reference](../reference/sdk.md), and [examples](../../examples/README.md) |
+
+These routes describe the current composition and its evidence limits. An
+integration must follow its real producer and consumer; matching type names or
+an available package export do not prove a complete user journey.
+
+## Historical package assessments
+
+The remaining sections preserve July–August 2026 investigations, rejected
+approaches, package defects and decisions. Their version numbers, API tables,
+issue status and reported execution are historical, not current implementation
+instructions. In particular, the old Flow evidence options and pipeline diagram
+must not be copied into a current integration. Preserve the rationale while
+checking the owners above for the implemented replacement.
 
 *Last updated: 2026-07-24*
 *Package contract snapshot verified on 2026-07-24: `@kontourai/surface@2.12.0`, `@kontourai/flow@1.3.0`, `@kontourai/veritas@1.5.0`, one exact `@kontourai/flow-agents` dependency for policy, sidecar, and Survey-gate contracts, `@kontourai/survey@2.0.0`, and `@kontourai/conduit@0.2.1`. Fieldwork was separately re-verified on 2026-08-08 at exact `@kontourai/fieldwork@0.6.1`. Console and Console Kit sections retain their dated package-specific verification notes. Historical interoperability findings name the exact older versions that produced them; they are evidence snapshots, not current dependency claims.*

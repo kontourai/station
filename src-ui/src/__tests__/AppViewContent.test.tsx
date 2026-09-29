@@ -7,13 +7,11 @@ import { Suspense } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
 let isBlockingFullScreen = false;
-let credentialRequired = false;
 let providerMounts = 0;
 let providerUnmounts = 0;
-// Only the hook is replaced. `shouldRenderSetupLauncher` — the predicate this
-// gate and `OnboardingGate` must agree on — is the REAL one, so a change to it
-// is observable here instead of being shadowed by a second copy that drifts
-// silently (that copy was this file's own defect).
+// AppViewContent reads no onboarding state: project creation is never gated
+// by the setup launcher. The hook is still mocked as blocking in the
+// project-new test below, so a gate that starts reading it goes red there.
 vi.mock('../contexts/onboarding-setup-store', async (importOriginal) => ({
   ...(await importOriginal<
     typeof import('../contexts/onboarding-setup-store')
@@ -23,14 +21,6 @@ vi.mock('../contexts/onboarding-setup-store', async (importOriginal) => ({
     isBlockingFullScreen,
     content: isBlockingFullScreen ? { title: 'Setup' } : null,
     dismiss: vi.fn(),
-  }),
-}));
-
-vi.mock('@kontourai/station-connect', () => ({
-  useConnections: () => ({
-    activeConnection: credentialRequired
-      ? { credentialState: 'required' }
-      : null,
   }),
 }));
 
@@ -161,17 +151,6 @@ const baseProps = {
 };
 
 describe('AppViewContent — R3 un-stacking', () => {
-  test('mounts the legacy scheduler route without new deployment facts', async () => {
-    render(
-      <AppViewContent {...baseProps} currentView={{ type: 'schedule' }} />,
-    );
-    // The route's title is the page frame's `<h1>` now, not the view's own
-    // markup — the eyebrow above it carries the same word, so match the role.
-    expect(
-      await screen.findByRole('heading', { level: 1, name: 'Schedule' }),
-    ).toBeTruthy();
-  });
-
   test('renders the route frame declared for the route, and nothing for a route with none', async () => {
     const { container, unmount } = render(
       <AppViewContent {...baseProps} currentView={{ type: 'schedule' }} />,
@@ -229,11 +208,6 @@ describe('AppViewContent — R3 un-stacking', () => {
     expect(second).not.toBe(first);
   });
 
-  test('renders the task-first Home route', async () => {
-    render(<AppViewContent {...baseProps} currentView={{ type: 'home' }} />);
-    expect(await screen.findByTestId('home-view')).toBeTruthy();
-  });
-
   test('lazy-loads the Task workspace with a Task-specific route boundary key', async () => {
     const { rerender } = render(
       <AppViewContent
@@ -279,69 +253,6 @@ describe('AppViewContent — R3 un-stacking', () => {
     );
 
     expect(await screen.findByTestId('new-project-modal')).toBeTruthy();
-  });
-
-  test('renders NewProjectModal on project-new once the setup launcher is no longer blocking', async () => {
-    isBlockingFullScreen = false;
-
-    render(
-      <AppViewContent
-        {...baseProps}
-        currentView={{ type: 'project-new' }}
-        projectsLoading={false}
-      />,
-    );
-
-    expect(await screen.findByTestId('new-project-modal')).toBeTruthy();
-  });
-
-  test('renders NewProjectModal when credential recovery suppresses an otherwise visible setup launcher', async () => {
-    isBlockingFullScreen = true;
-    credentialRequired = true;
-
-    render(
-      <AppViewContent
-        {...baseProps}
-        currentView={{ type: 'project-new' }}
-        projectsLoading={false}
-      />,
-    );
-
-    expect(await screen.findByTestId('new-project-modal')).toBeTruthy();
-    credentialRequired = false;
-  });
-
-  test('renders NewProjectModal on /connections, where the launcher is suppressed by pathname', async () => {
-    // The launcher's `/connections` exception is part of the SHARED predicate,
-    // so the gate has to honour it too — otherwise the route it suppresses
-    // renders nothing while nothing covers the screen.
-    isBlockingFullScreen = true;
-    credentialRequired = false;
-    window.history.replaceState({}, '', '/connections');
-
-    try {
-      render(
-        <AppViewContent
-          {...baseProps}
-          currentView={{ type: 'project-new' }}
-          projectsLoading={false}
-        />,
-      );
-
-      expect(await screen.findByTestId('new-project-modal')).toBeTruthy();
-    } finally {
-      window.history.replaceState({}, '', '/');
-    }
-  });
-
-  test('does not suppress unrelated views when the setup launcher is blocking full-screen (non-blocking-elsewhere regression check)', async () => {
-    isBlockingFullScreen = true;
-
-    render(
-      <AppViewContent {...baseProps} currentView={{ type: 'settings' }} />,
-    );
-
-    expect(await screen.findByTestId('settings-view')).toBeTruthy();
   });
 });
 

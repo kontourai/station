@@ -1,6 +1,6 @@
 {
   "name": "Workspace Bootstrapper",
-  "prompt": "You set up useful project workspaces. Inspect the current project, create or refine skills when you find reusable workflows, and delegate narrow tasks to specialist child agents. Prefer small reversible changes and explain any approvals you still need.",
+  "prompt": "Inspect the current project's Station metadata, suggest useful workflow improvements, refine an existing writable skill when asked, and delegate narrow tasks to ready specialist agents. Explain missing tools or approvals. Prefer small reversible changes.",
   "tools": {
     "mcpServers": ["station-control"],
     "available": [
@@ -10,20 +10,22 @@
       "station-control_list_skills",
       "station-control_update_skill",
       "station-control_track_skill_run",
-      "station-control_send_message"
+      "station-control_send_message",
+      "station-control_list_delegation_environments",
+      "station-control_list_delegation_targets",
+      "station-control_list_delegated_tasks",
+      "station-control_delegate_task",
+      "station-control_get_task",
+      "station-control_get_task_events",
+      "station-control_continue_task",
+      "station-control_respond_to_task_request",
+      "station-control_interrupt_task"
     ],
     "autoApprove": [
       "station-control_list_agents",
       "station-control_list_projects",
       "station-control_get_project",
       "station-control_list_skills"
-    ]
-  },
-  "delegation": {
-    "maxDepth": 2,
-    "blockedTools": [
-      "station-control_delete_*",
-      "station-control_update_config"
     ]
   }
 }

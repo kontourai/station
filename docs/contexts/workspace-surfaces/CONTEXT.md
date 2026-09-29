@@ -6,6 +6,21 @@ Workspace Pane is the smallest addressable UI unit within a surface,
 experience, or layout; it is not a replacement name for this bounded context,
 and it is never the Kontour Surface product.
 
+## Follow the current composition
+
+| Question | Code owner |
+| --- | --- |
+| What can the shell navigate to? | [Destination registry](../../../src-ui/src/app-shell/destination-registry.ts) and [navigation store](../../../src-ui/src/contexts/navigation-store.ts) |
+| Which region holds each tab? | [Region model](../../../src-ui/src/regions/region-model.ts), [saved arrangement](../../../src-ui/src/regions/region-arrangement-record.ts), and [RegionPaneHost](../../../src-ui/src/workspace-panes/RegionPaneHost.tsx) |
+| What may be placed and rendered? | [Pane contract](../../../packages/contracts/src/workspace-pane.ts), [catalog](../../../src-server/services/projects/workspace-pane-catalog.ts), and [built-in renderer registry](../../../src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx) |
+| What survives a reload? | [Host storage](../../../src-ui/src/workspace-panes/workspacePaneHostStorage.ts) and each Pane's separate state owner; [runtime callbacks](../../../src-ui/src/workspace-panes/workspacePaneHostRuntime.ts) remain ephemeral |
+| Where does Task collaboration run? | [TaskWorkspaceView](../../../src-ui/src/views/TaskWorkspaceView.tsx), [TaskRoomEditorPane](../../../src-ui/src/workspace-panes/TaskRoomEditorPane.tsx), and [ProjectTaskRoomRuntime](../../../src-server/services/orchestration/project-task-room-runtime.ts) |
+
+The [module map](../../architecture/module-map.md#projecttaskroom)
+documents that mounted Task path; the unmounted pure editor controller was
+deleted. Browser, Device, Work Board and host actions have separate entries
+there; sharing a Pane host does not give them the same persistence or authority.
+
 ## Language
 
 **Project**:
@@ -25,7 +40,11 @@ The broader `/tasks/:taskId` Workspace Surface composition for one Task's identi
 _Avoid_: Session detail
 
 **Task experience**:
-A mode inside one Task workspace that keeps Task identity visible while presenting Direct, Deliver, Learn, or Operate work. Every mode discloses its owning product and actual availability.
+A named mode inside one Task workspace. Direct mounts Station's inspection and
+room composition. Deliver, Learn and Operate name external product boundaries.
+The current UI shows those optional modes when an enabled installed plugin
+declares the corresponding capability; selecting one renders an explanatory
+boundary and alternative link, not a product renderer or verified owner state.
 _Avoid_: product tab when it would imply Station owns another product's state
 
 **Task workspace binding**:
@@ -53,8 +72,10 @@ _Avoid_: pane, panel, or a placement capability word from the Workspace Pane con
 (`supportedRegions`) when a shell slot is meant
 
 **Surface**:
-A registered occupant of a region, with an id, title, icon, keyboard chord, and default
-region. Chat and Activity are surfaces.
+A registered shell surface with an ID, presentation metadata and allowed/preferred
+regions. Chat and Activity are examples. Dock regions can retain several surface
+tabs and select one; the main region holds at most one. Instance-keyed surfaces
+such as individual file previews are resolved through the same placement boundary.
 _Avoid_: a navigable destination (the app-shell destination registry); the Kontour Surface
 product
 
@@ -77,7 +98,10 @@ The structured reference telling Station whether a tab hosts a plugin component,
 _Avoid_: string component name when host type matters
 
 **Workspace Pane descriptor**:
-The versioned (`1.0`) data-only declaration of one workspace pane: its renderer reference, bounded placement, context requirement, actions, provenance, lifecycle, and optional alternative renderer. Never claims availability, installation, authorization, or renderer execution.
+The versioned (`1.0`) data-only declaration of one workspace pane: its renderer
+reference, bounded placement, one or more modes with their context requirements,
+actions, provenance, lifecycle, and optional alternative renderer. A descriptor
+does not prove availability, installation, authorization or renderer execution.
 _Avoid_: Surface (the Kontour product) when the Workspace Pane contract is meant; see Flagged Ambiguities
 
 **Workspace Pane renderer reference**:
@@ -89,7 +113,11 @@ The edge that translates a Workspace Pane's host-neutral identity, lifecycle, av
 _Avoid_: Tauri- or Electron-specific fields in portable Pane data
 
 **Workspace Pane host document**:
-The versioned, data-only Station shell record for one exact Project/Layout scope or Task-owned Project/Task/Layout scope. It owns bounded tab/split placement, exact existing instances, active/maximized/collapsed selection, and restoration; it never fabricates a Task identity or contains renderer callbacks, browser/native handles, authorization, or availability claims.
+The versioned, data-only Station shell record for an ambient device scope, an
+exact Project/Layout scope, or Task-owned Project/Task/Layout scope. It owns
+bounded tab/split placement, exact instances, active/maximized/collapsed selection
+and restoration. Ambient hosts do not borrow a synthetic Project. The document
+contains no renderer callbacks, browser/native handles or authorization grants.
 _Avoid_: treating a host document as a renderer runtime or an alternate LayoutDefinition
 
 **Workspace Pane runtime**:
@@ -105,13 +133,19 @@ The declared contributor (`builtin`, `plugin`, or direct `mcp`) of a Pane descri
 _Avoid_: contributor identity branching in host code; provenance stays data
 
 **Coding pane**:
-The Station pane for file tree, diff, terminal, chat, readiness, trust, and run context.
+The built-in `coding` renderer selects the existing dock chat behavior and can
+offer the Browser launcher. Files, diff, terminal, plan, readiness, trust and
+Flow run console are separate registered Pane renderers that a workspace can
+compose; they are not all children of one monolithic Coding pane.
 _Avoid_: IDE
 
 **File Preview pane**:
-A code-owned, read-only Workspace Pane occurrence for one Project-relative
-source or plain-text path. Its versioned pane state contains only project slug,
-relative path, optional bounded line range, and wrap preference; its opaque
+A code-owned, read-only Workspace Pane occurrence for one workspace-relative
+file. Its versioned state contains Project slug, relative path, optional bounded
+line range, wrap and Markdown mode preferences, and an optional Session `thread`.
+Without a thread it reads the Project checkout; with one, the route resolves
+that readable Session's directory and refuses an unavailable or unauthorized
+Session instead of falling back to the Project directory. Its opaque
 instance and state keys never encode a path, and host geometry never contains
 file intent. The host restores it only when the builtin descriptor, renderer,
 provenance, bound Project/source context, and separately validated state all
@@ -147,11 +181,10 @@ _Avoid_: raw route push for project layout navigation
 - A project owns layouts, knowledge configuration, agent scope, and working directory.
 - A project owns durable Tasks; each Task remains distinct from the Sessions that may execute it.
 - A Task workspace composes references and local inspection without owning Flow, Builder, Knowledge, or Console semantics.
-- A Task experience keeps Task identity in Station while its owning authority remains Station (Direct), Builder Kit (Deliver), Knowledge Kit (Learn), or Console (Operate).
-- An optional Task experience remains `unavailable` until a typed, trusted owner contract proves it is available; a generic opaque external reference is never promoted into owner state.
+- Task experience names retain their intended owners: Station (Direct), Builder Kit (Deliver), Knowledge Kit (Learn), and Console (Operate). [The current selector](../../../src-ui/src/views/task-experiences.ts) treats an enabled plugin's manifest capability as enough to list an optional mode as `available`. That is a declaration, not verification of a trusted owner contract. Generic Task external references do not enable modes. Optional modes currently show an explanatory boundary rather than invoking the declaring plugin.
 - Only an `available` revalidated Task workspace binding permits local file or diff inspection. An `ambiguous` or `unavailable` snapshot remains visible for identity and recovery.
-- The shell has regions; a region holds a surface; a surface or a layout holds a pane host; a pane host holds Workspace Panes in tab groups and splits. Legacy layout tabs are the migration input for that pane host.
-- A Workspace Pane descriptor owns identity, renderer reference, supported placement capability set, context requirement, actions, provenance, lifecycle, and optional alternative renderer. A descriptor's requirements say which exact Project, Task, Session, run, workspace, and source identities a host must provide; the distinct Pane instance records the exact identities actually bound for that occurrence. Neither form owns or replaces `LayoutDefinition`/`LayoutTab` persistence or render dispatch.
+- The shell owns regions. Each dock region retains ordered surface tabs and a selected occupant; the main region holds at most one. A region or Layout composition mounts a Pane host, whose document arranges exact Pane instances in tabs and splits. The current move operation removes a surface from its previous region. The saved-record parser's tolerance for future duplicate instance placements does not mean this build offers copy-to-region behavior.
+- A Workspace Pane descriptor owns identity, renderer reference, supported placement, mode-specific context requirements, actions, provenance, lifecycle and an optional alternative renderer. Each mode says which Project, Task, Session, run, workspace and source identities it needs; the instance records the exact bound identities. Neither replaces `LayoutDefinition`/`LayoutTab` persistence or render dispatch. The dock chooser enables a surface only when its code-owned instance factory can bind the current context; projectless Device and Project-bound coding panes therefore differ.
 - Existing Layout tabs remain the baseline data — the additive Layout-to-Workspace-Pane adapter reads `LayoutTab.component`'s string and structured `LayoutComponentRef` shapes into a lossless retained-Layout record and writes the original tab shape back, never migrating or executing it. The current catalog read seam uses that adapter for built-ins, trusted plugin Layouts, and MCP Apps; it does not install, authorize, probe, or claim renderer availability.
 - A Workspace Pane host document is an additive, bounded persistence layer for exact existing instances. Its parser rejects unsafe/version-mismatched/duplicate/orphan data; restoration quarantines a malformed child where valid siblings remain and reconstructs a bounded recovery document rather than trusting raw storage.
 - Tab-group selection is local persisted presentation state. `activeInstanceId` remains the exact navigation/focus identity, while desktop visibility reconciles one selected occurrence per uncollapsed group (or the maximized occurrence); compact presentation still mounts only its active occurrence.
@@ -160,10 +193,13 @@ _Avoid_: raw route push for project layout navigation
 - Runtime callbacks, dirty or pending close arbitration, and renderer-failure isolation stay UI-local per instance. A renderer failure cannot dispose or reset its siblings.
 - Portable Workspace Pane parsers accept already-deserialized plain data. They reject accessor-bearing data without evaluating getters, but browser JavaScript cannot prove an arbitrary object is not a Proxy without invoking Proxy meta traps. The Node catalog/plugin ingestion edge rejects Proxies before values enter the portable contract or adapter.
 - A Workspace Pane renderer reference is the same three-way `builtin-component`/`plugin-component`/`mcp-tool-ui` vocabulary as a Layout component reference; trusted plugin React and sandboxed MCP Apps remain distinct security classes at every layer. Contributor provenance remains separate, so a plugin-declared MCP pane retains both contributor and MCP renderer attribution.
-- Workspace Pane contracts are application-host neutral. Web, Tauri, Electron, or future native shells consume the same descriptor, instance, catalog, and restoration data through adapters; native handles, APIs, and geometry remain adapter-local. Unsupported host behavior is expressed later as typed availability rather than a forked contract.
-- Workspace Pane availability composes product rollout, renderer presence, exact Project/workspace/Git context, deployment capability facts, and the typed native capability adapter at the catalog edge. Missing or malformed host/deployment facts fail closed to an actionable unavailable state; UI consumers never read Tauri globals or infer support from a platform name. Catalog, add menu, command launcher, and direct route consume that one resolved state/reason/action instead of reimplementing availability.
+- Workspace Pane data is application-host neutral. The current Web/Tauri UI consumes it through adapters; this does not establish an Electron implementation. Native handles, APIs and geometry stay adapter-local. Unsupported behavior is expressed as typed availability.
+- Availability combines rollout, installation/distribution, renderer presence, exact context, permission/configuration, deployment and host facts. The server catalog supplies only facts it owns; the [UI adapter](../../../src-ui/src/workspace-panes/workspacePaneAvailabilityAdapters.ts) adds renderer/native/client-observed facts and reruns the shared resolver. Missing required facts refuse availability. Catalog, add menu, launcher and route share this resolver rather than treating a saved descriptor as permission to render. Plugin visibility is supplied by the server's caller-bound grant policy and cannot be overridden by a plugin declaration.
 - Availability telemetry is a bounded projection: built-in descriptor ID (or the single `contributed` category), state, and reason code only. Instance IDs, contributed raw IDs, paths, URLs, credentials, content, and arbitrary reasons never become metric attributes.
-- The coding pane can show readiness, trust, run console, file tree, terminal, chat, and proposed changes together.
+- A coding workspace composes separate file, diff, terminal, chat and evidence
+  panes through the host. [CodingChatPane](../../../src-ui/src/workspace-panes/CodingChatPane.tsx)
+  selects dock chat behavior and handles its open-preview intent; it does not
+  own all of those renderers or their state.
 - File Tree opens File Preview through the provider-neutral Workspace Pane host
   open/focus seam. Preview state is separately bounded and keyed by opaque
   `stateKey`; corrupt and unreferenced interrupted state records are reclaimed
@@ -180,14 +216,21 @@ _Avoid_: raw route push for project layout navigation
   GFM remains disabled until a true pre-parse/AST budget can constrain bare
   autolinks and other extensions. HTML, PDF, browser handoff, editing, and
   native surfaces are separate increments.
-- File Preview supplies the host a typed prepare/rollback pair: prepare writes
-  one atomic bounded state record, and every rejected host or state prepare
-  invokes rollback removal before the occurrence can become live authority.
+- File Preview supplies a typed prepare/rollback pair. After preparing the host
+  document, prepare writes one bounded state record; a failed preparation attempts
+  rollback before the occurrence can become live authority. Storage failure can
+  also defeat durable rollback. A retained host superset protects prior state
+  references, and hydration quarantines an occurrence whose required state was
+  never written. This is not a multi-record storage transaction or a guarantee
+  that removal succeeded.
 - File Preview open/rollback durability currently assumes one writer in the
   renderer context. Multi-tab or cross-context host single-writer coordination
   is `NOT_VERIFIED` and belongs to #1371; this slice does not claim distributed
   serialization through browser storage.
-- Proposed changes belong to sessions and projects and require decisions before they become accepted work.
+- Proposed changes retain Session/Project correlations and a persisted decision
+  history. [ProposedChangeService](../../../src-server/services/projects/proposed-change-service.ts)
+  records approval/rejection/supersession; that decision store does not itself
+  apply a filesystem patch. Tool execution approval is a separate authority.
 - Navigation restore depends on persisting project-layout selection, not just changing URL.
 
 ## Flagged Ambiguities

@@ -6,7 +6,7 @@ server/UI, creates a Project and Task through shipped HTTP/UI entry points,
 pairs a second browser as a distinct device, and uses the rendered Task
 workspace rather than injected pane props.
 
-The lane proves both browsers receive the same server-owned room generation;
+When it passes, the lane checks both browsers receive the same server-owned room generation;
 join and durable announce; symmetric published presence; watch, follow, and
 local-input stop; exact revision-bound cursor/selection projection; message and
 document convergence over the shared SSE connection; revoked-device cached
@@ -20,17 +20,29 @@ derived document, room generation, and working revision; bounds selection,
 rate, count, and TTL; reauthorizes every publication/delivery; and never writes
 it to room history or recovery.
 
-Agent participant session/run links are rendered when the authoritative live
-participant is an agent. A real agent-authored edit remains `NOT_VERIFIED` in
-this browser lane: creating that evidence requires an actually associated
-agent session/run and dispatch receipt. Tests must not forge agent attribution
-through pane props or browser-authored room records.
+The lane also checks an authoritative Agent edit and its Session/Run links.
+The private, non-HTTP
+[acceptance control](../../src-server/runtime/diagnostics/task-room-acceptance-control.ts)
+asks runtime composition to dispatch the Task, then calls
+[publishAgentDocumentEdit](../../src-server/services/orchestration/project-task-room-runtime.ts)
+with that dispatch's actual Session association. Its `task-dispatch` provider
+uses the [seeded Session branch](../../src-server/services/projects/task-graph-service.ts),
+so it does not start an external Agent runtime. Both browsers must show the
+new text and links, which must survive restart. The fixture supplies the edit
+text; this checks attribution and persistence, not an external model deciding
+what to write. It does not forge Agent attribution in pane props or browser
+room records.
 
 Run the focused browser proof with:
 
 ```sh
 PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test tests/project-task-room-collaboration.spec.ts --project=chromium --workers=1
 ```
+
+The helper starts an isolated Station home and ports with deterministic E2E
+readiness and a private control socket. This is a production server/UI fixture,
+not proof of a deployed Station or native device. Keep the run's revision,
+result and screenshots with any acceptance claim.
 
 The #2892 synthetic command remains smoke evidence only. Reference performance
 is verified only by the named Windows production target and bridge

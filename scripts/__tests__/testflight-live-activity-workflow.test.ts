@@ -91,9 +91,17 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     );
     expect(resolveStep.run).toContain('echo "aps_environment=production"');
     expect(stepIndex(RESOLVE)).toBeLessThan(stepIndex(SECRETS));
-    // Every consumer reads the resolved answer; nothing re-derives it from
-    // the channel name.
+    // Every consumer reads the resolved answer; no step condition or step
+    // environment re-derives it from the channel name, in any spelling.
     expect(source).not.toContain("inputs.channel != 'stable'");
+    for (const job of Object.values(workflow.jobs)) {
+      for (const step of job.steps) {
+        if (step.name === RESOLVE) continue;
+        expect(step.if ?? '', step.name).not.toContain('inputs.channel');
+        for (const value of Object.values(step.env ?? {}))
+          expect(String(value), step.name).not.toContain('inputs.channel');
+      }
+    }
   });
 
   it('requires the extension profile secret exactly when the channel builds the extension', () => {

@@ -1,13 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import {
-  CHAT_DRAFTS_STORAGE_KEY,
-  chatDraftsStore,
-  MAX_DRAFT_LENGTH,
-  MAX_DRAFTS,
-  MAX_STASHED_IMAGES,
-} from '../contexts/chat-drafts-store';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import type { FileAttachment } from '../types';
 
 const image = (name: string): FileAttachment => ({
@@ -25,11 +19,22 @@ describe('chatDraftsStore', () => {
     vi.restoreAllMocks();
   });
 
-  test('survives a reload-like fresh read and clears after send', () => {
+  test('survives a reload-like fresh read and clears after send', async () => {
     chatDraftsStore.set('session-a', 'unsent message');
-    expect(chatDraftsStore.get('session-a')).toBe('unsent message');
+    vi.resetModules();
+    const { chatDraftsStore: reloaded } = await import(
+      '../contexts/chat-drafts-store'
+    );
+    expect(reloaded.get('session-a')).toBe('unsent message');
+
+    reloaded.clear('session-a');
+    vi.resetModules();
+    const { chatDraftsStore: afterSend } = await import(
+      '../contexts/chat-drafts-store'
+    );
+    expect(afterSend.get('session-a')).toBe('');
+    // The statically imported instance still holds the draft in memory.
     chatDraftsStore.clear('session-a');
-    expect(chatDraftsStore.get('session-a')).toBe('');
   });
 
   test('keeps at most twenty newest session drafts', () => {
@@ -39,7 +44,7 @@ describe('chatDraftsStore', () => {
       chatDraftsStore.set(`session-${index}`, `draft-${index}`);
     }
     const persisted = JSON.parse(
-      localStorage.getItem(CHAT_DRAFTS_STORAGE_KEY) || '{}',
+      localStorage.getItem('station:chat-drafts:v1') || '{}',
     );
     expect(Object.keys(persisted.sessions)).toHaveLength(20);
     expect(chatDraftsStore.get('session-0')).toBe('');
@@ -47,8 +52,8 @@ describe('chatDraftsStore', () => {
   });
 
   test('truncates each draft to twenty thousand characters', () => {
-    chatDraftsStore.set('session-a', 'x'.repeat(MAX_DRAFT_LENGTH + 100));
-    expect(chatDraftsStore.get('session-a')).toHaveLength(MAX_DRAFT_LENGTH);
+    chatDraftsStore.set('session-a', 'x'.repeat(20_100));
+    expect(chatDraftsStore.get('session-a')).toHaveLength(20_000);
   });
 
   test('persists text before image encoding and classifies an encoding failure', async () => {
@@ -85,9 +90,9 @@ describe('chatDraftsStore', () => {
   });
 
   test('keeps dropped and unreadable names distinct', async () => {
-    const attachments = Array.from(
-      { length: MAX_STASHED_IMAGES + 1 },
-      (_, index) => image(`image-${index}.png`),
+    // Five images fit in a stash; the sixth is dropped by name.
+    const attachments = Array.from({ length: 6 }, (_, index) =>
+      image(`image-${index}.png`),
     );
     const draft = await chatDraftsStore.stash(
       'Image outcomes',
@@ -99,33 +104,31 @@ describe('chatDraftsStore', () => {
       },
     );
     expect(draft.unreadableImageNames).toEqual(['image-0.png']);
-    expect(draft.droppedImageNames).toEqual([
-      `image-${MAX_STASHED_IMAGES}.png`,
-    ]);
+    expect(draft.droppedImageNames).toEqual(['image-5.png']);
   });
 
   test('caps portable drafts at twenty in newest-first order', async () => {
     let now = 100;
     vi.spyOn(Date, 'now').mockImplementation(() => now++);
-    for (let index = 0; index <= MAX_DRAFTS; index += 1) {
+    for (let index = 0; index <= 20; index += 1) {
       await chatDraftsStore.stash(`draft-${index}`, `text-${index}`, []);
     }
     const drafts = chatDraftsStore.getPortableSnapshot();
-    expect(drafts).toHaveLength(MAX_DRAFTS);
-    expect(drafts[0]?.name).toBe(`draft-${MAX_DRAFTS}`);
+    expect(drafts).toHaveLength(20);
+    expect(drafts[0]?.name).toBe('draft-20');
     expect(drafts.at(-1)?.name).toBe('draft-1');
   });
 
   test('portable records structurally cannot carry execution selection', async () => {
     const draft = await chatDraftsStore.stash('Portable', 'move me', []);
-    expect(Object.keys(draft)).not.toEqual(
-      expect.arrayContaining([
-        'model',
-        'engine',
-        'provider',
-        'connectionId',
-        'agentConnectionId',
-      ]),
-    );
+    for (const key of [
+      'model',
+      'engine',
+      'provider',
+      'connectionId',
+      'agentConnectionId',
+    ]) {
+      expect(draft).not.toHaveProperty(key);
+    }
   });
 });

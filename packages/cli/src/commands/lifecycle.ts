@@ -62,6 +62,7 @@ import {
   lookupProcessBirthFingerprint,
 } from '@kontourai/station-shared/process-identity';
 import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import { SERVICE_LAUNCHER_ENV } from '@kontourai/station-shared/service-launcher-protocol';
 import {
   type StoreIntegrityReport,
   type StoreIntegrityResult,
@@ -100,6 +101,8 @@ import {
   resolveLifecycleState,
 } from './helpers.js';
 import {
+  INSTALL_ROOT_MARKER_CONTENT,
+  INSTALL_ROOT_MARKER_FILENAME,
   isPackagedReleaseChannel,
   type LifecycleCodeRoot,
   PACKAGED_RELEASE_MANIFEST_FILENAME,
@@ -4347,6 +4350,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // makes that server refuse its own core update (#2674).
   const serviceManaged = serverEnv.STATION_SERVICE_MANAGED;
   delete serverEnv.STATION_SERVICE_MANAGED;
+  // The fixed launcher's context (#2675 D) likewise: it tells the server
+  // which install's update requests it may queue, which only the server the
+  // launcher's own child supervises may.
+  const serviceLauncher = serverEnv[SERVICE_LAUNCHER_ENV];
+  delete serverEnv[SERVICE_LAUNCHER_ENV];
   // The desktop addresses this to its own sidecar; a server started from a
   // desktop terminal must still log to its stdout log file (#2327).
   delete serverEnv.STATION_STDOUT_LOGS;
@@ -4380,6 +4388,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   if (opts.supervisorPid !== undefined) {
     serverEnv.STATION_SUPERVISOR_PID = String(opts.supervisorPid);
     if (serviceManaged === '1') serverEnv.STATION_SERVICE_MANAGED = '1';
+    if (serviceLauncher) serverEnv[SERVICE_LAUNCHER_ENV] = serviceLauncher;
   }
   if (opts.lifecycleJournal) {
     serverEnv.STATION_LIFECYCLE_JOURNAL = opts.lifecycleJournal;
@@ -4465,6 +4474,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           // The UI child is never supervised by the server's parent watchdog.
           delete uiEnv.STATION_SUPERVISOR_PID;
           delete uiEnv.STATION_SERVICE_MANAGED;
+          delete uiEnv[SERVICE_LAUNCHER_ENV];
           return uiEnv;
         })(),
       },
@@ -5049,7 +5059,7 @@ function assertSafePackagedDirectory(path: string, description: string): void {
  * carries the install.sh that installed it, and the upgrade re-runs it.
  */
 function delegatePackagedUpgradeIfPresent(
-  beforeInstall: (stationHome: string) => void,
+  beforeInstall: (stationHome: string, installRoot: string) => void,
 ): string | null {
   if (existsSync(join(CWD, '.git'))) return null;
   const releasesRoot = resolve(CWD, '..');
@@ -5084,10 +5094,10 @@ function delegatePackagedUpgradeIfPresent(
   if (realpathSync(state.installRoot) !== realpathSync(installRoot)) {
     throw new Error('packaged install state does not contain this release');
   }
-  const marker = join(installRoot, '.station-portable-install-root');
+  const marker = join(installRoot, INSTALL_ROOT_MARKER_FILENAME);
   if (
     readSafePackagedFile(marker, 'packaged install ownership marker') !==
-    'station-portable-install-root-v1\n'
+    INSTALL_ROOT_MARKER_CONTENT
   ) {
     throw new Error('packaged install ownership marker is invalid');
   }
@@ -5100,7 +5110,7 @@ function delegatePackagedUpgradeIfPresent(
   }
   const installer = join(CWD, 'install.sh');
   readSafePackagedFile(installer, 'packaged release installer');
-  beforeInstall(state.stationHome);
+  beforeInstall(state.stationHome, installRoot);
 
   // The recorded manifest makes the upgrade follow the same signed path the
   // install came from with no environment (#2675); an explicit
@@ -5153,13 +5163,20 @@ function runServiceProbe(
  */
 function assertNoSupervisingService(
   stationHome: string,
-  options: { ignoreUnknownServiceState?: boolean; repoPath?: string },
+  options: {
+    archiveInstallRoot?: string;
+    ignoreUnknownServiceState?: boolean;
+    repoPath?: string;
+  },
 ) {
   const supervising = findSupervisingServices(stationHome, {
     fs: { existsSync, readFileSync, readdirSync, realpathSync },
     platform: process.platform,
     run: runServiceProbe,
     ...(options.repoPath === undefined ? {} : { repoPath: options.repoPath }),
+    ...(options.archiveInstallRoot === undefined
+      ? {}
+      : { archiveInstallRoot: options.archiveInstallRoot }),
   });
   if (supervising.length === 0) return;
   // The override is for a probe that cannot answer (a broken backend, a
@@ -5338,8 +5355,18 @@ export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
   const { ignoreUnknownServiceState, ...buildOptions } = options;
   // A packaged install proves its provenance first; the service check runs on
   // the home that provenance names, before the installer swaps anything.
-  const packagedStationHome = delegatePackagedUpgradeIfPresent((home) =>
-    assertNoSupervisingService(home, { ignoreUnknownServiceState }),
+  // Under a prebuilt archive, a service that runs this install root's
+  // `current` does not block: install.sh stops it, switches `current`, and
+  // starts it again, rolling back if the new version does not come up with
+  // its identity (#2675 slice C). A source release has no such service.
+  const packagedStationHome = delegatePackagedUpgradeIfPresent(
+    (home, installRoot) =>
+      assertNoSupervisingService(home, {
+        ignoreUnknownServiceState,
+        ...(LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive'
+          ? { archiveInstallRoot: installRoot }
+          : {}),
+      }),
   );
   if (packagedStationHome !== null) {
     reportSchedulingPolicyUpgradeGuidance(packagedStationHome);

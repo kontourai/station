@@ -1,5 +1,13 @@
 # Session tape replay
 
+> **Reading status: current implementation note with recorded test evidence.**
+> The [replay controller](../../src-ui/src/hooks/orchestration/replay/controller.ts)
+> owns replay identity and opening/closing; the
+> [player](../../src-ui/src/hooks/orchestration/replay/player.ts) drives the shared
+> event fold. Use the [Session API](../reference/session-api.md) for current
+> archive and streaming contracts. The browser matrix and engine mappings below
+> are not a newly executed test result or proof of native-device behavior.
+
 Status: debugger and read-only execution-timeline implementation. Original
 replay: #1935; event-to-render debugging and shared-device streaming: #1958;
 conversation controls: #563 / #342.
@@ -80,7 +88,9 @@ animations settle before a rendered observation; indefinite activity pulses
 do not block it.
 
 Export redacts content by default. Content-preserving export is explicit;
-redacted tapes preserve structure but cannot prove original text layout.
+redacted tapes retain protocol fields, replace identity values with pseudonyms,
+and mask content while preserving whitespace. They cannot prove original text
+layout or guarantee removal of arbitrary sensitive text placed in protocol fields.
 Replay forms, sends, feedback, and Task actions cannot mutate the source
 conversation. Replaying a snapshot does not modify live chats or background
 tasks.
@@ -98,6 +108,10 @@ animation, and streamed answer text has a caret. Approval and transport
 recovery have explicit states. A timer measures observed waiting, never an
 estimate of completion.
 
+The separate [reasoning disclosure](../../src-ui/src/components/chat/ReasoningSection.tsx)
+uses a compact summary row. Expanding it shows the text beneath an indented
+rule, while its word count and the reader's open/closed choice remain available.
+
 Headless station-control tools that drive those operations over `/api/ui`
 are a follow-up on this schema.
 
@@ -112,7 +126,8 @@ the product UI. Detection is for developers:
 - session diagnostics (`namespace/type (unbound)`)
 - `station.runtime.extension_notifications` if an OTLP exporter is set (field)
 
-`EXTENSION_NOTIFICATION_PROMOTIONS` is the mapping backlog. Bias is promote
+The mapping backlog lives in
+[#2899](https://github.com/kontourai/station/issues/2899). Bias is promote
 to a typed Station event. There is no in-product “accept unique” workflow.
 
 ## Queue vs steer
@@ -137,7 +152,7 @@ Adapter mappings, same Station event:
 | --- | --- |
 | Claude | `Query.streamInput` (additive) |
 | Codex | app-server `turn/steer` `{ threadId, input, expectedTurnId }` (additive; does not emit a Codex `turn/started`) |
-| Kiro / KAS | ACP extension **method** `_session/steer` (additive; not a notification) |
+| Kiro | ACP extension **method** `_session/steer` when the command, arguments or reported agent name match Kiro (additive; not a notification) |
 | Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`). `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
 | Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive). Also the fallback when the native method returns JSON-RPC -32601. |
 

@@ -53,7 +53,7 @@ describe('VoiceSessionAdapterRegistry', () => {
     expect(registry.getAll()).toEqual([]);
   });
 
-  it('uses the newest live duplicate and reveals the preceding registration on disposal', () => {
+  it('keeps the newest live duplicate visible when a shadowed registration is disposed', () => {
     const registry = new VoiceSessionAdapterRegistry();
     const previous = makeAdapter('same', 'Previous');
     const winner = makeAdapter('same', 'Winner');
@@ -65,6 +65,18 @@ describe('VoiceSessionAdapterRegistry', () => {
     expect(registry.get('same')).toBe(winner);
     winnerHandle.dispose();
     expect(registry.get('same')).toBeUndefined();
+  });
+
+  it('reveals the preceding registration when the newest duplicate is disposed', () => {
+    const registry = new VoiceSessionAdapterRegistry();
+    const previous = makeAdapter('same', 'Previous');
+    const winner = makeAdapter('same', 'Winner');
+    registry.register(previous);
+    const winnerHandle = registry.register(winner);
+
+    winnerHandle.dispose();
+    expect(registry.get('same')).toBe(previous);
+    expect(registry.getAll()).toEqual([previous]);
   });
 
   it('preserves a stable immutable list until the visible registrations change', () => {

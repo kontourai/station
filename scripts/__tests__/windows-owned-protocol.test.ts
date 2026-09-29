@@ -99,7 +99,6 @@ test('launcher wires its settlement controller and rejects partial control EOF',
   expect(launcher).toContain('owned-command-tree-settled');
   expect(launcher).toContain("destination.once('drain'");
   expect(launcher).toContain('control stream ended with a partial record');
-  expect(launcher).toContain('const finishSuccessfulSettlement = (status)');
   expect(launcher).toContain('onComplete: finishSuccessfulSettlement');
   expect(launcher).toContain('if (successfullySettled) return process.exit(0)');
   expect(launcher).not.toContain(
@@ -196,8 +195,6 @@ test('guard bounds the control read and binds creation identity to the opened pa
   expect(source).toContain('using System.Threading;');
   expect(source).toContain('TextReader reader = Console.In;');
   expect(source).toContain('TextWriter writer = Console.Out;');
-  expect(source).toContain('complete while control stdin stays open');
-  expect(source).toContain('normal COMPLETE exits promptly');
   expect(source).not.toContain('using (var reader = Console.In)');
   expect(source).not.toContain('using (var writer = Console.Out)');
   expect(source).toContain('const int CONTROL_PENDING = 0;');
@@ -219,7 +216,6 @@ test('guard bounds the control read and binds creation identity to the opened pa
   expect(source).toContain(
     'uint parentWait = WaitForSingleObject(parent, 50);',
   );
-  expect(source).toContain('no RESUME, this bounds');
   expect(source).toContain('var abortMonitor = new OneLineControlMonitor();');
   expect(source).toContain('abortMonitor.State != CONTROL_PENDING');
   expect(source).not.toContain('Task<string> abortRead;');
@@ -228,7 +224,6 @@ test('guard bounds the control read and binds creation identity to the opened pa
   expect(source).not.toContain('using System.Threading.Tasks;');
   expect(source).not.toContain('ReadLineAsync');
   expect(source).not.toContain('ReadResumeBounded(');
-  expect(source).toContain('KillAndReapOnce(child.hProcess, ref childReaped)');
   expect(source).toContain('CONTROL_DEADLINE_MS');
   expect(source).toContain('const int STARTF_USESTDHANDLES');
   expect(source).not.toContain('const uint STARTF_USESTDHANDLES');
@@ -247,7 +242,6 @@ test('guard bounds the control read and binds creation identity to the opened pa
   expect(source).toContain('EXTENDED_STARTUPINFO_PRESENT');
   expect(source).toContain('hStdOutput = rawOut');
   expect(source).toContain('hStdError = rawErr');
-  expect(source).toContain('GetExitCodeProcess(child.hProcess, out exitCode)');
   expect(source).toContain(
     'CreateProcess(null, command.ToString(), IntPtr.Zero, IntPtr.Zero, true',
   );

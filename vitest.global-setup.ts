@@ -72,23 +72,32 @@ export default async function setup(): Promise<() => Promise<void>> {
     );
   }
 
-  return async () => {
-    // `force` suppresses ENOENT, not ENOTEMPTY. A pooled worker still writing
-    // under the run root while this walks it makes the directory gain entries
-    // between the walk and the final rmdir, and the throw surfaces as a
-    // *collect error against whichever test file was in flight* — so an
-    // unrelated test gets blamed for an infrastructure race. The comment above
-    // is explicit that workers may be killed outright, so a worker outliving
-    // this teardown is expected rather than exceptional.
-    await rm(runRoot, {
-      recursive: true,
-      force: true,
-      maxRetries: 5,
-      retryDelay: 50,
-    }).catch((error: NodeJS.ErrnoException) => {
-      // Still contended after retries: leave it. The day-old sweep on the next
-      // run reclaims it, and failing the run here would blame a test again.
-      if (error?.code !== 'ENOTEMPTY' && error?.code !== 'EBUSY') throw error;
-    });
-  };
+  return () => removeRunRoot(runRoot);
+}
+
+/**
+ * The run-root teardown.
+ *
+ * `force` suppresses ENOENT, not ENOTEMPTY. A pooled worker still writing
+ * under the run root while this walks it makes the directory gain entries
+ * between the walk and the final rmdir, and the throw surfaces as a *collect
+ * error against whichever test file was in flight* — so an unrelated test gets
+ * blamed for an infrastructure race. `setup` is explicit that workers may be
+ * killed outright, so a worker outliving this teardown is expected rather than
+ * exceptional.
+ */
+export async function removeRunRoot(
+  runRoot: string,
+  removeDirectory: typeof rm = rm,
+): Promise<void> {
+  await removeDirectory(runRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 50,
+  }).catch((error: NodeJS.ErrnoException) => {
+    // Still contended after retries: leave it. The day-old sweep on the next
+    // run reclaims it, and failing the run here would blame a test again.
+    if (error?.code !== 'ENOTEMPTY' && error?.code !== 'EBUSY') throw error;
+  });
 }

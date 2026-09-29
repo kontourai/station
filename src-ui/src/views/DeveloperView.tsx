@@ -34,13 +34,7 @@ export function DeveloperView({
 }) {
   const { navigate } = useNavigation();
   const active = tab;
-  // Each tab used to render its own unstyled top-level heading (browser-
-  // default 32px, flush at x=248). The tab strip names the section; the
-  // frame renders it.
-  //
-  // archive#4463: the eyebrow is 'Developer' — a real parent (the
-  // title is the active tab's name, never 'Developer' itself), so it stays
-  // and is linked back to `/developer` rather than left as inert text.
+  // archive#4463: the frame owns the tab title; Developer links to its parent.
   const eyebrow = useMemo(
     () => (
       <PageEyebrowTrail
@@ -73,11 +67,7 @@ export function DeveloperView({
         id={TABS_ID}
         className="developer-view__tabs"
         aria-label="Developer"
-        // Manual activation (archive#4463): each
-        // tab's onSelect pushes a ROUTE (`navigate`), so automatic
-        // activation was pushing one history entry per arrow-key press and
-        // yanking focus out of the strip. Arrows move focus only here;
-        // Enter/Space navigates.
+        // archive#4463: arrow keys must not push routes or steal tab focus.
         activation="manual"
         items={tabs.map(({ id, label }) => ({ key: id, label }))}
         activeKey={active}

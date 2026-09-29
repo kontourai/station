@@ -1,59 +1,11 @@
 /**
- * Neo4j opt-in GRAPH-VIEW connection — registration-only stub (K2 Wave 3).
- *
- * Per `docs/design/knowledge-foundation.md`'s K2 section: "The Kit's Neo4j provider is
- * NOT a `KnowledgeStoreAdapter` (it is a read-side materialized graph view synced
- * FROM stores... Surface it as an opt-in connection on the graph-query axis for K5's
- * dogfood, not as a root's adapter." This module therefore does NOT touch
- * `KnowledgeStoreAdapter`/`KnowledgeStoreProvider`/`registerAdapter` at all — it is a
- * standalone, additive connection-type registration mirroring
- * `resolveRuntimeVectorDbProvider`/`resolveRuntimeEmbeddingProvider`'s
- * `findRuntimeCapabilityConnection` shape (`runtime-provider-resolution.ts`), scaled
- * down to what K2 actually ships.
- *
- * **Deviation note (Wave 3 disposition):** the delegated task description for this
- * wave used `KnowledgeAdapterDescriptor`/`validateRoot` vocabulary when describing
- * this stub. That vocabulary is the shape used by `kit-default-store`/
- * `kit-obsidian-store` (both real store adapters — see `knowledge-store-provider.ts`),
- * and registering Neo4j through that exact mechanism would contradict the plan's own
- * explicit, researched design decision (`s200-knowledge-store--plan.md`'s Wave 3 task
- * + this file's own design-doc citation above: "Neo4j is not an adapter"). Following
- * the plan (the authoritative, cross-checked design artifact) over the task
- * description's shorthand: this module ships an equivalent-in-spirit but
- * connection-shaped surface — `registerNeo4jGraphViewConnection`/
- * `getNeo4jGraphViewConnection` (the "descriptor surfaces in the registry" ask, via a
- * connection registry rather than the adapter registry) and
- * `validateNeo4jGraphViewConnection` (the "validateRoot"-equivalent K4 onboarding
- * hook, named for what it actually validates — a connection, not a store root).
- *
- * K2 ships ONLY: the connection-config shape, this registration plumbing, a
- * best-effort TCP-reachability check (no Neo4j driver, no bolt handshake — see
- * `validateNeo4jGraphViewConnection`'s doc comment for exactly what it can and
- * cannot honestly verify), and an honest `{ok: false, reason}` stub for any query
- * call. No actual graph-sync client — that is K5's dual-adapter dogfood scope
- * (`docs/design/knowledge-foundation.md`'s "K5 hooks" section). No live Neo4j daemon
- * dependency exists anywhere in this module's unit tests; the one live-reachability
- * assertion lives behind an explicit env-guard
- * (`KNOWLEDGE_NEO4J_TEST_URL`) in `neo4j-connection.test.ts` and is skipped — not
- * silently passed — when unset, per this plan's own documented pattern for Kit-style
- * "Docker-based live integration, run locally" tests.
- *
- * **K5 landed (`s203-knowledge-meeting-notes--plan.md` Wave 1 Task 1, Q1 ratified
- * scope "Graph view, synced"):** the graph-sync client this doc comment names above
- * is now `./neo4j-graph-sync.ts` (idempotent MERGE-guarded projection of a root's
- * records+links into Neo4j) and `./neo4j-graph-provider.ts` (`readGraph`/
- * `shortestPath`, plus the lazy real-driver loader, `createNeo4jDriver`). Both
- * consume `getNeo4jGraphViewConnection()` for config and take a `Neo4jDriverLike`
- * (real `neo4j-driver` or a fake test double) for execution — this file's own
- * registration/reachability/`queryNeo4jGraphView` surface is otherwise unchanged;
- * `queryNeo4jGraphView`'s generic single-cypher-string stub is deliberately NOT
- * reused by the new modules (they issue their own small, fixed set of named
- * queries instead of routing through one generic entrypoint) and remains exactly
- * the honest no-op it always was.
+ * Process-local Neo4j graph-view configuration, separate from canonical stores.
+ * Registration is not persisted and must be repeated after restart.
+ * validateNeo4jGraphViewConnection checks TCP reachability, not authentication
+ * or Cypher. There is no generic query function; fixed-query reads and sync
+ * live in neo4j-graph-provider.ts and neo4j-graph-sync.ts.
  */
 import { createConnection } from 'node:net';
-
-export const NEO4J_GRAPH_VIEW_CONNECTION_TYPE = 'neo4j-graph-view' as const;
 
 /** Bolt default port (Neo4j's own documented default) — used when a URI omits one. */
 const DEFAULT_BOLT_PORT = 7687;
@@ -81,12 +33,6 @@ export interface Neo4jGraphViewConnectionConfig {
 
 interface Neo4jReachabilityResult {
   ok: boolean;
-  reason: string;
-}
-
-interface Neo4jGraphQueryResult {
-  // K2 never returns `ok: true` for an actual query — it ships no query client.
-  ok: false;
   reason: string;
 }
 
@@ -204,30 +150,5 @@ export async function validateNeo4jGraphViewConnection(
       `TCP-reachable at ${host}:${port}, but not verifiable as a live Neo4j/bolt ` +
       'daemon without a driver — K2 ships registration only; a full bolt-protocol ' +
       'handshake/health-check is K5 dual-adapter dogfood scope',
-  };
-}
-
-// ── Query stub ───────────────────────────────────────────────────────────────────
-
-/**
- * Honest no-op query surface: K2 ships no graph-sync client, so every call returns
- * `{ok: false, reason}` naming exactly why — never throws, never silently returns
- * an empty success result (the "silently returning empty success" failure mode the
- * plan explicitly calls out and rejects).
- */
-export async function queryNeo4jGraphView(
-  config: Neo4jGraphViewConnectionConfig | null,
-  _cypher: string,
-): Promise<Neo4jGraphQueryResult> {
-  if (!config?.uri) {
-    return { ok: false, reason: 'not configured' };
-  }
-  return {
-    ok: false,
-    reason:
-      'not implemented: K2 registers the Neo4j graph-view connection surface only ' +
-      '(config shape + reachability check) — a real bolt-driver query client is ' +
-      "K5's dual-adapter dogfood scope (docs/design/knowledge-foundation.md, " +
-      '"K5 hooks")',
   };
 }

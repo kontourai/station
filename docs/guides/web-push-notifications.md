@@ -1,159 +1,218 @@
 # Web Push notifications
 
-Station can send a Web Push (VAPID) notification to a paired device when an
-approval-request notification is delivered and no client is actively
-watching. This is what makes device pairing (`docs/guides/...` pairing UX,
-see `PairedDevice`/`DevicePairingService`) pay off when the tab is closed: a
-paired phone gets a push, and tapping it lands on the attention inbox
-(`/notifications`).
+Web Push is the browser delivery channel for a paired, subscribed device. A
+supported browser can receive a notification while its Station tab is closed.
+Delivery depends on the current audience, preferences, focus policy, browser,
+and push service; pairing or a successful send request is not a phone receipt.
 
-## How it fits together
+This guide covers browser Web Push, separately from the native Android FCM and
+iOS APNs channels. Normal runtime
+wiring disables Web Push when hosted-tenant execution is required: its routes
+return 404 and the delivery wiring is inactive. Personal-host operation and
+[Device pairing](connections.md) are separate prerequisites from browser support.
 
-- **Keys**: a VAPID keypair is generated once and persisted at
-  `<STATION_HOME>/security/vapid-keys.json` (0600, atomic write — same pattern as
-  `paired-devices.json`). `VapidKeyService` (`src-server/services/notifications/vapid-key-service.ts`)
-  owns this.
-- **Subscription storage**: a Web Push subscription lives *on* the paired
-  device's own record (`StoredDevice.pushSubscription`, private — never in
-  `publicDevice()`/`PairedDevice`). It is set via
-  `POST /api/system/push-subscribe` and cleared via
-  `POST /api/system/push-unsubscribe`, and it is explicitly nulled the moment
-  the device is revoked (`DevicePairingService.revokeDevice`) — a
-  subscription never outlives its device record.
-- **Auth boundary**: both push routes resolve the caller's credential to a
-  paired device via `identifyDevice` (`EnvironmentSecurityService` ->
-  `DevicePairingService`). Verifying the *operator* credential — or being on
-  loopback — is deliberately not enough; an unidentified caller that reaches
-  the route gets `403 {error: 'device_pairing_required'}`. This is the
-  structural guarantee behind "no pushes to unpaired browsers."
+<a id="how-it-fits-together"></a>
 
-  A caller can also be refused one layer earlier, and since station#1123
-  slice 3 (#1189) a revoked device is refused there: the runtime auth gate
-  verifies any *presented, well-formed* credential regardless of peer class,
-  so a revoked credential fails it and gets
-  `401 {error: {code: 'authentication_required'}}` without ever reaching the
-  route. The guarantee is unaffected — denial is earlier, not weaker.
+## Registration and delivery
 
-  That 401 is not revoked-specific. The gate returns the same body whether a
-  credential was presented and rejected or never presented at all; only the
-  audit record separates them (`reason: 'invalid_credential'` vs
-  `'authentication_required'`). Clients treat both statuses as "pair this
-  device again" because on this surface every reachable cause needs that same
-  recovery — a revoked credential cannot be re-authenticated, and a caller
-  with no credential was never paired. Whether the gate should distinguish
-  the two on the wire is open in station#1212.
-- **Sender**: `WebPushChannel` (`src-server/services/notifications/web-push-channel.ts`)
-  is one channel of the notification delivery router
-  (`src-server/services/notifications/delivery/router.ts`, #2586). The router
-  subscribes to `NOTIFICATION_DELIVERED`, resolves the audience (the owner's
-  personal-family devices, or the devices that can read the session for an
-  agent notification), applies the delivery policy (focus, quiet hours,
-  per-device minimum urgency, mutes) and hands the channel its targets.
-  Focus quiets the person's other surfaces only while the focused document
-  itself holds a live event stream
-  (`src-server/runtime/routes/client-stream-presence.ts`, #2620). That is
-  checked per document for a paired device too — the local browser UI signs
-  in as one — so another live tab of the same browser cannot vouch for a
-  focused tab whose stream is gone. A focused document whose stream closed,
-  or whose keepalive writes stopped succeeding for 90 s, quiets nothing. A
-  half-open socket can keep those writes "succeeding". A tab that has
-  actually gone away stops reporting focus, so it stops quieting the phone
-  within the 120 s focus lease (`FOCUS_LEASE_MS`). A tab that is still
-  open and reporting focus while its `/events` socket is half-open is not
-  bounded that way: its keepalive writes can keep "succeeding" until TCP
-  gives up, which can take minutes, and the `/events` client sets no
-  stall timeout to reconnect sooner. Stream
-  leases are capped (32 documents per device, 32 operator tabs, 256
-  device streams overall); a
-  document past the cap is never live, so it never quiets anything. A live
-  focused document skips `info`/`done` elsewhere and only delays
-  `attention`/`failed`, which still reach the phone if unread. The
-  channel carries only categories the attention-ranked outcome model
-  classifies (`classifyNotificationCategory`,
-  `@kontourai/station-shared/notification-priority`), sends a generic title
-  and body to a device whose preferences hide content, self-heals a 404/410
-  ("this subscription is gone") by clearing it, and catches everything — a
-  push failure can never affect the in-app SSE/toast delivery path. `needs_input`/`review_pending` are polled
-  projections with no discrete delivery event, so they are **not** pushed
-  (deferred to a follow-up).
-- **Payload composition (station#1100)**: `composeWebPushPayload`
-  (`src-server/services/notifications/push-payload-composer.ts`) builds the
-  title/body/deep-link/TTL:
-  - **Ranking (AC1)**: when composing from more than one pending notification,
-    the highest-outcome-priority one leads (approval/input > failed > running
-    > done > info, `NOTIFICATION_OUTCOME_PRIORITY`), ties broken by
-    most-recently-updated. The live delivery path always composes from a
-    single notification (the one that just fired) — ranking across
-    everything else currently pending is deliberately not wired in (it risks
-    replacing a fresh event's own push with a stale re-announcement of an
-    older, higher-tier notification still sitting unresolved); the composer
-    is proven correct for a real multi-item batch via unit tests and is
-    ready for a future digest surface.
-  - **Per-state TTL (AC2)**: the Web Push protocol TTL header (RFC 8030,
-    `WebPushService.send`'s `ttlSeconds`) is sized per outcome —
-    `needs-input`/`failed` ~24h (a user may legitimately ignore an approval
-    or a failure notice overnight), `running` ~2h, `done` ~15min, `info`
-    ~4h (#2583, agent informational notices) (`NOTIFICATION_TTL_MS`). The same TTL also defaults the *stored*
-    `Notification.ttl` for a classifiable category
-    (`NotificationService.schedule`), so an unresolved approval or job
-    failure eventually expires out of the in-app inbox too, not just out of
-    the push service's queue.
-  - **Deep link (AC3)**: resolves the exact session
-    (`resolveNotificationOpenHref`, shared with
-    `AttentionProjectionService`'s approval projection) from the
-    notification's `sessionId`/`sessionKind`/`projectSlug` metadata,
-    falling back to the generic attention inbox (`/notifications`, the
-    fallback the manual checklist below still exercises) when metadata
-    doesn't carry enough to resolve one.
-- **Client**: `usePushNotifications` (`src-ui/src/hooks/usePushNotifications.ts`)
-  registers `public/sw.js`, requests permission, subscribes, and POSTs the
-  subscription. A `403 device_pairing_required` response — or the
-  `401 authentication_required` a revoked device now gets from the auth gate —
-  surfaces as a distinct "Pair this device first" state (`pairingRequired`),
-  not a generic error.
-  `sw.js`'s `notificationclick` focuses an existing tab (navigating it to the
-  push's deep link) or opens a new one, defaulting to `/notifications`.
-- **Metrics**: `station.web_push.subscriptions` (subscribe/unsubscribe by
-  outcome) and `station.web_push.sends` (sent/gone/error) in
-  `src-server/telemetry/metrics.ts`.
+```mermaid
+flowchart LR
+  Browser["Browser subscription"] -->|"paired-device POST"| Routes["Push routes"]
+  Routes -.->|"persist replacement"| Devices["Paired-device registry"]
+  Notifications["Notification service"] -->|"delivery or eligible content update"| Router["Delivery router"]
+  Devices -.->|"current audience and registrations"| Router
+  Policy["Focus and preferences"] -.->|"policy inputs"| Router
+  Router -->|"selected targets"| Channel["Web Push channel"]
+  Channel -->|"encrypted request with TTL"| Push["Browser push service"]
+  Push -->|"platform-dependent delivery"| Worker["Station service worker"]
+  Worker -->|"request display"| Display["Browser / OS notification"]
+```
+
+Solid arrows represent requests/events; dotted arrows represent state access.
+The last delivery/display steps require real browser and service evidence.
+Follow [push routes](../../src-server/routes/operations/push-routes.ts), the
+[router](../../src-server/services/notifications/delivery/router.ts),
+[channel](../../src-server/services/notifications/web-push-channel.ts), and
+[service worker](../../src-ui/public/sw.js) for the actual callers.
+
+### Keys and stored subscriptions
+
+[VapidKeyService](../../src-server/services/notifications/vapid-key-service.ts)
+loads and caches the keypair at
+`<STATION_HOME>/security/vapid-keys.json`, generating it when absent. Persistence
+uses a temporary file, fsync and rename. The implementation enforces the 0600
+file mode on POSIX and rejects a symlinked or hard-linked key file. Its Windows
+path does not configure or verify a private ACL; that custody needs separate
+platform evidence.
+
+The [private paired-device record](../../src-server/services/ssh/device-pairing-service.ts)
+holds one `pushSubscription`; it is omitted
+from the public `PairedDevice` view. `POST /api/system/push-subscribe` replaces
+it, and `POST /api/system/push-unsubscribe` clears it. Changes persist before
+becoming live in the service's memory. Successful revocation clears the stored
+subscription and removes the device from future listings. It does not delete
+the browser's local PushManager object or recall a message already handed to a
+push service or displayed on screen.
+
+### Authentication and UI state
+
+Subscribe/unsubscribe resolve the request credential to a paired device through
+`identifyDevice`. An operator credential alone is insufficient; an unidentified
+caller reaching the route gets `403 {error: 'device_pairing_required'}`. The
+outer credential gate can reject earlier with
+`401 {error: {code: 'authentication_required'}}`. Current audit reasons distinguish
+`credential_invalid` and `credential_missing`; the response is not a unique
+explanation of why authentication failed.
+
+The [SDK subscription helpers](../../packages/sdk/src/query-domains/chatRuntimeDevice.ts)
+map those two response combinations to the hook's **Pair this device first**
+message. However, subscription first fetches the VAPID public key. Any non-OK
+response from that earlier request currently becomes **Server does not support
+push notifications**, so an authentication refusal can appear as unsupported
+before the pairing-specific mapping runs. Other authorization/rate-limit failures
+also need their own diagnosis.
+
+[usePushNotifications](../../src-ui/src/hooks/usePushNotifications.ts) registers
+`/sw.js`, requests permission on subscription, creates a PushManager subscription,
+and posts it to the selected Station. A fresh successful operation waits for
+that POST before showing **Subscribed**. On mount, however, the hook checks only
+local PushManager state. It does not confirm the host's registration, clean up
+a local subscription after a rejected POST, or reconcile an `apiBase` change in
+that mount effect. A remount can therefore show **Subscribed** for local state
+whose server registration is absent or no longer valid.
+
+The Settings → Notifications **Push notifications** switch controls the local
+feature/control visibility. Turning it off does not unsubscribe. Use the separate
+**Unsubscribe** action: it removes the local subscription, then attempts server
+cleanup as best effort. If server cleanup fails, a stored registration can remain
+until later cleanup. Browser state, server registration and actual delivery are
+three different observations; the label alone does not establish all three.
+
+## Who receives a push
+
+`WebPushChannel.accepts` uses
+[the category classifier](../../packages/shared/src/notification-priority.ts).
+Current categories include approval requests, job failures/misses, unhealthy
+scheduler notices, turn completion/stop/failure, pairing requests, and the Agent
+attention/failed/done/info categories. Lifecycle `needs_input` and
+`review_pending` projections are not themselves notification delivery events;
+a separate approval notification can represent related work.
+
+The [audience resolver](../../src-server/services/notifications/delivery/audience-resolver.ts)
+selects active personal-family devices with the required read eligibility. It
+excludes delegated Stations, pending enrollment and account-bound devices from
+this current family. Every named Session also requires the recipient's own
+principal to be able to read it, including legacy notifications. A reserved
+`principal` audience has no delivery implementation yet. Pairing alone is not
+sufficient audience membership.
+
+The router consumes `NOTIFICATION_DELIVERED`. It also handles content changes to
+previously seen, delivered, unread enveloped records on `NOTIFICATION_UPDATED`;
+legacy records keep delivery-event behavior. Read/dismiss/settled changes cancel
+pending escalation. Channel exceptions are caught so a push failure does not
+throw through the synchronous in-app notification path. This is an error-isolation
+property, not a guarantee of every browser's SSE/toast experience.
+
+### Focus, preferences, and escalation
+
+Focus applies within the same principal; unbound owner-device identities are
+grouped, while tailnet-bound people remain distinct. A focused document must
+also have its own live event stream. Another tab's stream cannot vouch for it.
+Stream leases expire after 90 seconds without successful keepalive writes; focus
+reports have a 120-second lease. There are caps of 32 documents per device,
+32 operator tabs, and 256 device streams overall. A document beyond a cap does
+not qualify as live.
+
+A live focused document suppresses `info`/`done` on the person's other surfaces
+and can defer `attention`/`failed`. Default escalation is three minutes. It is
+one in-memory recheck of the current record, audience, registrations, focus and
+preferences—not a delivery guarantee or general retry queue. Quiet hours, mute,
+minimum urgency, silent interrupt, current focus, read/dismiss state or expiry
+can still suppress it. Restart loses timers, and eviction beyond the router's
+500 tracked records cancels the oldest pending escalation. Channel `retry`
+outcomes currently have no general retry scheduler consuming them.
+
+The focus check also has a transport limit: successful writes do not prove a
+half-open socket is being read. A closed tab stops reporting focus, bounding its
+lease; an open tab that keeps reporting focus with a half-open `/events` stream
+can suppress longer. The current `/events` client supplies no stream-stall timeout.
+These are source-level limits, not measured phone-delivery timings.
+
+## Payload, expiry, and removal
+
+The [composer](../../src-server/services/notifications/push-payload-composer.ts)
+can rank several candidates by outcome and recency, but the live channel passes
+only the notification that just triggered delivery. It does not replace that
+fresh event with an older, higher-ranked unresolved notification. Multi-item
+ranking is tested helper behavior, not a deployed digest surface.
+
+| Outcome | Push-service retention TTL |
+| --- | --- |
+| Needs input or failed | 24 hours |
+| Done | 15 minutes |
+| Info | 4 hours |
+| Running | 2 hours; currently reserved with no category mapping |
+
+These are category defaults converted to seconds for the Web Push request.
+They limit how long the push service may hold an offline delivery, not how long
+a displayed OS notification remains. Stored `Notification.ttl` has its own
+caller-overridable value and expiration measured from delivery. The composer
+uses its category default, not that override or the stored record's remaining
+lifetime.
+
+A device's hide-content preference substitutes generic title/body text. The
+browser still receives category, notification ID and destination URL. For
+routing, Session metadata is tried first (`sessionId` or `conversationId`), then
+a validated relative `metadata.link`, then `/notifications`. Managed Sessions
+legitimately use `/?chat=...&dock=open`; the root route with these parameters is
+not an error. The current composed payload does not carry the legacy service
+worker's approval-action fields, so those old action branches are not this
+channel's live payload path.
+
+On a tap, the worker closes that notification and attempts to focus/navigate a
+window or open one. Navigation can fail; there is no replacement-window fallback
+after a rejected existing-window navigation. Verify the actual destination on
+the target platform rather than claiming the URL alone proves successful display.
+
+Web Push has `retract: false`. Read, dismissal or expiry on the host does not
+proactively remove an already displayed browser notification. The worker closes
+clicked notifications and reuses tags on later pushes; it does not reconcile
+host read/expiry state. A 404/410 response from a push service triggers stored
+subscription cleanup, but an old in-flight send can currently clear a newer
+replacement. [#2753](https://github.com/kontourai/station/issues/2753) tracks that
+identity race and its required regression cases.
 
 ## Manual phone checklist
 
-Web Push requires a real browser, a real push service, and a real paired
-device — none of which the automated suite can exercise end to end. Run this
-manually on a release build (or a dev server reachable over the tailnet) with
-a real phone before shipping a change that touches this surface.
+The following checks are **NOT_VERIFIED** by this audit's fixtures. Use a supported
+browser in a secure context with Service Worker/Push API support and permission.
+Tailnet reachability alone does not establish those prerequisites. Native FCM/APNs
+need their separate platform journeys.
 
-1. **Pair a phone over the tailnet.** From Settings → Notifications, enable
-   "Push notifications." Pair the phone as a device the same way as any other
-   mobile pairing flow (see `docs/guides/connections.md` / the mobile pairing
-   panel), so it authenticates with its own device credential rather than the
-   operator credential.
-2. **Subscribe.** On the phone, tap "Enable push notifications" and grant the
-   browser's notification permission. Confirm the UI flips to "✓ Subscribed
-   to push notifications."
-3. **Close the tab entirely** (not just background it) on the phone.
-4. **Trigger a real approval request** from another device/session (a tool
-   call that needs approval, or any other `approval-request` notification).
-5. **Confirm the push arrives** on the phone as a system notification, even
-   though the tab is closed.
-6. **Tap the notification.** Confirm it opens (or focuses) Station and lands
-   on the exact session the approval belongs to when the notification's
-   metadata resolves one (station#1100 AC3), or the attention inbox
-   (`/notifications`) otherwise — never a blank tab or the root route.
-7. **Revoke the device** from the host's paired-devices list (Settings →
-   Notifications → Mobile Pairing, or the pairing management panel).
-8. **Trigger another approval request.** Confirm **no further push arrives**
-   on the revoked phone — the subscription died with the device record.
-9. **Blocked-platform degradation.** On a platform/browser where Web Push is
-   blocked or unsupported (e.g. notification permission denied, or a browser
-   without the Push API), confirm the in-app experience is unchanged: the
-   existing SSE/toast notification still appears while the tab is open, the
-   "Enable push notifications" button reads "Notifications blocked by
-   browser" (permission denied) or the section doesn't render the subscribe
-   control at all (unsupported), and no error breaks the rest of Settings.
+1. Pair the browser with the intended personal-mode Station. Use its device
+   credential, not only an operator credential.
+2. In Settings → Notifications, expose the push controls, choose **Enable push
+   notifications**, and grant browser permission. Check successful server
+   registration as well as the local **Subscribed** label.
+3. Close the tab. Make other surfaces' focus, quiet hours, mutes, urgency policy
+   and Session read eligibility explicit; otherwise a missing push is ambiguous.
+4. Trigger a uniquely identifiable approval/notification and observe actual
+   arrival. Account for the configured escalation delay without treating it as
+   a promise that delivery must occur.
+5. Tap it and verify the emitted Session/work destination or `/notifications`
+   fallback. Record navigation failure rather than treating it as impossible.
+6. Open the connection manager's **Paired devices** panel and revoke that device.
+   Trigger a new identifiable event afterward; distinguish it from older queued
+   or in-flight pushes. Confirm the host no longer lists a subscription for the
+   revoked device.
+7. Exercise **Unsubscribe** separately from the Settings feature switch. Check
+   both local and host state, including remount after a rejected registration.
+8. Check denied permission and unsupported-browser states. The subscribe button
+   can read **Notifications blocked by browser**; unsupported capability hides
+   that control rather than proving the whole feature works elsewhere.
 
-Record the result (pass/fail per step, and which platform/browser was used)
-in the delivery evidence for any change to this surface, the same way
-`docs/guides/desktop-tray.md`'s manual tray checklist is recorded for the
-desktop tray.
+Record the exact build, Station/device identities, browser/platform, prerequisites,
+and each observed result. Route/router/hook fixtures passed in this audit, but no
+real push service, OS display, Windows ACL or physical phone journey was run.
+The declared send metric records the request result, not a phone receipt, and
+[OTel collection has its own limits](monitoring.md).

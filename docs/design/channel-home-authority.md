@@ -1,8 +1,17 @@
 # Channel home authority and planned transfer
 
+> **Reading status: staged authority implementation and remaining transfer requirements.**
+> [HTTP owner](../../src-server/routes/environments/home-authority-routes.ts),
+> [decision store](../../src-server/services/orchestration/planned-home-transfer-store.ts),
+> and [coordinator](../../src-server/services/orchestration/planned-home-transfer-coordinator.ts)
+> implement narrower identity and decision paths. Their metadata commit is
+> not target activation or provider continuation. The detailed storage, sealing,
+> dispatch, and cross-host acceptance claims require their own evidence.
+
 > Status: implementation design for [#495](https://github.com/kontourai/station/issues/495)
 > AC2 and the [#580](https://github.com/kontourai/station/issues/580) authority
-> prerequisites. This document does not introduce a runtime authority service.
+> prerequisites. The personal identity and decision routes below are implemented;
+> they do not yet provide target activation or execution transfer.
 > [Conversation state](conversation-state.md#34-the-lease-is-the-fence-the-epoch-is-only-the-label)
 > owns the consistency model. Offline home restore remains a separate operation.
 
@@ -183,8 +192,7 @@ with a required caller-bound synchronous authorization predicate. The adapter fi
 under the transaction lock before access and before commit. Revocation rolls back the entire decision change and
 returns `denied`; a failed authority lookup returns `unavailable`. Promise-valued
 guards are refused, never treated as truthy grants. The callback must be owned
-by the service, not supplied by a request body. The guarded entry rejects an absent guard. The separate unguarded constructor
-retains the private storage-only API; it is not safe to expose directly.
+by the service, not supplied by a request body. The guarded entry rejects an absent guard, and it is the only constructor.
 
 The adapter itself performs no home authentication, membership authorization,
 lease issuance, renewal or target activation. No runtime write path currently

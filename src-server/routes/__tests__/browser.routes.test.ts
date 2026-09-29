@@ -14,9 +14,10 @@ import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import { requiredPairingScope } from '../../security/pairing-route-scopes.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../security/runtime-request-security.js';
 import type { BrowserProjectAuthorizer } from '../../services/browser/browser-access.js';
-import type {
-  BrowserHost,
-  CdpTransport,
+import {
+  type BrowserHost,
+  type CdpTransport,
+  createLocalBrowserHostResolver,
 } from '../../services/browser/browser-host.js';
 import { LocalTargetStore } from '../../services/browser/browser-local-targets.js';
 import { isStationInternalRequest } from '../../services/browser/browser-request-origin.js';
@@ -111,7 +112,7 @@ function harness(
   homes.push(stationHome);
   const registry = new BrowserSessionRegistry({
     stationHome,
-    createHost: () => fakeHost(options.cdp),
+    hostResolver: createLocalBrowserHostResolver(() => fakeHost(options.cdp)),
   });
   const acquisitionStatus: ChromiumAcquisitionStatus = options.acquisition ?? {
     state: 'found-system',

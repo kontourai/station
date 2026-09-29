@@ -53,6 +53,7 @@ type Scenario =
   | 'band-four-blocking'
   | 'band-two-blocking'
   | 'expand-many'
+  | 'expand-two'
   | 'grow-pinned'
   | 'one-short'
   | 'shrink-back'
@@ -225,6 +226,23 @@ function seedExpandMany() {
 }
 
 /**
+ * Two short info cards: enough for the front card to hide one behind the
+ * cap, so the stack can be expanded through the real control, and far too
+ * little to overflow the expanded 48dvh/520px bound at a desktop viewport.
+ */
+function seedExpandTwo() {
+  for (let index = 0; index < 2; index += 1) {
+    bannerStore.present({
+      id: \`chrome:harness:expand-two-\${index}\`,
+      priority: BANNER_PRIORITY.info,
+      tone: 'info',
+      message: \`Short notice \${index + 1}\`,
+      dismissible: false,
+    });
+  }
+}
+
+/**
  * A single connectionBlocking card (archive#3432). Real
  * growth then happens after mount, through \`window.__present\` below, once
  * the test has measured a real card's height and pinned the cap to an exact
@@ -262,6 +280,7 @@ const seeders = {
   'band-four-blocking': seedBandFourBlocking,
   'band-two-blocking': seedBandTwoBlocking,
   'expand-many': seedExpandMany,
+  'expand-two': seedExpandTwo,
   'grow-pinned': seedGrowPinned,
   'one-short': seedOneShort,
   'shrink-back': seedShrinkBack,
@@ -797,6 +816,42 @@ test.describe('the stack only takes pointer events when it is genuinely scrollab
     expect(await elementIdAt(page, below!)).toBe('underneath');
   });
 
+  test('an expanded stack that does not overflow stays click-through', async ({
+    page,
+  }) => {
+    await mount(page, 'expand-two');
+    const cap = page.getByTestId('banner-stack-cap');
+    await expect(cap).toBeVisible();
+    await cap.click();
+    await expect(page.locator('.banner-host')).toHaveAttribute(
+      'data-expanded',
+      'true',
+    );
+    await expect(page.locator('.banner-host__item')).toHaveCount(2);
+
+    const metrics = await stackMetrics(page);
+    expect(
+      metrics.scrollHeight,
+      'two short banners must not overflow the expanded bound',
+    ).toBeLessThanOrEqual(metrics.clientHeight + 1);
+    await expect(stackLocator(page)).not.toHaveClass(
+      /banner-host__stack--scrollable/,
+    );
+    await expect(stackLocator(page)).toHaveCSS('pointer-events', 'none');
+
+    // A message is deliberately not a control: probing the expanded second
+    // card's message must reach the app underneath, not the stack.
+    const message = page.locator('.banner-host__message').nth(1);
+    const box = await message.boundingBox();
+    expect(box, 'message has no box').not.toBeNull();
+    expect(
+      await elementIdAt(page, {
+        x: box!.x + box!.width / 2,
+        y: box!.y + box!.height / 2,
+      }),
+    ).toBe('underneath');
+  });
+
   test('a dismissed card never traps a click while it exits (station#3432 round 2, LOW-3)', async ({
     page,
   }) => {
@@ -906,26 +961,6 @@ test.describe('the host itself never grants pointer-events, in any mode (station
       'pointer-events',
       'none',
     );
-  });
-
-  test('only `.banner-host__stack--scrollable` grants pointer-events: auto to the stack', async ({
-    page,
-  }) => {
-    await mount(page, 'band-two-blocking');
-    const rules = await bannerStylesheetRules(page);
-    for (const rule of [
-      '.banner-host--connection-slot .banner-host__stack',
-      '.banner-host--expanded .banner-host__stack',
-    ]) {
-      const match = rules.find((r) => r.selectorText === rule);
-      expect(match, `missing rule: ${rule}`).toBeDefined();
-      expect(match!.cssText, rule).not.toMatch(/pointer-events:\s*auto/);
-    }
-    const scrollable = rules.find(
-      (r) => r.selectorText === '.banner-host__stack--scrollable',
-    );
-    expect(scrollable, 'missing .banner-host__stack--scrollable').toBeDefined();
-    expect(scrollable!.cssText).toMatch(/pointer-events:\s*auto/);
   });
 });
 

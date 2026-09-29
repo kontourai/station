@@ -1,5 +1,16 @@
 # AI↔UI bridge expansion — scoping
 
+> **Reading status: June 2026 design and recorded implementation notes.** Section 2
+> is the original pipeline survey, section 3 contains proposed shapes and seams,
+> and section 5 records phased delivery. Current types and production rendering
+> belong to [UIBlock](../../packages/contracts/src/ui-block.ts) and
+> [UIBlockRenderer](../../src-ui/src/components/chat/UIBlockRenderer.tsx).
+> [ChatMessageList](../../src-ui/src/components/chat/ChatMessageList.tsx) submits
+> forms through the normal sender, whose current
+> [foreground dispatch](../../src-ui/src/lib/foregroundMessageDispatch.ts) uses
+> canonical orchestration chat. The proposed `/ui-state` endpoint and the older
+> per-Agent route named below are not current instructions for form re-entry.
+
 *Drafted 2026-06-17. Scopes the roadmap backlog item "AI↔UI bridge expansion (UIBlock form/chart/code, `render_component`, UI-state capture)" (Phase S2 follow-on). This is a **plan**, not an implementation — it names the seams, the design decisions, the phasing, and the calls that are yours.*
 
 ---
@@ -12,12 +23,16 @@ Station has **two** ways an agent can put structured UI in front of a user. They
 |---|---|---|
 | Content | Arbitrary HTML/JS from an MCP server | A fixed, declarative block vocabulary (data only) |
 | Rendering | Sandboxed `<iframe>` (opaque or dedicated origin) | Host-rendered React components (`UIBlockRenderer`) |
-| Trust model | Fortress sandbox, CSP deny-by-default, postMessage validation | **Safe by construction** — no HTML injection; the agent supplies *data*, Station owns the markup |
+| Trust model | Sandboxed content with CSP and message validation | Host-owned markup over validated block data; no agent-supplied HTML/JS |
 | Source | External MCP servers (Surface, Survey, third-party) | Station's own tools / the agent directly |
 | Vocabulary | Unbounded | `card`, `table` today → `form`, `chart`, `code` next |
 | Doc | [`mcp-ui-host.md`](./mcp-ui-host.md) | this doc |
 
-The expansion lives entirely in Lane B. Its security posture is **data validation**, not sandboxing: because rendering is fixed React over a typed contract, the worst a hostile/buggy block can do is render wrong — never execute. That is the whole reason Lane B exists alongside the iframe host: it is the *cheap, safe* path for the common case (show me a form, a chart, a snippet), reserving the sandbox for genuinely arbitrary UI.
+The expansion lives in Lane B: the host renders known block types rather than
+executing agent-supplied markup. This narrows the rendering input; it does not
+make the content, claimed provenance, or requested action trustworthy. In
+particular, submitting a form deliberately starts a follow-up turn. Validation,
+action authority, and the separate MCP-UI sandbox remain distinct boundaries.
 
 ## 2. What exists today (the foundation is real)
 

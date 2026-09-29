@@ -24,23 +24,29 @@ import {
  * pinned.
  */
 describe('the device-class status wait gets a share of the test budget, not a copy', () => {
-  test('it is strictly less than the budget it runs inside', () => {
-    // The whole defect in one assertion: equality is the failing case, and a
-    // helper that merely copied the constant would land exactly on it.
-    expect(
-      deviceClassStatusTimeoutMs(PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS),
-    ).toBeLessThan(PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS);
-  });
-
   test('it stays winnable for any budget a caller may set', () => {
     // Swept rather than sampled: the property is "strictly less at every
     // budget", and a single case cannot distinguish that from a coincidence at
-    // one value. A literal 30_000 sits in the sweep alongside the constant, so
-    // this still discriminates if the default is ever raised.
+    // one value. Equality is the defect: a helper that merely copied the
+    // constant lands exactly on it. A literal 30_000 sits in the sweep
+    // alongside the constant, so this still discriminates if the default is
+    // ever raised. The small budgets are why this is a sweep: a first draft
+    // floored the result at 5_000, which at a 5_000 budget restores the
+    // matched deadline this function exists to remove.
     for (const budget of [
-      5_000, 10_000, 30_000, 45_000, 60_000, 120_000, 600_000,
+      1_000,
+      5_000,
+      10_000,
+      30_000,
+      PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS,
+      45_000,
+      60_000,
+      120_000,
+      600_000,
     ]) {
-      expect(deviceClassStatusTimeoutMs(budget)).toBeLessThan(budget);
+      const share = deviceClassStatusTimeoutMs(budget);
+      expect(share, `budget ${budget}`).toBeLessThan(budget);
+      expect(share, `budget ${budget}`).toBeGreaterThan(0);
     }
   });
 
@@ -65,17 +71,5 @@ describe('the device-class status wait gets a share of the test budget, not a co
       expect(Number.isFinite(budget)).toBe(true);
       expect(budget).toBeGreaterThan(0);
     }
-  });
-
-  test('a small budget does not get a floor that restores the matched deadline', () => {
-    // This case is why the sweep above is a sweep. A first draft floored the
-    // result at 5_000 so a tiny budget would still leave a usable wait; at a
-    // 5_000 budget that returns 5_000, which is NOT strictly less, and the
-    // exact defect this function exists to remove reappears at the budget with
-    // the least margin. A caller whose whole test budget is 5s has no room for
-    // a longer wait to occupy, so the floor could only buy back the race.
-    expect(deviceClassStatusTimeoutMs(5_000)).toBeLessThan(5_000);
-    expect(deviceClassStatusTimeoutMs(1_000)).toBeLessThan(1_000);
-    expect(deviceClassStatusTimeoutMs(1_000)).toBeGreaterThan(0);
   });
 });

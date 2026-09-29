@@ -36,30 +36,37 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 |-------|-------------|
 | `name` | Display name |
 | `prompt` | System instructions (supports `{{key}}` template variables) |
-| `model` | Bedrock model ID — falls back to `defaultModel` in app.json |
+| `model` | Station-engine model preference; see resolution order below |
+| `execution.agentConnectionId` | Saved engine connection binding; absence selects Station's engine |
+| `execution.modelConnectionId` | Model connection selection for Station's engine; separate from the engine binding |
+| `execution.modelId` | Explicit model preference on that execution binding |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
 
 ### MCP Tool Configuration
 
-`tools` in agent.json controls which MCP servers connect and which tools are exposed:
+For Station-engine Agents, `tools` selects MCP connections and exposed tools.
+External delivery follows the [engine policy contract](../conformance/tool-policy-delivery.md):
 
 ```json
 {
   "tools": {
     "mcpServers": ["filesystem", "github"],
     "available": ["read_file", "list_directory", "create_pull_request"],
-    "autoApprove": ["read_file", "list_directory"],
-    "aliases": { "ls": "list_directory" }
+    "autoApprove": ["read_file", "list_directory"]
   }
 }
 ```
 
 - `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/tool.json`)
 - `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers
-- `autoApprove` — tools that execute without user confirmation in attended chat; all other tools trigger the approval flow
+- `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
-- `aliases` — rename tools in prompts without changing the underlying tool name
+
+`tools.aliases` is retired. Older files still load because the loader removes
+that key before validation, and the next save omits it. It did not rename tools
+at execution time. Use the exposed tool names; see the
+[configuration loader](../../src-server/domain/config-loader-agents.ts).
 
 Station negotiates MCP automatically. It tries the current `2026-07-28`
 discovery flow first and falls back to the legacy `initialize` flow when a
@@ -68,7 +75,9 @@ protocol-version field, and there is no era selector to maintain.
 
 ### Guardrails
 
-Guardrails constrain model inference per agent:
+For the Station engine, guardrails constrain model inference per Agent. External
+engines apply only the controls their adapter and live capabilities support; a
+Station guardrail declaration does not establish external enforcement:
 
 ```json
 {
@@ -89,29 +98,48 @@ Guardrails constrain model inference per agent:
 
 ## Agent Lifecycle
 
-The runtime loads and manages agents through a defined lifecycle:
+For Station-engine Agents, the server loads and manages this lifecycle.
+External-engine Agents use the canonical [Session API](../reference/session-api.md)
+and their own adapter; they are not entries in this native `activeAgents` loop:
 
 ```
 load → MCP connect → ready → chat → reload
 ```
 
-1. **load** — `station-runtime.ts` reads `agent.json`, resolves the Bedrock model, and creates a memory adapter for the agent's conversation history
+1. **load** — `station-runtime.ts` reads the Agent configuration and resolves its connection and model. Model preference is `execution.modelId` → `spec.model` → connection default → app `defaultModel`; the selected connection determines the provider, not a hardcoded Bedrock choice. The native runtime creates the Agent's conversation memory adapter.
 2. **MCP connect** — for each distinct entry in `tools.mcpServers`, Station owns one negotiated MCP connection, loads the raw tool schemas and metadata, and shares that connection across agents that use the integration
 3. **ready** — the agent is registered in `activeAgents` and available for requests
 4. **chat** — `POST /api/agents/:slug/chat` streams a response; the runtime creates an `InjectableStream` to interleave approval events with model output
 5. **reload** — `reloadAgents()` prepares the replacement connection set, publishes the new agents, and retires superseded connections without a full restart
 
-Health is checked every 60 seconds and emitted as `agent-health` monitoring events.
+Read health through the Agent health endpoint. This guide does not promise a
+periodic `agent-health` event. The model-resolution owner is
+`src-server/runtime/plugins/runtime-provider-resolution.ts`.
+
+`POST /api/agents/:id/chat` is the Station-engine route. For an external-engine
+Agent it returns HTTP 409 with guidance to use `POST /api/orchestration/chat`;
+it does not forward or redispatch that request. Use the canonical Session API
+when a client must support either engine kind.
 
 ---
 
 ## Tool Approval Flow
 
-Tools not in `autoApprove` pause the stream and request user confirmation before executing.
+In attended Station-engine chat on the per-Agent route, tools not otherwise
+approved pause for user confirmation. This section describes that route’s
+legacy SSE approval transport. Canonical orchestration clients instead read
+`request.opened` and send `respondToRequest` through the
+[Session API](../reference/session-api.md#respondtorequest).
 
-Flow:
-1. `beforeToolCall` hook fires — checks `autoApprove` list via `isAutoApproved()`
-2. If not auto-approved, the hook calls `requestApproval` (wired per-request by the chat handler)
+The [staged evaluator](../../src-server/runtime/agents/pre-tool-policy.ts)
+can allow, deny, or request an interactive decision. It checks current runtime
+generation, delegation and configuration protection before grants; the approval
+guardian can also decide a call. The following is the interactive branch, not
+every possible tool outcome:
+
+1. `beforeToolCall` invokes the staged policy with the current invocation.
+2. If the result requires interaction and a requester exists, the hook calls
+   `requestApproval` (wired per conversation by the chat handler).
 3. `requestApproval` injects a `tool-approval-request` SSE event into the stream
 4. The client renders a confirmation UI and `POST /tool-approval/:approvalId` with `{ approved: true/false }`
 5. `ApprovalRegistry.resolve()` unblocks the hook; the tool executes or is skipped
@@ -193,7 +221,9 @@ source for the live row.
 
 ## Agent Hooks
 
-`agent-hooks.ts` provides framework-agnostic lifecycle hooks wired into whichever runtime adapter is active. Hooks receive typed context objects — no framework imports.
+`agent-hooks.ts` provides framework-agnostic hooks for the Station engine’s
+native framework adapters. External engine adapters own their own event and
+approval paths; these hooks do not establish external policy enforcement.
 
 | Hook | When it fires | What it does |
 |------|--------------|--------------|
@@ -209,7 +239,8 @@ source for the live row.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/agents/:slug/chat` | Streaming chat (SSE) |
+| `POST /api/agents/:slug/chat` | Station-engine streaming chat (SSE); external engines return 409 |
+| `POST /api/orchestration/chat` | Canonical Environment + Agent execution entry for either engine kind |
 | `POST /agents/:slug/invoke` | Silent tool invocation (no stream) |
 | `POST /agents/:slug/invoke/stream` | Streaming invoke with optional JSON schema output |
 | `GET /agents/:slug/tools` | List tools with full schemas |
@@ -229,11 +260,14 @@ source for the live row.
 | `packages/sdk/` | SDK: Query hooks, API utilities, Types |
 | `examples/*/` | Plugins: Components, ViewModels, styles |
 
-**Key rule**: Plugins import from `@kontourai/station-sdk` only.
+Use the public SDK and contracts for Station APIs. Plugins can also use their
+declared package dependencies; they must not import private app modules.
 
 ### Cross-Tab Navigation
 
-Plugins must use SDK hooks for navigating between layout tabs — never use raw `sessionStorage`, `window.history.pushState`, or `window.dispatchEvent` directly.
+Legacy Layout tabs use the SDK navigation hooks. This example runs inside the
+`my-layout` navigation provider; tab state belongs to that layout's scope.
+Workspace Pane placement has its own [host contract](workspace-pane-authoring.md).
 
 ```typescript
 import { useNavigation, useLayoutNavigation } from '@kontourai/station-sdk';
@@ -241,18 +275,18 @@ import { useNavigation, useLayoutNavigation } from '@kontourai/station-sdk';
 const nav = useNavigation();
 const { setTabState, getTabState } = useLayoutNavigation();
 
-// Navigate to another tab with state:
-setTabState('crm', 'selectedAccount=<id>');       // write state for target tab
-nav.setLayout('my-project', 'my-layout');          // navigate to layout
+// Select another tab in the current layout:
+setTabState('crm', new URLSearchParams({ selectedAccount: accountId }).toString());
+nav.setLayoutTab('my-layout', 'crm');
 
 // Read state on the receiving tab:
 const state = getTabState('crm');                  // read in useEffect([activeTab])
 const params = new URLSearchParams(state);
-const accountId = params.get('selectedAccount');
+const selectedAccountId = params.get('selectedAccount');
 ```
 
 **Rules:**
-- `setTabState(tabId, state)` writes to sessionStorage + syncs URL hash
+- `setTabState(tabId, state)` writes to sessionStorage for this layout; it updates the URL hash immediately only for the active tab. Tab selection restores that tab's stored hash.
 - `setLayout(projectSlug, layoutSlug)` handles client-side URL navigation
 - Receiving tab reads state via `getTabState(tabId)` in a `useEffect` triggered by `activeTab`
 - State format is URL search params string (e.g., `'event=abc&date=2026-01-01'`)
@@ -263,7 +297,9 @@ Start Station through `./station`, never through `npm run dev:server` /
 `dev:ui` directly — the CLI orchestrates the server and UI builds in the right
 order. Use a named instance on ports that cannot collide with the defaults
 (3141/3000 are reserved for the user's own testing) and `--temp-home` so the
-run does not touch `~/.station`:
+runtime data is isolated from the normal Station home. Shared client/instance
+metadata can still use `STATION_ROOT`; select a separate root consistently for
+start, stop, and client commands when those records also need isolation:
 
 ```bash
 ./station start --instance=layout-check --temp-home --clean --force \
@@ -305,7 +341,26 @@ log.api('message');  // Enable: localStorage.debug = 'app:*'
 
 ### Theming & Colors
 
-Never use hardcoded hex colors. Use CSS variables from `src-ui/src/index.css` (`--text-primary`, `--bg-secondary`, `--border-primary`, `--accent-primary`, `--accent-acp`, etc). For status colors use the Tailwind palette: green `#22c55e`, amber `#f59e0b`, red `#ef4444`. Buttons use `className="button button--secondary"`. See [frontend.md](../patterns/frontend.md) for details.
+UI, brand and copy rules live in the `@kontourai/ui`
+[design constitution (DESIGN.md)](https://github.com/kontourai/ui/blob/main/DESIGN.md).
+New styles use its `--k-*` tokens; existing components also use the theme
+variables in `src-ui/src/index.css`, such as `--text-primary`,
+`--bg-secondary`, `--border-primary` and `--accent-primary`. Never hard-code
+hex colors.
+
+For status, map the domain value to a tone with the helpers in
+[station-tones.ts](../../src-ui/src/components/kontour/station-tones.ts) and
+render it with `StatusBadge` or `Badge` from `@kontourai/ui/react`, which
+take a `tone` and always show the label. Station restyles the positive,
+caution, negative and active `.tone-*` classes with AA-checked pairs. Custom status
+styles use the tone tokens `--k-positive`, `--k-caution`, `--k-negative`,
+`--k-active` and `--k-neutral`, with `--k-positive-soft`, `--k-caution-soft`,
+`--k-negative-soft` and `--k-active-soft` as tinted fills (there is no neutral
+soft fill), and always carry a text label; color only reinforces it. Newer tokens
+such as `--k-status-contrast`, `--k-trust-*`, `--k-action` and `--k-focus`
+exist only in later package versions (1.12.0 defines none of them), so check
+`node_modules/@kontourai/ui/tokens/tokens.css` before using one. Follow the
+owning component's button style and [frontend guidance](../patterns/frontend.md).
 
 ### Styling
 
@@ -316,7 +371,7 @@ Never use hardcoded hex colors. Use CSS variables from `src-ui/src/index.css` (`
 Never use `window.confirm()` or `window.alert()`. Always use the `ConfirmModal` component for destructive or significant actions:
 
 ```tsx
-import { ConfirmModal } from '@/components/ConfirmModal';
+import { ConfirmModal } from '@/components/modals/ConfirmModal';
 
 <ConfirmModal
   isOpen={showConfirm}
@@ -337,33 +392,43 @@ This ensures consistent theming, accessibility, and UX across all confirmation f
 Always use the `AgentIcon` component — never manually check icon URLs or render `<img>` tags for agent icons:
 
 ```tsx
-import { AgentIcon } from '@/components/AgentIcon';
+import { AgentIcon } from '@/components/icons/AgentIcon';
 <AgentIcon agent={agent} size={20} />
 ```
 
 ### ACP Connection Detection
 
-Never hardcode ACP connection prefixes (e.g., `startsWith('kiro-')`). Use
-`agent.source === 'acp'` from the Agents list when code must distinguish this
-connection method. ACP metadata (`planUrl`, `planLabel`, `connectionName`) is
-available on Agent configs for dynamic UI. User-facing copy names the engine;
-it does not present ACP as an agent category.
+Never infer an engine from Agent ID prefixes. The current Agent catalog exposes
+`engineId`, `engineDisplayName`, and `engineConnectionType`; use
+`engineConnectionType === 'acp'` when the connection method matters. The saved
+connection ID is `execution.agentConnectionId`, not the Agent ID or a legacy
+`source` discriminator. Execution requests name the Agent and let the server
+resolve that binding. User-facing copy names the engine.
 
 ### Plugin Workflow
 
-```bash
-station plugin remove my-layout
-station plugin install ./examples/my-layout
-npm run dev:ui
-```
+Use the [plugin development workflow](plugins.md#development-workflow) for
+scaffolding, building, and installation. Select an isolated test Station and
+review its grants before activating the plugin. The source launcher owns the
+coordinated app start described above.
 
 ### Attention inbox
 
 `/notifications` is the Inbox: it puts active operator attention ahead of
-ordinary notification history. An approval uses its persisted notification's
-existing Allow/Deny action, `needs_input` sends a normal orchestration turn to
-the owning session, and `review_pending` only opens that session. The header
+ordinary notification history. An approval or `review_pending` item with an
+exact request reference opens the request's decision controls. An approval
+without that reference uses its persisted notification's Allow/Deny actions;
+`review_pending` without one opens the session. `needs_input` sends a normal
+orchestration turn to the owning session. The header
 badge is the same deduplicated active-attention count shown in the Inbox.
 Concrete approval requests suppress a duplicate lifecycle item for the same
-session; attention clears only when its authoritative source changes. This is
-not a Flow gate inbox (#612 remains outside this projection).
+session. Gate exceptions also suppress that session's lifecycle duplicate;
+gate route-back and blocked items remain separate and offer re-evaluation.
+The Inbox can accept a gate exception, while Survey/Flow gate-review items
+open the review workbench for decisions and continuation.
+
+The [attention projection](../../src-server/services/projects/attention-projection.ts)
+derives these items from their owning sources. Acknowledgement removes an item
+from the pending count while retaining it in history; it does not resolve the
+underlying approval or review. Hosted reads omit sources whose stores cannot
+enforce tenant ownership. See the [Session API attention contract](../reference/session-api.md#review-work-in-the-attention-inbox).

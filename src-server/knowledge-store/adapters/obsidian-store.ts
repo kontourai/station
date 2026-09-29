@@ -1,161 +1,18 @@
 /**
- * `kit-obsidian-store` — Station-owned adapter implementing the Knowledge Kit's
- * published store contract (store-contract.md §8/§9 baseline + Addendum A.5/A.6
- * `supersede`, Addendum B.4/B.5 `retire`, Addendum C.3 `person` routing, Addendum H
- * identity resolution) with an Obsidian-vault-shaped on-disk layout instead of the
- * `kit-default-store` adapter's flat `records/<id>.md` layout. Same
- * `KnowledgeStoreAdapter` contract, same behavioral guarantees — different physical
- * shape, so a human can browse the store as a normal Obsidian vault.
+ * Station-owned Kit-format adapter with an Obsidian vault layout.
+ * Disk layout, external-edit behavior, and the original H1/M1/M2 regression
+ * rationale are in docs/guides/knowledge.md#store-formats-and-external-edits.
  *
- * This is a from-scratch, file-format-conformant implementation — it never imports
- * `@kontourai/flow-agents` Kit internals (ADR-0001; confirmed via grep, matching
- * `kit-default-store`'s evidence). The layout below mirrors the shape documented by
- * the Kit's own published `adapters/obsidian-store` README + Addendum C.3 and the
- * behavior of the Kit's own reference implementation (v3.3.0, read for grounding —
- * never imported — from the sibling `../flow-agents` dev tree during this session,
- * the same cross-repo-compat grounding practice Wave 1 used for `kit-default-store`):
- *
- *   <storeRoot>/
- *     people/<title-slug>.md                    person records (any category — C.3)
- *     <category-as-path>/<title-slug>.md         concept, snapshot
- *     <category-as-path>/<sourcesDir>/<slug>.md  raw, compiled (sourcesDir default "sources")
- *     archive/<original-relative-path>           superseded records (moved, not deleted — A.5)
- *     graph-index.json                           link graph (§5.1 — required)
- *     path-index.json                            id -> {path, archived} (Station-owned bookkeeping;
- *                                                 store-contract.md does not mandate an internal
- *                                                 index filename for a non-default adapter — this
- *                                                 is named differently from the Kit's own reference
- *                                                 adapter's `.graph-index.json` for clarity, since
- *                                                 that name collides visually with the *link* graph
- *                                                 index this adapter also maintains)
- *     alias-index.json                           slug alias map (Addendum H.5)
- *
- * Frontmatter carries every contract field EXCEPT `body`; the body is rendered as
- * human-readable Obsidian markdown below the frontmatter fence, delimited from any
- * generated Sources/People/Related sections by an invisible sentinel
- * (`<!-- kit:body-end -->`, never rendered by Obsidian since it is an HTML comment) so
- * body text may freely contain any markdown — including `## heading` lines — without
- * corrupting the render/parse inverse. `raw` records additionally wrap the body in a
- * collapsed callout (`> [!note]- Raw Notes`) for readability; the sentinel still marks
- * the exact boundary so the wrapper is losslessly stripped back on read.
- *
- * Sentinel-collision handling (H1 fix, Wave-2 code review): the default sentinel is
- * used whenever the rendered body text does NOT already contain that literal
- * substring. If it does — one occurrence, several occurrences, or even a body that
- * contains what looks like a *previously lengthened* sentinel — a fresh, per-write
- * sentinel is derived by `chooseBodySentinel()` below and the exact string used is
- * recorded verbatim in frontmatter (`_body_sentinel`, an underscore-prefixed key any
- * OKF/Kit consumer tolerates and ignores per the unknown-key preservation contract) so
- * `parseBodyFromRendered` never has to guess on read — it looks the key up. See that
- * function's own doc comment for the correctness argument (a length-pigeonhole proof,
- * not a probabilistic one).
- *
- * `_body_sentinel` is a RESERVED adapter-owned key (M1 fix, Wave-2 code review iteration
- * 2): `readRecord` strips it before returning a `KitRecord` — it is bookkeeping, not
- * record data, so it never leaks onto `get()`/`listByType()`/`listByCategory()` results
- * (mirroring the destructuring `writeRecord` already does on the write side). If a
- * user's own frontmatter coincidentally carries a `_body_sentinel` key whose value does
- * not look adapter-generated (see `SENTINEL_SHAPE_PATTERN`), `readRecord` treats that as
- * malformed rather than trusting it as a delimiter: it logs a warning and falls back to
- * the default sentinel under the same last-occurrence resolution described below, so a
- * coincidental foreign key can never crash a read or silently corrupt an unrelated
- * body.
- *
- * External-edit read semantics (M2 fix, Wave-2 code review iteration 2): this adapter's
- * own header above invites a human to "browse the store as a normal Obsidian vault," so
- * the read path must stay well-defined even when a file was touched outside Station.
- * `renderObsidianBody` always appends the chosen sentinel, on its own line, as the LAST
- * thing derived from the body — any generated Sources/People/Related sections are
- * appended strictly after it — so `parseBodyFromRendered` anchors to the LAST line-exact
- * occurrence of the sentinel in the file (`findLastSentinelLineIndex`), not the first
- * substring occurrence. That single change resolves all of the reachable external-edit
- * cases:
- *   - A human pastes a bare copy of the sentinel INTO the body, without touching
- *     frontmatter: the pasted line is never the last one (the adapter's own trailing
- *     sentinel still is), so the paste is inert — read back as ordinary body content.
- *   - A human deletes the trailing sentinel line entirely: no line-exact match remains,
- *     so the parser reads to EOF (no truncation), logs a warning, and the next
- *     Station-driven write self-heals by recomputing and re-appending a fresh sentinel.
- *   - A human types/pastes content AFTER the real sentinel line (the adapter's own
- *     generated-sections area): content that isn't one of the four recognized generated
- *     section headings (`## Sources` / `## Appears In` / `## People` / `## Related`) —
- *     OR that matches one of those headings by text but Station would NOT actually
- *     generate that section for this record's current links (M1 fix, Wave-2 code
- *     review iteration 4 — see `generatedSectionHeadingAvailability` below) — is
- *     merged back into the body on read (data-preserving choice) with a warning, since
- *     it would otherwise be silently discarded the next time Station regenerates those
- *     sections from `graph-index.json`. A heading matching known text alone is never
- *     sufficient proof of adapter authorship: only a record whose links actually
- *     contain the corresponding kind could ever have had that section generated by
- *     Station, so anything else under a recognized heading is hand-authored content
- *     that merely looks like adapter output — treated the same as any other
- *     unrecognized trailing content, never discarded silently.
- *
- * Named residual limitation (accepted, narrow): last-occurrence anchoring is defeated
- * only by a COMPOUND, adversarial EXTERNAL edit — deleting the real trailing sentinel
- * line AND, in the same out-of-band edit, pasting a look-alike sentinel on its own line
- * elsewhere in the body — since with the real sentinel gone, the pasted one becomes the
- * (only) last line-exact match. Each half of that compound edit is independently
- * handled correctly (see the two cases above); this is a distinct, much narrower gap
- * than the original H1/pre-fix bug (which triggered on a single ordinary paste), and is
- * called out here per the same "document accepted gaps rather than silently omitting
- * them" practice as the out-of-band filesystem-watching gap already accepted for K2
- * (`s200-knowledge-store--plan.md`).
- *
- * Label-injection sentinel corruption (H1 fix, Wave-2 code review iteration 4) —
- * CLASS-level fix, not more anchor cleverness: iteration 3 found that last-occurrence
- * anchoring's premise ("generated sections never contain a line-exact sentinel") was
- * false, because `KitLink.label` is unvalidated free text rendered verbatim into
- * generated sections, and an embedded newline (reachable via the public `link()` API or
- * via `[[target|label]]` wikilink parsing, whose label capture group matches newlines)
- * could place the literal sentinel text on its own physical line AFTER the real
- * sentinel — defeating the anchor through pure, in-process API usage, no external edit
- * required. Fixed at the class level, at the render/write boundary, in two layers:
- *   (a) Root cause — `../shared/wikilinks.ts`'s `sanitizeLinks`/`sanitizeLabel`
- *       collapse any embedded line break in a `KitLink.label` to a single space (with a
- *       warning) at the single funnel every adapter's `create()`/`update()`/`link()`/
- *       `supersede()` path already uses (`appendUniqueLinks`/`mergeLinks`) before a
- *       `KitLink[]` is ever persisted or rendered — chosen over outright rejection
- *       because a label is inherently single-line display text (every existing usage
- *       renders it inline as `[[target|label]]`; there is no multi-line wikilink
- *       display syntax anywhere in the Kit contract), so normalizing is the
- *       data-preserving option and the contract is silent on the newline case, not a
- *       rejection-worthy violation of an explicit rule.
- *   (b) Defense-in-depth — `renderObsidianBody` additionally neutralizes (backtick-wraps)
- *       any FULL line inside a generated Sources/Appears-In/People/Related section that
- *       matches `SENTINEL_SHAPE_PATTERN` (see `neutralizeSentinelShapedLines` below),
- *       regardless of which field produced it. This is a structural class guard, not a
- *       label-specific patch: it protects against ANY future free-text field that might
- *       one day be rendered into a generated section (not just `label`), and against
- *       pre-fix/externally-authored records that already carry an unsanitized label on
- *       disk (sanitization at the write boundary cannot retroactively clean bytes a
- *       human or another tool wrote directly).
- *   (c) Last-occurrence anchoring is KEPT, not replaced — with (a)+(b) in place, no
- *       free-text field this adapter renders can ever again produce a spurious
- *       line-exact sentinel match below the real one, which was the only thing that
- *       made the "anchor to the LAST match" strategy unsafe. The named residual
- *       limitation above (a compound, purely-external, deliberately-adversarial paste)
- *       is unrelated to (and not enlarged by) this fix, and last-occurrence anchoring
- *       remains the simplest correct strategy for the genuinely out-of-band-edit cases
- *       it was designed for (mid-body sentinel paste inert, deleted sentinel handled via
- *       EOF fallback + warn) — there is no remaining reason to add a second anchor
- *       strategy or multi-candidate scanning.
- *
- * Contract version: written against `store-contract.md` as of `@kontourai/flow-agents`
- * **3.3.0** — see `kit-default-store`'s header comment and archive#218 for the tracked sidecar
- * pin upgrade; this adapter imports nothing from the package either.
+ * Do not simplify delimiter handling: bodies may contain sentinel text and
+ * authored labels must not forge a generated-section boundary. The writer
+ * records a collision-free _body_sentinel; reads use the last exact line,
+ * preserve unrecognized trailing content, and hide this bookkeeping field.
+ * Removing the real boundary AND inserting a look-alike in one external edit
+ * remains a known limitation. Keep the obsidian-store.contract.test.ts cases.
  */
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from 'node:path';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type {
   ApplyEvidence,
   CreateInput,
@@ -525,6 +382,10 @@ interface KitObsidianStoreOptions {
   sourcesDir?: string;
 }
 
+const CREATE_IDENTITY_MAX_ENTRIES = 10_000;
+const CREATE_IDENTITY_MAX_FILE_BYTES = 16 * 1024 * 1024;
+const CREATE_IDENTITY_MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+
 export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
   private readonly root: string;
   private readonly sourcesDir: string;
@@ -631,7 +492,19 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     while (true) {
       const relPath = `${catDir}/${slug}.md`;
       const existingId = pathIndex.by_path[relPath];
-      if (!existingId || existingId === id) return relPath;
+      if (!existingId) {
+        if (
+          this.files.readText(
+            this.resolveStorePath(relPath),
+            CREATE_IDENTITY_MAX_FILE_BYTES,
+          ) !== null
+        )
+          throw new KnowledgeStoreCorruptionError(
+            'Obsidian destination is occupied by an unindexed file',
+          );
+        return relPath;
+      }
+      if (existingId === id) return relPath;
       slug = `${baseSlug}-${suffix++}`;
     }
   }
@@ -648,7 +521,10 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     const absPath = this.getAbsPath(id, pathIndex);
     if (!absPath) return null;
     const text = this.files.readText(absPath);
-    if (text === null) return null;
+    if (text === null)
+      throw new KnowledgeStoreCorruptionError(
+        'Obsidian path index names a missing record',
+      );
     let meta: Record<string, unknown>;
     let renderedText: string;
     try {
@@ -658,7 +534,10 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
         cause: error,
       });
     }
-    if (!meta.id) return null;
+    if (!meta.id)
+      throw new KnowledgeStoreCorruptionError(
+        'Indexed Obsidian record has no id',
+      );
 
     const rawSentinelValue = meta[BODY_SENTINEL_FRONTMATTER_KEY];
     let sentinel = BODY_END_SENTINEL_BASE;
@@ -791,7 +670,6 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     );
 
     const absPath = this.resolveStorePath(targetRelPath);
-    mkdirSync(dirname(absPath), { recursive: true });
     this.files.writeText(absPath, text);
   }
 
@@ -802,7 +680,6 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
 
     const archiveRelPath = `archive/${entry.path}`;
     const archiveAbs = this.resolveStorePath(archiveRelPath);
-    mkdirSync(dirname(archiveAbs), { recursive: true });
 
     const currentAbs = this.resolveStorePath(entry.path);
     this.files.move(currentAbs, archiveAbs);
@@ -1121,6 +998,11 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     }
 
     const id = input.id || randomUUID();
+    const pathIndex = this.loadPathIndex();
+    if (this.readRecord(id, pathIndex)) {
+      throw new MissingEvidenceError('create: record id already exists');
+    }
+    this.assertCreateIdentityAvailable(id, pathIndex);
     const now = new Date().toISOString();
 
     const aliases = normalizeAliases(input.aliases);
@@ -1162,7 +1044,6 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
       body: input.body,
     };
 
-    const pathIndex = this.loadPathIndex();
     this.writeRecord(record, pathIndex);
     this.savePathIndex(pathIndex);
 
@@ -1173,6 +1054,97 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     if (aliasIndex) this.saveAliasIndex(aliasIndex);
 
     return id;
+  }
+
+  /** The path index accelerates lookup; only physical records can prove absence. */
+  private assertCreateIdentityAvailable(
+    id: string,
+    pathIndex: PathIndex,
+  ): void {
+    const directories = [this.root];
+    const indexedPaths = new Set(Object.keys(pathIndex.by_path));
+    let unindexedRecord = false;
+    let entries = 0;
+    let remainingBytes = CREATE_IDENTITY_MAX_TOTAL_BYTES;
+    while (directories.length > 0) {
+      const directory = directories.pop()!;
+      for (const entry of this.files.listDirectoryEntries(directory)) {
+        if (++entries > CREATE_IDENTITY_MAX_ENTRIES)
+          throw new KnowledgeStoreCorruptionError(
+            'Obsidian identity inspection exceeds its entry bound',
+          );
+        const path = join(directory, entry.name);
+        if (entry.kind === 'directory') {
+          directories.push(path);
+          continue;
+        }
+        if (!entry.name.toLowerCase().endsWith('.md')) continue;
+        const text = this.files.readText(
+          path,
+          Math.min(CREATE_IDENTITY_MAX_FILE_BYTES, remainingBytes),
+        );
+        if (text === null)
+          throw new KnowledgeStoreCorruptionError(
+            'Obsidian file disappeared during identity inspection',
+          );
+        remainingBytes -= Buffer.byteLength(text);
+        if (remainingBytes < 0)
+          throw new KnowledgeStoreCorruptionError(
+            'Obsidian identity inspection exceeds its byte bound',
+          );
+        let meta: Record<string, unknown>;
+        let body: string;
+        try {
+          const frontmatterEnd = text.indexOf('\n---\n', 3);
+          if (
+            /^(?:\uFEFF)?---(?:\r?\n|$)/.test(text) &&
+            (!text.startsWith('---\n') || frontmatterEnd === -1)
+          )
+            throw new Error('Unsupported or unterminated frontmatter');
+          // Empty envelopes are ordinary notes; js-yaml rejects empty documents.
+          if (
+            text.startsWith('---\n') &&
+            text.slice(4, frontmatterEnd).trim() === ''
+          ) {
+            meta = {};
+            body = text.slice(frontmatterEnd + 5);
+          } else {
+            ({ meta, body } = parseMarkdown(text, {
+              maxDepth: 32,
+              maxAliases: 50,
+              maxTotalMergeKeys: 1000,
+            }));
+          }
+        } catch (error) {
+          throw new KnowledgeStoreCorruptionError(
+            'Obsidian identity inspection encountered invalid frontmatter',
+            { cause: error },
+          );
+        }
+        const rel = relative(this.root, path).split(sep).join('/');
+        const indexedId = pathIndex.by_path[rel];
+        if (meta.id === id)
+          throw new MissingEvidenceError('create: record id already exists');
+        if (indexedId) {
+          const record = assertKitRecord(meta, body, path);
+          if (record.id !== indexedId)
+            throw new KnowledgeStoreCorruptionError(
+              'Obsidian record identity differs from its path index',
+            );
+          indexedPaths.delete(rel);
+        } else if (meta.provenance !== undefined && meta.type !== undefined) {
+          unindexedRecord = true;
+        }
+      }
+    }
+    if (indexedPaths.size > 0)
+      throw new KnowledgeStoreCorruptionError(
+        'Obsidian path index names an unobserved record',
+      );
+    if (unindexedRecord)
+      throw new KnowledgeStoreCorruptionError(
+        'Obsidian path index omits an owned record',
+      );
   }
 
   // ── update (§6.2) ──────────────────────────────────────────────────────

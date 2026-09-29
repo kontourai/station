@@ -176,43 +176,36 @@ function plist(channel) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>${channel === 'stable' ? 'io.kontourai.station' : `io.kontourai.station.${channel}`}</string><key>NSCameraUsageDescription</key><string>Station uses the camera to scan pairing codes from another device.</string><key>NSMicrophoneUsageDescription</key><string>Station uses the microphone for voice conversations with your agents.</string><key>NSLocalNetworkUsageDescription</key><string>Station connects to Station hosts on your local network.</string><key>StationChannel</key><string>${channel}</string><key>StationServerPort</key><integer>${ports.serverPort}</integer><key>LSEnvironment</key><dict><key>STATION_DESKTOP_CHANNEL</key><string>${channel}</string><key>STATION_DESKTOP_PORT</key><string>${ports.serverPort}</string></dict></dict></plist>\n`;
 }
 
-export function syncGeneratedChannelPorts() {
-  writeFileSync(
-    resolve(root, 'packages/shared/src/channel-ports.generated.ts'),
-    sharedTypeScript(),
-  );
-  writeFileSync(
-    resolve(root, 'packages/shared/src/release-rings.generated.mjs'),
-    sharedReleaseRingsModule(),
-  );
-  writeFileSync(
-    resolve(root, 'src-desktop/src/channel_ports_generated.rs'),
-    rustSource(),
-  );
-  for (const channel of ['stable', 'beta', 'nightly'])
-    writeFileSync(
-      resolve(root, 'src-desktop', `Info.${channel}.plist`),
-      plist(channel),
-    );
-}
-
-export function checkGeneratedChannelPorts() {
-  const expected = new Map([
+function generatedFiles(outputRoot) {
+  return new Map([
     [
-      resolve(root, 'packages/shared/src/channel-ports.generated.ts'),
+      resolve(outputRoot, 'packages/shared/src/channel-ports.generated.ts'),
       sharedTypeScript(),
     ],
     [
-      resolve(root, 'packages/shared/src/release-rings.generated.mjs'),
+      resolve(outputRoot, 'packages/shared/src/release-rings.generated.mjs'),
       sharedReleaseRingsModule(),
     ],
-    [resolve(root, 'src-desktop/src/channel_ports_generated.rs'), rustSource()],
+    [
+      resolve(outputRoot, 'src-desktop/src/channel_ports_generated.rs'),
+      rustSource(),
+    ],
     ...['stable', 'beta', 'nightly'].map((channel) => [
-      resolve(root, 'src-desktop', `Info.${channel}.plist`),
+      resolve(outputRoot, 'src-desktop', `Info.${channel}.plist`),
       plist(channel),
     ]),
   ]);
-  for (const [path, contents] of expected) {
+}
+
+// `outputRoot` lets a caller check or regenerate a copy of the tree; the
+// contract itself is always read from this checkout's config.
+export function syncGeneratedChannelPorts({ outputRoot = root } = {}) {
+  for (const [path, contents] of generatedFiles(outputRoot))
+    writeFileSync(path, contents);
+}
+
+export function checkGeneratedChannelPorts({ outputRoot = root } = {}) {
+  for (const [path, contents] of generatedFiles(outputRoot)) {
     let actual = '';
     try {
       actual = readFileSync(path, 'utf8');

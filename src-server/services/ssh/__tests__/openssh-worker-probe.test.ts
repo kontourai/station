@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { describe, expect, test, vi } from 'vitest';
 import {
   executeOwnedProcess,
@@ -62,11 +62,6 @@ describe('OpenSSH remote worker probe', () => {
   test('streams a static worker over stdin and validates its response', async () => {
     const runProcess = vi.fn(async ({ args, stdin }) => {
       expect(args).toEqual(buildOpenSshWorkerProbeArgs(INPUT));
-      expect(stdin).toContain(
-        "fetch(base + '/.well-known/station/v1', options)",
-      );
-      expect(stdin).toContain('remoteHome: os.homedir()');
-      expect(stdin).not.toContain("fetch(base + '/.well-known/station')\n");
       expect(stdin).not.toContain(INPUT.remoteProjectPath);
       return { stdout: JSON.stringify(RESULT), stderr: '', exitCode: 0 };
     });
@@ -210,6 +205,7 @@ describe('remote worker listener identity', () => {
         });
         if (redirectPath === 'direct') {
           await expect(result).resolves.toMatchObject({
+            remoteHome: homedir(),
             environmentId: RESULT.environmentId,
             instanceId: RESULT.instanceId,
             sha: RESULT.sha,

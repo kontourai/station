@@ -11,8 +11,9 @@ export type OrchestrationAnswerOutcome = 'answered' | 'already-settled';
  * resolves only when Station accepted the decision, and REJECTS otherwise, so
  * the surface can say the decision did not land (#2316, #2344).
  *
- * One refusal is not a failure: when the request was ALREADY answered
- * elsewhere, the request itself says so and this resolves `already-settled`.
+ * One refusal is not a failure: when the request is no longer open
+ * (answered elsewhere, closed by the engine, cancelled, or expired), the
+ * request itself says so and this resolves `already-settled`.
  * That is read from the request's current state, never guessed from the
  * error text, and only for an answer bound to its prompt event.
  */

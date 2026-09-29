@@ -34,7 +34,7 @@ interface DevHttpContext {
   fetchDependencies?: DevFetchDependencies;
 }
 
-export function getOpenFileMime(relPath: string) {
+function getOpenFileMime(relPath: string) {
   const ext = relPath.split('.').pop() || '';
   const mime: Record<string, string> = {
     json: 'application/json',
@@ -46,7 +46,7 @@ export function getOpenFileMime(relPath: string) {
   return mime[ext] || 'text/plain';
 }
 
-export function isAllowedOpenFilePath(
+function isAllowedOpenFilePath(
   absPath: string,
   cwd: string,
   pluginsDir: string,

@@ -77,12 +77,12 @@ test *args:
     @call npm run test:focused -- %*
     @exit /b %ERRORLEVEL%
 
-# Run the sole completion lane without adding a second receipt protocol.
+# Run full regression locally; canonical promotion receipts come from hosted workflows.
 [unix]
 full:
     npm run full:regression
 
-# Run the sole completion lane without adding a second receipt protocol.
+# Run full regression locally; canonical promotion receipts come from hosted workflows.
 [windows]
 [script("cmd.exe", "/D", "/E:ON", "/V:OFF", "/C")]
 full:

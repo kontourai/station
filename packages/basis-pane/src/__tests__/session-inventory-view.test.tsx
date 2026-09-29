@@ -101,8 +101,8 @@ describe('Session inventory view model', () => {
       'compact',
     );
     const full = buildSessionInventoryViewModel(projection, selection, 'full');
-    expect(compact.groups.map((group) => group.key)).toEqual(
-      full.groups.map((group) => group.key),
+    expect(compact.groups.map((group) => [group.key, group.count])).toEqual(
+      full.groups.map((group) => [group.key, group.count]),
     );
     expect(
       compact.groups.map((group) => group.items.map((item) => item.key)),

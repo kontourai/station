@@ -27,6 +27,9 @@ diagnosis requires them.
 Station names the concrete engine when that distinction matters. Protocols such
 as ACP are connection details, not agent types users need to choose.
 
+The reserved Agent named **Station** is a separate role. Its name does not tell
+you which engine runs it; that engine is selected in Station settings.
+
 Concrete examples:
 
 - **Local model:** a local model service is the Model connection, one of its
@@ -48,12 +51,15 @@ for the current supported model services and engines and their setup details.
   files, artifacts, receipts, and exact execution correlation.
 - A **Session** is one bounded execution episode. A Task can have more than one
   Session over time.
+- A **turn** is one unit of input and execution within a Session. Continuing a
+  conversation can add a turn to its existing Session; it does not necessarily
+  create a new one.
 - A **direct chat** is an immediate conversation and does not silently create a
   Task.
 
 Example: “Explain this function” can be a direct chat. “Refactor this module,
-run its gates, and preserve the evidence” should be a Task. Each attempt or
-continuation is a Session attached to that Task.
+run its gates, and preserve the evidence” should be a Task. A Task can retain
+one Session across several turns and use another for a later attempt.
 
 ## Gates, Evidence, And Receipts
 
@@ -64,12 +70,14 @@ continuation is a Session attached to that Task.
 - A **receipt** records what ran, what passed or failed, and what remains
   unverified.
 
-Station keeps these beside the work so a confident answer is not mistaken for
-a verified outcome.
+Station can keep these beside the work through its workflow and evidence
+integrations. Task status, a completed agent run, and a passed gate are separate
+facts; inspect the recorded evidence rather than inferring one from another.
 
 Example: a test result is evidence. The rule requiring that test is a gate. The
-record saying which command ran and whether it passed is the receipt. If the
-test fails, a route-back sends the work to the step that can fix it.
+record saying which command ran and whether it passed is the receipt. A
+workflow can use a route-back to send a failed test result to the step that
+can fix it.
 
 - A **degraded capability** is a bounded feature Station runs without,
   reported with a specific reason and remediation instead of failing silently
@@ -85,10 +93,12 @@ terminal pane states why it cannot open. Agent execution does not use
 
 ## Local-First Data
 
-Station stores its data under `~/.station` by default. A hosted model service,
-an Engine, a paired device, or a remote computer receives data only when you
-configure it and use a feature that needs it. Observability data leaves the
-machine only when an operator configures an export endpoint.
+Station stores its data under `~/.station` by default. Model services, Engines,
+paired devices, remote computers and other configured integrations can exchange
+data outside that directory. Some make startup or background requests; desktop
+builds also contact their release feed. Observability export requires a configured
+endpoint. See the repository's [data-flow working copy](https://github.com/kontourai/station/blob/main/docs/privacy-policy.md) for the
+distinction between declared settings and verified behavior.
 
 ## Next
 

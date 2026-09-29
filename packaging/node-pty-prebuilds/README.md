@@ -1,9 +1,11 @@
 # node-pty Linux prebuilds
 
-Attested, digest-pinned Linux builds of the exact `node-pty` version pinned in
-`pnpm-lock.yaml`, staged into `node_modules/node-pty/prebuilds/<target>/`
-by the dependency lifecycle (#1245) so a Linux install does not need a C++
-toolchain. Upstream node-pty ships prebuilds for darwin and win32 only; its
+This directory defines an optional digest-pinned Linux prebuild channel for
+the exact `node-pty` version in `pnpm-lock.yaml`. **The current manifest has no
+artifacts**, so Linux uses the existing source-build path and still needs its
+toolchain. A future reviewed artifact can be staged into
+`node_modules/node-pty/prebuilds/<target>/` by the dependency lifecycle (#1245).
+The pinned upstream package ships prebuilds for darwin and win32 only; its
 own loader and install hook already understand this `prebuilds/` layout, so
 staging slots into upstream with no fork and no vendored package.
 
@@ -18,10 +20,14 @@ staging slots into upstream with no fork and no vendored package.
 
 ## Trust chain
 
+[#2813](https://github.com/kontourai/station/issues/2813) tracks libc-aware
+admission before Linux artifacts are added to this channel. A manifest digest
+does not establish host compatibility.
+
 1. Artifacts are built by `.github/workflows/node-pty-prebuilds.yml`: the
    approved dependency lifecycle compiles node-pty from the integrity-pinned
    lockfile tarball, `scripts/verify-node-pty-prebuild.mjs` re-proves the
-   artifact standalone (upstream `scripts/prebuild.js` exits 0, the module
+   artifact standalone (node-pty's upstream `node scripts/prebuild.js` exits 0, the module
    loads from `prebuilds/` with no `build/` directory and no node-gyp, and it
    passes Station's real-PTY handshake), and
    `actions/attest-build-provenance` binds the file to the workflow run.
@@ -37,13 +43,15 @@ staging slots into upstream with no fork and no vendored package.
 
 ## Scope decisions
 
-- **glibc baseline:** artifacts are built on `ubuntu-22.04` runners; the
-  authoritative floor is the measured `GLIBC_*`/`GLIBCXX_*` values recorded
-  per artifact in `manifest.json`. A host below the floor falls back to
-  compiling from source (`node scripts/prebuild.js || node-gyp rebuild`).
-- **musl (Alpine) is out**, deliberately: no musl artifact is built or
-  staged. musl hosts keep the compile path, with #1244's loud terminal
-  degradation as the toolchain-less floor.
+- **glibc baseline:** the workflow targets Ubuntu 22.04 runners and its verifier
+  measures `GLIBC_*`/`GLIBCXX_*` symbol floors. The staging helper currently
+  selects only by platform/architecture, version, and digest; it does not check
+  the host's libc or those floors. The upstream install hook checks that the
+  prebuild directory exists, not that its binary can load. Do not populate this
+  channel assuming an incompatible host will automatically rebuild from source.
+- **musl (Alpine):** no musl artifact or libc-specific selection exists. With
+  today's empty manifest, Linux hosts keep the source-build path. A future
+  glibc artifact needs an explicit musl refusal/fallback before admission.
 - **spawn-helper** is a darwin-only executable; Linux prebuilds are
   `pty.node` alone, so npm's executable-bit stripping does not apply here.
 - `npm_config_build_from_source=true` skips staging entirely and compiles
@@ -53,5 +61,12 @@ staging slots into upstream with no fork and no vendored package.
 
 Rebuild only when `pnpm-lock.yaml` moves node-pty to a new version (the
 consistency test fails until the manifest follows), or on a node-pty
-security advisory. node-pty is an N-API addon: artifacts are ABI-stable
-across Node majors and do not need rebuilding for a Node upgrade.
+security advisory. The pinned package uses `node-addon-api`, which avoids a
+per-Node-major V8 ABI build. That does not qualify every Node or libc version:
+retain the managed installation and real-PTY handshake when upgrading Node.
+
+The [staging helper](../../scripts/lib/dependency-lifecycle-policy.mjs),
+[standalone verifier](../../scripts/verify-node-pty-prebuild.mjs), and
+[workflow](../../.github/workflows/node-pty-prebuilds.yml) own this channel.
+This source description is not evidence that an artifact has been built,
+attested, committed, or exercised on a Linux host.

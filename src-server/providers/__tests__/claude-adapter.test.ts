@@ -78,13 +78,12 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   __resetStationControlMcpTokensForTests,
-  mintStationControlStdioCallerToken,
+  mintStationControlMcpToken,
   revokeStationControlMcpToken,
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
-import { STATION_CONTROL_CALLER_TOKEN_ENV } from '../../tools/station-control-shared.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import {
@@ -1993,6 +1992,8 @@ describe('ClaudeAdapter', () => {
     expect(resolved.value).toMatchObject({
       method: 'request.resolved',
       status: 'approved',
+      // #2880: the Agent SDK's canUseTool reports no delivery.
+      acknowledgement: 'none',
     });
   });
 
@@ -5212,7 +5213,6 @@ describe('ClaudeAdapter', () => {
       const createInProcessStationControl = vi.fn(() => instance);
       const adapter = new ClaudeAdapter({
         createInProcessStationControl,
-        mintStationControlCallerToken: () => 'must-not-be-used',
         revokeStationControlCallerToken: vi.fn(),
       });
       await adapter.startSession({
@@ -5350,11 +5350,7 @@ describe('ClaudeAdapter', () => {
     test('Station #90 lane D: a session whose station-control id is not the canonical built-in mints nothing', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const createInProcessStationControl = vi.fn();
-      const mintStationControlCallerToken = vi.fn(() => 'token');
-      const adapter = new ClaudeAdapter({
-        createInProcessStationControl,
-        mintStationControlCallerToken,
-      });
+      const adapter = new ClaudeAdapter({ createInProcessStationControl });
       await adapter.startSession({
         provider: 'claude',
         threadId: 'thread-impostor',
@@ -5371,7 +5367,6 @@ describe('ClaudeAdapter', () => {
         },
       });
       expect(createInProcessStationControl).not.toHaveBeenCalled();
-      expect(mintStationControlCallerToken).not.toHaveBeenCalled();
     });
 
     test('Station #90 lane D: stopSession revokes the credential even when no session record exists', async () => {
@@ -5390,9 +5385,11 @@ describe('ClaudeAdapter', () => {
       });
       let minted: string | undefined;
       const adapter = new ClaudeAdapter({
-        mintStationControlCallerToken: (threadId) => {
-          minted = mintStationControlStdioCallerToken(threadId);
-          return minted;
+        // The in-process channel production composes: creating the server
+        // mints the session's credential before query() runs.
+        createInProcessStationControl: (threadId) => {
+          minted = mintStationControlMcpToken(threadId, 'sdk-in-process').token;
+          return { connect: vi.fn(), close: vi.fn() };
         },
         revokeStationControlCallerToken: (threadId) =>
           revokeStationControlMcpToken(threadId),
@@ -5406,51 +5403,6 @@ describe('ClaudeAdapter', () => {
       ).rejects.toThrow('sdk refused options');
       expect(typeof minted).toBe('string');
       expect(verifyStationControlMcpToken(minted)).toBeUndefined();
-    });
-
-    test('Station #90 lane D: the stdio fallback child carries a per-session caller credential and its tenant, and stopSession revokes it', async () => {
-      __resetStationControlMcpTokensForTests();
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        mintStationControlCallerToken: (threadId, tenant) =>
-          mintStationControlStdioCallerToken(threadId, tenant),
-        revokeStationControlCallerToken: (threadId) =>
-          revokeStationControlMcpToken(threadId),
-      });
-
-      await adapter.startSession({
-        provider: 'claude',
-        threadId: 'thread-caller-credential',
-        tenantExecutionContext: {
-          tenantId: 'alpha' as never,
-          source: 'request',
-        },
-        agent: { slug: 'my-agent', toolServers: stationControlToolServers },
-      });
-
-      const queryArgs = mockQuery.mock.calls[0][0] as {
-        options: {
-          mcpServers: Record<string, { env?: Record<string, string> }>;
-        };
-      };
-      const token =
-        queryArgs.options.mcpServers['station-control'].env?.[
-          STATION_CONTROL_CALLER_TOKEN_ENV
-        ];
-      expect(typeof token).toBe('string');
-      expect(verifyStationControlMcpToken(token)).toEqual({
-        sessionId: 'thread-caller-credential',
-        tenantExecutionContext: { tenantId: 'alpha', source: 'request' },
-      });
-      // The child's REST calls keep the tenant the token was minted for.
-      expect(
-        queryArgs.options.mcpServers['station-control'].env
-          ?.STATION_INTERNAL_TENANT,
-      ).toBe('alpha');
-      expect(queryArgs.options.mcpServers['third-party'].env).toBeUndefined();
-
-      await adapter.stopSession('thread-caller-credential');
-      expect(verifyStationControlMcpToken(token)).toBeUndefined();
     });
 
     test('reports an invalid HTTP tool server and still starts the session', async () => {

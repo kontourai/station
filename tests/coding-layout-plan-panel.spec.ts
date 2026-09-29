@@ -49,7 +49,7 @@ const READINESS_SNAPSHOT = {
 
 /**
  * Seed the three inspector config-detection endpoints. Defaults: readiness
- * configured (so the panel defaults expanded), flow + trust not configured.
+ * configured, flow + trust not configured.
  */
 async function seedInspectorConfig(
   page: Page,
@@ -160,16 +160,14 @@ async function selectWorkspacePane(page: Page, tabName: string) {
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
 
-test.describe('Coding Layout Inspector — expanded (a tool configured)', () => {
+test.describe('Coding Layout Inspector — a tool configured', () => {
   test.beforeEach(async ({ page }) => {
     await seedCommonRoutes(page);
     await seedInspectorConfig(page);
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
   });
 
-  test('defaults expanded and renders the workflow plan on the Plan tab', async ({
-    page,
-  }) => {
+  test('renders the workflow plan on the Plan pane', async ({ page }) => {
     await selectWorkspacePane(page, 'Plan');
     const planPanel = page.locator('.workflow-plan-panel');
     await expect(planPanel.getByText('Workflow plan')).toBeVisible();
@@ -196,23 +194,14 @@ test.describe('Coding Layout Inspector — expanded (a tool configured)', () => 
     expect(await contrastRatio(verdict)).toBeGreaterThanOrEqual(4.5);
   });
 
-  test('hosts coding and inspector surfaces as independently selectable panes', async ({
-    page,
-  }) => {
-    const tabs = page.getByRole('region', {
-      name: 'Workspace panes',
-      exact: true,
-    });
-    await expect(
-      tabs.getByRole('tab', { name: 'Coding', exact: true }),
-    ).toHaveAttribute('aria-selected', 'true');
-    await selectWorkspacePane(page, 'Plan');
-    await expect(page.locator('.workflow-plan-panel')).toBeVisible();
-  });
-
   test('switches between inspector panes without duplicating either surface', async ({
     page,
   }) => {
+    await expect(
+      page
+        .getByRole('region', { name: 'Workspace panes', exact: true })
+        .getByRole('tab', { name: 'Coding', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
     await selectWorkspacePane(page, 'Plan');
     await expect(page.locator('.workflow-plan-panel')).toBeVisible();
     await selectWorkspacePane(page, 'Readiness');
@@ -250,7 +239,7 @@ test.describe('Coding Layout Inspector — setup CTA (not configured)', () => {
   }) => {
     // No seeded chat → no plan artifact, so the Plan tab shows the empty CTA.
     await seedCommonRoutes(page, { withChat: false });
-    // Readiness configured (so the panel defaults expanded), flow not.
+    // Readiness configured, flow not.
     await seedInspectorConfig(page, {
       flow: { initialized: false, definitions: [] },
     });

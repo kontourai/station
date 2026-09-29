@@ -17,7 +17,9 @@ vi.mock('../contexts/PreviewContext', () => ({
 
 import {
   attachmentBlobForObjectUrl,
+  releaseAttachmentObjectUrl,
   resetAttachmentObjectUrls,
+  storeAttachmentObjectUrl,
 } from '../components/chat/attachment-object-urls';
 import { FilePartPreview } from '../components/chat/FilePartPreview';
 
@@ -86,10 +88,19 @@ describe('FilePartPreview', () => {
       type: 'image/png',
     });
 
+    // Held while displayed, released when not. The cache revokes only on
+    // eviction, so fill it with idle entries on both sides of the unmount.
+    const storeIdle = (index: number) => {
+      const ref = `sha256-${String(index).padStart(64, '0')}`;
+      storeAttachmentObjectUrl(ref, `blob:idle-${index}`);
+      releaseAttachmentObjectUrl(ref);
+    };
+    for (let index = 0; index < 32; index += 1) storeIdle(index);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:idle-0');
+    expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:station-attachment');
+
     unmount();
-    // Held while displayed, released when not — the cache revokes on eviction,
-    // so an unmounted chip must not keep its hold forever.
-    resetAttachmentObjectUrls();
+    storeIdle(32);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:station-attachment');
   });
 

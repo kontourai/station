@@ -197,6 +197,9 @@ export function handleSessionExitedEvent(
     orchestrationSessionStarted: false,
     activityHint: undefined,
     backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
+    // #2880: the note speaks for a live engine that may still acknowledge;
+    // once the session has ended, nothing will.
+    unacknowledgedDecisions: [],
   });
 }
 

@@ -29,7 +29,8 @@ app identity, pairing scheme, and simulator platform, then seals resources
 with an ordinary ad-hoc signature. It refuses device or non-development
 artifacts. This requires no distribution certificate and does not produce a
 device, TestFlight, or App Store package. The command prints the resulting
-`.app` path. Archive that app to upload it to a device workspace.
+`.app` path. Archive that app only for a workspace or service that accepts iOS
+simulator artifacts; it cannot be installed on a physical iPhone or iPad.
 
 ## What can run today
 
@@ -45,10 +46,45 @@ WebView and macOS Keychain, receives a Station-signed candidate, enters the
 operator's comparison code and full key ID, then approves and revokes the
 public trust record. It removes only its generated Keychain accounts and
 fixture home. The lane is opt-in because it needs an unlocked user Keychain;
-the default shell sweep still runs its existing two lanes. This proves the
-pre-grant key ceremony on that macOS debug bundle. It does not prove a Pion
+the default shell sweep still runs its existing two lanes. A successful run
+proves the pre-grant key ceremony on the exact macOS debug bundle exercised.
+No such run is claimed by this documentation review. It does not prove a Pion
 application route, account/Device continuation, a second person or machine,
 release packaging, or hosted deployment.
+
+Desktop also starts a saved-route grant-renewal supervisor from
+[`ApiBaseProvider`](../../src-ui/src/contexts/ApiBaseContext.tsx). It checks
+host-owned grant status, renews existing grants while the app is visible, and
+rechecks on focus, visibility and online events. It does not approve a new
+route or make that route available for application work. More than 64 saved
+routes pauses renewal for all routes; removing routes lets supervision resume.
+The host persists the renewal intent before the broker request so a lost reply
+can be recovered with the same renewal ID, and checks the saved profile revision
+again before accepting the result.
+
+The explicit `native-relay-diagnostic-echo` shell lane exercises that desktop
+supervisor through a lost renewal reply, then checks stale-revision rejection
+and the diagnostic transport. It uses a real main WebView and fixture-owned
+Keychain accounts, plus loopback broker, coturn and Pion fixtures. The adapter
+and supervisor unit tests use injected boundaries. Neither their passing result
+nor the existence of the shell lane establishes a completed native run here.
+Mobile background renewal and packaged-platform acceptance remain separate.
+
+The separate hostile-plugin lane also runs in a real Tauri WebView:
+
+```sh
+npm run test:tauri-shell -- --build --lane=plugin-host-security
+```
+
+[`scripts/run-tauri-shell-e2e.mjs`](../../scripts/run-tauri-shell-e2e.mjs)
+selects [`tests/tauri-shell/plugin-host-security.e2e.ts`](../../tests/tauri-shell/plugin-host-security.e2e.ts).
+Its isolated fixture checks that the host has Tauri internals while a hostile
+cross-origin plugin frame has no own bridge and cannot reach the parent's
+bridge, storage or DOM. It also checks blocked network/API destinations and
+navigation containment. The default sweep runs this lane and `device-pane`;
+the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
+availability is source evidence, not an executed platform result. Record the
+exact binary, revision, host and completed lane result when running it.
 
 Run the changed selector first, then the exact focused checks it selects:
 
@@ -96,8 +132,11 @@ parent globals, a Tauri bridge call, a blocked network call, over-scoped API,
 and navigation. It verifies browser-frame containment and visible declaration
 mismatch handling. It is a browser test: it cannot observe an invocation from
 inside a real Tauri WebView, so it cannot prove native IPC denial. Do not
-remove the native consent override on this evidence; the missing in-shell
-harness is [#2495](https://github.com/kontourai/station/issues/2495).
+remove the native consent override on this evidence; the in-shell
+harness is separate from the browser spec. Its historical absence was recorded
+in [archive#2495](https://github.com/kontourai/station-archive/issues/2495);
+the real-WebView lane above now exists. Neither its existence nor a browser
+pass qualifies a release-shell sandbox or authorizes removing that override.
 
 The allocation checks availability before the CLI binds, so rerun the
 allocation if the targeted start reports that the block became contested. The
@@ -112,18 +151,39 @@ service needs a durable home.
 
 ## Startup and sidecar interpretation
 
-The truth-bearing startup source is
+The startup state owner is
 [`src-desktop/src/startup_readiness.rs`](../../src-desktop/src/startup_readiness.rs):
-the main window may reveal only after two independent prerequisites converge.
+application content may reveal only after two independent prerequisites converge.
 Tauri's native page-start callback observes the exact main WebView and permits
 the host to begin its authenticated ticket proof; a post-React-layout mount
 commit from that main WebView proves renderer liveness. Page start alone is not
 renderer readiness. The ticket still binds the current generation, instance
 ID, boot ID, and API base. Native bootstrap retains and replays page/mount facts
 that arrive before desktop readiness state exists, so the eager mount is not a
-browser retry loop. The native host arms one 30-second deadline, shows
-Retry/Exit once per epoch, and routes Retry according to ownership in
-[`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs).
+browser retry loop. For an owned sidecar, the native host performs the
+authenticated local identity proof and rechecks both the saved profile binding
+and current ticket before committing it. Native page-start/ticket callbacks
+request that proof; the renderer reports its mounted tree separately and does
+not drive the startup identity check. For a service-owned or unowned
+backend, a recovery-surface commit can admit the mounted shell without a
+sidecar ticket. This establishes recovery UI readiness, not backend availability.
+
+The native host arms a 30-second deadline for each epoch. If readiness is still
+waiting, it normally shows Retry/Exit once. A pending activation instead starts
+another readiness epoch; activation after failure also resumes readiness.
+An owned sidecar with a current ticket gets one non-disruptive reprobe. If that
+does not settle and another retry follows, or there is no current ticket,
+the host requests an owned-sidecar restart. A non-owned backend receives a
+recovery-surface recommit, never a durable-service restart. These effects are
+routed by [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs).
+
+On macOS, pending activation may present a native-owned cover so the WebView
+can render while the proof proceeds. Application content remains covered until
+identity and mount readiness converge. Other desktop platforms retain the
+hidden-window behavior. Interactive second launch, accepted deep link, and
+macOS reopen use this authority; explicit background/tray-only launches can
+suppress activation. Home/schema preparation refusals before supervisor setup
+have a separate Exit-only dialog and start no backend.
 
 The sidecar supervisor in
 [`src-desktop/src/bundled_server_state.rs`](../../src-desktop/src/bundled_server_state.rs)
@@ -138,18 +198,29 @@ Interpret evidence narrowly:
 | Observation | It establishes | It does not establish |
 | --- | --- | --- |
 | Rust readiness/supervisor test passes | State-machine transition contract | Tauri window visibility, dialog rendering, real process lifetime, or package behavior |
-| Renderer startup-readiness test passes | Browser-side ticket/identity proof logic and post-layout mount invocation | Authenticated IPC behavior inside a Tauri WebView or correct pixels |
+| Startup-readiness static test passes | Source wiring for native proof and renderer-mount separation | An executed authenticated Tauri IPC exchange, a visible window, or correct pixels |
 | Browser hostile-plugin spec passes | Isolated browser-frame containment | Native plugin IPC denial or a release-shell sandbox |
 | Sidecar status reaches `failed` after five attempts | Supervisor exhausted automatic sidecar restarts | Cause of the child failure or renderer recovery |
 | `STATION_HOME_RESET_REQUIRED` is logged | An incompatible home blocked sidecar startup | Which files may safely be deleted; use backup/reset policy before acting |
 
-There is no current command that kills a Tauri renderer mid-session, no
-physically proved bounded native renderer-reload implementation, no EPIPE
-recovery test, and no packaged startup/retry/Exit harness. A missing mount stays
+Window recreation exists, but this review establishes no automatic
+renderer-process-death detection, kill-the-WebView command, or physically
+proved bounded renderer-reload loop. There is no packaged startup/retry/Exit
+journey receipt here. A missing mount stays
 behind the native cover and reaches the existing Retry/Exit surface; it never
 authorizes WebsiteData deletion or a CSP bypass.
 Do not invent a `tauri-driver` command or claim that the browser test exercises those features.
-Those gaps are [#2006](https://github.com/kontourai/station/issues/2006).
+The historical renderer/stdio work is
+[archive#2006](https://github.com/kontourai/station-archive/issues/2006).
+
+Server stdout EPIPE handling does exist. Before runtime initialization,
+[`src-server/index.ts`](../../src-server/index.ts) installs the once-only guard
+from [`readiness-handshake.ts`](../../src-server/runtime/bootstrap/readiness-handshake.ts),
+then routes a broken supervising pipe to graceful shutdown without logging
+recursively to that pipe. Synchronous handshake-write refusal and asynchronous
+EPIPE have [focused tests](../../src-server/runtime/bootstrap/__tests__/readiness-handshake.test.ts).
+They do not prove the packaged Desktop-parent disappearance/closed-stdio
+journey. Native HTTP `BrokenPipe` classification is a different boundary.
 
 ## Logs and diagnosis boundary
 
@@ -188,8 +259,11 @@ operator detail is not admitted to Pages.
 Set `STATION_DESKTOP_LOG_LEVEL=debug` or `trace` before launch when collecting
 a reproduction, and restore the normal level afterward. The file target is
 best effort: if its directory is not writable, the host continues with stdout
-only. Rotation bounds retained shell files; it does not make an abrupt native
-abort durable.
+only. The pinned `tauri-plugin-log` 2.9.1 `KeepSome(5)` policy retains up to
+five archived logs plus the active `station.log`. The 5 MiB setting is a
+rotation threshold, not a hard file-size or 25 MiB total limit: a single
+oversized buffered entry can exceed it. Rotation does not make an abrupt
+native abort durable.
 
 Use these commands for their separate scopes:
 
@@ -198,7 +272,9 @@ station doctor
 station service status --json
 ```
 
-Doctor reports local tool and runtime prerequisites, not native-window state.
+Checkout Doctor reports local tool and runtime prerequisites. Packaged Doctor
+uses the target command: it reports the selected endpoint, discovery reachability,
+saved credential state and configured local service. Neither reports native-window state.
 Service status checks a durable installed service, not a Desktop-owned sidecar.
 The shell log can show a timeout warning, a secondary-launch request, or an
 invalid desktop log level; it cannot prove that a dialog was visible, that a
@@ -206,9 +282,10 @@ user chose Retry/Exit, that a window drew, or that a macOS Apple Event callback
 did not panic before output flushed.
 
 For the macOS abort class, record separately whether launch used Finder/Dock
-or a direct executable: [#3496](https://github.com/kontourai/station/issues/3496)
+or a direct executable: [archive#3496](https://github.com/kontourai/station-archive/issues/3496)
 reports the Apple Event path as the observed distinction. There is currently
-no persisted panic hook or reproducible trigger, so preserve the package,
+no established app-owned persisted panic capture or current reproducible trigger,
+so preserve the package,
 system crash report, timestamp, channel, and launch method rather than claiming
 the normal shell log explains it.
 
@@ -220,8 +297,9 @@ the normal shell log explains it.
 | Windows packaged startup, second launch, tray | Rust/static/UI checks | Installed package, actual shell/tray and service-backend record | **NOT_VERIFIED** |
 | Linux packaged startup and indicator behavior | Rust/static/UI checks | Installed package on a supported desktop shell, indicator result recorded | **NOT_VERIFIED** |
 | Android/iOS startup recovery | No equivalent desktop readiness harness | Real device and a defined mobile recovery contract | **NOT_VERIFIED** |
-| In-shell hostile plugin IPC denial | Browser Playwright only | Tauri-WebView harness observing hostile IPC denial | **NOT_VERIFIED** (#2495) |
-| Renderer death, boot-crash reload cap, EPIPE | No implementation-level proof | Native kill/boot-crash/closed-pipe evidence and bounded recovery assertions | **NOT_VERIFIED** (#2006) |
+| In-shell hostile plugin IPC denial | Separate browser spec and `plugin-host-security` Tauri-WebView lane | Completed exact-binary WebView lane; separate release-platform qualification | **NOT_VERIFIED** in this review (historical archive#2495) |
+| Renderer death and bounded reload | Window recreation source; no automatic renderer-death recovery proof established here | Native kill/boot-crash evidence and bounded recovery assertions | **NOT_VERIFIED** (archive#2006) |
+| EPIPE/closed stdio | Server stdout guard and synchronous/asynchronous fixture tests | Packaged Desktop-parent disappearance and closed-pipe recovery journey | **NOT_VERIFIED** on native shells (archive#2006) |
 
 
 ## Camera and microphone declarations

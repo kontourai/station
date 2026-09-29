@@ -20,16 +20,11 @@ import { canReadMonitoringEvent } from './monitoring.js';
 const logger = createLogger({ name: 'insights-routes' });
 
 /**
- * A derived absence, never a value. Parenthesized so it cannot collide with
- * a real tool name — including the literal 'unknown' that events written
- * before archive#3073 baked in at write time, which stays its own bucket so
- * the two eras remain distinguishable.
+ * Display bucket for missing names. Preserve the distinct literal 'unknown'
+ * written before archive#3073; this string is not a reserved tool identifier.
  */
 const UNNAMED_TOOL = '(unnamed)';
-// Same discipline for agents: a derived absence, never a value (archive#3082).
-// Imported, not re-declared: the Monitoring view filters, lists and
-// counts by this same name, and three independent copies is how the
-// sidebar came to disagree with the two that already matched.
+// Share monitoringAgentName with the list/filter views to prevent drift (archive#3082).
 
 type MonitoringEventRecord = Record<string, unknown>;
 

@@ -5,7 +5,6 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   deployUpdateFeed,
   resolveNativeUpdateAuthority,
-  validateUpdateConfig,
   writeNativeUpdateAuthorityReceipt,
 } from '../native-update-feed.mjs';
 
@@ -121,7 +120,7 @@ describe('native update release contract', () => {
   });
 
   test('accepts a protected same-origin channel feed', () =>
-    expect(validateUpdateConfig(valid)).toMatchObject({
+    expect(resolveNativeUpdateAuthority(valid)).toMatchObject({
       updateAuthority: 'TestFlight/App Store',
       customFeed: {
         endpoint: valid.VITE_NATIVE_APP_UPDATE_FEED_URL,
@@ -198,21 +197,26 @@ describe('native update release contract', () => {
     }));
   test('rejects a redirect/cross-origin feed', () =>
     expect(() =>
-      validateUpdateConfig({
+      resolveNativeUpdateAuthority({
         ...valid,
         VITE_NATIVE_APP_UPDATE_FEED_URL: 'https://cdn.example.test/feed',
       }),
     ).toThrow(/pinned/));
   test('normalizes one provider trailing slash', () =>
-    expect(() =>
-      validateUpdateConfig({
+    expect(
+      resolveNativeUpdateAuthority({
         ...valid,
         VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: 'https://updates.example.test/',
       }),
-    ).not.toThrow());
+    ).toMatchObject({
+      customFeed: { providerOrigin: 'https://updates.example.test' },
+    }));
   test('rejects mutable versions', () =>
     expect(() =>
-      validateUpdateConfig({ ...valid, VITE_NATIVE_APP_VERSION: 'latest' }),
+      resolveNativeUpdateAuthority({
+        ...valid,
+        VITE_NATIVE_APP_VERSION: 'latest',
+      }),
     ).toThrow(/immutable/));
 
   test('atomically replaces and verifies while retaining prior bytes and ETag', async () => {

@@ -23,7 +23,7 @@ while (( $# > 0 )); do
     --output-dir)
       shift
       if (( $# == 0 )) || [[ -z "$1" ]]; then
-        print -u2 '--output-dir requires a non-empty directory path.'
+        print -u2 -- '--output-dir requires a non-empty directory path.'
         exit 1
       fi
       output_dir="$1"
@@ -31,7 +31,7 @@ while (( $# > 0 )); do
     --notary-profile)
       shift
       if (( $# == 0 )) || [[ -z "$1" ]]; then
-        print -u2 '--notary-profile requires an existing named Keychain profile.'
+        print -u2 -- '--notary-profile requires an existing named Keychain profile.'
         exit 1
       fi
       notary_profile="$1"
@@ -46,15 +46,15 @@ done
 
 if (( build_only )); then
   if (( relaunch )); then
-    print -u2 '--relaunch cannot be used with --build-only.'
+    print -u2 -- '--relaunch cannot be used with --build-only.'
     exit 1
   fi
   if [[ -z "$output_dir" ]]; then
-    print -u2 '--build-only requires --output-dir so artifacts never overwrite an implicit location.'
+    print -u2 -- '--build-only requires --output-dir so artifacts never overwrite an implicit location.'
     exit 1
   fi
 elif [[ -n "$output_dir" || -n "$notary_profile" ]]; then
-  print -u2 '--output-dir and --notary-profile require --build-only.'
+  print -u2 -- '--output-dir and --notary-profile require --build-only.'
   exit 1
 fi
 
@@ -299,16 +299,9 @@ designated_requirement="$(codesign -d -r- "$candidate" 2>&1 | node "$build_root/
   exit 1
 }
 if [[ -e "$destination" ]]; then
-  existing_designated_requirement="$(codesign -d -r- "$destination" 2>&1 | node "$build_root/ops/nightly/macos-signing-identity.mjs" --raw-designated-requirement)" || {
-    print -u2 'Existing Station Nightly has no readable designated requirement; refusing to replace a credential-owning app.'
-    exit 1
-  }
-  if [[ "$existing_designated_requirement" == *cdhash* ]]; then
-    print 'Migrating the existing ad-hoc Station Nightly signature to the stable certificate-backed requirement.'
-  elif [[ "$existing_designated_requirement" != "$designated_requirement" ]]; then
-    print -u2 'Existing Station Nightly has a different stable designated requirement. Keep its signing identity or perform an explicit credential migration; replacement is refused.'
-    exit 1
-  fi
+  # The helper allows the one ad-hoc -> stable migration and an unchanged
+  # requirement; it prints its own refusal and exits non-zero otherwise.
+  codesign -d -r- "$destination" 2>&1 | node "$build_root/ops/nightly/macos-signing-identity.mjs" --designated-requirement-transition "$designated_requirement" || exit 1
 fi
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$candidate/Contents/Info.plist")"

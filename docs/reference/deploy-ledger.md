@@ -1,6 +1,6 @@
 # Deploy ledger
 
-Every ship this repository makes, recorded by the workflow that shipped it — the answer to "on this date, this version was deployed; how out of date am I?" (archive#4572).
+Release records appended by the publishing workflows, plus explicitly qualified historical entries (archive#4572). Check each record's source revision, workflow and caveats; this ledger is not proof that every attempted publication succeeded or was recorded.
 
 ## Machine-readable source of truth
 
@@ -22,12 +22,24 @@ Every ship this repository makes, recorded by the workflow that shipped it — t
 
 ### Site consumption
 
-This file decides nothing about how `station.kontourai.io` will read the ledger (archive#4572 site follow-up). What is true today: the in-repo path and schema above are the source of truth, every publish appends exactly one entry per shipped surface and commits it back to `main`, and the public raw JSON URL above is available to consumers without authentication. The site PR decides whether it reads that URL directly or copies the JSON, along with caching, refresh, and presentation. Because `main` moves, consumers should retain each entry’s `sha` and `workflowRunUrl` as evidence rather than treating a later fetch as an immutable release receipt.
+The public raw JSON URL can be read without authentication. Publishing workflows invoke the appender for their shipped surfaces and use a separate commit-back step. A publication and its ledger update can fail independently; this Markdown cannot establish completeness or current artifact availability. Consumers may read the JSON directly or copy it under their own caching and refresh policy. Because `main` moves, retain each entry’s `sha` and `workflowRunUrl` rather than treating a later fetch as an immutable release receipt.
 
 ## Ledger
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-29T00:28:17Z | nightly-desktop | 0.1.11-nightly.2462.3 | `ec29a87` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36497491629) |
+| 2026-09-29T00:28:15Z | nightly-android | 0.1.11-nightly.2462.3 | `ec29a87` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36497491629) |
+| 2026-09-29T00:19:44Z | nightly-npm | 0.6.0-nightly.2462.36497491629 | `ec29a87` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36497491629) |
+| 2026-09-28T20:32:01Z | nightly-desktop | 0.1.11-nightly.2462.2 | `d0ca944` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36471134637) |
+| 2026-09-28T20:31:58Z | nightly-android | 0.1.11-nightly.2462.2 | `d0ca944` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36471134637) |
+| 2026-09-28T20:28:33Z | nightly-npm | 0.6.0-nightly.2462.36471134637 | `d0ca944` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36471134637) |
+| 2026-09-28T15:27:48Z | nightly-desktop | 0.1.11-nightly.2462.1 | `a30f084` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36429714384) |
+| 2026-09-28T15:27:44Z | nightly-android | 0.1.11-nightly.2462.1 | `a30f084` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36429714384) |
+| 2026-09-28T14:45:05Z | nightly-npm | 0.6.0-nightly.2462.36429714384 | `a30f084` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36429714384) |
+| 2026-09-28T06:21:17Z | nightly-desktop | 0.1.11-nightly.2462 | `ef6e2f0` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36380121606) |
+| 2026-09-28T06:21:14Z | nightly-android | 0.1.11-nightly.2462 | `ef6e2f0` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36380121606) |
+| 2026-09-28T06:04:26Z | nightly-npm | 0.6.0-nightly.2462.36380121606 | `ef6e2f0` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36380121606) |
 | 2026-09-27T22:24:20Z | nightly-desktop | 0.1.11-nightly.2461.3 | `9d39d40` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36350925838) |
 | 2026-09-27T22:24:17Z | nightly-android | 0.1.11-nightly.2461.3 | `9d39d40` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36350925838) |
 | 2026-09-27T22:14:54Z | nightly-npm | 0.6.0-nightly.2461.36350925838 | `9d39d40` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36350925838) |
@@ -176,6 +188,372 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-29T00:28:17Z · nightly-desktop · 0.1.11-nightly.2462.3
+
+- Ship SHA: `ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe`
+- Artifact built at: `2026-09-28T23:41:47.339Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36497491629)
+
+### Changelog
+
+Commits since `d0ca944` ([full sha](https://github.com/kontourai/station/commit/d0ca944c58c8dd4de5a17563eb97d06dbdbe3512)):
+
+**Fixes**
+
+- [#2935](https://github.com/kontourai/station/pull/2935) fix(nightly): let the portable publish job read its signing key
+- [#2866](https://github.com/kontourai/station/pull/2866) fix(plugins): strip git metadata from proposed remote clones
+- [#2934](https://github.com/kontourai/station/pull/2934) fix(docs): scope documentation freshness to each PR, add docs:review:record and a Nightly sweep
+
+**Other**
+
+- [#2929](https://github.com/kontourai/station/pull/2929) test(install): catch an early pipe close on Linux, not only macOS
+- [#2906](https://github.com/kontourai/station/pull/2906) test: test-audit Server routes, domain, runtime/mcp and providers (batches 39, 48, 49, 50, 55, 57, 59)
+
+## 2026-09-29T00:28:15Z · nightly-android · 0.1.11-nightly.2462.3
+
+- Ship SHA: `ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe`
+- Artifact built at: `2026-09-28T23:45:22.076Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36497491629)
+
+### Changelog
+
+Commits since `d0ca944` ([full sha](https://github.com/kontourai/station/commit/d0ca944c58c8dd4de5a17563eb97d06dbdbe3512)):
+
+**Fixes**
+
+- [#2935](https://github.com/kontourai/station/pull/2935) fix(nightly): let the portable publish job read its signing key
+- [#2866](https://github.com/kontourai/station/pull/2866) fix(plugins): strip git metadata from proposed remote clones
+- [#2934](https://github.com/kontourai/station/pull/2934) fix(docs): scope documentation freshness to each PR, add docs:review:record and a Nightly sweep
+
+**Other**
+
+- [#2929](https://github.com/kontourai/station/pull/2929) test(install): catch an early pipe close on Linux, not only macOS
+- [#2906](https://github.com/kontourai/station/pull/2906) test: test-audit Server routes, domain, runtime/mcp and providers (batches 39, 48, 49, 50, 55, 57, 59)
+
+## 2026-09-29T00:19:44Z · nightly-npm · 0.6.0-nightly.2462.36497491629
+
+- Ship SHA: `ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2462.36497491629 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `d0ca944` ([full sha](https://github.com/kontourai/station/commit/d0ca944c58c8dd4de5a17563eb97d06dbdbe3512)):
+
+**Fixes**
+
+- [#2935](https://github.com/kontourai/station/pull/2935) fix(nightly): let the portable publish job read its signing key
+- [#2866](https://github.com/kontourai/station/pull/2866) fix(plugins): strip git metadata from proposed remote clones
+- [#2934](https://github.com/kontourai/station/pull/2934) fix(docs): scope documentation freshness to each PR, add docs:review:record and a Nightly sweep
+
+**Other**
+
+- [#2929](https://github.com/kontourai/station/pull/2929) test(install): catch an early pipe close on Linux, not only macOS
+- [#2906](https://github.com/kontourai/station/pull/2906) test: test-audit Server routes, domain, runtime/mcp and providers (batches 39, 48, 49, 50, 55, 57, 59)
+
+## 2026-09-28T20:32:01Z · nightly-desktop · 0.1.11-nightly.2462.2
+
+- Ship SHA: `d0ca944c58c8dd4de5a17563eb97d06dbdbe3512`
+- Artifact built at: `2026-09-28T19:27:41.570Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36471134637)
+
+### Changelog
+
+Commits since `a30f084` ([full sha](https://github.com/kontourai/station/commit/a30f084b3b93f254337127cb18907d041570f9fc)):
+
+**Features**
+
+- [#2886](https://github.com/kontourai/station/pull/2886) feat(docs): add a source-reviewed learning library and maintenance gates
+- [#2881](https://github.com/kontourai/station/pull/2881) feat(update): archive installs update themselves: launcher trial/rollback, update requests, Check for server updates (#2675 D)
+- [#2912](https://github.com/kontourai/station/pull/2912) feat(approvals): report engine acknowledgement apart from the recorded decision (#2880)
+
+**Fixes**
+
+- [#2913](https://github.com/kontourai/station/pull/2913) fix(codex): grant nothing when a permissions request is declined, cancelled or interrupted (#2909)
+- [#2731](https://github.com/kontourai/station/pull/2731) fix(auth): answer a live but unadmitted credential with 403
+- [#2910](https://github.com/kontourai/station/pull/2910) fix(test-changed): a product-law path adds its evidence instead of deferring the whole diff (#2887)
+- [#2864](https://github.com/kontourai/station/pull/2864) fix(plugins): keep proposal-staged installs stripped on reinstall; CLI consent echo
+
+**Other**
+
+- [#2919](https://github.com/kontourai/station/pull/2919) test: test-audit UI and Playwright e2e specs (batches 37, 38, 41, 46, 63, 58, 62)
+- [#2914](https://github.com/kontourai/station/pull/2914) test: test-audit Scripts, CI, release and verification tooling (batches 64, 52, 61, 45)
+- [#2907](https://github.com/kontourai/station/pull/2907) test: test-audit CLI and published SDK packages (batches 36, 47, 53, 40)
+
+## 2026-09-28T20:31:58Z · nightly-android · 0.1.11-nightly.2462.2
+
+- Ship SHA: `d0ca944c58c8dd4de5a17563eb97d06dbdbe3512`
+- Artifact built at: `2026-09-28T19:27:51.343Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36471134637)
+
+### Changelog
+
+Commits since `a30f084` ([full sha](https://github.com/kontourai/station/commit/a30f084b3b93f254337127cb18907d041570f9fc)):
+
+**Features**
+
+- [#2886](https://github.com/kontourai/station/pull/2886) feat(docs): add a source-reviewed learning library and maintenance gates
+- [#2881](https://github.com/kontourai/station/pull/2881) feat(update): archive installs update themselves: launcher trial/rollback, update requests, Check for server updates (#2675 D)
+- [#2912](https://github.com/kontourai/station/pull/2912) feat(approvals): report engine acknowledgement apart from the recorded decision (#2880)
+
+**Fixes**
+
+- [#2913](https://github.com/kontourai/station/pull/2913) fix(codex): grant nothing when a permissions request is declined, cancelled or interrupted (#2909)
+- [#2731](https://github.com/kontourai/station/pull/2731) fix(auth): answer a live but unadmitted credential with 403
+- [#2910](https://github.com/kontourai/station/pull/2910) fix(test-changed): a product-law path adds its evidence instead of deferring the whole diff (#2887)
+- [#2864](https://github.com/kontourai/station/pull/2864) fix(plugins): keep proposal-staged installs stripped on reinstall; CLI consent echo
+
+**Other**
+
+- [#2919](https://github.com/kontourai/station/pull/2919) test: test-audit UI and Playwright e2e specs (batches 37, 38, 41, 46, 63, 58, 62)
+- [#2914](https://github.com/kontourai/station/pull/2914) test: test-audit Scripts, CI, release and verification tooling (batches 64, 52, 61, 45)
+- [#2907](https://github.com/kontourai/station/pull/2907) test: test-audit CLI and published SDK packages (batches 36, 47, 53, 40)
+
+## 2026-09-28T20:28:33Z · nightly-npm · 0.6.0-nightly.2462.36471134637
+
+- Ship SHA: `d0ca944c58c8dd4de5a17563eb97d06dbdbe3512`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2462.36471134637 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `a30f084` ([full sha](https://github.com/kontourai/station/commit/a30f084b3b93f254337127cb18907d041570f9fc)):
+
+**Features**
+
+- [#2886](https://github.com/kontourai/station/pull/2886) feat(docs): add a source-reviewed learning library and maintenance gates
+- [#2881](https://github.com/kontourai/station/pull/2881) feat(update): archive installs update themselves: launcher trial/rollback, update requests, Check for server updates (#2675 D)
+- [#2912](https://github.com/kontourai/station/pull/2912) feat(approvals): report engine acknowledgement apart from the recorded decision (#2880)
+
+**Fixes**
+
+- [#2913](https://github.com/kontourai/station/pull/2913) fix(codex): grant nothing when a permissions request is declined, cancelled or interrupted (#2909)
+- [#2731](https://github.com/kontourai/station/pull/2731) fix(auth): answer a live but unadmitted credential with 403
+- [#2910](https://github.com/kontourai/station/pull/2910) fix(test-changed): a product-law path adds its evidence instead of deferring the whole diff (#2887)
+- [#2864](https://github.com/kontourai/station/pull/2864) fix(plugins): keep proposal-staged installs stripped on reinstall; CLI consent echo
+
+**Other**
+
+- [#2919](https://github.com/kontourai/station/pull/2919) test: test-audit UI and Playwright e2e specs (batches 37, 38, 41, 46, 63, 58, 62)
+- [#2914](https://github.com/kontourai/station/pull/2914) test: test-audit Scripts, CI, release and verification tooling (batches 64, 52, 61, 45)
+- [#2907](https://github.com/kontourai/station/pull/2907) test: test-audit CLI and published SDK packages (batches 36, 47, 53, 40)
+
+## 2026-09-28T15:27:48Z · nightly-desktop · 0.1.11-nightly.2462.1
+
+- Ship SHA: `a30f084b3b93f254337127cb18907d041570f9fc`
+- Artifact built at: `2026-09-28T14:00:15.651Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36429714384)
+
+### Changelog
+
+Commits since `ef6e2f0` ([full sha](https://github.com/kontourai/station/commit/ef6e2f0eabdb2c7aea77b4b76a485035f4e0c00a)):
+
+**Fixes**
+
+- [#2904](https://github.com/kontourai/station/pull/2904) fix(access): actionable full-access refusals, device scope commands, and revocation that resets what a device granted (#1796)
+- [#2840](https://github.com/kontourai/station/pull/2840) fix(plugins): strip git metadata from agent-proposed local installs
+
+**Other**
+
+- [#2877](https://github.com/kontourai/station/pull/2877) test(server): audit batch 29, runtime bootstrap tests reach their seams
+- [#2863](https://github.com/kontourai/station/pull/2863) test: audit batch 25 - pin push-gateway ceilings, prove OTel identity and signing transitions, drop test seams
+- [#2891](https://github.com/kontourai/station/pull/2891) test(server): audit batch 33, security, voice, adapter and knowledge tests reach their seams
+- [#2890](https://github.com/kontourai/station/pull/2890) test(ui): audit batch 34, shell and sidebar suites reach their owners
+- [#2900](https://github.com/kontourai/station/pull/2900) chore: test-audit owner decisions (batch 66)
+
+## 2026-09-28T15:27:44Z · nightly-android · 0.1.11-nightly.2462.1
+
+- Ship SHA: `a30f084b3b93f254337127cb18907d041570f9fc`
+- Artifact built at: `2026-09-28T13:48:58.795Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36429714384)
+
+### Changelog
+
+Commits since `ef6e2f0` ([full sha](https://github.com/kontourai/station/commit/ef6e2f0eabdb2c7aea77b4b76a485035f4e0c00a)):
+
+**Fixes**
+
+- [#2904](https://github.com/kontourai/station/pull/2904) fix(access): actionable full-access refusals, device scope commands, and revocation that resets what a device granted (#1796)
+- [#2840](https://github.com/kontourai/station/pull/2840) fix(plugins): strip git metadata from agent-proposed local installs
+
+**Other**
+
+- [#2877](https://github.com/kontourai/station/pull/2877) test(server): audit batch 29, runtime bootstrap tests reach their seams
+- [#2863](https://github.com/kontourai/station/pull/2863) test: audit batch 25 - pin push-gateway ceilings, prove OTel identity and signing transitions, drop test seams
+- [#2891](https://github.com/kontourai/station/pull/2891) test(server): audit batch 33, security, voice, adapter and knowledge tests reach their seams
+- [#2890](https://github.com/kontourai/station/pull/2890) test(ui): audit batch 34, shell and sidebar suites reach their owners
+- [#2900](https://github.com/kontourai/station/pull/2900) chore: test-audit owner decisions (batch 66)
+
+## 2026-09-28T14:45:05Z · nightly-npm · 0.6.0-nightly.2462.36429714384
+
+- Ship SHA: `a30f084b3b93f254337127cb18907d041570f9fc`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2462.36429714384 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `ef6e2f0` ([full sha](https://github.com/kontourai/station/commit/ef6e2f0eabdb2c7aea77b4b76a485035f4e0c00a)):
+
+**Fixes**
+
+- [#2904](https://github.com/kontourai/station/pull/2904) fix(access): actionable full-access refusals, device scope commands, and revocation that resets what a device granted (#1796)
+- [#2840](https://github.com/kontourai/station/pull/2840) fix(plugins): strip git metadata from agent-proposed local installs
+
+**Other**
+
+- [#2877](https://github.com/kontourai/station/pull/2877) test(server): audit batch 29, runtime bootstrap tests reach their seams
+- [#2863](https://github.com/kontourai/station/pull/2863) test: audit batch 25 - pin push-gateway ceilings, prove OTel identity and signing transitions, drop test seams
+- [#2891](https://github.com/kontourai/station/pull/2891) test(server): audit batch 33, security, voice, adapter and knowledge tests reach their seams
+- [#2890](https://github.com/kontourai/station/pull/2890) test(ui): audit batch 34, shell and sidebar suites reach their owners
+- [#2900](https://github.com/kontourai/station/pull/2900) chore: test-audit owner decisions (batch 66)
+
+## 2026-09-28T06:21:17Z · nightly-desktop · 0.1.11-nightly.2462
+
+- Ship SHA: `ef6e2f0eabdb2c7aea77b4b76a485035f4e0c00a`
+- Artifact built at: `2026-09-28T05:11:06.893Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36380121606)
+
+### Changelog
+
+Commits since `9d39d40` ([full sha](https://github.com/kontourai/station/commit/9d39d40b9a11564902f7b8ee33a03a7c99bc9dee)):
+
+**Features**
+
+- [#2867](https://github.com/kontourai/station/pull/2867) feat(service): services run the prebuilt archive through current (#2675 C)
+- [#2856](https://github.com/kontourai/station/pull/2856) feat(relay): bind native application sessions to provider and Device
+- [#2888](https://github.com/kontourai/station/pull/2888) feat(desktop): expose host-bound native application signaling
+- [#2841](https://github.com/kontourai/station/pull/2841) feat(sdk,ui): Agent, execution, Task and Session refusals keep status and code; a proxy's page never drops a queued message (#2708 A-3a)
+- [#2884](https://github.com/kontourai/station/pull/2884) feat(desktop): keep native account proof keys in separate host custody
+- [#2822](https://github.com/kontourai/station/pull/2822) feat(install): install prebuilt server archives into versions/ (#2675 B2)
+- [#2853](https://github.com/kontourai/station/pull/2853) feat(release): portable Nightly publication path, dry-run by default (#2675 E)
+
+**Fixes**
+
+- [#2883](https://github.com/kontourai/station/pull/2883) fix(ui): render reasoning as a quiet activity line, not a card
+- [#2885](https://github.com/kontourai/station/pull/2885) fix(test-changed): derive the related-discovery timeout from the caller's budget (#2855)
+- [#2882](https://github.com/kontourai/station/pull/2882) fix(codex): echo JSON-RPC request ids with their type, so approvals reach Codex (#562)
+- [#2874](https://github.com/kontourai/station/pull/2874) fix(station-control): dispatch stays in the caller's Project or global scope; remote reach needs a bound operator (#2377 C2a)
+- [#2865](https://github.com/kontourai/station/pull/2865) fix(test-changed): docs are evidence, not a whole-diff deferral; doc gates run on every PR (#2803)
+
+**Docs**
+
+- [#2852](https://github.com/kontourai/station/pull/2852) docs(agents): point UI work at the Kontour DESIGN.md
+
+**Other**
+
+- [#2879](https://github.com/kontourai/station/pull/2879) test(scripts): audit batch 31 - docs, UI-contract and repo-guardrail gate tests reach their owners
+- [#2897](https://github.com/kontourai/station/pull/2897) test(server): audit batch 35, service tests reach their owners; fix indeterminate monitor resolve
+- [#2895](https://github.com/kontourai/station/pull/2895) test(e2e): audit batch 32 - prune duplicate specs, make repaired tests reach their seams
+- [#2878](https://github.com/kontourai/station/pull/2878) test: route batch-30 server tests through their owning seams
+- [#2872](https://github.com/kontourai/station/pull/2872) test: audit batch 26 - agents, settings and connection tests at their owners
+- [#2870](https://github.com/kontourai/station/pull/2870) test(ui): test-audit batch 27, settings and connections suites reach their seams
+- [#2869](https://github.com/kontourai/station/pull/2869) test(ui): replace CSS-text pins with geometry tests and prune retired sidebar and split-pane tests
+- [#2824](https://github.com/kontourai/station/pull/2824) test(contracts): retire literal-echo tests, pin shape contracts at the type level
+- [#2871](https://github.com/kontourai/station/pull/2871) test(coding-git): plant the fan-out link at a name the object store does not use
+- [#2851](https://github.com/kontourai/station/pull/2851) test(ui): pin plugin revoke confirmation at requestRevokePermission (test-audit b17 follow-up)
+
+## 2026-09-28T06:21:14Z · nightly-android · 0.1.11-nightly.2462
+
+- Ship SHA: `ef6e2f0eabdb2c7aea77b4b76a485035f4e0c00a`
+- Artifact built at: `2026-09-28T05:11:20.727Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36380121606)
+
+### Changelog
+
+Commits since `9d39d40` ([full sha](https://github.com/kontourai/station/commit/9d39d40b9a11564902f7b8ee33a03a7c99bc9dee)):
+
+**Features**
+
+- [#2867](https://github.com/kontourai/station/pull/2867) feat(service): services run the prebuilt archive through current (#2675 C)
+- [#2856](https://github.com/kontourai/station/pull/2856) feat(relay): bind native application sessions to provider and Device
+- [#2888](https://github.com/kontourai/station/pull/2888) feat(desktop): expose host-bound native application signaling
+- [#2841](https://github.com/kontourai/station/pull/2841) feat(sdk,ui): Agent, execution, Task and Session refusals keep status and code; a proxy's page never drops a queued message (#2708 A-3a)
+- [#2884](https://github.com/kontourai/station/pull/2884) feat(desktop): keep native account proof keys in separate host custody
+- [#2822](https://github.com/kontourai/station/pull/2822) feat(install): install prebuilt server archives into versions/ (#2675 B2)
+- [#2853](https://github.com/kontourai/station/pull/2853) feat(release): portable Nightly publication path, dry-run by default (#2675 E)
+
+**Fixes**
+
+- [#2883](https://github.com/kontourai/station/pull/2883) fix(ui): render reasoning as a quiet activity line, not a card
+- [#2885](https://github.com/kontourai/station/pull/2885) fix(test-changed): derive the related-discovery timeout from the caller's budget (#2855)
+- [#2882](https://github.com/kontourai/station/pull/2882) fix(codex): echo JSON-RPC request ids with their type, so approvals reach Codex (#562)
+- [#2874](https://github.com/kontourai/station/pull/2874) fix(station-control): dispatch stays in the caller's Project or global scope; remote reach needs a bound operator (#2377 C2a)
+- [#2865](https://github.com/kontourai/station/pull/2865) fix(test-changed): docs are evidence, not a whole-diff deferral; doc gates run on every PR (#2803)
+
+**Docs**
+
+- [#2852](https://github.com/kontourai/station/pull/2852) docs(agents): point UI work at the Kontour DESIGN.md
+
+**Other**
+
+- [#2879](https://github.com/kontourai/station/pull/2879) test(scripts): audit batch 31 - docs, UI-contract and repo-guardrail gate tests reach their owners
+- [#2897](https://github.com/kontourai/station/pull/2897) test(server): audit batch 35, service tests reach their owners; fix indeterminate monitor resolve
+- [#2895](https://github.com/kontourai/station/pull/2895) test(e2e): audit batch 32 - prune duplicate specs, make repaired tests reach their seams
+- [#2878](https://github.com/kontourai/station/pull/2878) test: route batch-30 server tests through their owning seams
+- [#2872](https://github.com/kontourai/station/pull/2872) test: audit batch 26 - agents, settings and connection tests at their owners
+- [#2870](https://github.com/kontourai/station/pull/2870) test(ui): test-audit batch 27, settings and connections suites reach their seams
+- [#2869](https://github.com/kontourai/station/pull/2869) test(ui): replace CSS-text pins with geometry tests and prune retired sidebar and split-pane tests
+- [#2824](https://github.com/kontourai/station/pull/2824) test(contracts): retire literal-echo tests, pin shape contracts at the type level
+- [#2871](https://github.com/kontourai/station/pull/2871) test(coding-git): plant the fan-out link at a name the object store does not use
+- [#2851](https://github.com/kontourai/station/pull/2851) test(ui): pin plugin revoke confirmation at requestRevokePermission (test-audit b17 follow-up)
+
+## 2026-09-28T06:04:26Z · nightly-npm · 0.6.0-nightly.2462.36380121606
+
+- Ship SHA: `ef6e2f0eabdb2c7aea77b4b76a485035f4e0c00a`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2462.36380121606 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `9d39d40` ([full sha](https://github.com/kontourai/station/commit/9d39d40b9a11564902f7b8ee33a03a7c99bc9dee)):
+
+**Features**
+
+- [#2867](https://github.com/kontourai/station/pull/2867) feat(service): services run the prebuilt archive through current (#2675 C)
+- [#2856](https://github.com/kontourai/station/pull/2856) feat(relay): bind native application sessions to provider and Device
+- [#2888](https://github.com/kontourai/station/pull/2888) feat(desktop): expose host-bound native application signaling
+- [#2841](https://github.com/kontourai/station/pull/2841) feat(sdk,ui): Agent, execution, Task and Session refusals keep status and code; a proxy's page never drops a queued message (#2708 A-3a)
+- [#2884](https://github.com/kontourai/station/pull/2884) feat(desktop): keep native account proof keys in separate host custody
+- [#2822](https://github.com/kontourai/station/pull/2822) feat(install): install prebuilt server archives into versions/ (#2675 B2)
+- [#2853](https://github.com/kontourai/station/pull/2853) feat(release): portable Nightly publication path, dry-run by default (#2675 E)
+
+**Fixes**
+
+- [#2883](https://github.com/kontourai/station/pull/2883) fix(ui): render reasoning as a quiet activity line, not a card
+- [#2885](https://github.com/kontourai/station/pull/2885) fix(test-changed): derive the related-discovery timeout from the caller's budget (#2855)
+- [#2882](https://github.com/kontourai/station/pull/2882) fix(codex): echo JSON-RPC request ids with their type, so approvals reach Codex (#562)
+- [#2874](https://github.com/kontourai/station/pull/2874) fix(station-control): dispatch stays in the caller's Project or global scope; remote reach needs a bound operator (#2377 C2a)
+- [#2865](https://github.com/kontourai/station/pull/2865) fix(test-changed): docs are evidence, not a whole-diff deferral; doc gates run on every PR (#2803)
+
+**Docs**
+
+- [#2852](https://github.com/kontourai/station/pull/2852) docs(agents): point UI work at the Kontour DESIGN.md
+
+**Other**
+
+- [#2879](https://github.com/kontourai/station/pull/2879) test(scripts): audit batch 31 - docs, UI-contract and repo-guardrail gate tests reach their owners
+- [#2897](https://github.com/kontourai/station/pull/2897) test(server): audit batch 35, service tests reach their owners; fix indeterminate monitor resolve
+- [#2895](https://github.com/kontourai/station/pull/2895) test(e2e): audit batch 32 - prune duplicate specs, make repaired tests reach their seams
+- [#2878](https://github.com/kontourai/station/pull/2878) test: route batch-30 server tests through their owning seams
+- [#2872](https://github.com/kontourai/station/pull/2872) test: audit batch 26 - agents, settings and connection tests at their owners
+- [#2870](https://github.com/kontourai/station/pull/2870) test(ui): test-audit batch 27, settings and connections suites reach their seams
+- [#2869](https://github.com/kontourai/station/pull/2869) test(ui): replace CSS-text pins with geometry tests and prune retired sidebar and split-pane tests
+- [#2824](https://github.com/kontourai/station/pull/2824) test(contracts): retire literal-echo tests, pin shape contracts at the type level
+- [#2871](https://github.com/kontourai/station/pull/2871) test(coding-git): plant the fan-out link at a name the object store does not use
+- [#2851](https://github.com/kontourai/station/pull/2851) test(ui): pin plugin revoke confirmation at requestRevokePermission (test-audit b17 follow-up)
 
 ## 2026-09-27T22:24:20Z · nightly-desktop · 0.1.11-nightly.2461.3
 

@@ -708,7 +708,7 @@ describe('CI verification workflow contracts', () => {
   // while nightly kept shipping and neither lane's state implied anything about
   // the other's. Read the pins from the gate; do not restate them here either.
   it('pins one Android NDK and build-tools revision across every lane', () => {
-    const seen = readWorkflowDocuments().flatMap(({ file }) => {
+    const seen = readWorkflowDocuments().flatMap(({ file, document }) => {
       const source = readFileSync(file, 'utf8');
       return [
         ...[...source.matchAll(/ndk[;/]([0-9][0-9.]*)/g)].map((m) => ({
@@ -721,10 +721,31 @@ describe('CI verification workflow contracts', () => {
           kind: 'build-tools',
           value: m[1],
         })),
+        // Workflows name the revision once, as a job-level
+        // ANDROID_BUILD_TOOLS_VERSION, and install
+        // `build-tools;${ANDROID_BUILD_TOOLS_VERSION}`. Read the env value from
+        // the parsed YAML so its quoting style cannot hide it from the pin.
+        ...Object.values(
+          (
+            document as {
+              jobs?: Record<string, { env?: Record<string, unknown> }>;
+            }
+          )?.jobs ?? {},
+        )
+          .map((job) => job?.env?.ANDROID_BUILD_TOOLS_VERSION)
+          .filter((value) => value !== undefined)
+          .map((value) => ({
+            file,
+            kind: 'build-tools',
+            value: String(value),
+          })),
       ];
     });
     // Guards the guard: a typo in the patterns above would make this vacuous.
     expect(seen.filter((e) => e.kind === 'ndk').length).toBeGreaterThan(0);
+    expect(seen.filter((e) => e.kind === 'build-tools').length).toBeGreaterThan(
+      0,
+    );
 
     const expected = {
       ndk: ANDROID_NDK_VERSION,
@@ -734,6 +755,58 @@ describe('CI verification workflow contracts', () => {
       seen
         .filter((entry) => entry.value !== expected[entry.kind])
         .map((entry) => `${entry.file}: ${entry.kind} ${entry.value}`),
+    ).toEqual([]);
+  });
+
+  // The pin above compares only the values it finds, so a lane that stops
+  // installing the NDK, or stops naming its build-tools revision, would pass on
+  // the other lanes' matches and build with whatever the runner preinstalled.
+  // Every job that runs sdkmanager must install both, pinned, itself.
+  it('installs the pinned NDK and build-tools in every Android lane', () => {
+    const lanes = readWorkflowDocuments().flatMap(({ file, document }) =>
+      Object.entries(
+        (
+          document as {
+            jobs?: Record<
+              string,
+              { env?: Record<string, unknown>; steps?: { run?: unknown }[] }
+            >;
+          }
+        )?.jobs ?? {},
+      ).flatMap(([jobName, job]) => {
+        const installs = (job?.steps ?? [])
+          .map((step) => (typeof step?.run === 'string' ? step.run : ''))
+          .filter((run) => /\bsdkmanager\b/.test(run));
+        if (installs.length === 0) return [];
+        const install = installs.join('\n');
+        const buildTools = job?.env?.ANDROID_BUILD_TOOLS_VERSION;
+        return [
+          {
+            lane: `${file}#${jobName}`,
+            ndk: /"ndk;([0-9][0-9.]*)"/.exec(install)?.[1] ?? null,
+            buildTools:
+              install.includes(
+                '"build-tools;${ANDROID_BUILD_TOOLS_VERSION}"',
+              ) && buildTools !== undefined
+                ? String(buildTools)
+                : (/"build-tools;([0-9][0-9.]*)"/.exec(install)?.[1] ?? null),
+          },
+        ];
+      }),
+    );
+    // The three lanes that ship or verify Android; a lane dropping out of this
+    // set (renamed job, sdkmanager moved elsewhere) must be a visible change.
+    expect(lanes.map(({ lane }) => lane.split('#')[0]).sort()).toEqual([
+      '.github/workflows/build-android.yml',
+      '.github/workflows/nightly-native-stage.yml',
+      '.github/workflows/release.yml',
+    ]);
+    expect(
+      lanes.filter(
+        (lane) =>
+          lane.ndk !== ANDROID_NDK_VERSION ||
+          lane.buildTools !== ANDROID_BUILD_TOOLS_VERSION,
+      ),
     ).toEqual([]);
   });
 
@@ -1485,6 +1558,36 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
+  it('bounds the PR browser smoke and uploads its diagnostics even when it fails', () => {
+    type Step = {
+      name?: string;
+      run?: string;
+      if?: string;
+      'timeout-minutes'?: unknown;
+      with?: { path?: string };
+    };
+    const steps = (
+      load(workflow('ci.yml')) as {
+        jobs: Record<string, { steps: Step[] }>;
+      }
+    ).jobs['fast-checks-statics'].steps;
+    const smoke = steps.findIndex(
+      (step) => step.run === 'npm run test:e2e:pr-smoke',
+    );
+    expect(smoke).toBeGreaterThanOrEqual(0);
+    expect(steps[smoke]['timeout-minutes']).toBe(10);
+    // The upload must follow the smoke and run on its failure, or a red smoke
+    // leaves no Playwright report or traces to diagnose.
+    const upload = steps.findIndex(
+      (step) => step.name === 'Upload bounded fast-feedback diagnostics',
+    );
+    expect(upload).toBeGreaterThan(smoke);
+    expect(steps[upload].if).toBe('always()');
+    const paths = String(steps[upload].with?.path).split('\n');
+    expect(paths).toContain('playwright-report/');
+    expect(paths).toContain('test-results/');
+  });
+
   it('reports the UI bundle delta in its own non-blocking, PR-only job (#1703)', () => {
     type Step = {
       name?: string;
@@ -1688,6 +1791,27 @@ describe('CI verification workflow contracts', () => {
     );
     expect((shard['timeout-minutes'] ?? 0) * 60_000).toBeGreaterThanOrEqual(
       CI_FAST_TIMEOUT_MS + boundedMs + 3 * 60_000,
+    );
+
+    // The selection can include tests that exec zsh, which ubuntu-22.04
+    // lacks: the shard provisions it exactly as full-regression does, before
+    // the tests run.
+    const zshName =
+      'Provision and preflight zsh for process-heavy installer fixtures';
+    const fullRegressionZsh = (
+      load(workflow('full-regression.yml')) as {
+        jobs: Record<string, Job>;
+      }
+    ).jobs['full-regression'].steps?.find((step) => step.name === zshName);
+    expect(fullRegressionZsh?.run).toContain('apt-get install --yes zsh');
+    const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
+    expect(shardZshIndex).toBeGreaterThan(-1);
+    expect(shardSteps[shardZshIndex].run).toBe(fullRegressionZsh?.run);
+    expect(shardSteps[shardZshIndex]['timeout-minutes']).toBe(
+      fullRegressionZsh?.['timeout-minutes'],
+    );
+    expect(shardZshIndex).toBeLessThan(
+      shardSteps.findIndex((step) => step.name === 'Run fast-checks shard'),
     );
 
     // The plan is uploaded once and read, by exact name, by the shards and
@@ -2155,10 +2279,6 @@ describe('CI verification workflow contracts', () => {
 
   it('runs Android viewport coverage through the public isolated suite', () => {
     const android = workflow('android-test.yml');
-    const resolver = readFileSync(
-      resolve(root, 'scripts/resolve-android-build-run.mjs'),
-      'utf8',
-    );
 
     expect(
       android.match(
@@ -2169,13 +2289,6 @@ describe('CI verification workflow contracts', () => {
     expect(android).toContain('required: true');
     expect(android).toContain('Resolve exact build revision');
     expect(android).toContain('node scripts/resolve-android-build-run.mjs');
-    expect(resolver).toContain('.github/workflows/build-android.yml');
-    expect(resolver).toContain('fetchImpl = fetch');
-    expect(resolver).toContain("redirect: 'error'");
-    expect(resolver).not.toContain("from 'node:child_process'");
-    expect(resolver).not.toContain('spawnSync(');
-    expect(resolver).not.toContain('response.json()');
-    expect(resolver).not.toContain('response.text()');
     expect(android).toContain('persist-credentials: false');
     expect(android).not.toContain(
       'github.event.workflow_run.head_sha || github.sha',
@@ -2294,6 +2407,17 @@ describe('CI verification workflow contracts', () => {
       'unused',
       `head_sha=${run.head_sha}\nrun_id=123\nconclusion=success\n`,
     );
+  });
+
+  // The behaviour test above injects fetchImpl, so it cannot see a resolver
+  // that falls back to shelling out to gh. This structural pin is that guard.
+  it('never spawns a child process to resolve the build', () => {
+    const resolver = readFileSync(
+      resolve(root, 'scripts/resolve-android-build-run.mjs'),
+      'utf8',
+    );
+    expect(resolver).not.toContain("from 'node:child_process'");
+    expect(resolver).not.toContain('spawnSync(');
   });
 
   it('fails honestly when the authenticated run lookup returns an API error', async () => {
@@ -2883,10 +3007,6 @@ describe('every Tauri invocation is rooted at the app directory', () => {
 
 describe('iOS verification proves packaged runtime readiness', () => {
   const ios = workflow('build-ios.yml');
-  const classifier = readFileSync(
-    resolve(root, 'scripts/classify-ci-change.mjs'),
-    'utf8',
-  );
 
   it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
@@ -2902,9 +3022,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
       'pull_request_target',
       'workflow_dispatch',
     ]);
-    expect(classifier).toContain("'src-desktop/'");
-    expect(classifier).toContain("'src-ui/'");
-    expect(classifier).toContain("'packages/connect/'");
+    // Which paths are iOS-relevant is owned by classify-ci-change.test.ts.
     expect(ios).toContain(
       'if [ "$GITHUB_EVENT_NAME" != "pull_request_target" ] && [ "$GITHUB_EVENT_NAME" != "merge_group" ]',
     );

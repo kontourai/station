@@ -123,22 +123,14 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
 import { useWorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
 
 export {
-  builtinWorkspacePaneRendererPresence,
-  isCanonicalBuiltinActivityDescriptor,
-  isCanonicalBuiltinBoardDescriptor,
   isCanonicalBuiltinBrowserPreviewDescriptor,
-  isCanonicalBuiltinChatDescriptor,
   isCanonicalBuiltinCodingDiffDescriptor,
   isCanonicalBuiltinCodingFileBrowserDescriptor,
   isCanonicalBuiltinCodingOccurrence,
   isCanonicalBuiltinCodingTerminalDescriptor,
   isCanonicalBuiltinFilePreviewDescriptor,
-  isCanonicalBuiltinHomeDescriptor,
   isCanonicalBuiltinPlanDescriptor,
   isCanonicalBuiltinReadinessDescriptor,
-  isCanonicalBuiltinSpatialBoardDescriptor,
-  isCanonicalBuiltinTaskRoomChatDescriptor,
-  isCanonicalBuiltinTaskRoomEditorDescriptor,
   isCanonicalBuiltinTrustDescriptor,
 } from './builtinWorkspacePaneCanonical';
 

@@ -1,3 +1,21 @@
+# Station patch of android-native-keyring-store 1.0.0
+
+Station selects this vendored crate through
+[`src-desktop/Cargo.toml`](../../src-desktop/Cargo.toml). The local patch makes
+[`SharedPreferencesEditor.commit`](src/shared_preferences.rs) return an error
+when Android reports `false`, and maps that error to Keyring's platform-failure
+result in [`error.rs`](src/error.rs). Credential write/delete callers propagate
+that result instead of acknowledging a rejected persistence operation.
+
+The upstream README follows unchanged, including its licenses and examples.
+Its generic application setup and historical release/availability statements
+are upstream context, not Station's build instructions or fresh device proof.
+Use [Station's Android guide](../../docs/guides/android-build.md) for the product
+build. This source review does not prove physical-keystore persistence or
+power-loss behavior.
+
+---
+
 # Keyring-compatible Android Store
 
 This crate provides storage and management of Keyring credentials in Android's native `SharedPreferences` store, securing all passwords and secrets using encryption via credentials in Android’s native Keystore. Once this library has been loaded and initialized (as described below) by your Android-native application, other Rust code linked into your application can use this credential store.

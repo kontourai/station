@@ -73,7 +73,6 @@ export const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
 export type StationControlMcpTokenChannel =
   | 'url-token'
   | 'http-header-token'
-  | 'stdio-env-token'
   | 'sdk-in-process';
 
 /**
@@ -88,11 +87,9 @@ export type StationControlMcpTokenChannel =
  *   ACP agent app in `session/new` over a private pipe, but what the app does
  *   with it next is the app's business: a third-party agent may write it to
  *   its own config, argv or logs. Station cannot prove it stayed private.
- * - `bearer-exposed`: the token sits in a spawned process's argv or env.
- *   `url-token` is in Codex's `-c mcp_servers…url=` argv; `stdio-env-token`
- *   is in a stdio child's env, which the Claude CLI copies into its own
- *   `--mcp-config` argv. Any same-user process can read it with `ps`, so
- *   presenting it proves possession, not session identity.
+ * - `bearer-exposed`: `url-token`. The token sits in Codex's
+ *   `-c mcp_servers…url=` argv, which any same-user process can read with
+ *   `ps`, so presenting it proves possession, not session identity.
  *
  * Only `bound` may gate an action that must be attributable to the session
  * (a session-scoped browser tool, an owned child session).
@@ -111,16 +108,24 @@ export function stationControlTokenAssurance(
     case 'http-header-token':
       return 'delegated-custody';
     case 'url-token':
-    case 'stdio-env-token':
       return 'bearer-exposed';
+    default: {
+      // Fail closed. `undefined` would slip past the policy's
+      // `ASSURANCE_RANK[assurance] < REQUIREMENT_RANK[...]` refusal (the
+      // comparison is false), so an unknown channel must never yield a
+      // value; the caller derivation turns this into "no caller".
+      const unknown: never = channel;
+      throw new Error(
+        `Unknown station-control token channel: ${String(unknown)}`,
+      );
+    }
   }
 }
 
 /**
- * The channels the `/mcp/station-control` HTTP endpoint accepts. A stdio
- * env token or an in-process token presented there is refused: neither
- * channel ever needs the endpoint, so a presentation there is a copied
- * credential.
+ * The channels the `/mcp/station-control` HTTP endpoint accepts. An
+ * in-process token presented there is refused: that channel never needs the
+ * endpoint, so a presentation there is a copied credential.
  */
 export const STATION_CONTROL_MCP_HTTP_CHANNELS: readonly StationControlMcpTokenChannel[] =
   ['url-token', 'http-header-token'];
@@ -315,31 +320,6 @@ export function mintStationControlMcpHeaderAuth(
     tenantExecutionContext,
   );
   return { url: buildStationControlMcpHeaderUrl(port), token };
-}
-
-/**
- * Station #90 lane D: the stdio channel's mint, for a per-session stdio
- * station-control child. The child gets this token in its spawn env so its
- * REST calls name a session (`STATION_CONTROL_CALLER_TOKEN_ENV`). Same
- * per-session replacement, revocation and TTL as the HTTP channels.
- *
- * It is `bearer-exposed`: a child's env is readable by same-user processes,
- * and the Claude CLI passes it in `--mcp-config` argv. Anyone who copies it
- * can present it as this session, so it must never gate an action that
- * needs `bound` assurance. Production Claude delivery uses the in-process
- * channel instead (`station-control-in-process.ts`); this mint is the
- * fallback when that is not wired.
- */
-export function mintStationControlStdioCallerToken(
-  sessionId: string,
-  tenantExecutionContext?: TenantExecutionContext,
-): string {
-  return mintStationControlMcpToken(
-    sessionId,
-    'stdio-env-token',
-    undefined,
-    tenantExecutionContext,
-  ).token;
 }
 
 /** Test-only reset so suites don't leak state across test files. */

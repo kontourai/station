@@ -1,5 +1,13 @@
 # EventStore ledger migration order
 
+> **Reading status: current architecture and extraction-disposition note.** This
+> is not a database migration procedure. [EventStore](../../src-server/services/orchestration/event-store.ts)
+> composes the ledgers consumed by
+> [OrchestrationService](../../src-server/services/orchestration/orchestration-service.ts);
+> the [Module map](../architecture/module-map.md#recoveryledger-and-private-credentialapplicationfactoryhandle)
+> owns the contributor-facing composition and evidence route. Source and fixture
+> checks remain distinct from a live provider or cross-process recovery journey.
+
 Completed behavioural ledger extractions are `TurnDeduplicator`,
 `AdoptionLedger`, and `RecoveryLedger`. RecoveryLedger composes the private
 credential-application factory/handle protocol for exact evidence. Each owns
@@ -55,6 +63,11 @@ and guarded compare-and-set updates, preserving due ordering (`due_at`, then
 creation) while keeping transaction coordination and owner-liveness checks
 inside the Implementation.
 
+Both startup reconciliation readers catch scan failures and return an empty
+list. An empty result therefore does not establish that recovery storage was
+read successfully. [#2823](https://github.com/kontourai/station/issues/2823)
+tracks explicit unavailable scan results and the caller's admission policy.
+
 Ownership pairs an owner UUID with the shared process-identity birth
 fingerprint. A matching live PID is retained; a dead PID or mismatched birth is
 reclaimable; an unavailable identity probe fails closed. A terminal operation
@@ -67,9 +80,9 @@ CredentialApplicationFactory/Handle composed at the EventStore/connection
 Seam, not to a public configuration projection or the recovery transition
 table. The RecoveryClaim passes its claim-local opaque key to private
 CredentialProfileRecoveryAdapter.stage; ConnectionService then calls Factory.start
-and returns an opaque Handle before profile effects. That application
-then moves in place through `staged`, `adopted`, `rolled-back`, `superseded`,
-or `indeterminate`, so a successfully staged attempt can terminalize even at
+and returns an opaque Handle in `reserved` state before profile effects. That
+application moves in place through `staged`, optional `commit-pending`, and
+`adopted`, `rolled-back`, `superseded`, or `indeterminate`, so a successfully staged attempt can terminalize even at
 capacity. Normal projections and `/api/config/app` do not expose receipt or
 pending-attempt identity. Recovery acknowledges only after its own terminal
 compare-and-set is durable; acknowledgement failure keeps exact evidence for

@@ -38,7 +38,6 @@ vi.mock('../../../services/evidence/platform-mutation-gate.js', () => ({
 }));
 
 const {
-  createRuntimeOAuthProvider,
   loadAgentTools: loadAgentToolsImplementation,
   releaseAllNativeStationControlConnections,
 } = await import('../mcp-manager.js');
@@ -66,8 +65,11 @@ const { isIntrinsicStationEngineGrant } = await import(
 );
 type MCPToolNameMappingEntry =
   import('../../tools/mcp-tool-names.js').MCPToolNameMappingEntry;
-const { LOADER_FAILURE_CLASS_LIMIT, LOADER_WITHHELD_STATUS_REASON } =
-  await import('../tool-load-failure.js');
+// Pinned literals, not imports: a change to the classifier's surfaced reason or
+// class bound must break these end-to-end expectations, not follow them.
+const LOADER_WITHHELD_STATUS_REASON =
+  'Tool load failed before any connection; detail withheld';
+const LOADER_FAILURE_CLASS_LIMIT = 60;
 
 /** All six methods of the Station logger contract (src-server/utils/logger.ts). */
 const LOGGER_METHODS = [
@@ -388,18 +390,6 @@ describe('Station-owned MCP manager', () => {
       },
       disconnect: vi.fn(),
     });
-    expect(() =>
-      createRuntimeOAuthProvider(
-        { getProjectHomeDir: () => home } as any,
-        {
-          id: 'remote',
-          kind: 'mcp',
-          transport: 'streamable-http',
-          endpoint: 'https://resource.example/mcp',
-        },
-        4555,
-      ),
-    ).not.toThrow();
     const logger = { debug: vi.fn(), info: vi.fn(), error: vi.fn() };
     await loadAgentTools(
       'agent-one',

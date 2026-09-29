@@ -46,42 +46,30 @@ function stateWithTwoSessionsAndApprovals(): OperateState {
 }
 
 describe('operate/keys: classifyKey', () => {
+  // The documented `keys` label (footer legend, docs/reference/cli.md) is
+  // parsed into the keypresses it names, so a key changed in only the label
+  // or only classifyKey fails here.
+  function keypressesFor(label: string): KeyInfo[] {
+    return label.split(' / ').map((chord) => {
+      const parts = chord.split('+');
+      const base = parts.pop() ?? '';
+      const modifiers = new Set(parts);
+      return key({
+        ctrl: modifiers.has('Ctrl'),
+        shift: modifiers.has('Shift'),
+        ...(base.length === 1 && modifiers.size === 0
+          ? { sequence: base }
+          : { name: base.toLowerCase() }),
+      });
+    });
+  }
+
   it.each(OPERATE_KEYBINDINGS)('classifies $keys as $binding', (entry) => {
-    if (entry.binding === 'quit') {
-      expect(classifyKey(key({ sequence: 'q' }))).toBe('quit');
-      expect(classifyKey(key({ ctrl: true, name: 'c', sequence: '' }))).toBe(
-        'quit',
-      );
-      return;
+    const keypresses = keypressesFor(entry.keys);
+    expect(keypresses.length).toBeGreaterThan(0);
+    for (const keypress of keypresses) {
+      expect(classifyKey(keypress)).toBe(entry.binding);
     }
-    if (entry.binding === 'cycle-focus-next') {
-      expect(classifyKey(key({ name: 'tab' }))).toBe('cycle-focus-next');
-      return;
-    }
-    if (entry.binding === 'cycle-focus-prev') {
-      expect(classifyKey(key({ name: 'tab', shift: true }))).toBe(
-        'cycle-focus-prev',
-      );
-      return;
-    }
-    if (entry.binding === 'move-selection-up') {
-      expect(classifyKey(key({ name: 'up' }))).toBe('move-selection-up');
-      return;
-    }
-    if (entry.binding === 'move-selection-down') {
-      expect(classifyKey(key({ name: 'down' }))).toBe('move-selection-down');
-      return;
-    }
-    const sequenceByBinding: Record<string, string> = {
-      accept: 'a',
-      'accept-for-session': 's',
-      decline: 'd',
-      cancel: 'x',
-      refresh: 'r',
-    };
-    expect(
-      classifyKey(key({ sequence: sequenceByBinding[entry.binding] })),
-    ).toBe(entry.binding);
   });
 
   it('returns null for an unrecognized key', () => {

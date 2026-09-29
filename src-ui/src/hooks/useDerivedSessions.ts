@@ -56,7 +56,7 @@ function messageIdentityKey(message: { role: string; content: string }) {
  * matching is the real optimistic remainder, appended after the backend
  * transcript below.
  */
-export function dedupeOptimisticMessages(
+function dedupeOptimisticMessages(
   localMessages: any[],
   backendMessages: any[],
 ): any[] {
@@ -304,6 +304,7 @@ function deriveSession(
     currentModeId: chatState.currentModeId,
     planArtifact: latestPlanArtifact,
     pendingApprovals: chatState.pendingApprovals,
+    unacknowledgedDecisions: chatState.unacknowledgedDecisions,
     isProcessingStep: chatState.isProcessingStep,
     flowRun: chatState.flowRun,
     activityHint: chatState.activityHint,

@@ -1,4 +1,11 @@
 #!/bin/sh
+# The whole script is one brace group, so a shell reading it from a pipe
+# (`curl ... | sh -s uninstall`) parses all of it before running any of it.
+# Without the group, a path that exits early (uninstall, a refusal) leaves the
+# rest of the script unread in the pipe; once that is more than the pipe
+# buffer (64 KiB on Linux), curl's write fails and it exits 23, which a
+# `set -o pipefail` caller reports as the install failing.
+{
 set -eu
 
 REPOSITORY="kontourai/station"
@@ -272,9 +279,20 @@ configure_runtime_paths() {
 # known, use one port resolution for both the pre-promotion build and the
 # supervised start.  Keeping this here avoids producing assets for one port
 # pair and booting them with another.
+# An explicit port wins; otherwise the ports this install recorded (a custom
+# port survives an upgrade that does not repeat it, #2675), then the channel's.
+recorded_server_port=""
+recorded_ui_port=""
 resolve_runtime_flags() {
-  resolved_server_port="${STATION_INSTALL_SERVER_PORT:-${STATION_SERVER_PORT:-$runtime_server_port}}"
-  resolved_ui_port="${STATION_INSTALL_UI_PORT:-${STATION_UI_PORT:-$runtime_ui_port}}"
+  resolved_server_port="${STATION_INSTALL_SERVER_PORT:-${STATION_SERVER_PORT:-${recorded_server_port:-$runtime_server_port}}}"
+  resolved_ui_port="${STATION_INSTALL_UI_PORT:-${STATION_UI_PORT:-${recorded_ui_port:-$runtime_ui_port}}}"
+  for resolved_port in "$resolved_server_port" "$resolved_ui_port"; do
+    case "$resolved_port" in
+      ''|0*|*[!0-9]*) fail "invalid Station port: $resolved_port" ;;
+    esac
+    [ "${#resolved_port}" -le 5 ] && [ "$resolved_port" -le 65535 ] || \
+      fail "invalid Station port: $resolved_port"
+  done
 }
 
 # Uninstall has no release manifest to verify. Its channel therefore comes only
@@ -574,15 +592,18 @@ safe_remove_tree() {
 
 # The active release's own CLI: bin/station in a prebuilt archive, station in
 # a source release.
-stop_installed_station() {
+try_stop_installed_station() {
   for installed_entry in "$current_link/bin/station" "$current_link/station"; do
     [ -f "$installed_entry" ] && [ -x "$installed_entry" ] || continue
-    if ! PATH="$current_link/node_modules/.bin:$PATH" \
-      "$installed_entry" stop --base="$station_home"; then
-      fail 'could not stop the installed Station; no files were removed'
-    fi
+    PATH="$current_link/node_modules/.bin:$PATH" \
+      "$installed_entry" stop --base="$station_home" || return 1
     return 0
   done
+}
+
+stop_installed_station() {
+  try_stop_installed_station || \
+    fail 'could not stop the installed Station; no files were removed'
 }
 
 start_installed_station() {
@@ -590,6 +611,178 @@ start_installed_station() {
     "--port=$resolved_server_port" \
     "--ui-port=$resolved_ui_port"
   PATH="$current_link/node_modules/.bin:$PATH" "$launcher" "$@"
+}
+
+# Station user services that run this install root's `current` (#2675
+# slice C): `station service install` from a prebuilt archive this installer
+# made active records `kind: "archive"` and the install root in the service
+# manifest under the home. Such a unit follows `current`, so an upgrade stops
+# it, switches `current` and starts it again instead of starting Station
+# beside it. The same rule as isArchiveServiceOfInstallRoot in the CLI's
+# service-upgrade-guard.ts. A manifest that cannot be read might be one of
+# them, so it stops the install.
+#
+# A unit keeps the ports it was installed with: install.sh restarts it, it
+# does not rewrite it. So ports the caller names explicitly must be the
+# unit's, or the upgrade refuses rather than silently ignoring them; ports
+# that only come from the recorded state or the channel default do not
+# constrain the unit. Arguments: the explicit server and UI ports, each `-`
+# (or absent) when that port was not named.
+archive_services=""
+active_services=""
+# Services whose unit is registered but not running: stopped, or between two
+# of its manager's automatic restarts after a crash. Such a unit can come up
+# on its own, so no separate Station may be started beside it.
+registered_services=""
+list_archive_services() {
+  [ -d "$station_home/service" ] || return 0
+  node -e '
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const [dir, installRoot, serverPort, uiPort] = process.argv.slice(1);
+    const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
+    const ids = [];
+    for (const name of fs.readdirSync(dir).sort()) {
+      if (!name.endsWith(".json")) continue;
+      const file = path.join(dir, name);
+      let manifest;
+      try { manifest = JSON.parse(fs.readFileSync(file, "utf8")); } catch { manifest = null; }
+      if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+        console.error(`unreadable Station service manifest: ${file}`);
+        process.exit(1);
+      }
+      if (manifest.platform !== process.platform || manifest.kind !== "archive" ||
+          typeof manifest.installRoot !== "string" ||
+          real(manifest.installRoot) !== real(installRoot)) continue;
+      const id = manifest.instanceId;
+      if (typeof id !== "string" || `${id}.json` !== name || !/^[a-z0-9._][a-z0-9._-]*$/.test(id)) {
+        console.error(`Station service manifest names an invalid instance: ${file}`);
+        process.exit(1);
+      }
+      if (manifest.repoPath !== path.join(real(installRoot), "current")) {
+        console.error(`Station service ${id} records this install root but runs ${manifest.repoPath}, not its current; reinstall it (station service install --instance=${id}) before upgrading`);
+        process.exit(1);
+      }
+      const mismatched = [["server", serverPort, manifest.serverPort], ["UI", uiPort, manifest.uiPort]]
+        .filter(([, requested, unit]) => requested !== "-" && requested !== "" && unit !== Number(requested));
+      if (mismatched.length > 0) {
+        console.error(`Station service ${id} serves ${mismatched.map(([name, requested, unit]) => `${name} port ${unit}, not the requested ${requested}`).join(" and ")}; reinstall it with the intended ports, or omit the port variables, before upgrading`);
+        process.exit(1);
+      }
+      ids.push(id);
+    }
+    process.stdout.write(ids.join(" "));
+  ' "$station_home/service" "$install_root" "${1:-}" "${2:-}"
+}
+
+# The ports this run was explicitly asked for, as list_archive_services'
+# arguments: each resolved port when a variable named it, else `-`.
+explicit_port_arguments() {
+  if [ -n "${STATION_INSTALL_SERVER_PORT:-}${STATION_SERVER_PORT:-}" ]; then
+    printf '%s' "$resolved_server_port"
+  else
+    printf -- '-'
+  fi
+  if [ -n "${STATION_INSTALL_UI_PORT:-}${STATION_UI_PORT:-}" ]; then
+    printf ' %s' "$resolved_ui_port"
+  else
+    printf ' -'
+  fi
+}
+
+# Runs `station service <verb> --instance=<id>` with the active release's own
+# CLI, against this install's home.
+run_service_command() {
+  service_verb="$1"
+  service_instance="$2"
+  shift 2
+  for installed_entry in "$current_link/bin/station" "$current_link/station"; do
+    [ -f "$installed_entry" ] && [ -x "$installed_entry" ] || continue
+    STATION_ROOT="$station_root" STATION_HOME="$station_home" \
+      "$installed_entry" service "$service_verb" "--instance=$service_instance" \
+      "--base=$station_home" "$@"
+    return
+  done
+  return 1
+}
+
+# Prints `active`, `registered` (the unit exists but is not running now:
+# stopped, or waiting for its manager to restart it) or `absent` (the
+# manifest names a unit that is gone) for a service; fails when the service
+# backend cannot say.
+service_unit_state() {
+  service_status="$(run_service_command status "$1" --json)" || true
+  printf '%s' "$service_status" | node -e '
+    let text = "";
+    process.stdin.on("data", (chunk) => { text += chunk; });
+    process.stdin.on("end", () => {
+      let value;
+      try { value = JSON.parse(text); } catch { process.exit(1); }
+      const unit = value?.unit;
+      if (unit?.active === true) process.stdout.write("active");
+      else if (unit?.active !== false) process.exit(1);
+      else if (unit.present === true || unit.enabled === true) process.stdout.write("registered");
+      else if (unit.present === false) process.stdout.write("absent");
+      else process.exit(1);
+    });
+  '
+}
+
+# The service answers its identity probes as the release just installed.
+service_runs_release() {
+  service_status="$(run_service_command status "$1" --json)" || true
+  printf '%s' "$service_status" | node -e '
+    let text = "";
+    process.stdin.on("data", (chunk) => { text += chunk; });
+    process.stdin.on("end", () => {
+      let value;
+      try { value = JSON.parse(text); } catch { process.exit(1); }
+      if (value?.instance?.healthy !== true || value.instance.sha !== process.argv[1]) process.exit(1);
+    });
+  ' "$release_sha"
+}
+
+# Stops, then starts, each named service with the active release's CLI, so a
+# generation of another version that is still up is replaced, not adopted.
+restart_services() {
+  for restart_id in $1; do
+    run_service_command stop "$restart_id" >/dev/null || return 1
+    run_service_command start "$restart_id" >/dev/null || return 1
+  done
+}
+
+# Stops what runs from the active release before `current` moves. A service
+# is stopped through its manager: stopping only its Station would make the
+# manager restart it mid-switch (#2674). A registered unit that is not running
+# is stopped too, which cancels a pending automatic restart.
+stop_for_switch() {
+  [ -n "$active_services$registered_services" ] || { stop_installed_station; return 0; }
+  for stop_id in $registered_services; do
+    run_service_command stop "$stop_id" >/dev/null || \
+      fail "could not stop Station service $stop_id; the running release was not changed"
+  done
+  stopped_services=""
+  for stop_id in $active_services; do
+    if ! run_service_command stop "$stop_id" >/dev/null; then
+      restart_services "$stopped_services" || true
+      fail "could not stop Station service $stop_id; the running release was not changed"
+    fi
+    stopped_services="$stopped_services $stop_id"
+  done
+  if ! try_stop_installed_station; then
+    restart_services "$stopped_services" || true
+    fail 'could not stop the installed Station; the running release was not changed'
+  fi
+}
+
+# Starts the restored release again: the services that were running, or
+# Station itself when no service unit is registered for this install.
+restart_previous_station() {
+  if [ -n "$active_services" ]; then
+    restart_services "$active_services" >/dev/null 2>&1
+  elif [ -z "$registered_services" ]; then
+    start_installed_station >/dev/null 2>&1
+  fi
 }
 
 replace_link_atomically() {
@@ -671,7 +864,7 @@ restore_previous_release() {
     replace_link_atomically "$previous_release" "$current_link" || return 1
     restore_previous_launcher || return 1
     restore_previous_state || return 1
-    start_installed_station >/dev/null 2>&1 || return 1
+    restart_previous_station || return 1
   else
     rm -f "$current_link" "$launcher"
     restore_previous_state || return 1
@@ -706,6 +899,12 @@ uninstall_station() {
     assert_owned_root "$station_home" "$DATA_ROOT_MARKER" "$DATA_ROOT_SIGNATURE"
   fi
 
+  # A service that runs this install's `current` would be left pointing at
+  # nothing (#2675 slice C).
+  uninstall_services="$(list_archive_services)" || \
+    fail "cannot tell which Station services in $station_home/service run this install; nothing was removed"
+  [ -z "$uninstall_services" ] || \
+    fail "Station service(s) $uninstall_services run this install; remove each first with: $launcher service uninstall --instance=<name>. Nothing was removed"
   stop_installed_station
   if [ -e "$launcher" ] || [ -L "$launcher" ]; then
     launcher_is_owned || fail "refusing to remove a launcher not owned by the $runtime_channel install: $launcher"
@@ -739,6 +938,21 @@ case "${1:-install}" in
 esac
 
 public_manifest_url="${STATION_INSTALL_PUBLIC_MANIFEST_URL:-}"
+
+# Stage-only mode (#2675 slice D). A service that runs through the fixed
+# launcher updates itself: its running version runs THIS script with
+# STATION_INSTALL_STAGE_ONLY=1 to download, verify, extract, self-check and
+# seal the new version into versions/<v> exactly as an install would, and the
+# launcher then trials it. Nothing else changes: not current, not the channel
+# launcher, not the install state, not a service. The last line of output is
+# STATION_STAGED_VERSION=<the version now staged>, which is the running one
+# when the manifest names nothing newer.
+stage_only=false
+if [ "${STATION_INSTALL_STAGE_ONLY:-0}" = 1 ]; then
+  [ -n "$public_manifest_url" ] || \
+    fail 'STATION_INSTALL_STAGE_ONLY=1 stages only from a signed public manifest (STATION_INSTALL_PUBLIC_MANIFEST_URL)'
+  stage_only=true
+fi
 # Nightly is published only as a signed public manifest (#2675). The
 # authenticated gh path below resolves `v*` GitHub releases, verifies
 # attestations from release.yml, and maps only stable/preview tags; a nightly
@@ -1317,7 +1531,7 @@ if [ -e "$state_file" ] || [ -L "$state_file" ]; then
   expected_install_root="$(canonicalize_path "$install_root")"
   expected_station_root="$(canonicalize_path "$station_root")"
   expected_station_home="$(canonicalize_path "$station_home")"
-  node -e '
+  recorded_ports="$(node -e '
     const fs = require("node:fs");
     const [p, runtimeChannel, releaseChannel, installRoot, stationRoot, stationHome, ringsJson] = process.argv.slice(1);
     const s = fs.lstatSync(p);
@@ -1331,13 +1545,24 @@ if [ -e "$state_file" ] || [ -L "$state_file" ]; then
     const savedRuntime = v.channel;
     const savedRelease = v.releaseChannel;
     if (savedRuntime !== runtimeChannel || savedRelease !== releaseChannel || (v.installRoot && v.installRoot !== installRoot) || (v.stationRoot && v.stationRoot !== stationRoot) || (v.stationHome && v.stationHome !== stationHome)) process.exit(3);
-  ' "$state_file" "$runtime_channel" "$release_channel" "$expected_install_root" "$expected_station_root" "$expected_station_home" "$RELEASE_RINGS_JSON" || {
+    // The ports the install ran on; recorded together, or not at all by
+    // installers before #2675 slice C.
+    const port = (value) => Number.isInteger(value) && value >= 1 && value <= 65535;
+    if (v.serverPort === undefined && v.uiPort === undefined) process.exit(0);
+    if (!port(v.serverPort) || !port(v.uiPort)) process.exit(1);
+    process.stdout.write(`${v.serverPort} ${v.uiPort}`);
+  ' "$state_file" "$runtime_channel" "$release_channel" "$expected_install_root" "$expected_station_root" "$expected_station_home" "$RELEASE_RINGS_JSON")" || {
     state_status=$?
     if [ "$state_status" = 3 ]; then
       fail 'existing install state does not match this verified channel root; remove the explicit root override or reinstall into a new scoped root'
     fi
     fail 'existing install channel state is unsafe or malformed'
   }
+  if [ -n "$recorded_ports" ]; then
+    recorded_server_port="${recorded_ports% *}"
+    recorded_ui_port="${recorded_ports#* }"
+    resolve_runtime_flags
+  fi
 fi
 
 # Downgrade protection for the public-manifest path (archive#187). A signed
@@ -1407,6 +1632,7 @@ check_public_manifest_version() {
         [ -f "$release_dir/.station-install-complete" ] && \
         [ "$(cat "$release_dir/.station-install-complete")" = "$actual_checksum" ]; then
         printf 'Station %s is already installed; nothing to do.\n' "$release_tag"
+        [ "$stage_only" = false ] || printf 'STATION_STAGED_VERSION=%s\n' "$release_version"
         exit 0
       fi
       # The same version in the other layout (a source release built on
@@ -1449,6 +1675,9 @@ else
   release_dir="$releases_dir/$actual_checksum"
   release_entry=station
 fi
+if [ "$stage_only" = true ] && [ "$release_kind" != archive ]; then
+  fail 'STATION_INSTALL_STAGE_ONLY=1 stages only prebuilt archives'
+fi
 if [ -n "$public_manifest_url" ]; then
   check_public_manifest_version
 fi
@@ -1465,6 +1694,127 @@ assert_launcher_safe
 previous_release=""
 if [ -L "$current_link" ]; then
   previous_release="$(readlink "$current_link")"
+fi
+
+# Queues an update of the running service to the staged version and waits for
+# the launcher's verdict (#2675 slice D). Exits: 0 when the service committed
+# it, 1 when the service rolled it back or refused it.
+hand_off_to_launcher() {
+  handoff_status=0
+  node -e '
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const crypto = require("node:crypto");
+    const [runtime, version, timeoutSeconds] = process.argv.slice(1);
+    const request = path.join(runtime, "update-request.json");
+    const processing = path.join(runtime, "update-request.processing.json");
+    if (fs.existsSync(request) || fs.existsSync(processing)) {
+      console.error("another Station update is already requested for this service");
+      process.exit(1);
+    }
+    const id = crypto.randomUUID();
+    const stage = `${request}.${process.pid}.tmp`;
+    fs.writeFileSync(stage, `${JSON.stringify({ id, requestedAt: new Date().toISOString(), targetVersion: version })}\n`, { mode: 0o600, flag: "wx" });
+    fs.renameSync(stage, request);
+    console.log(`Asked the Station service to switch to ${version}; it trials the new version and keeps the current one if the trial fails.`);
+    const read = (file) => { try { return JSON.parse(fs.readFileSync(path.join(runtime, file), "utf8")); } catch { return null; } };
+    const deadline = Date.now() + Number(timeoutSeconds) * 1000;
+    const poll = () => {
+      const result = read("update-request-result.json");
+      if (result?.requestId === id) {
+        if (result.status === "up-to-date") { console.log(`The Station service already runs ${result.version}.`); process.exit(0); }
+        console.error(`The Station service did not update (${result.status}): ${result.reason}`);
+        process.exit(1);
+      }
+      const update = read("service-state.json")?.update;
+      if (update?.requestId === id && update.status !== "pending") {
+        if (update.status === "committed") { console.log(`The Station service now runs ${update.targetVersion}.`); process.exit(0); }
+        console.error(`The Station service kept ${update.fromVersion}: the update to ${update.targetVersion} ${update.status} (${update.reason}).`);
+        process.exit(1);
+      }
+      if (Date.now() > deadline) {
+        console.error(`The Station service has not finished the update after ${timeoutSeconds}s; it continues on its own (see station service status).`);
+        process.exit(1);
+      }
+      setTimeout(poll, 1000);
+    };
+    poll();
+  ' "$install_root/runtime" "$release_version" "${STATION_INSTALL_HANDOFF_TIMEOUT_SECONDS:-1200}" || handoff_status=$?
+  exit "$handoff_status"
+}
+
+# After this install switched `current` for a launcher-run service that is
+# not running, its launcher state must name the same version, or the next
+# start would move `current` back (#2675 slice D). Written by the service's
+# own fixed launcher code, under its lock, and refused when an update became
+# unfinished since the check above (a registered unit that started on its
+# own meanwhile): one writer, one lock, one staleness rule (#2675 D review F9).
+record_launcher_active_version() {
+  [ "$release_kind" = archive ] && [ -f "$launcher_state" ] || return 0
+  # Through the environment, not argv: the launcher runs itself as a program
+  # when argv[1] names it, which `node -e <script> <launcher>` would.
+  STATION_RECORD_LAUNCHER="$install_root/runtime/station-launcher.mjs" \
+  STATION_RECORD_ROOT="$install_root" STATION_RECORD_VERSION="$release_version" \
+  node --input-type=module -e '
+    import { pathToFileURL } from "node:url";
+    const { STATION_RECORD_LAUNCHER: launcher, STATION_RECORD_ROOT: root, STATION_RECORD_VERSION: version } = process.env;
+    const { recordServiceActiveVersion } = await import(pathToFileURL(launcher).href);
+    try {
+      recordServiceActiveVersion(root, version);
+    } catch (error) {
+      console.error(error.message);
+      process.exit(1);
+    }
+  '
+}
+
+# Staging touches no service: the running version that asked for it keeps
+# serving until its launcher trials the result.
+if [ "$stage_only" = false ]; then
+# Unquoted on purpose: always two port words, `-` for a port nobody named.
+archive_services="$(list_archive_services $(explicit_port_arguments))" || \
+  fail "cannot switch this install around the Station services in $station_home/service (see above); nothing was changed"
+if [ -n "$archive_services" ]; then
+  [ "$release_kind" = archive ] || \
+    fail "Station service(s) $archive_services run this install's prebuilt archive, which a source release cannot replace; uninstall them first (station service uninstall --instance=<name>)"
+  for service_id in $archive_services; do
+    service_state="$(service_unit_state "$service_id")" || \
+      fail "could not determine whether Station service $service_id is running; nothing was changed (inspect it with: station service status --instance=$service_id --base=$station_home)"
+    case "$service_state" in
+      active) active_services="${active_services:+$active_services }$service_id" ;;
+      registered) registered_services="${registered_services:+$registered_services }$service_id" ;;
+    esac
+  done
+fi
+fi
+
+# A service that runs through the fixed launcher (#2675 slice D) owns its own
+# switch: runtime/service-state.json, not `current`, says which version it
+# runs, and the launcher trials a new version and rolls it back on failure.
+# So this install only stages the version, queues an update request for the
+# running service, and waits for the launcher's verdict. An update the
+# launcher left unfinished (it was killed mid-update and the service is down)
+# is finished by starting the service, never overwritten from here.
+launcher_state="$install_root/runtime/service-state.json"
+launcher_handoff=false
+if [ "$stage_only" = false ] && [ "$release_kind" = archive ] && [ -f "$launcher_state" ]; then
+  node -e '
+    const fs = require("node:fs");
+    let state;
+    try { state = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch { process.exit(1); }
+    if (state?.update?.status === "pending") process.exit(2);
+    if (state?.update?.status === "needs-operator") process.exit(3);
+  ' "$launcher_state" || {
+    launcher_state_status=$?
+    [ "$launcher_state_status" = 2 ] && \
+      fail "a supervised Station update is unfinished in $install_root; start the Station service to let its launcher finish or roll it back, then retry. Nothing was changed"
+    [ "$launcher_state_status" = 3 ] && \
+      fail "a supervised Station update could not be rolled back in $install_root: the Station service could not restore its home and is stopped (see its log). Fix the cause, then retry the restore with: station service stop --instance=<name> && station service start --instance=<name>; retry this install once the service runs. Nothing was changed"
+    fail "the Station service launcher state is unreadable: $launcher_state; nothing was changed"
+  }
+  if [ -n "$active_services" ]; then
+    launcher_handoff=true
+  fi
 fi
 
 release_complete=false
@@ -1593,6 +1943,20 @@ else
   printf 'Station release already installed; reusing verified files.\n'
 fi
 
+if [ "$stage_only" = true ] || [ "$launcher_handoff" = true ]; then
+  # The running version stays where it is: the launcher moves off it only
+  # after a trial of the staged one.
+  [ "$replace_active_version" = false ] || \
+    fail "cannot replace the running Station $release_tag in place under the service launcher; nothing was changed"
+fi
+if [ "$stage_only" = true ]; then
+  printf 'STATION_STAGED_VERSION=%s\n' "$release_version"
+  exit 0
+fi
+if [ "$launcher_handoff" = true ]; then
+  hand_off_to_launcher
+fi
+
 canonical_install_root="$(canonicalize_path "$install_root")"
 canonical_station_root="$(canonicalize_path "$station_root")"
 canonical_station_home="$(canonicalize_path "$station_home")"
@@ -1618,23 +1982,28 @@ umask 077
 # packaged `station upgrade` re-runs the same verified path without the
 # caller's environment (#2675). The authenticated GitHub-release path has no
 # manifest URL and keeps writing schema 3, which released CLIs and installers
-# (they accept schema 3 only) can still read.
+# (they accept schema 3 only) can still read. Both record the ports this run
+# resolved (those Station was started on, or would be under
+# STATION_INSTALL_NO_START=1), so an upgrade that does not name ports keeps
+# them; readers ignore fields they do not know.
 node -e '
   const fs = require("node:fs");
-  const [path, channel, releaseChannel, installRoot, stationRoot, stationHome, manifestUrl] = process.argv.slice(1);
+  const [path, channel, releaseChannel, installRoot, stationRoot, stationHome, manifestUrl, server, ui] = process.argv.slice(1);
+  const ports = { serverPort: Number(server), uiPort: Number(ui) };
   const state = manifestUrl
-    ? { schemaVersion: 4, channel, releaseChannel, installRoot, stationRoot, stationHome, manifestUrl }
-    : { schemaVersion: 3, channel, releaseChannel, installRoot, stationRoot, stationHome };
+    ? { schemaVersion: 4, channel, releaseChannel, installRoot, stationRoot, stationHome, manifestUrl, ...ports }
+    : { schemaVersion: 3, channel, releaseChannel, installRoot, stationRoot, stationHome, ...ports };
+  if (!Object.values(ports).every((port) => Number.isInteger(port) && port >= 1 && port <= 65535)) process.exit(1);
   fs.writeFileSync(path, `${JSON.stringify(state)}\n`, { mode: 0o600, flag: "wx" });
   const fd = fs.openSync(path, "r");
   try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-' "$state_stage" "$runtime_channel" "$release_channel" "$canonical_install_root" "$canonical_station_root" "$canonical_station_home" "$public_manifest_url" || fail 'could not stage install channel state'
+' "$state_stage" "$runtime_channel" "$release_channel" "$canonical_install_root" "$canonical_station_root" "$canonical_station_home" "$public_manifest_url" "$resolved_server_port" "$resolved_ui_port" || fail 'could not stage install channel state'
 
 if [ "$replace_active_version" = true ]; then
   # Same version, new bytes, explicitly requested: the running version is
   # moved aside (it stays the rollback target) and the verified one takes its
   # name. current already names that path.
-  stop_installed_station
+  stop_for_switch
   moving_aside="$releases_dir/$release_version.replaced.$$"
   # Station is stopped: a failure here restarts the untouched version.
   move_version_dir "$release_dir" "$moving_aside" || \
@@ -1648,7 +2017,7 @@ if [ "$replace_active_version" = true ]; then
     fail_with_rollback 'could not publish the new release'
   fi
 elif [ "$previous_release" != "$release_dir" ]; then
-  stop_installed_station
+  stop_for_switch
   if ! replace_link_atomically "$release_dir" "$current_link" || \
     ! node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$staged_launcher" "$launcher"; then
     fail_with_rollback 'could not publish the new release'
@@ -1659,7 +2028,7 @@ else
   # failure after this stop rolls back so the previously-running Station is
   # never left stopped (the "previous" release here is the same release, so
   # rollback is a restart, not a downgrade).
-  stop_installed_station
+  stop_for_switch
   node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$staged_launcher" "$launcher" || \
     fail_with_rollback 'could not publish the channel launcher'
 fi
@@ -1669,7 +2038,23 @@ node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$stat
 state_stage=""
 
 if [ "${STATION_INSTALL_NO_START:-0}" != 1 ]; then
-  if ! start_installed_station; then
+  if [ -n "$active_services" ]; then
+    # The unit runs `current`, which now names the new release. A service
+    # that does not come back as that release, answering its identity
+    # probes, puts the previous release back and restarts it (identity
+    # rollback; the supervisor-owned trial replaces this in slice D).
+    for service_id in $active_services; do
+      printf 'Restarting Station service %s...\n' "$service_id"
+      if ! run_service_command start "$service_id" >/dev/null || \
+        ! service_runs_release "$service_id"; then
+        fail_with_rollback "Station service $service_id did not come back as $release_tag"
+      fi
+    done
+  elif [ -n "$registered_services" ]; then
+    # A registered unit may start on its own at any time; a second Station
+    # beside it would share its home and ports. It stays stopped.
+    :
+  elif ! start_installed_station; then
     fail_with_rollback 'the new release did not start'
   fi
   # Keep the active release and the one it replaced (the rollback target),
@@ -1686,14 +2071,34 @@ if [ "${STATION_INSTALL_NO_START:-0}" != 1 ]; then
   done
 fi
 
+record_launcher_active_version || \
+  fail_with_rollback 'could not record the new version for the Station service launcher'
+
 printf '\nStation is installed at %s\n' "$current_link"
 printf 'Launcher: %s\n' "$launcher"
 case ":$PATH:" in
   *":$bin_dir:"*) ;;
   *) printf 'Add %s to PATH to run station from any directory.\n' "$bin_dir" ;;
 esac
-if [ "${STATION_INSTALL_NO_START:-0}" = 1 ]; then
+if [ -n "$registered_services" ]; then
+  for service_id in $registered_services; do
+    printf 'Station service %s was not running and was left stopped; start it with: %s service start --instance=%s\n' "$service_id" "$launcher" "$service_id"
+  done
+fi
+if [ "${STATION_INSTALL_NO_START:-0}" = 1 ] && [ -n "$active_services" ]; then
+  for service_id in $active_services; do
+    printf 'Station service %s was stopped for the switch; start it with: %s service start --instance=%s\n' "$service_id" "$launcher" "$service_id"
+  done
+elif [ -n "$registered_services" ] && [ -z "$active_services" ]; then
+  :
+elif [ "${STATION_INSTALL_NO_START:-0}" = 1 ]; then
   printf 'Start it with: %s start\n' "$launcher"
+elif [ -n "$active_services" ]; then
+  # Each unit serves the ports it was installed with, not necessarily these.
+  for service_id in $active_services; do
+    printf 'Station service %s is running %s; see it with: %s service status --instance=%s\n' "$service_id" "$release_tag" "$launcher" "$service_id"
+  done
 else
   printf 'Open http://localhost:%s\n' "$resolved_ui_port"
 fi
+}

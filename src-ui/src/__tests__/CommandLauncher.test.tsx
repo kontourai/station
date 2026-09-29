@@ -156,24 +156,6 @@ describe('CommandLauncher', () => {
     trigger.remove();
   });
 
-  test('backdrop is a semantic dismiss button that preserves pointer close', () => {
-    const onClose = vi.fn();
-    render(
-      <CommandLauncher
-        context={context}
-        onClose={onClose}
-        onConfirm={vi.fn()}
-      />,
-    );
-
-    const dismiss = screen.getByRole('button', {
-      name: 'Dismiss command launcher',
-    }) as HTMLButtonElement;
-    expect(dismiss.type).toBe('button');
-    fireEvent.mouseDown(dismiss);
-    expect(onClose).toHaveBeenCalledOnce();
-  });
-
   test('backdrop closes once for pointer and native button activation', () => {
     const onPointerClose = vi.fn();
     const pointerView = render(
@@ -185,8 +167,13 @@ describe('CommandLauncher', () => {
     );
     const pointerDismiss = screen.getByRole('button', {
       name: 'Dismiss command launcher',
-    });
+    }) as HTMLButtonElement;
+    // A semantic button that never submits an enclosing form.
+    expect(pointerDismiss.type).toBe('button');
+    // Pointer dismissal happens on press, before the click arrives...
     fireEvent.mouseDown(pointerDismiss);
+    expect(onPointerClose).toHaveBeenCalledOnce();
+    // ...and the click that follows the same press does not close again.
     fireEvent.click(pointerDismiss);
     expect(onPointerClose).toHaveBeenCalledOnce();
     pointerView.unmount();

@@ -1,6 +1,19 @@
 # Self-hosted routing broker
 
-Status: bounded source implementation for local qualification. This is not a public listener or a production hosting recommendation.
+The broker matches clients with a Station connector. It carries signaling;
+the verified peer connection carries encrypted application traffic. The broker
+CLI binds only to loopback. Running it is not a public deployment or a complete
+collaboration setup.
+
+Keep these three approvals separate:
+
+1. A broker invitation grants signaling access for an exact Station and client.
+2. Independently approved Station signing trust authenticates the endpoint.
+3. Device and account/Project grants authorize application requests there.
+
+The [local lab](local-collaboration-lab.md) composes these owners for bounded
+acceptance. [Connections](connections.md) explains the current browser and
+native user journeys.
 
 The current private-file custody implementation is POSIX-only. Windows startup refuses with `self_hosted_broker_private_custody_unavailable_on_windows` until the broker adopts an audited DACL owner; it never falls back to unchecked Windows paths.
 
@@ -46,15 +59,25 @@ This local CLI flow proves database and credential scoping, not public
 deployment, multi-operator administration, remote reachability, or backup and
 restore.
 
-Connector and routing credentials are separate 256-bit secrets. Every request must match the credential direction, Station, enrollment, routing generation, and configured Origin. Browser preflight admits only an active configured Origin and the three required headers. Provisioning leaves a Station `offline`; an authenticated connector registration makes the current routing generation `online` for 30 seconds. `online` describes recent connector registration, not application readiness or permission. Registration is the presence heartbeat; lease renewal is separate. A composed supervisor must refresh both.
+Connector and operator routing credentials are separate 256-bit secrets. Their
+requests must match the credential direction, Station, enrollment, routing
+generation, and configured Origin. Browser preflight admits an active configured
+Origin and the exact declared headers: authorization, content type and credential
+ID for credentialed requests; content type alone for invitation redemption.
+Provisioning leaves a Station `offline`; an authenticated connector registration
+makes the current routing generation `online` for 30 seconds. `online` describes
+recent connector registration, not application readiness or permission.
+Registration is the presence heartbeat; lease renewal is separate. A composed
+supervisor must refresh both.
 
 Each `init` invocation provisions one operator-owned routing credential for one Station and browser Origin. Multiple invocations may use the same broker database as described above. This is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume each routing scope. The broker cannot mint or replace independently approved connection-signing trust.
 
 ## Native routing grant foundation (v2)
 
-The broker database upgrades additively from schema v2 through v4. Native
-invitation and grant metadata lives in separate tables, and native connection
-offers live in their own v4 table; existing browser v1 wire records, Origin
+The broker database currently writes schema v6 and accepts the known v1–v5
+schemas for additive migration. Native invitation and grant metadata lives in
+separate v3 tables, connection offers in v4, consumed request proofs in v5,
+and grant-renewal receipts in v6. Existing browser v1 wire records, Origin
 checks, owner tables, and signaling behavior are unchanged. A native surface is
 discriminated as `station-native` and binds the app identifier, one of the
 actual `dev`, `stable`, `beta`, or `nightly` channels, a client instance UUID,
@@ -87,21 +110,57 @@ single-use JTI, and Unix-second issue/expiry times no more than 30 seconds
 apart. The proof is sent in `X-Station-Native-Proof`; no browser Origin or
 cookie is accepted. The broker atomically consumes the JTI with the signaling
 operation and retains replay entries for five minutes. Native grants can be
-renewed with a fresh request proof at or after half-life (the final 12 hours)
+renewed with a fresh request proof when no more than 12 hours remain
 and for up to seven days after expiry. The renewal body binds a closed
 8-128-character URL-safe `renewalId` and the expected expiry in Unix
 milliseconds. A private SQLite receipt binds that ID to the exact body digest
 and the committed expiry, so retrying the same body after a lost reply returns
 the same receipt. Reusing the ID for another body conflicts; a receipt
-superseded by a later renewal returns the current expiry. Receipt and JTI
+superseded by a later renewal returns a typed conflict with the current expiry. Receipt and JTI
 records have bounded retention and grant-row cleanup cascades them safely.
 Renewal grace is proof-only: `open` and `read` remain unavailable after grant
 expiry, and revocation, withdrawal, or a replaced Station generation makes a
 receipt unusable. Grants not renewed within seven days need operator
 re-issuance.
-The Rust keyring host does not yet produce these request proofs, and no
-packaged native client enables these routes; the typed TypeScript signer seam
-and renewal API remain protocol scaffolding and server-side tests only.
+Rust has private-key signing and fixed-path HTTP helpers for these request
+proofs, including retained cleanup and renewal state. The desktop Tauri command
+table now wires native grant redemption, status, renewal, revocation, pending-cleanup
+read/retry, and both diagnostic and application-named signaling binding/open/read.
+Those main-window
+commands reload the saved profile and approved Station trust in the host;
+the renderer does not supply trusted keyring identity. Profile removal and
+startup also have pending-cleanup hooks. These capabilities still do not select
+a native application route or carry protected application traffic.
+
+The [application signaling commands](../design/native-capabilities.md#desktop-application-signaling-commands)
+share the diagnostic host service: they admit an existing routing grant and
+return public binding metadata or bounded SDP/proof responses. The application
+names have no renderer caller yet, and returning an opaque Station proof does
+not verify it or open an application DataChannel. Broker signaling remains
+separate from Device/account authorization and application transport.
+
+The separate [desktop account proof-key foundation](../design/native-capabilities.md#desktop-account-proof-key-foundation)
+uses its own keyring namespace, additionally bound to a Station and approved
+Device identity. It has no Tauri IPC or production sign-in caller yet. The
+broker's routing proof key and grant maintenance do not become account proof
+or account authority through that foundation.
+
+Host renewal records its renewal ID, expected expiry and exact body in private
+grant custody before sending the request. A lost reply reuses that intent with
+a fresh request proof. Profile/trust/grant identity is checked again before
+the host accepts a receipt, and renewal is serialized with route retirement.
+A retained valid intent can recover an already-committed broker receipt after
+the original local expiry/grace window; this does not authorize a new renewal
+outside the broker's window or allow expired open/read operations.
+
+The Desktop `NativeRelayGrantRenewalSupervisor` is composed by `ApiBaseProvider`.
+It observes all saved routes while the renderer is visible, validates the host
+DTO and saved-profile revision, and renews only an existing single grant with no
+pending cleanup. Timers and wake/online refreshes recheck status before renewal;
+failures receive bounded backoff. Removing or replacing a profile fences its
+pending renderer result. The 64-route ceiling pauses all automatic maintenance
+until the saved set is within the limit. This supervisor does not approve a key,
+redeem an invitation, or make native application transport available.
 Native invitations and grants are retired with their Station
 routing generation. V1 redemption rejects v2
 invitations, and native-v2 redemption rejects v1 invitations. This foundation
@@ -115,16 +174,30 @@ The Station connector exposes `pollNative()` only when a caller explicitly
 supplies a native offer adapter bound to one exact surface. Before that callback
 can allocate a peer, it checks the offer's Station key thumbprint and generation
 against current approved Station trust. The production Pion runtime registers
-that adapter only when `nativeClient` configures the exact surface, and native
-offer polling has its own explicit opt-in. Ordinary browser `poll()` never reads
-native offers. This path can carry encrypted application traffic to Station's
-virtual ingress; it does not grant Device, account, or Project access or enable
-native UI onboarding on its own. Several native installations can hold separate
-grants; connector fan-out across multiple native surfaces remains future work.
+the native application adapter only when `nativeClient` is configured. Its
+ordinary browser `poll()` remains separate; the lifecycle additionally calls
+`pollNative()` for that opt-in surface. The signing-key candidate lane still
+only establishes endpoint trust.
+
+The native application adapter marks requests from an admitted peer with
+server-owned provenance before virtual ingress; omitting `Origin` on an
+ordinary HTTP request supplies no such authority. Device and account admission
+remain separate. Several native installations can hold separate grants, but
+this connector configuration names one surface; multi-surface fan-out and
+ordinary native UI onboarding remain separate work.
+
+An explicit native-v2 `diagnosticEcho` composition is available in the
+[local lab](local-collaboration-lab.md#native-v2-signaling-diagnostic).
+Its caller supplies a diagnostic adapter and collects an echo before retiring
+the peer. It does not register the ordinary native application adapter or turn
+a saved Desktop route into a selectable application connection.
 
 Connection offers use a caller-chosen client ID and nonce, expire after 30 seconds, and remain replay tombstones for five minutes. Each Station may hold 32 live offers and the broker 1024. Offer and answer SDP are capped at 128 KiB; the opaque Station proof uses its owning 4 KiB contract limit. A connection accepts one answer. Withdrawal and a newer routing generation invalidate pending work without changing Station signing-key trust. Lease renewal uses an explicit revision CAS.
 
-The broker service binds only to loopback. TLS termination, reverse-proxy hardening, public deployment, and production connector operations remain later integration work under #1963.
+The service binds only to loopback. Public TLS termination, reverse-proxy
+hardening, and deployment qualification remain separate operator work under
+#1963. The opt-in connector lifecycle and protected application transport are
+implemented below; their existence does not qualify a public deployment.
 
 ## Connector lifecycle library
 
@@ -138,14 +211,22 @@ This composition does not distribute routing credentials, approve a new client s
 
 ## HTTP control contract
 
-Browser v1 control requests are POSTs under `/broker/v1`, with JSON `scope`, an
-exact configured `Origin`, `Authorization: Bearer <routing-or-connector-secret>`
-and `X-Broker-Credential-Id`. These are broker credentials, never Station
-Device or account credentials. The native v2 redemption endpoint is the sole
-exception: it has no browser Origin and accepts no cookies or v1 credentials;
-its authority is the invitation-bound ES256 key proof described above. The
-request body is capped at 256 KiB. Clients refuse redirects and bound each
-response to 1 MiB and 15 seconds.
+Credentialed browser v1 control requests are POSTs under `/broker/v1`, with JSON
+`scope`, an exact configured `Origin`, `Authorization: Bearer <broker-secret>`
+and `X-Broker-Credential-Id`. The credential can belong to the connector,
+operator routing owner or one enrolled browser grant, according to the operation.
+These are broker credentials, never Station Device or account credentials.
+Browser invitation redemption instead requires its invitation and exact allowed
+Origin, and refuses cookies and credential headers.
+
+Native redemption and key-candidate request/read operations require their
+invitation-bound ES256 proof and refuse Origin, cookies and credential headers.
+Native connection open/read and grant renew/retire requests require the native grant credential
+and a fresh request proof; they also refuse Origin and cookies. Native offer
+polling and answer publication are connector operations and retain the
+connector's configured Origin and credential. The request body is capped at
+256 KiB. The connector client refuses redirects and bounds each response to
+1 MiB and 15 seconds.
 
 | Suffix | Credential | Additional body / result |
 | --- | --- | --- |
@@ -153,6 +234,9 @@ response to 1 MiB and 15 seconds.
 | `/leases/renew` | Connector | `expectedRevision`; returns next revision and expiry |
 | `/leases/withdraw` | Connector | Retires this routing generation and pending offers |
 | `/stations/status` | Routing | Returns presence, routing generation and lease expiry |
+| `/grants/redeem` | Browser invitation and allowed Origin | Consumes the one-use invitation and returns its separate browser routing grant; no credential headers or cookies |
+| `/grants/revoke` | Operator routing credential | Revokes one browser grant and retires its connection attempts |
+| `/grants/retire` | Browser routing grant | Retires only the caller's grant |
 | `/native/grants/invitations/issue` | Operator routing credential | Exact native surface and independently approved proof-key thumbprint |
 | `/native/grants/list` | Operator routing credential | Native grant binding metadata and expiry/revocation state; no credentials |
 | `/native/grants/revoke` | Operator routing credential | Exact native `grantId`; retires only that routing grant |
@@ -283,8 +367,29 @@ signing key retires already admitted peers; client trust approval remains an
 independent operation. Withdrawn routing credentials require deliberate
 reprovisioning as described above.
 
-This source configuration does not complete browser profile UI, fresh relay-only
-Device enrollment, native packaging or managed service operations. Existing
-Device/account prerequisites still apply. The separate-process transport lab
-qualifies the transport composition; normal operator entrypoint acceptance is
-recorded separately.
+The browser has saved-route, TURN, and fresh account/Device enrollment UI;
+the lab's separate `--station-ui` profile exercises that journey. This server
+configuration does not itself approve a client, enroll its Device, or grant
+Project access. Native route selection, packaging, and managed service
+operations remain separate work. Transport-lab evidence and normal operator
+entrypoint evidence must name the configuration and revision actually tested.
+
+## Follow the implementation
+
+- [Broker CLI](../../scripts/self-hosted-broker.ts) and
+  [service](../../src-server/services/connections/self-hosted-broker-service.ts)
+  own private configuration, loopback binding, persisted grants, and signaling.
+- [Wire contracts](../../packages/contracts/src/self-hosted-broker.ts) define
+  versioned browser/native fields and limits.
+- [Connector](../../src-server/services/connections/self-hosted-broker-connector.ts),
+  [Pion composition](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts),
+  and [lifecycle](../../src-server/runtime/bootstrap/self-hosted-broker-runtime.ts)
+  own registration, peer admission, and shutdown.
+- [Normal entrypoint](../../src-server/index.ts) consumes the
+  [private connector configuration](../../src-server/runtime/bootstrap/self-hosted-connector-config.ts).
+  [Offline identity initialization](../../scripts/self-hosted-connector-identity.ts)
+  owns its home lease, schema admission, and public descriptor output.
+- [Native proof signing](../../src-desktop/src/native_relay_proof_key.rs),
+  [redemption/request helpers](../../src-desktop/src/native_relay_redemption.rs),
+  and the [registered native commands](../../src-desktop/src/lib.rs) distinguish
+  implemented Rust foundations from the commands available to the application.

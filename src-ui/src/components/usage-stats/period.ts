@@ -29,7 +29,7 @@ export const USAGE_PERIOD_OPTIONS: ReadonlyArray<{
 ];
 
 /** The exact key shape the aggregator writes `byDate` under. */
-export function utcDateKey(date: Date): string {
+function utcDateKey(date: Date): string {
   return date.toISOString().split('T')[0];
 }
 

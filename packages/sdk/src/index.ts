@@ -83,6 +83,7 @@ export type {
 } from '@kontourai/station-contracts/orchestration';
 export type {
   PullRequest,
+  PullRequestBranchMergeability,
   PullRequestResult,
 } from '@kontourai/station-contracts/pull-request-provider';
 export type {
@@ -674,6 +675,7 @@ export {
   requestCoreUpdateStatus,
   requestPluginRecoveryPreview,
   requestPluginRegistryInstallAction,
+  requestServiceUpdateProgress,
   requestSystemIdentity,
   requestSystemStatus,
   rescanAnalytics,
@@ -1013,6 +1015,7 @@ export {
   useSchedulerStatus,
   useSearchKnowledgeIndexMutation,
   useServerCapabilitiesQuery,
+  useServiceUpdateProgressQuery,
   useSessionBuilderRunQuery,
   useSessionFlowRunQuery,
   useSessionRelationsQuery,
@@ -1216,12 +1219,14 @@ export {
 export type { PullRequestResolvingContext } from './query-domains/pullRequests';
 export {
   pullRequestContextQueryKey,
+  pullRequestMergeabilityQueryKey,
   pullRequestsQueryKey,
   useApprovePullRequestMutation,
   useCreatePullRequestCommentMutation,
   useMergePullRequestMutation,
   useOpenPullRequestMutation,
   usePullRequestContextQuery,
+  usePullRequestMergeabilityQuery,
   usePullRequestQuery,
   usePullRequestsQuery,
 } from './query-domains/pullRequests';

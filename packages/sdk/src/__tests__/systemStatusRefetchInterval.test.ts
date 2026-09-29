@@ -91,48 +91,12 @@ describe('resolveSystemStatusRefetchInterval', () => {
     expect(interval).toBeLessThan(5_000);
   });
 
+  // Terminal/transient error statuses: terminalStatusRefetchInterval.test.ts.
   test('keeps polling on error', () => {
     const interval = resolveSystemStatusRefetchInterval({
       state: { status: 'error' },
     });
     expect(interval).toBe(5_000);
-  });
-
-  // station#3444: same terminal/transient split as
-  // `resolveMonitoringStatsRefetchInterval` (`monitoringStatsRefetchInterval.test.ts`)
-  // — a credential failure (401/403) cannot clear by polling again.
-  test('keeps polling on a transient error (no status, network failure)', () => {
-    const interval = resolveSystemStatusRefetchInterval({
-      state: { status: 'error', error: new Error('network down') },
-    });
-    expect(interval).toBe(5_000);
-  });
-
-  test('keeps polling on a non-terminal HTTP status (e.g. 503)', () => {
-    const interval = resolveSystemStatusRefetchInterval({
-      state: { status: 'error', error: new StationHttpError(503, 'busy') },
-    });
-    expect(interval).toBe(5_000);
-  });
-
-  test('stops polling on a 401 (terminal, matches the SSE transport)', () => {
-    const interval = resolveSystemStatusRefetchInterval({
-      state: {
-        status: 'error',
-        error: new StationHttpError(401, 'Unauthorized'),
-      },
-    });
-    expect(interval).toBe(false);
-  });
-
-  test('stops polling on a 403 (terminal, matches the SSE transport)', () => {
-    const interval = resolveSystemStatusRefetchInterval({
-      state: {
-        status: 'error',
-        error: new StationHttpError(403, 'Forbidden'),
-      },
-    });
-    expect(interval).toBe(false);
   });
 });
 

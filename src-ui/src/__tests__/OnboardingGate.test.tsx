@@ -1074,7 +1074,7 @@ describe('OnboardingGate', () => {
     expect(navigate).toHaveBeenCalledWith('/connections/engines/codex');
   });
 
-  test('does not inject optional knowledge setup into the app shell', () => {
+  test('a chat-ready status renders the app shell without a setup launcher', () => {
     currentStatus = chatReadyStatus();
 
     render(
@@ -1084,7 +1084,6 @@ describe('OnboardingGate', () => {
     );
 
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
-    expect(screen.queryByTestId('knowledge-nudge')).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Underlying app action' }),
     ).toBeTruthy();
@@ -1454,19 +1453,21 @@ describe('OnboardingGate', () => {
       },
     ];
     currentStatus = chatReadyStatus();
+    // The positive case's status with ONLY ownership changed, so the absence
+    // below can only come from the ownership gate.
     bundledStatus = {
-      phase: 'stopped',
-      attempt: 0,
+      phase: 'failed',
+      attempt: 5,
       maxAttempts: 5,
       apiBase: null,
-      port: 38141,
-      lastExitCode: null,
+      port: null,
+      lastExitCode: 1,
       nextRetryInMs: null,
       logPath: '/tmp/station-server.log',
       ownership: 'service',
       canRunInBackground: true,
       failClosed: false,
-      message: 'A durable Station service owns this home.',
+      message: '',
     };
 
     render(
@@ -1476,6 +1477,7 @@ describe('OnboardingGate', () => {
     );
     fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
 
+    expect(screen.getByTestId('connection-manager')).toBeTruthy();
     expect(screen.queryByTestId('cm-restart-injected')).toBeNull();
   });
 
@@ -1940,7 +1942,7 @@ describe('OnboardingGate', () => {
   describe('notification priming on first connection', () => {
     // The boot-time prime skips fresh devices (see PlatformProfileContext),
     // so the first usable connection has to prime instead — otherwise the
-    // permission dialog never appears before the first backgroundable watch,
+    // permission dialog never appears before the first notification,
     // or it appears as a side effect of an incoming pairing approval, which
     // `notifier.ts` forbids.
     test('primes native notifications when pairing succeeds through the modal', async () => {

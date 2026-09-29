@@ -1,5 +1,12 @@
 # Conduit runtime integration
 
+> **Reading status: current Station-engine hook projection.** The
+> [Conduit adapter](../../src-server/runtime/frameworks/conduit-framework-adapter.ts),
+> [VoltAgent caller](../../src-server/runtime/frameworks/voltagent-adapter.ts),
+> and [Strands caller](../../src-server/runtime/frameworks/strands-adapter.ts)
+> own this composition. This is separate from Codex, Claude Code, or other
+> external engine policy delivery; see the [tool-policy matrix](../conformance/tool-policy-delivery.md).
+
 Station projects its existing `IAgentHooks` lifecycle through Conduit's public
 agent-host contract for both Station engine implementations. Conduit does not
 register hooks with either framework. `VoltAgentFramework` continues to use its
@@ -22,15 +29,21 @@ Station's hook seam is narrower than either framework's entire public API. It
 does not expose session-start or before-model callbacks, framework asset
 installation, or dynamic context injection. Those capabilities are declared
 `unavailable`, even where a framework could support them through another API.
-Tool blocking and before-tool observation are native. Strands provides native
-after-tool observation. VoltAgent is declared approximated because Station's
-existing `afterToolCall` callback currently runs from `onToolStart`, before the
-tool result is available. Invocation completion is an approximated `stop`
-projection for both frameworks.
+Tool blocking and before-tool observation are native. After-tool observation
+is now native for both frameworks: VoltAgent calls Station's `afterToolCall`
+from `onToolEnd` with the output and error; Strands forwards its after-tool
+event. Invocation completion is an approximated `stop` projection for both
+frameworks. These are capability classifications for this hook seam, not proof
+of every provider's execution or cancellation behavior.
 
 The committed [JSON evidence](../conformance/station-runtime-conformance.json)
 and [generated matrix](../conformance/station-runtime-conformance.md) are
-host-bound to exact framework versions in `package-lock.json`. Run
+labelled host-bound to exact framework versions in `pnpm-lock.yaml`. These
+portable probes exercise the Station projection and record the lockfile's host
+identities; they do not connect a model provider or execute an entire framework
+invocation. The
+[generator](../../scripts/generate-runtime-conformance.mjs) reads the root
+importer's locked versions. Run
 `npm run conduit:conformance:generate` after changing Conduit or a framework.
 `npm run verify:static` fails when the evidence is stale.
 

@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -1083,16 +1083,22 @@ describe('one-revision native promotion contract', () => {
     );
     expect(source).toContain('git show -s --format=%ct');
     expect(source).not.toContain('--format=%cI');
-    expect(source).toContain('new Date(epoch*1000).toISOString()');
-    const createdAt = execFileSync(
-      'node',
-      [
-        '-e',
-        'process.stdout.write(new Date(Number(process.argv[1])*1000).toISOString())',
-        '1788084245',
-      ],
-      { encoding: 'utf8' },
-    );
-    expect(createdAt).toBe('2026-08-30T10:04:05.000Z');
+    // Run the workflow's own conversion, not a copy of it.
+    const snippet =
+      /created_at=\$\(node --input-type=module -e '([^']+)' "\$commit_epoch"\)/.exec(
+        source,
+      )?.[1];
+    expect(snippet).toBeDefined();
+    const convert = (epoch: string) =>
+      spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', snippet as string, epoch],
+        { encoding: 'utf8' },
+      );
+    expect(convert('1788084245')).toMatchObject({
+      status: 0,
+      stdout: '2026-08-30T10:04:05.000Z',
+    });
+    expect(convert('not-an-epoch').status).toBe(1);
   });
 });

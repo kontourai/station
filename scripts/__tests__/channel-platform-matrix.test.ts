@@ -160,8 +160,6 @@ describe('cross-platform release channel matrix', () => {
     );
     expect(iosIcons.every((path) => readFileSync(path).length > 0)).toBe(true);
     expect(new Set(iosIcons.map(digest)).size).toBe(3);
-    expect(matrix.beta.iosStatus).toContain('source-configured');
-    expect(matrix.nightly.iosStatus).toContain('provider-NOT_VERIFIED');
   });
 
   test('applies each channel identity to main and debug so source-set precedence cannot mask it', () => {

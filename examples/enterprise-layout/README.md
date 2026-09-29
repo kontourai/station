@@ -1,11 +1,34 @@
 # Enterprise Layout Example
 
-A full-featured layout plugin demonstrating how to build an integrated workspace with calendar, CRM, email, and notes — all backed by MCP tool providers.
+A layout example with Calendar, CRM, dashboard, and Notes tabs. Calendar, CRM
+and email providers call MCP tools; Notes uses Station's document API, and the
+directory provider is a stub. This is an integration pattern, not a configured
+enterprise deployment.
+
+## Prerequisites
+
+Use Node 24 and the checkout's managed dependencies. Build with
+`(cd examples/enterprise-layout && ../../station plugin build)`, inspect `./station target`,
+then preview and install through the person-approved plugin lifecycle. The
+`outlook-mcp` and `salesforce-mcp` commands and their authenticated services must
+be supplied separately. The Agent also declares `notes-mcp-server` and requires
+`NOTES_VAULT_PATH`; a model connection is needed for Agent prompts. A build does
+not provision these services or verify live calendar, CRM, email or model use.
+
+This example is outside the root's managed workspace list. The public build
+command prepares dependencies in the example directory before bundling and may
+need registry access. Finishing the root dependency bootstrap does not establish
+that this separate dependency preparation or plugin build completed.
 
 ## Patterns Demonstrated
 
 ### Multi-Provider Architecture
-The layout declares `requiredProviders` in `layout.json` and registers typed provider implementations at startup via `src/data/init.ts`. Each provider maps MCP tool calls into view models that UI components consume through React Query hooks.
+The layout declares Calendar, CRM and user provider requirements in `layout.json`.
+The [component entry](src/index.tsx) calls `ensureProviders` from
+[init.ts](src/data/init.ts) and retries registration while the SDK is unavailable.
+It renders no content until registration succeeds. The hooks in
+[data/index.ts](src/data/index.ts) resolve the active provider and include its ID
+in query keys. Email and directory are additional registered provider types.
 
 ```
 layout.json (requiredProviders) → providerTypes.ts (type map) → init.ts (registration) → providers/*.ts (implementations)
@@ -15,16 +38,37 @@ layout.json (requiredProviders) → providerTypes.ts (type map) → init.ts (reg
 Typed interfaces (`ICalendarProvider`, `ICRMProvider`, etc.) define the contract between UI and data layer. Implementations can be swapped without changing components.
 
 ### MCP Tool Mapping (`src/data/providers/*.ts`)
-Each provider calls MCP tools via `callTool` from the SDK, unwraps response envelopes, and maps raw data into view models. See `calendar.ts` for the full pattern.
+Calendar, CRM and email call the SDK's `callTool` with the contributed Agent.
+Their mappings assume specific tool response fields; only Calendar has its own
+envelope-unwrapping helper. The [directory provider](src/data/providers/directory.ts)
+returns a synthetic address for lookup and an empty search result. Replace it
+with a real directory integration before relying on it.
 
 ### Plugin Dependencies
-`plugin.json` declares a dependency on `shared-providers` — a separate plugin that contributes auth, user identity, and registry providers. This shows how plugins compose.
+`plugin.json` declares the local `shared-providers` example, whose manifest lists
+auth, user identity/directory and registry providers. This demonstrates package
+composition; the declaration does not configure an enterprise identity service.
 
 ### Integration Declarations
 MCP servers are declared in `integrations/` as JSON manifests. The agent's `tools.mcpServers` references these by id.
 
 ### Knowledge Namespaces
-The plugin declares a `notes` knowledge namespace with RAG behavior, enabling semantic search over meeting notes.
+The [manifest](plugin.json) declares a `notes` namespace with RAG behavior.
+That declaration alone does not ingest notes, configure embedding/vector
+providers, or populate a Knowledge Kit root. The current
+[Notes hooks](src/data/notes-hooks.ts) call the older public SDK document API
+using `enterprise-notes`, which differs from the declared namespace. Treat
+that mismatch as an integration gap when adapting this example. The
+[Project layout apply route](../../src-server/routes/projects/projects.ts)
+registers manifest namespace IDs unchanged, and the
+[SDK path builder](../../packages/sdk/src/api-knowledge-utils.ts) sends the
+hook's `enterprise-notes` ID unchanged. These are separate document/vector
+partitions, not a host-qualified alias. An undeclared namespace can use the
+default storage path, but unscoped RAG search enumerates registered RAG
+namespaces and does not discover that partition automatically. Its
+Agent's separate `notes-vault` MCP tool also needs its own package and vault
+configuration. See the [Knowledge guide](../../docs/guides/knowledge.md) for
+the distinction between the older document API and the store/index API.
 
 ### Command skills
 Markdown files under the manifest's `prompts.source` directory are read IN
@@ -59,7 +103,7 @@ enterprise-layout/
             ├── calendar.ts        # Outlook MCP → ICalendarProvider
             ├── crm.ts             # Salesforce MCP → ICRMProvider + IUserProvider
             ├── email.ts           # Outlook MCP → IEmailProvider
-            └── directory.ts       # LDAP/directory → IInternalProvider
+            └── directory.ts       # Stub IInternalProvider
 ```
 
 ## Workspace host action migration

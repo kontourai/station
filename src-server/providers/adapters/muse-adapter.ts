@@ -91,6 +91,7 @@ import type {
 import { museUuidV7 } from './muse-serve-rpc.js';
 import {
   MUSE_APPROVAL_DEADLINE_MS,
+  MUSE_SERVE_APPROVAL_ACKNOWLEDGEMENT,
   MUSE_SERVE_HANDSHAKE_TIMEOUT_MS,
   MUSE_SERVE_INTERRUPT_SETTLE_MS,
   MUSE_SERVE_REQUEST_TIMEOUT_MS,
@@ -898,6 +899,10 @@ export class MuseAdapter implements ProviderAdapterShape {
         'image-input',
         ...(options.serve ? (['approvals'] as const) : []),
       ],
+      // #2880: only serve sessions ask; exec opens no requests.
+      ...(options.serve
+        ? { approvalAcknowledgement: MUSE_SERVE_APPROVAL_ACKNOWLEDGEMENT }
+        : {}),
     };
     this.processFactory = options.processFactory ?? createMuseProcess;
     this.now = options.now ?? (() => new Date());

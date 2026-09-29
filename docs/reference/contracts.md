@@ -6,10 +6,16 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 ## Ownership rules
 
-- Put stable cross-package types here.
+- This package owns stable cross-package types and constants. Existing domain
+  modules also expose pure boundary parsers, reducers and projection/page helpers;
+  those are executable code, not evidence that a request is authorized.
 - Keep module boundaries domain-oriented: `agent`, `auth`, `catalog`, `config`, `knowledge`, `layout`, `notification`, `orchestration`, `plugin`, `project`, `provider`, `runtime`, `runtime-events`, `scheduler`, `tool`.
-- Do not put runtime helpers, parsers, build helpers, or Node-only utilities here.
-- Use `@kontourai/station-shared` root only for compatibility re-exports. Runtime helpers belong on explicit subpaths such as `@kontourai/station-shared/parsers`, `@kontourai/station-shared/build`, and `@kontourai/station-shared/git`.
+- Keep service implementations, filesystem/network operations, build helpers and
+  Node-only utilities outside this contract boundary. This inventory describes
+  the current pure helpers; it is not a proposal to move general runtime services here.
+- The `@kontourai/station-shared` root retains compatibility re-exports and
+  selected helpers. Prefer explicit helper subpaths such as
+  `@kontourai/station-shared/parsers`, `/build` and `/git`.
 - Server-only provider interfaces do not belong here. Keep those in `src-server/providers/provider-interfaces.ts` or `src-server/providers/llm/model-provider-types.ts`.
 
 ## Modules
@@ -28,7 +34,6 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
 | `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
-| `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
@@ -43,7 +48,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
-| `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes |
+| `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
 | `@kontourai/station-contracts/project` | Project config and metadata |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations and administration projections |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
@@ -77,6 +82,10 @@ running set. A missing `children` view still means the server made no
 child-work report for that row; clients retain their existing state.
 
 ## Import examples
+
+The [package export map](../../packages/contracts/package.json) is the available
+subpath inventory. It selects TypeScript source. A contract declaration or parser
+does not establish implementation, deployment, access, or a completed live journey.
 
 ```ts
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
@@ -114,7 +123,7 @@ value as terminal rather than keeping a job running indefinitely. `admitted`,
 `job.deferred` wire values. See [Monitoring](../guides/monitoring.md) for the
 complete metric vocabulary and parked-depth formula.
 
-**Removed in this release.** Station previously emitted `job.deferred` — and
+**Compatibility with older scheduler events.** Station previously emitted `job.deferred` — and
 `job.refused` for a manual run — with `reason: 'resource_posture'` plus
 `posture` and `busy_percent`, when host CPU load gated scheduled work. Host
 load no longer gates any work, so those events are gone: a consumer branching
@@ -129,12 +138,15 @@ TURN — a follow-up turn gets its own budget; nothing here promises an
 aggregate limit across a whole task or conversation. Station does not end a
 live turn on a schedule it chose itself: each bound exists only when a
 server-owned caller declares it, and no production caller does today
-(`station-runtime.ts` builds the Muse adapter with neither `turnIdleTimeoutMs`
+([runtime composition](../../src-server/runtime/bootstrap/station-runtime.ts)
+builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
 `progressSilence` (below) shows "No output for …" and the stall notice with a
-Stop button, and the user decides. Stop signals the child's process group
-and settles the turn `turn.aborted`.
+Stop button, and the user decides. On the exec fallback, Stop signals the
+child's process group and settles the turn `turn.aborted`; the serve transport
+uses its interrupt protocol, described below. The following idle/total timer
+details describe the [exec adapter](../../src-server/providers/adapters/muse-adapter.ts).
 
 | Bound | Owner | Semantics | Muse default |
 |---|---|---|---|
@@ -239,23 +251,38 @@ Muse's own terminal (a `cancelled` terminal nobody in Station asked for is
 `finishReason: 'cancelled'`, never `stop`); the follow-up turn Muse starts
 after background work is adopted as a provider turn as above; tool approvals,
 a workflow subagent's included, are `request.opened` events (attributed to
-the child by `payload.childWork`), resolved from Muse's own
-`approval/resolved`. Muse never expires an unanswered approval, so Station
-declines one after 30 minutes (`muse-approval-expired`) and resolves it
-`expired`. Workflow subagents are `child-work.updated` deltas, and an exec
+the child by `payload.childWork`). A decision Station records publishes
+`request.resolved` (`acknowledgement: 'engine'`), and Muse's own
+`approval/resolved` then publishes `request.delivery` `acknowledged` with
+Muse's outcome as `engineStatus`; a request Muse closes before Station
+decides resolves from `approval/resolved`. Station's serve adapter owns an unanswered-approval
+deadline, defaulting to 30 minutes (`muse-approval-expired`), after which it
+declines the request and publishes `expired`. That local publication does not
+prove Muse accepted the decline: if the engine does not settle it, the adapter
+first requests a child stop or turn interrupt, then can end the host after
+another bounded wait. These actions produce warnings. See the
+[approval owner](../../src-server/providers/adapters/muse-serve-session.ts).
+Workflow subagents are `child-work.updated` deltas, and an exec
 session reports its child work `not-reported`.
 
-The shared 3-minute stall watchdog (`TurnStallWatchdog` /
-`TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
+The shared stall watchdog (`TurnStallWatchdog` / `TurnProgressTracker`)
+defaults to three minutes. An Agent's positive, finite
+`execution.turnStallWindowMs` overrides that window; absent or invalid values
+use the default. It stays observe-only: its `progressSilence` marker says
 no progress was *observed* — quiet providers (for example a Muse build
 older than 1.3, which emits no `tool.started`) may be working quietly, and
 the marker must never be rendered as proof of a stall. It keys on the
 events the parent turn publishes (streamed text, reasoning, tool start,
-progress, and completion); a tool in flight does not suspend it (only an open
-approval request does). So a Muse turn whose subagent is waiting on
+progress and completion, or a session-state transition). A tool in flight does
+not suspend it. `request.opened`, including input requests, suspends observation;
+`request.resolved` restarts it. So a Muse turn whose subagent is waiting on
 something writes only to that subagent's own session log, not to the
 parent's stdout, and reads as silent after the window, which is the
 signal the user acts on now that no idle timer ends it.
+
+The source route is the [window resolver](../../packages/contracts/src/turn-stall-window.ts),
+[watchdog](../../src-server/services/orchestration/turn-stall-watchdog.ts), and
+[progress projection](../../src-server/services/orchestration/turn-progress-tracker.ts).
 
 An interrupted adapter event consumer is also observation loss, not a turn
 terminal. The shared consumer publishes `runtime.warning` with code
@@ -295,6 +322,13 @@ Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
   attribution details, and provider logs are never forwarded.
 - `transitionReason` crosses only when it names the
   `SessionTransitionReason` vocabulary; anything else is dropped.
+
+The [delegation projection](../../src-server/tools/station-control-delegation.ts)
+and [CLI formatter](../../packages/cli/src/commands/delegate.ts) own these
+bounded status fields. Protocol version numbers and captures cited above are
+historical observations, not a claim that a current installation runs those
+engine versions. Adapter fixture tests and real-provider journeys provide
+different evidence.
 
 ## Provider plan quota (#2265)
 
@@ -355,6 +389,13 @@ Surfaces (`snapshotFor` → `DelegatedTaskSnapshot.reason`;
   lines. The reset text is repeated verbatim for display — never parsed
   as UTC/machine-local, never a countdown, never an invented instant.
 
+Follow the [classifier](../../src-server/providers/provider-plan-quota.ts),
+[ACP rejection caller](../../src-server/providers/adapters/acp-adapter.ts),
+[lifecycle attribution](../../src-server/services/orchestration/session-lifecycle-service.ts),
+and [delegation projection](../../src-server/tools/station-control-delegation.ts)
+for the implemented boundary. This classifier recognizes the named wire form;
+it does not discover every provider's quota policy.
+
 ## Compatibility
 
 `conversation-pull-request-links` defines exact provider, host, repository, and
@@ -378,6 +419,10 @@ every model measurement must handle absence as unreported, distinct from a
 measured zero. The server projects the stored null cost marker to an omitted
 wire field; supplied null, negative, or non-finite wire measurements remain
 invalid under `parseConversationStatsResponse` in the `runtime` subpath.
+The [wire parser](../../packages/contracts/src/runtime.ts) checks those numeric
+fields; the [server projection](../../src-server/runtime/conversation/conversation-stats-view.ts)
+owns the storage-to-wire conversion. Neither proves that an engine measured
+every token or that an estimated cost matches a bill.
 
 ### Source-only learning inspection
 
@@ -406,11 +451,29 @@ and indeterminate attempts. A forge review is not a Station gate verdict.
 `PullRequestMergeInput.expectedHeadSha` optionally constrains merge admission to
 the inspected revision; review-origin merges observe the resulting provider state.
 
+`PullRequestBranchMergeability` on `pull-request-provider` is a conflict
+indicator's read: one open pull request's ref, source branch and mergeability,
+and nothing a review needs. The GitHub adapter serves at most 100 and refuses
+a longer list as unavailable rather than serving part of it. The optional
+`IPullRequestProvider.listOpenPullRequestMergeability` answers it for a
+repository; the route refuses a provider without it rather than falling back
+to the full list. See the [GitHub adapter](../../src-server/services/pull-requests/github-pull-request-provider.ts).
+
 `AttentionInputReplyContext` on the attention subpath projects one exact open
 input request's reply binding and declared file/image transport. `needs_input`
 items may carry `inputReference`; approval/permission references keep their
 separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
- constraint, not a grant, and is removed before the adapter receives input.
+constraint, not a grant, and is removed before the adapter receives input.
+
+The [orchestration routes](../../src-server/routes/orchestration/orchestration.ts)
+and [dispatch owner](../../src-server/services/orchestration/orchestration-service.ts)
+apply the quotation and input-request checks. Source-only learning inspection
+uses the [knowledge route](../../src-server/routes/knowledge/knowledge-source-routes.ts)
+and its host-authorized owner, while
+[forge review](../../src-server/services/pull-requests/pull-request-review.ts)
+and [Conversation links](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)
+have separate owners. Their public types describe observations and request
+constraints; they do not by themselves authorize a read or external write.
 
 ## Mobile device inspection
 
@@ -418,7 +481,9 @@ separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
 `MobileDeviceSummary`, `MobileDeviceInventory`, and `MobileDeviceCapture`.
 Host/device IDs are descriptive and carry no credentials, paths, or execution
 authority. A capture is one observed frame, not stream health or app/build
-identity. Runtime validation belongs to the helper, route, and SDK boundaries;
+identity. The contract also exports the pure `isMobileDeviceHostId` grammar
+check; full response and request validation belongs to the helper, route, and
+SDK boundaries;
 see [Mobile device inspection](../guides/mobile-device-workspace.md).
 
 ## Native push registration
@@ -427,8 +492,17 @@ see [Mobile device inspection](../guides/mobile-device-workspace.md).
 registration routes (`NATIVE_PUSH_REGISTER_PATH`,
 `NATIVE_PUSH_REGISTRATION_PATH`), the Android package allowlist the push
 gateway delivers to, and the request/response shapes. The response's
-`registrationId`, `stationId` and `stationKey` are the values the phone checks
-on every push; none of them is a credential. See
+`registrationId`, `stationId` and `stationKey` are public identity checks for
+incoming pushes; none of those three is a credential. The response also includes
+`payloadKey`, a secret 32-byte AES-GCM key the phone uses to open sealed content.
+Do not log or expose the full registration response. Android package and iOS
+bundle allowlists are separate constants.
+
+The [registration route](../../src-server/routes/operations/native-push-routes.ts)
+requires the caller's paired-device identity and agent-activity eligibility;
+an operator bearer alone is insufficient. Hosted mode disables these routes.
+Registration records configuration and invokes the publisher callback; it
+does not confirm gateway acceptance or delivery to a phone. See
 [Notification delivery](../design/notification-delivery.md#station-contract).
 
 ## System status and update provenance
@@ -444,7 +518,10 @@ serving a partial answer. `shaSource` names what computed `sha` — a
 checkout-derived value is labeled, never presented as the build's identity.
 `UpdateProvenanceIssue` is a typed reason minted by the server's install
 provenance resolver; consumers render from the code and never re-parse it out
-of prose. Runtime parsing of these shapes lives at the route and SDK
+of prose. `ServiceUpdateProgress` (with its `ServiceUpdatePhase`) is the
+service launcher's update state for a prebuilt-archive install, as
+`GET /api/system/core-update/service-update` reads it from that install's
+runtime files. Runtime parsing of these shapes lives at the route and SDK
 boundaries, not in this package.
 
 The deployment authentication descriptor's optional `externalLogins` lists

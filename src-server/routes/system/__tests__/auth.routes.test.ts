@@ -29,7 +29,7 @@ describe('Auth Routes', () => {
     const app = createAuthRoutes();
     const body = await json(await app.request('/status'));
     expect(body.authenticated).toBe(true);
-    expect(body.user).toBeDefined();
+    expect(body.user).toEqual({ alias: 'testuser', name: 'Test User' });
   });
 
   test('POST /renew returns success', async () => {
@@ -102,10 +102,10 @@ describe('Auth Routes', () => {
 });
 
 describe('User Routes', () => {
-  test('GET /search returns results', async () => {
+  test('GET /search forwards q to the people directory', async () => {
     const app = createUserRoutes();
     const body = await json(await app.request('/search?q=test'));
-    expect(body).toHaveLength(1);
+    expect(body).toEqual([{ alias: 'test', name: 'test' }]);
   });
 
   test('GET /search returns empty for no query', async () => {

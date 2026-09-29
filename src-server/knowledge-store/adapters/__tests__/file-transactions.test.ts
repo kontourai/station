@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import {
   mkdtemp,
+  readdir,
   readFile,
   rename,
   symlink,
@@ -45,6 +46,35 @@ async function temporaryRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'knowledge-transactions-'));
   roots.push(root);
   return root;
+}
+
+const FS_MUTATION =
+  '(?:appendFile|copyFile|cp|rename|rmdir|rm|truncate|unlink|writeFile)(?:Sync)?';
+const FS_MODULE = `['"](?:node:)?fs(?:/promises)?['"]`;
+const FS_NAMED_MUTATION_IMPORT = new RegExp(
+  `import\\s*\\{[^}]*?\\b(${FS_MUTATION})\\b[^}]*\\}\\s*from\\s*${FS_MODULE}`,
+  'g',
+);
+const FS_BINDING_IMPORT = new RegExp(
+  `import\\s+(?:\\*\\s+as\\s+)?(\\w+)\\s+from\\s*${FS_MODULE}`,
+  'g',
+);
+
+/** File mutations a module imports from `fs`/`fs/promises` or calls on its binding. */
+function rawFsMutations(source: string): string[] {
+  const found = [...source.matchAll(FS_NAMED_MUTATION_IMPORT)].map(
+    ([, name]) => name,
+  );
+  for (const [, binding] of source.matchAll(FS_BINDING_IMPORT)) {
+    const call = new RegExp(
+      `\\b${binding}(?:\\.promises)?\\.(${FS_MUTATION})\\s*\\(`,
+      'g',
+    );
+    for (const [, name] of source.matchAll(call)) {
+      found.push(`${binding}.${name}`);
+    }
+  }
+  return found;
 }
 
 function coordinationLockPath(
@@ -112,6 +142,44 @@ afterEach(async () => {
 });
 
 describe('KnowledgeFileTransactions', () => {
+  test('bounded reads preserve their limit through commit revalidation', async () => {
+    const root = await temporaryRoot();
+    const source = join(root, 'source.md');
+    const output = join(root, 'new.md');
+    await writeFile(source, 'old');
+    const files = new KnowledgeFileTransactions(root);
+    await expect(
+      files.mutate('bounded-read', async () => {
+        expect(files.readText(source, 4)).toBe('old');
+        files.writeText(output, 'must not publish');
+        await writeFile(source, 'external growth beyond the admitted bound');
+      }),
+    ).rejects.toBeInstanceOf(KnowledgeStoreCorruptionError);
+    expect(existsSync(output)).toBe(false);
+    expect(await readFile(source, 'utf8')).toBe(
+      'external growth beyond the admitted bound',
+    );
+  });
+
+  test('bounded reads admit an exact-size file and reject oversized bytes before publication', async () => {
+    const root = await temporaryRoot();
+    const source = join(root, 'source.md');
+    const output = join(root, 'new.md');
+    await writeFile(source, 'four');
+    const files = new KnowledgeFileTransactions(root);
+    await files.mutate('bounded-read', () => {
+      expect(files.readText(source, 4)).toBe('four');
+      files.writeText(output, 'original');
+    });
+    await expect(
+      files.mutate('bounded-read', () => {
+        files.writeText(output, 'replacement');
+        files.readText(source, 3);
+      }),
+    ).rejects.toBeInstanceOf(KnowledgeStoreCorruptionError);
+    expect(await readFile(output, 'utf8')).toBe('original');
+  });
+
   test('every writable knowledge adapter uses the shared seam and owns no raw mutation calls', async () => {
     for (const file of [
       'src-server/knowledge-store/adapters/default-store.ts',
@@ -123,10 +191,32 @@ describe('KnowledgeFileTransactions', () => {
       expect(source).toMatch(
         /new KnowledgeFileTransactions\((?:this\.root|input\.storageDir|storageDir)\)|mutateKnowledgeDocuments/,
       );
-      expect(source).not.toMatch(
-        /\b(?:writeFileSync|renameSync|unlinkSync|rmSync)\s*\(/,
-      );
     }
+
+    // Derived, not listed: any knowledge module that imports a file mutation
+    // from `fs` (sync or promise form) bypasses the seam, whether or not it
+    // existed when this guard was written. The seam itself is the one owner.
+    const seam =
+      'src-server/knowledge-store/adapters/shared/file-transactions.ts';
+    const bypasses: string[] = [];
+    for (const directory of [
+      'src-server/knowledge-store',
+      'src-server/services/knowledge',
+    ]) {
+      const entries = await readdir(join(process.cwd(), directory), {
+        recursive: true,
+      });
+      for (const entry of entries) {
+        const file = join(directory, entry).split(sep).join('/');
+        if (!file.endsWith('.ts') || file.includes('/__tests__/')) continue;
+        if (file === seam) continue;
+        const source = await readFile(join(process.cwd(), file), 'utf8');
+        for (const mutation of rawFsMutations(source)) {
+          bypasses.push(`${file}: ${mutation}`);
+        }
+      }
+    }
+    expect(bypasses).toEqual([]);
   });
 
   test('rolls every published file back when the operation rejects', async () => {

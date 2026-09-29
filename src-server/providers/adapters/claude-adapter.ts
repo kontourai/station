@@ -796,17 +796,8 @@ export interface ClaudeAdapterOptions {
     tenantExecutionContext?: TenantExecutionContext,
   ) => unknown;
   /**
-   * Fallback when {@link createInProcessStationControl} is absent: mints a
-   * `bearer-exposed` caller token for the stdio child's env. Absent (most
-   * unit tests), the child runs exactly as before and reports no caller.
-   */
-  mintStationControlCallerToken?: (
-    threadId: string,
-    tenantExecutionContext?: TenantExecutionContext,
-  ) => string;
-  /**
-   * Revokes whichever station-control credential the session was given
-   * (in-process or stdio). Called when the session stops or fails to start.
+   * Revokes the station-control credential the session was given. Called
+   * when the session stops or fails to start.
    */
   revokeStationControlCallerToken?: (threadId: string) => void;
   /**
@@ -1008,6 +999,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
   readonly metadata = {
+    // #2880: the protocol has no acknowledgement of a decision; delivery is
+    // not reported.
+    approvalAcknowledgement: 'none' as const,
     displayName: 'Claude Code',
     description: 'Claude Code integration with approvals and reasoning events.',
     capabilities: [
@@ -2049,6 +2043,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           : decision === 'decline'
             ? 'denied'
             : 'cancelled',
+      acknowledgement: this.metadata.approvalAcknowledgement,
     });
   }
 
@@ -2496,15 +2491,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           ? {
               inProcess: () =>
                 this.options.createInProcessStationControl!(
-                  input.threadId,
-                  tenantExecutionContext,
-                ),
-            }
-          : {}),
-        ...(this.options.mintStationControlCallerToken
-          ? {
-              callerToken: () =>
-                this.options.mintStationControlCallerToken!(
                   input.threadId,
                   tenantExecutionContext,
                 ),

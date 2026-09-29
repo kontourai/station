@@ -1806,20 +1806,27 @@ export class EventStore {
     dbPath: string,
     turnDedupMaxEntries = TURN_DEDUP_MAX_ENTRIES,
     turnProcessIdentity?: TurnIdempotencyProcessIdentity,
-    /** Private fault seam: proves post-write recovery readback, not production policy. */
-    private readonly recoveryTransitionFault?: () => void,
-    /** Private fault seam for native direct-invocation terminal readback. */
-    private readonly nativeInvocationTransitionFault?: () => void,
-    /** Private fault seam for startup-gate retry proof. */
-    private readonly nativeInvocationStartupFault?: () => void,
-    /** Private fault seam for voice terminal post-write readback proof. */
-    private readonly voiceTurnTransitionFault?: () => void,
-    /** Private fault seam proving work-item terminal settlement shares the event savepoint. */
-    private readonly sessionWorkItemAdmissionFault?: () => void,
-    /** Private fault seam proving no admission is taken before SAVEPOINT opens. */
-    private readonly sessionWorkItemSavepointOpenFault?: () => void,
-    /** Private fault seam for unknown package-admission commit acknowledgement. */
-    private readonly packageMcpCommitFault?: () => void,
+    /**
+     * Private fault seams, named so an added seam cannot silently rebind
+     * another's injection. Each proves one failure path; no production
+     * caller passes any of them.
+     */
+    private readonly faults: {
+      /** Post-write recovery readback. */
+      recoveryTransition?: () => void;
+      /** Native direct-invocation terminal readback. */
+      nativeInvocationTransition?: () => void;
+      /** Startup-gate retry. */
+      nativeInvocationStartup?: () => void;
+      /** Voice terminal post-write readback. */
+      voiceTurnTransition?: () => void;
+      /** Work-item terminal settlement shares the event savepoint. */
+      sessionWorkItemAdmission?: () => void;
+      /** No admission is taken before SAVEPOINT opens. */
+      sessionWorkItemSavepointOpen?: () => void;
+      /** Unknown package-admission commit acknowledgement. */
+      packageMcpCommit?: () => void;
+    } = {},
   ) {
     this.databasePath = dbPath;
     this.turnDedupMaxEntries = turnDedupMaxEntries;
@@ -3494,7 +3501,7 @@ export class EventStore {
       this.projectRequestState(event, requestId, nextSequence);
       this.projectSessionProjectionFacts(event);
       this.recordDeclaredOutputs(event, declaredOutputs);
-      if (workItemAdmission) this.sessionWorkItemAdmissionFault?.();
+      if (workItemAdmission) this.faults.sessionWorkItemAdmission?.();
       if (workItemAdmission?.kind === 'association')
         this.recordSessionWorkItemAssociation(
           event,
@@ -3582,7 +3589,7 @@ export class EventStore {
   }
 
   private openAppendEventSavepoint(): void {
-    this.sessionWorkItemSavepointOpenFault?.();
+    this.faults.sessionWorkItemSavepointOpen?.();
     this.db.exec('SAVEPOINT append_event_history');
   }
 
@@ -4989,20 +4996,30 @@ export class EventStore {
    * indexed lookup per thread (`thread_id, method, sequence`), then the
    * newest by global sequence; a conversation has a handful of sessions.
    */
-  latestApprovalModeDecision(
-    threadIds: readonly string[],
-  ):
-    | { threadId: string; approvalMode: unknown; globalSequence: number }
+  latestApprovalModeDecision(threadIds: readonly string[]):
+    | {
+        threadId: string;
+        approvalMode: unknown;
+        globalSequence: number;
+        /** #1796: who recorded it (`clientOrigin.actor`); absent on older events. */
+        actor?: unknown;
+      }
     | undefined {
     const statement = this.db.prepare(
-      `SELECT thread_id, json_extract(payload, '$.approvalMode') AS approval_mode, global_sequence
+      `SELECT thread_id, json_extract(payload, '$.approvalMode') AS approval_mode, global_sequence,
+              json_extract(payload, '$.clientOrigin.actor') AS actor
        FROM orchestration_events
        WHERE thread_id = ? AND method = 'session.approval-mode-set'
        ORDER BY sequence DESC
        LIMIT 1`,
     );
     let latest:
-      | { threadId: string; approvalMode: unknown; globalSequence: number }
+      | {
+          threadId: string;
+          approvalMode: unknown;
+          globalSequence: number;
+          actor?: unknown;
+        }
       | undefined;
     for (const threadId of new Set(threadIds)) {
       const row = statement.get(threadId) as
@@ -5010,6 +5027,7 @@ export class EventStore {
             thread_id: string;
             approval_mode: unknown;
             global_sequence: number;
+            actor: string | null;
           }
         | undefined;
       if (!row) continue;
@@ -5018,10 +5036,83 @@ export class EventStore {
           threadId: row.thread_id,
           approvalMode: row.approval_mode,
           globalSequence: row.global_sequence,
+          ...(typeof row.actor === 'string'
+            ? { actor: parseJsonOrUndefined(row.actor) }
+            : {}),
         };
       }
     }
     return latest;
+  }
+
+  /**
+   * #1796: the threads on which paired device `deviceId` recorded an
+   * approval-mode decision (its server-derived `clientOrigin.actor`).
+   */
+  approvalModeDecisionThreadsByDevice(deviceId: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT thread_id FROM orchestration_events
+           WHERE method = 'session.approval-mode-set'
+             AND json_extract(payload, '$.clientOrigin.actor.kind') = 'device'
+             AND json_extract(payload, '$.clientOrigin.actor.deviceId') = ?`,
+        )
+        .all(deviceId) as { thread_id: string }[]
+    ).map((row) => row.thread_id);
+  }
+
+  /**
+   * #1796: the threads whose `host` start stamp paired device `deviceId`
+   * granted (`stationConfinementGrantor` beside the stamp). Reads only
+   * `session.started` events, through the method index.
+   */
+  hostStartThreadsGrantedByDevice(deviceId: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT thread_id FROM orchestration_events
+           WHERE method = 'session.started'
+             AND json_extract(payload, '$.metadata.stationConfinement') = 'host'
+             AND json_extract(payload, '$.metadata.stationConfinementGrantor.kind') = 'device'
+             AND json_extract(payload, '$.metadata.stationConfinementGrantor.deviceId') = ?`,
+        )
+        .all(deviceId) as { thread_id: string }[]
+    ).map((row) => row.thread_id);
+  }
+
+  /**
+   * #1796: a conversation's title for the revocation report: the first of
+   * `threadIds` (the conversation id, then its sessions) that has one.
+   */
+  conversationTitle(threadIds: readonly string[]): string | undefined {
+    const statement = this.db.prepare(
+      `SELECT title FROM orchestration_conversation_history WHERE thread_id = ?`,
+    );
+    for (const threadId of new Set(threadIds)) {
+      const row = statement.get(threadId) as
+        | { title: string | null }
+        | undefined;
+      if (typeof row?.title === 'string' && row.title.trim()) return row.title;
+    }
+    return undefined;
+  }
+
+  /**
+   * #1796: threads holding a `never` decision whose recorder is not known
+   * (recorded before decisions carried `clientOrigin`).
+   */
+  unattributedFullAccessDecisionThreads(): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT thread_id FROM orchestration_events
+           WHERE method = 'session.approval-mode-set'
+             AND json_extract(payload, '$.approvalMode') = 'never'
+             AND json_extract(payload, '$.clientOrigin.actor.kind') IS NULL`,
+        )
+        .all() as { thread_id: string }[]
+    ).map((row) => row.thread_id);
   }
 
   latestEventForSessionState(
@@ -9407,7 +9498,7 @@ export class EventStore {
     this.packageMcpAdmissionJournal ??= composePackageMcpAdmissionJournal(
       this.db,
       this.recoveryLedgerOwner,
-      this.packageMcpCommitFault,
+      this.faults.packageMcpCommit,
       (receipt) =>
         registryReceiptMatchesAppliedPolicy(
           receipt,
@@ -9469,7 +9560,7 @@ export class EventStore {
       read: (runId: string) => this.readNativeInvocationRun(runId),
       list: () => this.listNativeInvocationRuns(),
       active: () => {
-        this.nativeInvocationStartupFault?.();
+        this.faults.nativeInvocationStartup?.();
         return this.readActiveNativeInvocationRuns();
       },
     };
@@ -9554,7 +9645,7 @@ export class EventStore {
                 record.startedAt,
                 record.updatedAt,
               ) as { changes?: number };
-            if (changed.changes === 1) this.voiceTurnTransitionFault?.();
+            if (changed.changes === 1) this.faults.voiceTurnTransition?.();
             return changed.changes === 1 ? 'started' : 'duplicate';
           } catch {
             try {
@@ -9646,7 +9737,7 @@ export class EventStore {
               ...(input.ownerId ? [input.ownerId] : []),
               ...input.from,
             );
-            this.voiceTurnTransitionFault?.();
+            this.faults.voiceTurnTransition?.();
             // Do not trust the driver's write acknowledgement as proof. The
             // exact durable row is the terminal fact, including after a
             // write-success/readback-boundary fault.
@@ -11168,7 +11259,7 @@ export class EventStore {
         .run(outcome, now, fingerprint, outcome) as {
         changes: number | bigint;
       };
-      this.recoveryTransitionFault?.();
+      this.faults.recoveryTransition?.();
       return recoveryTransition(result);
     } catch (error) {
       // A durable UPDATE can succeed before the caller observes a driver or
@@ -11490,9 +11581,6 @@ export class EventStore {
   }
   releaseChatTurn(clientTurnId: string): void {
     this.turnIdempotence.release(chatTurnDedupKey(clientTurnId));
-  }
-  readChatTurn(clientTurnId: string): string | undefined {
-    return this.turnIdempotence.read(chatTurnDedupKey(clientTurnId));
   }
   awaitChatTurn(
     clientTurnId: string,
@@ -12110,7 +12198,7 @@ export class EventStore {
           input.ownerId,
           ...input.from,
         );
-      this.nativeInvocationTransitionFault?.();
+      this.faults.nativeInvocationTransition?.();
       const row = this.db
         .prepare(
           `SELECT state, updated_at, completed_at, failure_message
@@ -12555,4 +12643,12 @@ function mapCommandReceiptRow(
     createdAt: row.created_at,
     ...(clientOrigin ? { clientOrigin } : {}),
   };
+}
+
+function parseJsonOrUndefined(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
 }

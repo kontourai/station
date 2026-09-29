@@ -399,12 +399,16 @@ export function createSessionCommandModule(
     internal?: SessionCommandInternalOptions,
   ): Promise<SessionCommandOutcome> => {
     const input = command.input;
+    // #1796: a start records who asked for it, as every other command's
+    // receipt does, so revoking a device can find the sessions it started
+    // with its full-access grant.
     const receipt: OrchestrationCommandReceipt = {
       commandId: internal?.commandId ?? crypto.randomUUID(),
       threadId: input.threadId,
       commandType: 'startSession',
       status: 'accepted',
       createdAt: new Date().toISOString(),
+      ...(context.clientOrigin ? { clientOrigin: context.clientOrigin } : {}),
     };
     const reportUnavailable = (
       phase:

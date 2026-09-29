@@ -36,50 +36,77 @@ describe('cross-platform release invariant matrix', () => {
 
   test('derives evidence from receipts instead of hand-maintained green prose', () => {
     const matrix = readReleasePlatformMatrix();
-    const projection = projectReleasePlatformMatrix({ matrix, ledger });
-    const nightlyAndroid = projection.cells.find(
-      (cell) => cell.channel === 'nightly' && cell.platform === 'android',
-    );
-    const nightlyDesktop = projection.cells.find(
-      (cell) => cell.channel === 'nightly' && cell.platform === 'macos',
-    );
-    const stableIos = projection.cells.find(
-      (cell) => cell.channel === 'stable' && cell.platform === 'ios',
-    );
-    expect(nightlyAndroid?.currentEvidence).toMatchObject({
-      status: 'VERIFIED',
-      sha: ledger.find((entry: any) => entry.channel === 'nightly-android').sha,
+    // A synthetic newest-first ledger (the order scripts/deploy-ledger.mjs
+    // writes), so the derivation is proven independently of today's receipts.
+    const newestDesktop = {
+      channel: 'nightly-desktop',
+      sha: 'c'.repeat(40),
+      version: 'nightly-two',
+      workflowRunUrl: 'https://example.test/run/2',
+      timestampUtc: '2026-08-30T00:00:00Z',
+    };
+    const receiptLedger = [
+      newestDesktop,
+      { ...newestDesktop, channel: 'nightly-npm', sha: 'e'.repeat(40) },
+      {
+        ...newestDesktop,
+        sha: 'd'.repeat(40),
+        version: 'nightly-one',
+        workflowRunUrl: 'https://example.test/run/1',
+        timestampUtc: '2026-08-29T00:00:00Z',
+      },
+    ];
+    const cell = (
+      projection: ReturnType<typeof projectReleasePlatformMatrix>,
+      channel: string,
+      platform: string,
+    ) =>
+      projection.cells.find(
+        (candidate) =>
+          candidate.channel === channel && candidate.platform === platform,
+      );
+    const projection = projectReleasePlatformMatrix({
+      matrix,
+      ledger: receiptLedger,
     });
-    expect(nightlyDesktop?.currentEvidence).toMatchObject({
+    const nightlyDesktop = cell(projection, 'nightly', 'macos');
+    expect(nightlyDesktop?.currentEvidence).toEqual({
       status: 'VERIFIED',
-      sha: ledger.find((entry: any) => entry.channel === 'nightly-desktop').sha,
+      sha: newestDesktop.sha,
+      version: newestDesktop.version,
+      workflowRunUrl: newestDesktop.workflowRunUrl,
+      observedAt: newestDesktop.timestampUtc,
     });
-    const nightlyWindows = projection.cells.find(
-      (cell) => cell.channel === 'nightly' && cell.platform === 'windows',
-    );
-    expect(nightlyWindows?.currentEvidence).toMatchObject({
+    // A ledger-backed cell without its receipt stays NOT_VERIFIED; another
+    // channel's receipt never stands in for it.
+    const nightlyAndroid = cell(projection, 'nightly', 'android');
+    expect(nightlyAndroid?.currentEvidence).toEqual({
       status: 'NOT_VERIFIED',
-      owner: '#1045',
+      owner: '#844',
+      reason: 'No nightly-android deploy-ledger entry exists.',
     });
+    // Cells without a receipt source never turn green from the ledger.
+    const nightlyWindows = cell(projection, 'nightly', 'windows');
+    const nightlyIos = cell(projection, 'nightly', 'ios');
+    for (const unverified of [nightlyWindows, nightlyIos]) {
+      expect(unverified?.currentEvidence.status).toBe('NOT_VERIFIED');
+    }
     // Each platform is required for its own promotion; the cohort publishes
     // per platform and discloses a partial night rather than withholding the
     // other platform (#1774).
-    for (const cell of [nightlyAndroid, nightlyDesktop, nightlyWindows]) {
-      expect(cell).toMatchObject({
+    for (const required of [nightlyAndroid, nightlyDesktop, nightlyWindows]) {
+      expect(required).toMatchObject({
         requiredForPromotion: true,
         availabilityPolicy: expect.stringContaining(
           'per-platform-native-cohort',
         ),
       });
-      expect(cell?.availabilityPolicy).not.toContain('atomic');
+      expect(required?.availabilityPolicy).not.toContain('atomic');
     }
     // Nightly iOS is delivered outside the atomic chain (#1774): its policy
     // must say so rather than claim a recovery lock the workflow never writes
     // for it, and its evidence stays NOT_VERIFIED until a processed channel
-    // receipt exists (#1016).
-    const nightlyIos = projection.cells.find(
-      (cell) => cell.channel === 'nightly' && cell.platform === 'ios',
-    );
+    // receipt exists.
     expect(nightlyIos).toMatchObject({
       requiredForPromotion: false,
       availabilityPolicy: expect.stringContaining('#1774'),
@@ -88,14 +115,6 @@ describe('cross-platform release invariant matrix', () => {
       'recovery remains locked',
     );
     expect(nightlyIos?.availabilityPolicy).toContain('NOT_VERIFIED');
-    expect(nightlyIos?.currentEvidence).toMatchObject({
-      status: 'NOT_VERIFIED',
-      owner: '#1016',
-    });
-    expect(stableIos?.currentEvidence).toMatchObject({
-      status: 'NOT_VERIFIED',
-      owner: '#844',
-    });
   });
 
   test('requires every configured channel receipt to converge on one source SHA', () => {

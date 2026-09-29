@@ -133,30 +133,11 @@ export class ClientConnectionPresence {
     let released = false;
     return {
       touch: () => {
+        // Every removal path invalidates the entry (expiry, revocation) or
+        // waits for its last lease to release, so a live lease's entry is
+        // always the mapped one and an expired stream can never revive it.
         if (released || entry.invalidated) return;
-        const current = this.#sessions.get(deviceId)?.get(clientSessionId);
-        if (current === entry) {
-          current.lastSeenAt = this.#now();
-          return;
-        }
-        // A later connection already replaced this expired record. An old
-        // stream cannot refresh or delete the newer session's truth.
-        if (current || entry.refs <= 0) return;
-        if (this.#size() >= this.#capacity) {
-          this.#record('capacity');
-          return;
-        }
-        const sessions = this.#sessions.get(deviceId) ?? new Map();
-        if (sessions.size >= this.#perDeviceCapacity) {
-          this.#record('capacity');
-          return;
-        }
-        this.#sessions.set(deviceId, sessions);
-        const now = this.#now();
-        entry.connectedAt = now;
-        entry.lastSeenAt = now;
-        sessions.set(clientSessionId, entry);
-        this.#record('connect');
+        entry.lastSeenAt = this.#now();
       },
       release: () => {
         if (released) return;

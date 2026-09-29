@@ -1,5 +1,13 @@
 # Plugin-contributed Knowledge stores
 
+> **Reading status: proposal, not an available plugin capability.** Current
+> [manifest types](../../packages/contracts/src/plugin.ts) expose knowledge
+> namespaces; the [Knowledge provider](../../src-server/knowledge-store/knowledge-store-provider.ts)
+> and [root routes](../../src-server/routes/knowledge/knowledge-store-routes.ts)
+> are the existing owners. The proposed reader, opaque binding, permissions,
+> and per-contribution lifecycle below are requirements to implement, not
+> assurances supplied by the current package installer.
+
 Status: **proposed for owner/architecture ratification**  
 Issue: [#529](https://github.com/kontourai/station/issues/529)  
 Parent: [#252](https://github.com/kontourai/station/issues/252)
@@ -39,9 +47,11 @@ The current surfaces do not compose safely enough to expose directly:
   `storeRoot`, to same-origin code. Plugin UI bundles execute in that host page, and plugin server
   modules execute inside the Station process. Opaque binding IDs are therefore a target boundary,
   not a property of today's runtime.
-- Installed plugins are copied beneath `<STATION_HOME>/plugins/<name>` and uninstallation recursively
-  removes that directory. Bundled Knowledge data stored there is therefore package content, not a
-  durable user-owned store.
+- Legacy plugin removal may recursively remove its directory. Managed installation generations
+  instead retain immutable package roots and separate data scopes on withdrawal; see the
+  [installation lifecycle](plugin-installation-lifecycle.md). Bundled Knowledge content remains
+  package-owned under either path. Retention alone does not make it a user-owned Knowledge store
+  or implement this proposal's reader and binding contract.
 - Plugin provider overrides disable individual provider types. They do not currently express a
   whole-plugin state or a Knowledge-root contribution state.
 

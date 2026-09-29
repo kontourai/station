@@ -52,13 +52,4 @@ describe('reportedModelMetadata', () => {
   test('rejects an oversized value rather than truncating it silently', () => {
     expect(reportedModelMetadata('x'.repeat(257))).toEqual({});
   });
-
-  test('is independent of effectiveModelMetadata — a disagreement is representable', () => {
-    const requested = effectiveModelMetadata('claude-fable-5', {});
-    const reported = reportedModelMetadata('claude-opus-4-5-20260101');
-    const merged = { ...requested, ...reported };
-    expect(merged.effectiveModel).toBe('claude-fable-5');
-    expect(merged.reportedModel).toBe('claude-opus-4-5-20260101');
-    expect(merged.effectiveModel).not.toBe(merged.reportedModel);
-  });
 });

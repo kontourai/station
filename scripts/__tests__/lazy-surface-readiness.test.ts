@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'vitest';
-import { LAZY_CHUNK_ALLOWANCE_MS } from '../../tests/helpers/lazy-chunk-allowance.js';
 import {
   type LazySurfaceObservation,
   type SettledLazySurfaceScreen,
@@ -194,20 +193,5 @@ describe('the timeout says what it declined to attribute', () => {
     expect(message).toContain('cannot distinguish a chunk still loading');
     expect(message).not.toContain('excluded from attribution');
     expect(message.endsWith('does report the surface open.')).toBe(true);
-  });
-});
-
-describe('LAZY_CHUNK_ALLOWANCE_MS', () => {
-  test('lowers none of the budgets the sites using it already carried', () => {
-    // The three sites this replaces carried 20_000 (the Switch task dialog),
-    // 15_000 (the Chat actions menu) and the file-wide 15_000 action timeout
-    // (the Connections add action). Retaining the largest is the whole claim
-    // this constant makes: #1642's change at those sites is structural, and a
-    // regression here would be silently REDUCING a bound while appearing to
-    // tidy up.
-    expect(LAZY_CHUNK_ALLOWANCE_MS).toBe(20_000);
-    expect(LAZY_CHUNK_ALLOWANCE_MS).toBeGreaterThanOrEqual(
-      Math.max(20_000, 15_000, 15_000),
-    );
   });
 });

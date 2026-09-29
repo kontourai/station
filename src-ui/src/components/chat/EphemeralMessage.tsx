@@ -1,5 +1,7 @@
 import { lazy, Suspense } from 'react';
+import type { FullAccessRefusalNotice } from '../../utils/approvalMode';
 import { Skeleton } from '../state';
+import { FullAccessRefusalCard } from './FullAccessRefusalCard';
 import { LazyMarkdown } from './LazyMarkdown';
 
 // DOMPurify is ~118 KB of source and only the rare `contentType: 'html'`
@@ -19,6 +21,8 @@ interface EphemeralMsg {
   contentType?: 'html' | 'markdown';
   action?: EphemeralAction;
   contentParts?: { type: string; content?: string }[];
+  /** #1796: rendered as a structured card, never as Markdown. */
+  fullAccessRefusal?: FullAccessRefusalNotice;
 }
 
 interface EphemeralMessageProps {
@@ -135,7 +139,9 @@ export function EphemeralMessage({
       >
         ×
       </button>
-      {msg.contentType === 'html' ? (
+      {msg.fullAccessRefusal ? (
+        <FullAccessRefusalCard notice={msg.fullAccessRefusal} />
+      ) : msg.contentType === 'html' ? (
         <Suspense fallback={<Skeleton variant="line" />}>
           <SanitizedHtml html={msg.content} />
         </Suspense>

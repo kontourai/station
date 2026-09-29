@@ -1021,21 +1021,11 @@ function ensurePluginDeps(pluginDir: string): void {
     .filter(Boolean)
     .join(' ');
 
-  // Provision the workspace symlinks *before* installing, not after. Some
-  // scaffolds (pre-dating the fix that dropped these two packages from
-  // `devDependencies`) still list `@kontourai/station-sdk`/`-shared` there
-  // with a real semver range; neither package has ever been published, so a
-  // plain `npm install` would 404 trying to fetch it. Pre-linking means npm's
-  // own actual-tree scan finds a node at that path whose `package.json`
-  // version already satisfies the manifest's range — verified live: it skips
-  // the registry fetch for exactly that edge and installs everything else
-  // normally, and the generated lockfile correctly records the edge as a
-  // `"link": true` resolution, not a fabricated registry entry. This never
-  // touches the plugin author's package.json, and it fails exactly as loudly
-  // as a normal install would if the local symlink's version ever stops
-  // satisfying the manifest's range (e.g. after these packages are actually
-  // published and a scaffold's pinned range no longer matches) — no attempt
-  // here catches or masks that outcome.
+  // Link host-provided packages before npm inspects the dependency tree, so
+  // compatible SDK/shared ranges can reuse the host installation. This also
+  // supports older scaffolds that declared them as devDependencies instead
+  // of peers. It does not change the author's manifest or override an
+  // incompatible semver range; dependency-install failures still propagate.
   linkHostProvidedPackages(pluginDir);
   withHostProvidedPackagesPreserved(pluginDir, () => {
     execSync(installArgs, {

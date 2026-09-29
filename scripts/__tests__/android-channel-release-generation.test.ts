@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import {
   applyAndroidReleaseSigning,
   gradleWithAndroidReleaseSigning,
@@ -240,13 +241,12 @@ describe('clean Android channel release generation', () => {
       '.github/workflows/nightly-native-stage.yml',
       'utf8',
     );
-    expect(nightly).toContain("ANDROID_BUILD_TOOLS_VERSION: '36.0.0'");
+    // The revision itself is pinned across every lane by ci-workflow-contract's
+    // 'pins one Android NDK and build-tools revision across every lane'.
     expect(nightly).toContain(
       `ANDROID_UPLOAD_CERT_SHA256: \${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}`,
     );
-    expect(nightly).toContain(
-      `sdkmanager "ndk;27.0.12077973" "build-tools;\${ANDROID_BUILD_TOOLS_VERSION}"`,
-    );
+    expect(nightly).toContain(`"build-tools;\${ANDROID_BUILD_TOOLS_VERSION}"`);
 
     const verify = nightly.slice(
       nightly.indexOf('Build and verify the signed Android staging bytes'),
@@ -259,12 +259,9 @@ describe('clean Android channel release generation', () => {
       'apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"',
     );
     expect(verify).toContain('"$aapt" dump badging "$apk"');
-    expect(nightly).toContain('ANDROID_UPLOAD_CERT_SHA256');
     expect(verify).toContain(
       'node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"',
     );
-    expect(verify).not.toContain('badging=$(aapt dump badging "$apk")');
-    expect(verify).not.toContain('apksigner verify --verbose --print-certs');
   });
 
   it('applies the Dev channel identity after init and before every local or CI Android build', () => {
@@ -280,6 +277,7 @@ describe('clean Android channel release generation', () => {
       'node scripts/apply-android-native-bootstrap.mjs',
     );
     const build = workflow.indexOf('tauri android build');
+    expect(init).toBeGreaterThanOrEqual(0);
     expect(overlay).toBeGreaterThan(init);
     expect(bootstrap).toBeGreaterThan(overlay);
     expect(build).toBeGreaterThan(bootstrap);
@@ -302,31 +300,48 @@ describe('clean Android channel release generation', () => {
     }
   });
 
-  it('uploads signed nightly artifacts before strict AAB signature verification', () => {
-    const nightly = readFileSync(
-      '.github/workflows/nightly-native-stage.yml',
-      'utf8',
+  it('verifies the signed nightly AAB strictly before uploading artifacts', () => {
+    type Step = {
+      name?: string;
+      uses?: string;
+      run?: string;
+      if?: unknown;
+      shell?: string;
+      'continue-on-error'?: unknown;
+    };
+    const workflow = parse(
+      readFileSync('.github/workflows/nightly-native-stage.yml', 'utf8'),
+    ) as {
+      defaults?: unknown;
+      jobs: Record<string, { defaults?: unknown; steps: Step[] }>;
+    };
+    const job = workflow.jobs['stage-android'];
+    const buildIndex = job.steps.findIndex(
+      (step) =>
+        step.name === 'Build and verify the signed Android staging bytes',
     );
-    const build = nightly.indexOf(
-      'Build and verify the signed Android staging bytes',
+    const build = job.steps[buildIndex];
+    const uploadIndex = job.steps.findIndex((step) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
     );
-    const artifactUpload = nightly.indexOf('actions/upload-artifact@', build);
-    const verify = nightly.indexOf(
-      'Bind the exact staged Android inventory into a receipt',
-      build,
-    );
+    expect(buildIndex).toBeGreaterThanOrEqual(0);
+    expect(uploadIndex).toBeGreaterThan(buildIndex);
 
-    expect(artifactUpload).toBeGreaterThan(build);
-    expect(artifactUpload).toBeGreaterThan(verify);
+    // The runner's default bash is `-e`: the step fails on the verifier's exit
+    // status only while nothing skips the step, tolerates its failure, swaps
+    // the shell, or turns errexit off.
+    expect(build.if).toBeUndefined();
+    expect(build['continue-on-error']).toBeUndefined();
+    expect(build.shell).toBeUndefined();
+    expect(workflow.defaults).toBeUndefined();
+    expect(job.defaults).toBeUndefined();
+    const lines = (build.run ?? '').split('\n').map((line) => line.trim());
+    expect(lines).not.toContainEqual(expect.stringMatching(/^set\s+\+e\b/));
 
-    const verification = nightly.slice(build, verify);
-    expect(verification).toContain(
-      'cohort-android/station-nightly-universal.aab',
-    );
-    expect(verification).toContain(
+    // The invocation is a whole line of its own: `|| true`, a captured
+    // `$(...)`, or a trailing `; true` would each make it lenient.
+    expect(lines).toContain(
       'node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"',
     );
-    expect(verification).not.toContain('aab_verification=');
-    expect(verification).not.toContain('jarsigner -verify');
   });
 });

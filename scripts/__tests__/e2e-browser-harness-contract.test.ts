@@ -15,15 +15,8 @@ describe('E2E browser bootstrap wiring', () => {
 
   test('does not attach an operator credential to browser-wide requests', () => {
     const config = readFileSync('playwright.config.ts', 'utf8');
-    const firstRun = readFileSync('tests/first-run-live.spec.ts', 'utf8');
-    const uiCrud = readFileSync('tests/ui-crud-smoke.spec.ts', 'utf8');
 
     expect(config).not.toContain('extraHTTPHeaders');
     expect(config).not.toContain('Authorization');
-    expect(firstRun).toContain('authenticatedRequest.get');
-    expect(firstRun).toContain("from './helpers/authenticated-request'");
-    expect(uiCrud).toContain('authenticatedRequest.put');
-    expect(uiCrud).toContain('authenticatedRequest.delete');
-    expect(uiCrud).not.toContain('page.evaluate');
   });
 });

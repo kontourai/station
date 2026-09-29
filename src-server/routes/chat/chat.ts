@@ -72,7 +72,7 @@ import {
   type ChatMessage,
   prepareChatRequest,
 } from './chat-request-preparation.js';
-import { getChatTurnDedupStore } from './chat-turn-dedup.js';
+import { ChatTurnDedupStore } from './chat-turn-dedup.js';
 
 /**
  * archive#977: `RuntimeContext` has no `connectionService` (agent/runtime
@@ -345,10 +345,11 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         agent,
         configurationLease,
         projectSlug,
-        // archive#1224 (offline): per-home-dir singleton so a replay
-        // of the same clientTurnId (retry, or a flushed offline-queue turn)
-        // is recognized even after a server restart — see chat-turn-dedup.ts.
-        dedupStore: getChatTurnDedupStore(ctx.orchestrationEventStore),
+        // archive#1224 (offline): claims live in the runtime's orchestration
+        // store, so a replay of the same clientTurnId (retry, or a flushed
+        // offline-queue turn) is recognized even after a server restart. The
+        // facade holds no state of its own — see chat-turn-dedup.ts.
+        dedupStore: new ChatTurnDedupStore(ctx.orchestrationEventStore),
         turnCorrelation,
         // A relay thread that is not this request's own conversation is
         // ignored, never trusted for another conversation's approvals.

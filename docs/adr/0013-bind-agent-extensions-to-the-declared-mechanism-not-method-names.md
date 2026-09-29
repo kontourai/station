@@ -1,5 +1,17 @@
 # Bind agent extensions to the declared mechanism, never to method names
 
+**Reading status (2026-09-26 source review):** This decision retains the dated
+2026-08-03 ACP/Kiro investigation. Its vendor versions, wire observations, and
+ecosystem survey are not a current compatibility matrix. The inbound-request
+refusal slice has since landed: the
+[ACP adapter](../../src-server/providers/adapters/acp-adapter.ts) uses the
+[inbound extension policy](../../src-server/services/acp/acp-inbound-extension-policy.ts)
+rather than the old fabricated `{}` response. Statements below that say “until
+it lands” describe the earlier checkpoint. The declared/observed/working
+distinction and no-credential-bridging decision remain; completion of every
+other proposed binding and live vendor interoperability require their own
+evidence. The investigation and alternatives are preserved below.
+
 ## Context
 
 station#1815 asks how Station consumes ACP agent extensions — Kiro's
@@ -205,9 +217,10 @@ unavailable). Whether v3 emits `_kiro/`-spelled notifications is
 NOT_VERIFIED (v3 turns are blocked on the auth callback); the table's
 entries carry the handshake variant they were observed against. The single
 authority is `src-shared/extension-notification-bindings.ts`, consumed by both
-the ACP command-state Adapter and the UI renderer. It also records the `_kiro`
-v3 notification spelling as an explicit evidence gap, so absence cannot be
-mistaken for a negative observation or inherited through fuzzy matching.
+the ACP command-state Adapter and the UI renderer. The `_kiro` v3
+notification spelling stays unbound (the 2026-09 source names it in a comment,
+not an exported gap record), so absence cannot be inherited through fuzzy
+matching.
 
 **Trip-wires, filed at binding time.** Kiro states these extensions are
 experimental; a declared method disappearing is *expected*. Every Layer 3

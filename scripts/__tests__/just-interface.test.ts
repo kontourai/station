@@ -45,7 +45,7 @@ const RECIPE_DESCRIPTIONS = {
   dev: 'Start a local Station instance.',
   check: "Run Station's canonical static verification lane.",
   test: 'Select changed tests or run explicit focused test files.',
-  full: 'Run the sole completion lane without adding a second receipt protocol.',
+  full: 'Run full regression locally; canonical promotion receipts come from hosted workflows.',
   desktop: 'Launch the native desktop development shell.',
   android:
     "Build the Android debug APK through Station's existing native build command.",
