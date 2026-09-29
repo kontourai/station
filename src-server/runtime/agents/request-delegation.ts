@@ -1,8 +1,9 @@
 /**
  * The delegation context a dispatch stamps onto the session it starts
- * (#2601): `POST /api/orchestration/chat*`, `POST /api/orchestration/
- * delegations`, and the station-control tools' forwards to a saved
- * Environment (`GET /api/orchestration/station-control/caller/delegation`).
+ * (#2601): `POST /api/orchestration/chat*` and `POST /api/orchestration/
+ * delegations`. Since #2377 slice C2b a station-control tool's call to a
+ * saved Environment goes through those same routes, which forward it with
+ * the context derived here (the tool no longer asks for it separately).
  *
  * `delegate_task` and `send_message` used to forward the model-written
  * `_delegation` tool argument into the child's `session.started` metadata, so
@@ -253,23 +254,6 @@ async function deriveCallerChildDelegation(
     ...(spec ? { spec } : {}),
     ...(current ? { current } : {}),
   });
-}
-
-/**
- * For the station-control tools' forwards to ANOTHER Station: the child
- * context this Station derives for the request's verified caller, or `null`
- * when the request carries none (the tool then keeps its pre-#2601
- * behaviour). Throws the same refusals as the local routes, so the depth
- * limit holds before anything is forwarded.
- */
-export function createCallerDelegationDeriver(
-  sources: RequestDelegationSources,
-): (request: Request) => Promise<AgentDelegationContext | null> {
-  return async (request) => {
-    if (!sources.isInternalRequest(request)) return null;
-    const caller = sources.resolveCaller(request);
-    return caller ? deriveCallerChildDelegation(caller, sources) : null;
-  };
 }
 
 export function createRequestDelegationResolver(

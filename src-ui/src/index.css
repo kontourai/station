@@ -31,11 +31,19 @@
    `--k-action-contrast`, `--k-focus`). Station reads them with a `--k-brand`
    fallback, and from @kontourai/ui 1.14 the shared primitives read them
    instead of the brand, so without them buttons and focus rings would drop
-   back to the release accent. Every value is contrast-checked per mode by
-   `branding-role-cascade.test.ts` with the same rules a white-label theme
-   has to pass (lib/branding-theme.ts): the action pair at 4.5:1, the action
-   fill as accent text at 4.5:1 on page and panel, focus at 3:1. Where the
-   brand itself fails those, the role is a nearby shade that passes. */
+   back to the release accent.
+
+   The brand is also painted as text: the sidebar channel badge and the kit's
+   `.eyebrow` read it directly. So every channel value passes the same rules
+   a white-label theme has to (lib/branding-theme.ts), per mode: brand and
+   action as text at 4.5:1 on page and panel, each fill with its text at
+   4.5:1, focus at 3:1. `branding-role-cascade.test.ts` checks those rules
+   and `channel-text-contrast.test.tsx` measures the rendered text on its
+   real surfaces, including the raised rows the panel links sit on and the
+   sidebar home button's hover fill behind the badge. Where a channel's
+   signature hue fails (nightly #8b5cf6, beta #5865f2, the dev light
+   #a75f0d), the mode uses a nearby shade of it for brand and roles alike. A dark-mode fill light enough to read on the dark page cannot
+   carry white text at 4.5:1, so dark modes pair it with dark text. */
 :root.is-dev-build {
   --k-brand: #e08b2f;
   --k-brand-contrast: #1b1205;
@@ -58,39 +66,40 @@
 }
 
 :root.is-dev-build[data-theme="light"] {
-  --k-brand: #a75f0d;
+  --k-brand: #98560c;
   --k-brand-contrast: #ffffff;
-  /* #a75f0d is 4.45:1 on the light page. */
-  --k-action: #a05b0d;
+  --k-action: #98560c;
   --k-action-contrast: #ffffff;
-  --k-focus: #a05b0d;
+  --k-focus: #98560c;
 }
 
-/* Dark mode needs a lighter fill with dark text: white text on any fill
-   light enough to read on the dark page cannot reach 4.5:1. */
 :root[data-app-channel="beta"] {
-  --k-brand: #5865f2;
-  --k-brand-contrast: #ffffff;
-  --k-action: #6d78f3;
+  --k-brand: #7983f4;
+  --k-brand-contrast: #06080b;
+  --k-action: #7983f4;
   --k-action-contrast: #06080b;
-  --k-focus: #6d78f3;
+  --k-focus: #7983f4;
 }
 
 :root[data-app-channel="beta"][data-theme="light"] {
+  --k-brand: #4f5bd5;
+  --k-brand-contrast: #ffffff;
   --k-action: #4f5bd5;
   --k-action-contrast: #ffffff;
   --k-focus: #4f5bd5;
 }
 
 :root[data-app-channel="nightly"] {
-  --k-brand: #8b5cf6;
-  --k-brand-contrast: #ffffff;
+  --k-brand: #9d7bf8;
+  --k-brand-contrast: #06080b;
   --k-action: #9d7bf8;
   --k-action-contrast: #06080b;
   --k-focus: #9d7bf8;
 }
 
 :root[data-app-channel="nightly"][data-theme="light"] {
+  --k-brand: #7c3aed;
+  --k-brand-contrast: #ffffff;
   --k-action: #7c3aed;
   --k-action-contrast: #ffffff;
   --k-focus: #7c3aed;
@@ -1561,11 +1570,15 @@ button:hover {
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
+/* On hover and focus the grip sits on the handle's brand tint. The primary
+   text colour contrasts with that tint in every mode and channel; the brand's
+   own contrast partner (`--text-inverted`) is chosen for the solid brand, not
+   a 30% tint, and fell below 3:1 in both modes. */
 .chat-dock__resize-handle:hover .chat-dock__resize-grip,
 .chat-dock__resize-handle:focus-visible .chat-dock__resize-grip,
 .chat-dock__resize-handle:hover::after,
 .chat-dock__resize-handle:focus-visible::after {
-  background: var(--text-inverted);
+  background: var(--text-primary);
 }
 
 /* Rotated grip for the side-panel (width) handle. */
@@ -4787,13 +4800,15 @@ button.tool-call__line:hover {
 }
 
 /* The kit's filled tone rules bind all four semantic fills to the unrelated
-   --k-brand-contrast token. Beta/nightly override that token to white, making
-   every dark-theme tone fail AA. Station already has proven quiet pairs for
-   success, warning and error, so StatusBadge uses those complete trios here.
-   Border follows the quiet semantic border instead of retaining a saturated
-   ring around a muted chip. The kit has no info trio; its existing quiet
-   Active treatment is the toast contract: raised panel, normal text, active
-   border. Reuse that exact treatment rather than minting new info colors. */
+   --k-brand-contrast token, whose value follows the brand fill (channel
+   retints and white-label themes change it), not the tones; when it was
+   white, every dark-theme tone failed AA. Station already has proven
+   quiet pairs for success, warning and error, so StatusBadge uses those
+   complete trios here. Border follows the quiet semantic border instead of
+   retaining a saturated ring around a muted chip. The kit has no info trio;
+   its existing quiet Active treatment is the toast contract: raised panel,
+   normal text, active border. Reuse that exact treatment rather than minting
+   new info colors. */
 .tone-positive {
   background: var(--success-bg);
   color: var(--success-text);
