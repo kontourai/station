@@ -3612,10 +3612,11 @@
       ],
       "checks": [
         "Context claims checked against source: launcher protocol constants and refusals (install.sh range refuse; service-launcher-protocol.ts; archive-update.ts; none in src-desktop Rust); client API compat (environment-security.ts STATION_COMPAT_*; compatibility.ts client-side refusal; host records only); home schema downgrade refusal (station-home-schema.ts); install state record read by lifecycle.ts; pinned keys (release-manifest-keys.json); per-channel identities (channel-ports.json). Decisions: owner direction and owner answers of 2026-09-29; engineering additions labeled.",
-        "Review fix round: D1 restated as ring-tagged pointers now with promotion as the target (owner), verifier = packages/shared/src/release-manifest.mjs plus install.sh's golden-vector copy only, bundled-host pin (not the startup ticket) becomes a range check, supersedes ADR 0015 in part, channel records described as two agreeing records today with a single-writer target, CLI axes split, host-side refusal needs a client protocol field, D6 split updater keys (owner), engineering additions labeled, alternatives and NOT_VERIFIED added."
+        "Review fix round: D1 restated as ring-tagged pointers now with promotion as the target (owner), verifier = packages/shared/src/release-manifest.mjs plus install.sh's golden-vector copy only, bundled-host pin (not the startup ticket) becomes a range check, supersedes ADR 0015 in part, channel records described as two agreeing records today with a single-writer target, CLI axes split, host-side refusal needs a client protocol field, D6 split updater keys (owner), engineering additions labeled, alternatives and NOT_VERIFIED added.",
+        "Delta-review fixes: hold rule requires a strictly greater core (equal cores hide newer nightly code); D4 verifies only under a pinned or verified-archive Node; D6 rotation bootstrap (signed with the shared key, then retire it from nightly); migration labels split; baked-ring copy qualified."
       ],
-      "documentDigest": "d4dd26cde4cdeb217e27d8a6f2c9c2f294e4df742302500345c7a9d688de0b17",
-      "sourceRevision": "6b835bf13f4cd2c8c50704eb223e0ab82f0b8fbf"
+      "documentDigest": "727d87700d7ba8276ae728b8c9d54911b88eb3bee2f142695045292331bc4644",
+      "sourceRevision": "ecaa2616bc54787517cf1a7c29d2f50402f2dce8"
     },
     {
       "path": "docs/architecture.md",

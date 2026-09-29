@@ -195,9 +195,10 @@ claim path.
 
 **Verification (owner decision).** The shell runs the shared JavaScript
 verifier, [`release-manifest.mjs`](../../packages/shared/src/release-manifest.mjs),
-under Node. It uses a Node already present when it passes the same checks
-`install.sh` applies. Otherwise it uses a SHA-pinned bootstrapped Node, as
-`install.sh` does. `install.sh`'s inline copy, bound to the same golden
+under a SHA-pinned Node that it bootstraps as `install.sh` does, or under the
+Node inside an archive it has already verified. It never verifies with a Node
+found on the user's PATH: `install.sh`'s preference for an existing Node checks
+only its major version, which is not an integrity check. `install.sh`'s inline copy, bound to the same golden
 vectors, stays the only other implementation, and no third one is added. The
 fetched archive carries its own Node, so the sidecar stops depending on a
 system Node.
@@ -236,6 +237,12 @@ channel it serves (owner decision). Generating the new key and uploading its
 secret are owner actions. They must happen before #2962 converges the
 desktop identities.
 
+Rotation needs one bootstrap step (engineering addition). Installed apps
+trust only today's shared key, so the update that installs the split keys is
+signed with that key. The shared key is then retired from the nightly signing
+environment. Until then, the nightly pipeline could still sign updates that
+stable apps already in the field accept.
+
 ## Settled points from #2713
 
 ### Switching to a slower channel
@@ -243,9 +250,11 @@ desktop identities.
 **Never go backwards automatically** (owner decision). Moving to a faster
 pointer is an ordinary upgrade. Moving to a slower pointer holds the current
 version until the slower pointer reaches or passes it, which is Chrome's
-rule. Under D1's ring-tagged versions, "reaches or passes" compares the
-`X.Y.Z` core of the slower pointer's version with the current version's core;
-promotion replaces that with a single ordering (engineering addition).
+rule. Under D1's ring-tagged versions, a slower pointer reaches the current
+version only when its `X.Y.Z` core is strictly greater. A nightly carries the
+core of the release it precedes, so equal cores can hide newer code, and the
+switch holds while cores are equal. Promotion replaces this rule with a
+single ordering (engineering addition).
 
 The schema downgrade refusal remains the rejection path and is never
 bypassed. Users who need the slower channel now choose one of two explicit
@@ -259,10 +268,11 @@ actions:
 
 ### Existing per-channel installs
 
-Migration is forward-only and consent-based (owner decision). Existing
-channel installs keep working at their versions and are never merged, because
-homes with different schemas cannot be merged safely. Consolidating means the
-user picks the one home to keep, and the rest are archived, not deleted.
+Existing channel installs keep working at their versions and are never
+merged, because homes with different schemas cannot be merged safely.
+Consolidating means the user picks the one home to keep (owner decision). The
+rest are archived rather than deleted, and nothing moves without the user's
+consent (engineering additions).
 
 - The stable desktop identity (`io.kontourai.station`) becomes the one desktop
   app. The beta and nightly desktop identities get a final update that says
@@ -299,7 +309,7 @@ one record per axis, each with one writer (engineering addition):
   selects the client updater endpoint at runtime rather than at build time
   (#2962).
 
-No other surface keeps a copy. A channel switch still moves between install
+No other surface keeps a copy, apart from the baked ring until promotion. A channel switch still moves between install
 roots keyed by channel until promotion.
 
 ## Alternatives considered
