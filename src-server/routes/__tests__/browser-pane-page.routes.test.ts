@@ -1,0 +1,500 @@
+/**
+ * The Browser pane's page tools through the REAL routes (#90): a dialog the
+ * page opens while a person is in control is held and answered by that
+ * person; the page's console is readable, bounded, by anyone who may watch;
+ * a screenshot comes back as image bytes.
+ *
+ * Composition: the real session registry, live-surface registry, surface
+ * binder, live-surface routes (a person's input claims control through the
+ * same route the canvas uses) and browser routes, over a fake browser host
+ * whose CDP events each test emits in the shapes Chromium sends.
+ */
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { isAgentOriginatedRequest } from '../../runtime/mcp/station-control-caller.js';
+import type { BrowserProjectAuthorizer } from '../../services/browser/browser-access.js';
+import { BROWSER_CONSOLE_LIMIT } from '../../services/browser/browser-console-log.js';
+import {
+  type BrowserHost,
+  type CdpTransport,
+  createLocalBrowserHostResolver,
+} from '../../services/browser/browser-host.js';
+import { BrowserLiveSurfaces } from '../../services/browser/browser-live-surfaces.js';
+import { BrowserSessionRegistry } from '../../services/browser/browser-session-registry.js';
+import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
+import {
+  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+  STATION_CONTROL_ORIGIN_HEADER,
+} from '../../tools/station-control-shared.js';
+import { createBrowserRoutes } from '../browser.js';
+import { createLiveSurfaceRoutes } from '../live-surface.js';
+
+const PAGE = 'S1';
+/** A 1×1 PNG, as `Page.captureScreenshot` returns it (base64). */
+const PNG_1X1 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+function fakeHost() {
+  const listeners = new Map<string, Set<(p: unknown, s?: string) => void>>();
+  const sent: Array<{ method: string; params?: Record<string, unknown> }> = [];
+  const handlers = new Map<
+    string,
+    (params: Record<string, unknown>) => unknown
+  >();
+  const cdp: CdpTransport = {
+    async send<R>(method: string, params?: object) {
+      const p = (params ?? {}) as Record<string, unknown>;
+      sent.push({ method, params: p });
+      const handler = handlers.get(method);
+      return (handler ? await handler(p) : {}) as R;
+    },
+    on(event, fn) {
+      const set = listeners.get(event) ?? new Set();
+      set.add(fn);
+      listeners.set(event, set);
+      return () => set.delete(fn);
+    },
+    close: async () => {},
+    closed: new Promise(() => {}),
+  };
+  const host: BrowserHost = {
+    kind: 'server-chromium',
+    shutdown: async () => {},
+    openTarget: async () => ({ targetId: 'T1', cdpSessionId: PAGE }),
+    cdp: () => cdp,
+    closeTarget: async () => {},
+    onExit: () => () => {},
+  };
+  return {
+    host,
+    sent,
+    handle(
+      method: string,
+      handler: (params: Record<string, unknown>) => unknown,
+    ) {
+      handlers.set(method, handler);
+    },
+    emit(event: string, params: unknown, sessionId = PAGE) {
+      for (const fn of listeners.get(event) ?? []) fn(params, sessionId);
+    },
+    dialogAnswers: () =>
+      sent.filter((s) => s.method === 'Page.handleJavaScriptDialog'),
+  };
+}
+
+const homes: string[] = [];
+afterEach(() => {
+  for (const home of homes.splice(0))
+    rmSync(home, { recursive: true, force: true });
+});
+
+type Role = 'operator' | 'nobody';
+const roleOf = (request: Request) =>
+  (request.headers.get('x-test-role') ?? 'nobody') as Role;
+
+function harness() {
+  const stationHome = mkdtempSync(join(tmpdir(), 'station-browser-page-'));
+  homes.push(stationHome);
+  const fake = fakeHost();
+  let ids = 0;
+  const sessions = new BrowserSessionRegistry({
+    stationHome,
+    hostResolver: createLocalBrowserHostResolver(() => fake.host),
+    newId: () =>
+      `bs_00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
+  });
+  const authorizeProject: BrowserProjectAuthorizer = async (request) =>
+    roleOf(request) === 'operator' ? { kind: 'operator' } : undefined;
+  const surfaces = new LiveSurfaceRegistry();
+  const binder = new BrowserLiveSurfaces({
+    sessions,
+    surfaces,
+    authorizeProject,
+  });
+  const surfaceRoutes = createLiveSurfaceRoutes(surfaces, {
+    isRequestPrincipalCurrent: () => true,
+    resolveHumanCaller: (c) =>
+      roleOf(c.req.raw) === 'operator'
+        ? { principal: 'human:local:operator', device: 'device:laptop' }
+        : null,
+  });
+  const browserRoutes = createBrowserRoutes({
+    registry: sessions,
+    acquisition: {
+      status: () => ({
+        state: 'found-system',
+        executablePath: '/fake/chrome',
+        browser: 'google-chrome',
+      }),
+      startDownload: vi.fn(),
+    } as never,
+    localTargets: { list: () => [], add: vi.fn(), remove: vi.fn() } as never,
+    surfaceIdFor: (id) => binder.surfaceIdFor(id),
+    pendingDialogFor: (id) => binder.pendingDialogFor(id),
+    answerDialog: (id, dialogId, answer, actor) =>
+      binder.answerDialog(id, dialogId, answer, actor),
+    consoleFor: (id, after) => binder.consoleFor(id, after),
+    // The production predicate's agent-tool arm (the rest needs a runtime).
+    isAgentRequest: isAgentOriginatedRequest,
+    isStationInternalRequest: () => false,
+    listeners: () => ({ ports: [], hostnames: [] }),
+    suggestLocalTargets: async () => ({ state: 'ok', suggestions: [] }),
+    authorizeProject,
+    authorizeOperator: async (request) => roleOf(request) === 'operator',
+    resolveProject: (slug) =>
+      slug === 'alpha' ? { id: 'alpha', slug: 'alpha' } : undefined,
+    isRequestPrincipalCurrent: () => true,
+  });
+  const browser = (
+    method: string,
+    path: string,
+    options: { role?: Role; body?: unknown; agent?: boolean } = {},
+  ) =>
+    browserRoutes.request(`http://station.test${path}`, {
+      method,
+      headers: {
+        'x-test-role': options.role ?? 'operator',
+        'content-type': 'application/json',
+        ...(options.agent
+          ? {
+              [STATION_CONTROL_ORIGIN_HEADER]:
+                STATION_CONTROL_ORIGIN_AGENT_TOOL,
+            }
+          : {}),
+      },
+      ...(options.body === undefined
+        ? {}
+        : { body: JSON.stringify(options.body) }),
+    });
+  /** A person's click through the live-surface input route (claims control). */
+  const personClicks = async (browserSessionId: string) => {
+    const surfaceId = binder.surfaceIdFor(browserSessionId)!;
+    const response = await surfaceRoutes.request(
+      `http://station.test/${surfaceId}/input`,
+      {
+        method: 'POST',
+        headers: {
+          'x-test-role': 'operator',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          epoch: surfaces.get(surfaceId)!.lease.snapshot().epoch,
+          events: [
+            { kind: 'pointer', type: 'down', x: 5, y: 5, button: 'left' },
+            { kind: 'pointer', type: 'up', x: 5, y: 5, button: 'left' },
+          ],
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+  };
+  const open = () =>
+    sessions.createSession({
+      projectId: 'alpha',
+      projectSlug: 'alpha',
+      url: 'https://example.com/',
+      actor: { kind: 'operator' },
+    });
+  return { fake, sessions, surfaces, binder, browser, personClicks, open };
+}
+
+describe('Browser pane: page dialogs a person answers', () => {
+  test('a confirm the page opens while a person is in control is shown to them, not answered, and their answer reaches the page', async () => {
+    const h = harness();
+    const session = await h.open();
+    const id = session.browserSessionId;
+    await h.personClicks(id);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      url: 'https://example.com/',
+      message: 'Discard your changes?',
+      type: 'confirm',
+      hasBrowserHandler: false,
+      defaultPrompt: '',
+    });
+    expect(h.fake.dialogAnswers()).toEqual([]);
+
+    const view = await (
+      await h.browser('GET', `/sessions/${id}?view=summary`)
+    ).json();
+    expect(view.data.pendingDialog).toMatchObject({
+      dialogId: 'd1',
+      type: 'confirm',
+      message: 'Discard your changes?',
+    });
+    expect(Date.parse(view.data.pendingDialog.openedAt)).not.toBeNaN();
+
+    const answered = await h.browser('POST', `/sessions/${id}/dialog`, {
+      body: { dialogId: 'd1', accept: true },
+    });
+    expect(answered.status).toBe(200);
+    expect((await answered.json()).data.pendingDialog).toBeUndefined();
+    expect(h.fake.dialogAnswers()).toEqual([
+      { method: 'Page.handleJavaScriptDialog', params: { accept: true } },
+    ]);
+    const last = h.sessions.getSession(id)!.history.entries.at(-1);
+    expect(last).toMatchObject({
+      kind: 'dialog-answered',
+      actor: { kind: 'operator' },
+      detail: 'confirm accepted: Discard your changes?',
+    });
+  });
+
+  test("a prompt's typed answer is sent to the page but never written to the history", async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    await h.personClicks(id);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      url: 'https://example.com/',
+      message: 'Project name?',
+      type: 'prompt',
+      hasBrowserHandler: false,
+      defaultPrompt: 'untitled',
+    });
+    const response = await h.browser('POST', `/sessions/${id}/dialog`, {
+      body: { dialogId: 'd1', accept: true, promptText: 'secret-launch' },
+    });
+    expect(response.status).toBe(200);
+    expect(h.fake.dialogAnswers().at(-1)?.params).toEqual({
+      accept: true,
+      promptText: 'secret-launch',
+    });
+    expect(JSON.stringify(h.sessions.getSession(id)!.history)).not.toContain(
+      'secret-launch',
+    );
+  });
+
+  test('an agent-originated request may not answer a dialog shown to a person', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    await h.personClicks(id);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'alert',
+      message: 'hi',
+    });
+    const response = await h.browser('POST', `/sessions/${id}/dialog`, {
+      body: { dialogId: 'd1', accept: true },
+      agent: true,
+    });
+    expect(response.status).toBe(403);
+    expect(h.fake.dialogAnswers()).toEqual([]);
+    expect(h.binder.pendingDialogFor(id)).toMatchObject({ dialogId: 'd1' });
+  });
+
+  test('an answer for a dialog that is no longer held is refused (409), and malformed answers are 400', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    expect(
+      (
+        await h.browser('POST', `/sessions/${id}/dialog`, {
+          body: { dialogId: 'd1', accept: true },
+        })
+      ).status,
+    ).toBe(409);
+    for (const body of [
+      { dialogId: 'x1', accept: true },
+      { dialogId: 'd1', accept: 'yes' },
+      { dialogId: 'd1', accept: true, promptText: 'p'.repeat(4097) },
+      { dialogId: 'd1', accept: true, extra: 1 },
+    ])
+      expect(
+        (await h.browser('POST', `/sessions/${id}/dialog`, { body })).status,
+      ).toBe(400);
+    expect(
+      (
+        await h.browser('POST', `/sessions/${id}/dialog`, {
+          body: { dialogId: 'd1', accept: true },
+          role: 'nobody',
+        })
+      ).status,
+    ).toBe(403);
+  });
+
+  test('with nobody in control the dialog is answered automatically, as before, and nothing is pending', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'alert',
+      message: 'saved',
+    });
+    expect(h.fake.dialogAnswers()).toEqual([
+      { method: 'Page.handleJavaScriptDialog', params: { accept: false } },
+    ]);
+    const view = await (await h.browser('GET', `/sessions/${id}`)).json();
+    expect(view.data.pendingDialog).toBeUndefined();
+  });
+});
+
+describe('Browser pane: the page console', () => {
+  const consoleCall = (
+    type: string,
+    text: string,
+    url = 'https://example.com/app.js',
+  ) => ({
+    type,
+    args: [{ type: 'string', value: text }],
+    executionContextId: 1,
+    timestamp: 1_700_000_000_000,
+    stackTrace: {
+      callFrames: [
+        {
+          functionName: '',
+          scriptId: '5',
+          url,
+          lineNumber: 9,
+          columnNumber: 2,
+        },
+      ],
+    },
+  });
+
+  test('console calls, uncaught exceptions and browser log entries are captured with their levels and locations', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    // Capture turned itself on when the session went live.
+    expect(h.fake.sent.map((s) => s.method)).toEqual(
+      expect.arrayContaining(['Runtime.enable', 'Log.enable']),
+    );
+    h.fake.emit('Runtime.consoleAPICalled', consoleCall('log', 'booted'));
+    h.fake.emit('Runtime.consoleAPICalled', {
+      type: 'warning',
+      args: [
+        { type: 'string', value: 'slow' },
+        { type: 'number', value: 42, description: '42' },
+        { type: 'object', subtype: 'array', description: 'Array(2)' },
+      ],
+      executionContextId: 1,
+      timestamp: 1,
+    });
+    h.fake.emit('Runtime.exceptionThrown', {
+      timestamp: 1,
+      exceptionDetails: {
+        exceptionId: 1,
+        text: 'Uncaught',
+        lineNumber: 4,
+        columnNumber: 7,
+        url: 'https://example.com/boom.js',
+        exception: {
+          type: 'object',
+          subtype: 'error',
+          className: 'TypeError',
+          description:
+            "TypeError: Cannot read properties of undefined (reading 'x')\n    at boom.js:5:8",
+        },
+      },
+    });
+    h.fake.emit('Log.entryAdded', {
+      entry: {
+        source: 'network',
+        level: 'error',
+        text: 'Failed to load resource: the server responded with a status of 404 ()',
+        timestamp: 1,
+        url: 'https://example.com/missing.png',
+      },
+    });
+    // Another page's console is not this session's.
+    h.fake.emit(
+      'Runtime.consoleAPICalled',
+      consoleCall('log', 'elsewhere'),
+      'S9',
+    );
+
+    const response = await h.browser('GET', `/sessions/${id}/console`);
+    expect(response.status).toBe(200);
+    const { data } = await response.json();
+    expect(data).toMatchObject({ capturing: true, dropped: 0, latestSeq: 4 });
+    expect(
+      data.entries.map(
+        (e: {
+          level: string;
+          source: string;
+          text: string;
+          url?: string;
+          line?: number;
+        }) => [e.level, e.source, e.text.split('\n')[0], e.url, e.line],
+      ),
+    ).toEqual([
+      ['info', 'console', 'booted', 'https://example.com/app.js', 10],
+      ['warning', 'console', 'slow 42 Array(2)', undefined, undefined],
+      [
+        'error',
+        'exception',
+        "TypeError: Cannot read properties of undefined (reading 'x')",
+        'https://example.com/boom.js',
+        5,
+      ],
+      [
+        'error',
+        'browser',
+        'Failed to load resource: the server responded with a status of 404 ()',
+        'https://example.com/missing.png',
+        undefined,
+      ],
+    ]);
+    const newer = await (
+      await h.browser('GET', `/sessions/${id}/console?after=3`)
+    ).json();
+    expect(newer.data.entries.map((e: { seq: number }) => e.seq)).toEqual([4]);
+  });
+
+  test('past the bound the OLDEST entries are dropped and counted, never the newest', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    const over = 7;
+    for (let i = 1; i <= BROWSER_CONSOLE_LIMIT + over; i += 1)
+      h.fake.emit('Runtime.consoleAPICalled', consoleCall('log', `line ${i}`));
+    const { data } = await (
+      await h.browser('GET', `/sessions/${id}/console`)
+    ).json();
+    expect(BROWSER_CONSOLE_LIMIT).toBe(500);
+    expect(data.entries).toHaveLength(BROWSER_CONSOLE_LIMIT);
+    expect(data.dropped).toBe(over);
+    expect(data.entries[0].text).toBe(`line ${over + 1}`);
+    expect(data.entries.at(-1).text).toBe(
+      `line ${BROWSER_CONSOLE_LIMIT + over}`,
+    );
+  });
+
+  test('reading the console needs standing to watch the session; a bad cursor is 400', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    expect(
+      (await h.browser('GET', `/sessions/${id}/console`, { role: 'nobody' }))
+        .status,
+    ).toBe(403);
+    expect(
+      (await h.browser('GET', `/sessions/${id}/console?after=-1`)).status,
+    ).toBe(400);
+  });
+});
+
+describe('Browser pane: screenshots', () => {
+  test("a screenshot is the page's PNG bytes, for anyone who may watch", async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    h.fake.handle('Page.captureScreenshot', () => ({ data: PNG_1X1 }));
+    const response = await h.browser('GET', `/sessions/${id}/screenshot`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect(Buffer.from(bytes).toString('base64')).toBe(PNG_1X1);
+    expect(
+      h.fake.sent.find((s) => s.method === 'Page.captureScreenshot')?.params,
+    ).toEqual({ format: 'png' });
+    expect(
+      (await h.browser('GET', `/sessions/${id}/screenshot`, { role: 'nobody' }))
+        .status,
+    ).toBe(403);
+  });
+
+  test('a closed session has no screenshot (409)', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    await h.sessions.closeSession(id, { kind: 'operator' });
+    expect((await h.browser('GET', `/sessions/${id}/screenshot`)).status).toBe(
+      409,
+    );
+  });
+});

@@ -19,6 +19,7 @@ import type {
   BrowserOperatorAuthorizer,
   BrowserProjectAuthorizer,
 } from '../services/browser/browser-access.js';
+import type { BrowserConsoleSnapshot } from '../services/browser/browser-console-log.js';
 import type { BrowserViewport } from '../services/browser/browser-host.js';
 import {
   LocalTargetError,
@@ -27,6 +28,7 @@ import {
 import type { BrowserProjectSettingsStore } from '../services/browser/browser-project-settings.js';
 import {
   actorOwnsSessionProfile,
+  type BrowserSessionActor,
   BrowserSessionError,
   type BrowserSessionRegistry,
   browserProfileFor,
@@ -51,6 +53,11 @@ import {
 import { normalizeBrowserUrl } from '../services/browser/url-policy.js';
 
 const MAX_BODY_BYTES = 16 * 1024;
+/** The dialog ids a producer mints (`d` + a counter). */
+const DIALOG_ID = /^d[0-9]{1,12}$/;
+/** A prompt answer a person may send back to the page. */
+const PROMPT_TEXT_MAX = 4_096;
+const CONSOLE_AFTER = /^(0|[1-9][0-9]{0,14})$/;
 const TARGET_ID = /^lt_[0-9a-f-]{36}$/;
 
 /** A Project as the routes see it: canonical ID plus its current slug. */
@@ -72,12 +79,38 @@ export interface BrowserRoutesDeps {
     | 'navigateHistory'
     | 'setViewport'
     | 'getSessionSummary'
+    | 'captureScreenshot'
   >;
   /**
    * The live-surface id of a live session (its screencast), when live
    * surfaces are wired. Session responses carry it as `surfaceId`.
    */
   surfaceIdFor?(browserSessionId: string): string | undefined;
+  /**
+   * The dialog a live session's page holds for a person to answer (live
+   * surfaces only). Session responses carry it as `pendingDialog`.
+   */
+  pendingDialogFor?(browserSessionId: string):
+    | {
+        dialogId: string;
+        type: 'alert' | 'confirm' | 'prompt';
+        message: string;
+        defaultPrompt?: string;
+        openedAt: number;
+      }
+    | undefined;
+  /** A person's answer to that dialog (the caller is already authorized). */
+  answerDialog?(
+    browserSessionId: string,
+    dialogId: string,
+    answer: { accept: boolean; promptText?: string },
+    actor: BrowserSessionActor,
+  ): Promise<{ ok: true } | { ok: false; code: 'no-dialog' }>;
+  /** A live session page's console entries newer than `after`. */
+  consoleFor?(
+    browserSessionId: string,
+    after?: number,
+  ): BrowserConsoleSnapshot | undefined;
   acquisition: Pick<ChromiumAcquisition, 'status' | 'startDownload'>;
   localTargets: Pick<LocalTargetStore, 'list' | 'add' | 'remove'>;
   /** Per-Project browser permissions (D4). Absent: the routes are not served. */
@@ -132,7 +165,9 @@ async function readJsonObject(
   return parsed as JsonObject;
 }
 
-function sessionErrorStatus(error: BrowserSessionError): 400 | 404 | 409 | 503 {
+function sessionErrorStatus(
+  error: BrowserSessionError,
+): 400 | 404 | 409 | 413 | 503 | 504 {
   switch (error.code) {
     case 'url-not-allowed':
     case 'invalid-project':
@@ -145,6 +180,10 @@ function sessionErrorStatus(error: BrowserSessionError): 400 | 404 | 409 | 503 {
     case 'stale-generation':
     case 'no-history-entry':
       return 409;
+    case 'screenshot-too-large':
+      return 413;
+    case 'page-busy':
+      return 504;
     case 'stopped':
       return 503;
   }
@@ -157,17 +196,45 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
   /** A session as the pane sees it: the record plus its live surface id. */
   const present = <T extends { browserSessionId: string; state: string }>(
     session: T,
-  ): T & { surfaceId?: string; serverNow: string } => {
-    const surfaceId =
-      session.state === 'live'
-        ? deps.surfaceIdFor?.(session.browserSessionId)
-        : undefined;
+  ): T & {
+    surfaceId?: string;
+    serverNow: string;
+    pendingDialog?: {
+      dialogId: string;
+      type: 'alert' | 'confirm' | 'prompt';
+      message: string;
+      defaultPrompt?: string;
+      openedAt: string;
+    };
+  } => {
+    const live = session.state === 'live';
+    const surfaceId = live
+      ? deps.surfaceIdFor?.(session.browserSessionId)
+      : undefined;
+    const dialog = live
+      ? deps.pendingDialogFor?.(session.browserSessionId)
+      : undefined;
     // The server's clock at sending: clients age `activity.lastAgentInputAt`
     // against this, never against their own clock (skew).
     const serverNow = (deps.now?.() ?? new Date()).toISOString();
-    return surfaceId
-      ? { ...session, surfaceId, serverNow }
-      : { ...session, serverNow };
+    return {
+      ...session,
+      ...(surfaceId ? { surfaceId } : {}),
+      serverNow,
+      ...(dialog
+        ? {
+            pendingDialog: {
+              dialogId: dialog.dialogId,
+              type: dialog.type,
+              message: dialog.message,
+              ...(dialog.defaultPrompt !== undefined
+                ? { defaultPrompt: dialog.defaultPrompt }
+                : {}),
+              openedAt: new Date(dialog.openedAt).toISOString(),
+            },
+          }
+        : {}),
+    };
   };
   const generationOf = (body: JsonObject): number | undefined | null =>
     body.generation === undefined
@@ -502,6 +569,104 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       },
     );
     return c.json({ success: true, data: present(session) });
+  });
+
+  // A person answers the dialog the page holds for them (alert, confirm,
+  // prompt). Never an agent's request: the dialog was held BECAUSE a person
+  // was in control, and an agent must not answer what they are being shown.
+  app.post('/sessions/:browserSessionId/dialog', async (c) => {
+    if (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw))
+      return c.json(denied, 403);
+    const body = await readJsonObject(c.req.raw, [
+      'dialogId',
+      'accept',
+      'promptText',
+    ]);
+    if (
+      !body ||
+      typeof body.dialogId !== 'string' ||
+      !DIALOG_ID.test(body.dialogId) ||
+      typeof body.accept !== 'boolean' ||
+      (body.promptText !== undefined &&
+        (typeof body.promptText !== 'string' ||
+          body.promptText.length > PROMPT_TEXT_MAX))
+    )
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'drive',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    const result = deps.answerDialog
+      ? await deps.answerDialog(
+          found.session.browserSessionId,
+          body.dialogId,
+          {
+            accept: body.accept,
+            ...(typeof body.promptText === 'string'
+              ? { promptText: body.promptText }
+              : {}),
+          },
+          found.actor,
+        )
+      : ({ ok: false, code: 'no-dialog' } as const);
+    if (!result.ok) return c.json({ success: false, code: result.code }, 409);
+    const next = deps.registry.getSessionSummary(
+      found.session.browserSessionId,
+    );
+    return c.json({
+      success: true,
+      data: next ? present(next) : present(found.session),
+    });
+  });
+
+  // The page's console: what it logged, its uncaught exceptions, and the
+  // browser's messages about it. `?after=<seq>` returns only newer entries.
+  // Watching, not driving: the same standing as viewing the page.
+  app.get('/sessions/:browserSessionId/console', async (c) => {
+    const after = c.req.query('after');
+    if (after !== undefined && !CONSOLE_AFTER.test(after))
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (found.session.state !== 'live')
+      return c.json({ success: false, code: 'not-live' }, 409);
+    const snapshot = deps.consoleFor?.(
+      found.session.browserSessionId,
+      after === undefined ? undefined : Number(after),
+    );
+    return c.json({
+      success: true,
+      data: snapshot
+        ? { ...snapshot, capturing: true }
+        : { entries: [], dropped: 0, latestSeq: 0, capturing: false },
+    });
+  });
+
+  // A still of the page for a person to save or copy. The same standing as
+  // watching it: the stream already shows them every pixel.
+  app.get('/sessions/:browserSessionId/screenshot', async (c) => {
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    const shot = await deps.registry.captureScreenshot(
+      found.session.browserSessionId,
+    );
+    c.header('X-Content-Type-Options', 'nosniff');
+    return c.body(new Uint8Array(shot.data), 200, {
+      'Content-Type': shot.mimeType,
+    });
   });
 
   app.post('/sessions/:browserSessionId/reopen', async (c) => {

@@ -6,11 +6,17 @@
  * nothing the page-session allowlist does not already permit. It meets the
  * producer contract in `../live-surface/producer.ts`:
  *
- * - JavaScript dialogs are answered here, the moment they open. A page whose
- *   click handler calls `alert()` leaves `Input.dispatchMouseEvent` pending
- *   until the dialog closes; nobody can see a headless dialog, so input must
- *   never wait on one. Each dialog is reported (`onDialog`) so the session's
- *   action history keeps it discoverable (D6).
+ * - JavaScript dialogs never wedge input. A page whose click handler calls
+ *   `alert()` leaves `Input.dispatchMouseEvent` pending until the dialog
+ *   closes. A dialog is answered here the moment it opens (dismissed;
+ *   `beforeunload` accepted) UNLESS `holdDialog` says a person is in control:
+ *   then an `alert`/`confirm`/`prompt` is held for that person to answer
+ *   (`answerDialog`), the input that opened it settles at once instead of
+ *   waiting on the dialog, and further activating input is refused until it
+ *   is answered. A held dialog nobody answers is answered automatically after
+ *   `dialogHoldMs`. Each automatic answer is reported (`onDialog`) so the
+ *   session's action history keeps it discoverable (D6); a person's answer is
+ *   recorded by whoever called `answerDialog`.
  * - Every dispatch is bounded by its own timeout, so a stuck CDP call can
  *   wedge the surface for at most that long, never forever.
  * - Held input is cancelled in the modality it was pressed in: a touch as a
@@ -46,6 +52,36 @@ export interface HandledJavaScriptDialog {
   url?: string;
   /** Whether it was accepted (only `beforeunload`) or dismissed. */
   accepted: boolean;
+  /** Held for a person, and answered automatically because nobody did. */
+  unanswered?: true;
+}
+
+/** The dialog types a person can be asked to answer. */
+export type HeldJavaScriptDialogType = 'alert' | 'confirm' | 'prompt';
+
+/** A dialog held open for a person to answer (see `holdDialog`). */
+export interface PendingJavaScriptDialog {
+  /** Names this one dialog; an answer for any other is refused. */
+  dialogId: string;
+  type: HeldJavaScriptDialogType;
+  /** The dialog's text, bounded. */
+  message: string;
+  /** A prompt's pre-filled answer, bounded. */
+  defaultPrompt?: string;
+  /** When it opened (`now()`, ms). */
+  openedAt: number;
+}
+
+export type AnswerDialogResult =
+  | { ok: true; dialog: PendingJavaScriptDialog }
+  | { ok: false; code: 'no-dialog' };
+
+/** Input refused because a held dialog is waiting for a person. */
+export class ChromiumScreencastDialogPendingError extends Error {
+  constructor() {
+    super('The page is showing a dialog that is waiting for an answer.');
+    this.name = 'ChromiumScreencastDialogPendingError';
+  }
 }
 
 export interface ChromiumScreencastProducerOptions {
@@ -57,6 +93,17 @@ export interface ChromiumScreencastProducerOptions {
   /** Bound on each CDP input call. */
   dispatchTimeoutMs?: number;
   onDialog?: (dialog: HandledJavaScriptDialog) => void;
+  /**
+   * Whether a person should answer this dialog: asked when it opens. False
+   * (the default) answers it automatically, which is what an agent's input
+   * and an unwatched page get. Only `alert`, `confirm` and `prompt` are ever
+   * held: `beforeunload` is always accepted (someone asked to navigate).
+   */
+  holdDialog?: (dialog: { type: HeldJavaScriptDialogType }) => boolean;
+  /** How long a held dialog waits for a person before its automatic answer. */
+  dialogHoldMs?: number;
+  /** A held dialog opened or closed (answered, timed out, navigated away). */
+  onPendingDialogChange?: (dialog: PendingJavaScriptDialog | null) => void;
   /** Called for every input dispatched into the page (not held-input cancels). */
   onInput?: (input: LiveSurfaceInput) => void;
   onError?: (message: string, error: unknown) => void;
@@ -78,10 +125,21 @@ interface DialogOpeningEvent {
   type?: string;
   message?: string;
   url?: string;
+  defaultPrompt?: string;
 }
 
 const DEFAULT_DISPATCH_TIMEOUT_MS = 5_000;
+/** Bound on a dialog's text in the history (and the automatic report). */
 const DIALOG_MESSAGE_MAX = 300;
+/** Bound on a held dialog's text and default answer shown to a person. */
+export const PENDING_DIALOG_TEXT_MAX = 2_000;
+/** A held dialog nobody answers is answered automatically after this. */
+export const DEFAULT_DIALOG_HOLD_MS = 120_000;
+const HELD_DIALOG_TYPES: ReadonlySet<string> = new Set([
+  'alert',
+  'confirm',
+  'prompt',
+]);
 /** Off every viewport: a release here completes no click. */
 const OFF_PAGE = { x: -1, y: -1 } as const;
 
@@ -211,6 +269,13 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
   private readonly dispatchTimeoutMs: number;
   private readonly now: () => number;
   private readonly offDialog: () => void;
+  private readonly offDialogClosed: () => void;
+  private readonly dialogHoldMs: number;
+  private pending: PendingJavaScriptDialog | null = null;
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  private dialogSeq = 0;
+  /** Input calls waiting on CDP; a held dialog opening settles them. */
+  private readonly dialogWaiters = new Set<() => void>();
   private offFrame: (() => void) | null = null;
   private seq = 0;
   /** seq → the screencast frame's own ack id. */
@@ -230,13 +295,54 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     this.now = options.now ?? Date.now;
     // Subscribed for the producer's whole life, not only while streaming: an
     // agent's input can open a dialog with no viewer attached.
+    this.dialogHoldMs = options.dialogHoldMs ?? DEFAULT_DIALOG_HOLD_MS;
     this.offDialog = this.cdp.on(
       'Page.javascriptDialogOpening',
       (params, sessionId) => {
         if (sessionId !== this.session) return;
-        this.answerDialog(params as DialogOpeningEvent);
+        this.onDialogOpening((params ?? {}) as DialogOpeningEvent);
       },
     );
+    // Closed by anyone (our answer, or the page navigating away): a held
+    // dialog that is gone must not stay on anyone's screen.
+    this.offDialogClosed = this.cdp.on(
+      'Page.javascriptDialogClosed',
+      (_params, sessionId) => {
+        if (sessionId !== this.session || !this.pending) return;
+        this.clearPending();
+      },
+    );
+  }
+
+  /** The dialog held for a person right now, if any (a copy). */
+  pendingDialog(): PendingJavaScriptDialog | null {
+    return this.pending ? { ...this.pending } : null;
+  }
+
+  /**
+   * A person's answer to the held dialog `dialogId`. Refused (`no-dialog`)
+   * when that dialog is no longer the one held: answered already, timed out,
+   * or replaced. `promptText` is used only for a prompt.
+   */
+  async answerDialog(
+    dialogId: string,
+    answer: { accept: boolean; promptText?: string },
+  ): Promise<AnswerDialogResult> {
+    const dialog = this.pending;
+    if (!dialog || dialog.dialogId !== dialogId)
+      return { ok: false, code: 'no-dialog' };
+    this.clearPending();
+    await this.cdp.send(
+      'Page.handleJavaScriptDialog',
+      {
+        accept: answer.accept,
+        ...(dialog.type === 'prompt' && answer.accept
+          ? { promptText: answer.promptText ?? '' }
+          : {}),
+      },
+      this.session,
+    );
+    return { ok: true, dialog };
   }
 
   async start(
@@ -312,6 +418,17 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
   }
 
   async dispatch(input: LiveSurfaceInput): Promise<void> {
+    if (this.pending) {
+      // The page is modal: CDP would hold this input until the dialog closes.
+      // A hover or scroll is dropped; anything that would act is refused, so
+      // the person sees it was not delivered and answers the dialog first.
+      if (
+        input.kind === 'pointer' &&
+        (input.type === 'move' || input.type === 'wheel')
+      )
+        return;
+      throw new ChromiumScreencastDialogPendingError();
+    }
     try {
       this.options.onInput?.(input);
     } catch (error) {
@@ -434,6 +551,11 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     if (this.disposed) return;
     this.disposed = true;
     this.offDialog();
+    this.offDialogClosed();
+    if (this.pendingTimer) clearTimeout(this.pendingTimer);
+    this.pendingTimer = null;
+    this.pending = null;
+    this.releaseDialogWaiters();
     this.offFrame?.();
     this.offFrame = null;
     this.pendingAcks.clear();
@@ -486,13 +608,22 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     });
   }
 
-  /** One CDP input call, bounded by the dispatch timeout. */
+  /**
+   * One CDP input call, bounded by the dispatch timeout. A dialog held for a
+   * person while it is pending settles it: the input was delivered (it
+   * opened the dialog), and CDP answers it only once the dialog closes.
+   */
   private async send(method: string, params: object): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let waiter: (() => void) | undefined;
     const pending = this.cdp.send(method, params, this.session);
     try {
       await Promise.race([
         pending,
+        new Promise<void>((resolve) => {
+          waiter = resolve;
+          this.dialogWaiters.add(resolve);
+        }),
         new Promise<never>((_, reject) => {
           timer = setTimeout(
             () => reject(new ChromiumScreencastDispatchTimeoutError(method)),
@@ -502,9 +633,84 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       ]);
     } finally {
       if (timer) clearTimeout(timer);
+      if (waiter) this.dialogWaiters.delete(waiter);
       // A late settlement after the timeout must not surface as unhandled.
       pending.catch(() => {});
     }
+  }
+
+  private releaseDialogWaiters(): void {
+    const waiters = [...this.dialogWaiters];
+    this.dialogWaiters.clear();
+    for (const resolve of waiters) resolve();
+  }
+
+  private clearPending(): void {
+    if (this.pendingTimer) clearTimeout(this.pendingTimer);
+    this.pendingTimer = null;
+    if (!this.pending) return;
+    this.pending = null;
+    this.reportPending(null);
+  }
+
+  private reportPending(dialog: PendingJavaScriptDialog | null): void {
+    try {
+      this.options.onPendingDialogChange?.(dialog ? { ...dialog } : null);
+    } catch (error) {
+      this.options.onError?.('pending dialog report failed', error);
+    }
+  }
+
+  private onDialogOpening(event: DialogOpeningEvent): void {
+    const type = typeof event.type === 'string' ? event.type : 'unknown';
+    let hold = false;
+    if (HELD_DIALOG_TYPES.has(type) && !this.disposed) {
+      try {
+        hold =
+          this.options.holdDialog?.({
+            type: type as HeldJavaScriptDialogType,
+          }) === true;
+      } catch (error) {
+        this.options.onError?.('dialog hold decision failed', error);
+      }
+    }
+    if (!hold) {
+      this.answerAutomatically(event);
+      return;
+    }
+    // One dialog at a time per page: a page cannot open a second while the
+    // first is showing, so a stale record is simply replaced.
+    if (this.pendingTimer) clearTimeout(this.pendingTimer);
+    this.dialogSeq += 1;
+    const dialog: PendingJavaScriptDialog = {
+      dialogId: `d${this.dialogSeq}`,
+      type: type as HeldJavaScriptDialogType,
+      message:
+        typeof event.message === 'string'
+          ? event.message.slice(0, PENDING_DIALOG_TEXT_MAX)
+          : '',
+      ...(type === 'prompt' && typeof event.defaultPrompt === 'string'
+        ? {
+            defaultPrompt: event.defaultPrompt.slice(
+              0,
+              PENDING_DIALOG_TEXT_MAX,
+            ),
+          }
+        : {}),
+      openedAt: this.now(),
+    };
+    this.pending = dialog;
+    this.pendingTimer = setTimeout(() => {
+      if (this.pending?.dialogId !== dialog.dialogId) return;
+      this.pending = null;
+      this.pendingTimer = null;
+      this.reportPending(null);
+      this.answerAutomatically(event, true);
+    }, this.dialogHoldMs);
+    this.pendingTimer.unref?.();
+    this.reportPending(dialog);
+    // The input that opened it was delivered; it must not wait on a person.
+    this.releaseDialogWaiters();
   }
 
   private onScreencastFrame(
@@ -561,7 +767,10 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     );
   }
 
-  private answerDialog(event: DialogOpeningEvent): void {
+  private answerAutomatically(
+    event: DialogOpeningEvent,
+    unanswered = false,
+  ): void {
     // `beforeunload` is accepted: dismissing it would silently cancel the
     // navigation someone asked for. Every other dialog is dismissed.
     const accepted = event?.type === 'beforeunload';
@@ -582,6 +791,7 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
             : '',
         ...(typeof event?.url === 'string' ? { url: event.url } : {}),
         accepted,
+        ...(unanswered ? { unanswered: true as const } : {}),
       });
     } catch (error) {
       this.options.onError?.('dialog report failed', error);

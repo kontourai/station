@@ -2,8 +2,10 @@ import type { LiveSurfaceFrameHeader } from '@kontourai/station-contracts/live-s
 import { describe, expect, test, vi } from 'vitest';
 import type { CdpTransport } from '../browser-host.js';
 import {
+  ChromiumScreencastDialogPendingError,
   ChromiumScreencastDispatchTimeoutError,
   ChromiumScreencastProducer,
+  PENDING_DIALOG_TEXT_MAX,
   screencastDeviceScaleFactor,
 } from '../chromium-screencast-producer.js';
 
@@ -620,5 +622,221 @@ describe('ChromiumScreencastProducer JavaScript dialogs', () => {
     expect(fake.listenerCount('Page.javascriptDialogOpening')).toBe(0);
     fake.emit('Page.javascriptDialogOpening', { type: 'alert' });
     expect(fake.calls).toEqual([]);
+  });
+});
+
+describe('ChromiumScreencastProducer dialogs held for a person', () => {
+  /** A CDP whose input calls stay pending until `release()` (a modal page). */
+  function modalCdp() {
+    let release: () => void = () => {};
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fake = fakeCdp((call) =>
+      call.method.startsWith('Input.') ? blocked.then(() => ({})) : {},
+    );
+    return { fake, release: () => release() };
+  }
+
+  test('a confirm opened while a person holds control waits for them: nothing is answered, and it is reported pending', () => {
+    const onDialog = vi.fn();
+    const onPendingDialogChange = vi.fn();
+    const { fake, producer: p } = producer(fakeCdp(), {
+      onDialog,
+      onPendingDialogChange,
+      holdDialog: () => true,
+    });
+    fake.emit('Page.javascriptDialogOpening', {
+      type: 'confirm',
+      message: 'Delete the draft?',
+      url: 'http://127.0.0.1:5173/',
+    });
+    expect(fake.calls).toEqual([]);
+    expect(onDialog).not.toHaveBeenCalled();
+    expect(p.pendingDialog()).toMatchObject({
+      dialogId: 'd1',
+      type: 'confirm',
+      message: 'Delete the draft?',
+    });
+    expect(onPendingDialogChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ dialogId: 'd1', type: 'confirm' }),
+    );
+  });
+
+  test("the person's answer is sent as given — a prompt with its text — and a second answer is refused", async () => {
+    const { fake, producer: p } = producer(fakeCdp(), {
+      holdDialog: () => true,
+    });
+    fake.emit('Page.javascriptDialogOpening', {
+      type: 'prompt',
+      message: 'Your name?',
+      defaultPrompt: 'Ada',
+    });
+    expect(p.pendingDialog()).toMatchObject({ defaultPrompt: 'Ada' });
+    expect(await p.answerDialog('d7', { accept: true })).toEqual({
+      ok: false,
+      code: 'no-dialog',
+    });
+    expect(
+      await p.answerDialog('d1', { accept: true, promptText: 'Grace' }),
+    ).toMatchObject({ ok: true, dialog: { type: 'prompt' } });
+    expect(fake.calls).toEqual([
+      {
+        method: 'Page.handleJavaScriptDialog',
+        params: { accept: true, promptText: 'Grace' },
+        sessionId: SESSION,
+      },
+    ]);
+    expect(p.pendingDialog()).toBeNull();
+    expect(await p.answerDialog('d1', { accept: false })).toEqual({
+      ok: false,
+      code: 'no-dialog',
+    });
+  });
+
+  test('a dismissed prompt sends no text, and an alert is never sent prompt text', async () => {
+    const { fake, producer: p } = producer(fakeCdp(), {
+      holdDialog: () => true,
+    });
+    fake.emit('Page.javascriptDialogOpening', { type: 'prompt', message: '' });
+    await p.answerDialog('d1', { accept: false, promptText: 'ignored' });
+    fake.emit('Page.javascriptDialogOpening', { type: 'alert', message: '' });
+    await p.answerDialog('d2', { accept: true, promptText: 'ignored' });
+    expect(fake.calls.map((call) => call.params)).toEqual([
+      { accept: false },
+      { accept: true },
+    ]);
+  });
+
+  test('the input that opened a held dialog settles at once instead of waiting on the person', async () => {
+    const modal = modalCdp();
+    const { fake, producer: p } = producer(modal.fake, {
+      holdDialog: () => true,
+      dispatchTimeoutMs: 60_000,
+    });
+    const click = p.dispatch({
+      kind: 'pointer',
+      type: 'up',
+      x: 5,
+      y: 5,
+      button: 'left',
+    });
+    let settled = false;
+    void click.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    fake.emit('Page.javascriptDialogOpening', { type: 'alert', message: 'hi' });
+    await click;
+    expect(settled).toBe(true);
+    modal.release();
+  });
+
+  test('while a dialog waits, input that would act is refused and a hover is dropped (neither reaches CDP)', async () => {
+    const { fake, producer: p } = producer(fakeCdp(), {
+      holdDialog: () => true,
+    });
+    fake.emit('Page.javascriptDialogOpening', { type: 'confirm' });
+    await expect(
+      p.dispatch({ kind: 'text', text: 'typed' }),
+    ).rejects.toBeInstanceOf(ChromiumScreencastDialogPendingError);
+    await expect(
+      p.dispatch({
+        kind: 'pointer',
+        type: 'down',
+        x: 1,
+        y: 1,
+        button: 'left',
+      }),
+    ).rejects.toBeInstanceOf(ChromiumScreencastDialogPendingError);
+    await p.dispatch({ kind: 'pointer', type: 'move', x: 1, y: 1 });
+    expect(fake.calls).toEqual([]);
+  });
+
+  test('a held dialog nobody answers is dismissed automatically after the hold, and reported as unanswered', () => {
+    vi.useFakeTimers();
+    try {
+      const onDialog = vi.fn();
+      const onPendingDialogChange = vi.fn();
+      const { fake, producer: p } = producer(fakeCdp(), {
+        onDialog,
+        onPendingDialogChange,
+        holdDialog: () => true,
+        dialogHoldMs: 1_000,
+      });
+      fake.emit('Page.javascriptDialogOpening', {
+        type: 'confirm',
+        message: 'Leave?',
+      });
+      vi.advanceTimersByTime(999);
+      expect(fake.calls).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(fake.calls).toEqual([
+        {
+          method: 'Page.handleJavaScriptDialog',
+          params: { accept: false },
+          sessionId: SESSION,
+        },
+      ]);
+      expect(onDialog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'confirm',
+          accepted: false,
+          unanswered: true,
+        }),
+      );
+      expect(p.pendingDialog()).toBeNull();
+      expect(onPendingDialogChange).toHaveBeenLastCalledWith(null);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a held dialog the page closes itself (it navigated away) is no longer pending', () => {
+    const { fake, producer: p } = producer(fakeCdp(), {
+      holdDialog: () => true,
+    });
+    fake.emit('Page.javascriptDialogOpening', { type: 'alert' });
+    fake.emit('Page.javascriptDialogClosed', { result: false }, 'other');
+    expect(p.pendingDialog()).not.toBeNull();
+    fake.emit('Page.javascriptDialogClosed', { result: false });
+    expect(p.pendingDialog()).toBeNull();
+  });
+
+  test('beforeunload is never held, whoever is in control', () => {
+    const holdDialog = vi.fn(() => true);
+    const { fake, producer: p } = producer(fakeCdp(), { holdDialog });
+    fake.emit('Page.javascriptDialogOpening', { type: 'beforeunload' });
+    expect(holdDialog).not.toHaveBeenCalled();
+    expect(p.pendingDialog()).toBeNull();
+    expect(fake.calls[0]).toMatchObject({ params: { accept: true } });
+  });
+
+  test('with no person in control the dialog is answered at once, as before', () => {
+    const { fake, producer: p } = producer(fakeCdp(), {
+      holdDialog: () => false,
+    });
+    fake.emit('Page.javascriptDialogOpening', { type: 'confirm' });
+    expect(p.pendingDialog()).toBeNull();
+    expect(fake.calls[0]).toMatchObject({
+      method: 'Page.handleJavaScriptDialog',
+      params: { accept: false },
+    });
+  });
+
+  test("a held dialog's text is bounded", () => {
+    const { fake, producer: p } = producer(fakeCdp(), {
+      holdDialog: () => true,
+    });
+    fake.emit('Page.javascriptDialogOpening', {
+      type: 'prompt',
+      message: 'm'.repeat(PENDING_DIALOG_TEXT_MAX + 50),
+      defaultPrompt: 'p'.repeat(PENDING_DIALOG_TEXT_MAX + 50),
+    });
+    expect(p.pendingDialog()?.message).toHaveLength(PENDING_DIALOG_TEXT_MAX);
+    expect(p.pendingDialog()?.defaultPrompt).toHaveLength(
+      PENDING_DIALOG_TEXT_MAX,
+    );
   });
 });
