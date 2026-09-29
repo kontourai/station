@@ -2,13 +2,20 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { ChatSession } from '../../types';
+import { LazyBoundary } from '../LazyBoundary';
 import {
   claimApprovalThreads,
   OPEN_APPROVAL_QUEUE_EVENT,
   revealApprovalCard,
 } from '../status/approvalReveal';
-import { ChatStatusPill } from '../status/ChatStatusPill';
-import { deriveChatStatus } from '../status/chatStatus';
+import type { ChatStatusInput } from '../status/chatStatus';
+
+// The pill's derivation and rendering load on demand, outside the entry
+// chunk, and are warmed as soon as a chat pane mounts.
+const loadChatStatusPillView = () =>
+  import('../status/ChatStatusPillView').then((module) => ({
+    default: module.ChatStatusPillView,
+  }));
 
 /**
  * The chat pane's floating status pill, derived from the chat's own record
@@ -29,19 +36,20 @@ export function useChatStatusPill({
 }) {
   const pendingApprovals = activeSession.pendingApprovals ?? [];
   const approvalCount = pendingApprovals.length;
-  const status = enabled
-    ? deriveChatStatus({
-        approvalCount,
-        stream: streamStatus,
-        turnLive,
-        waitingOnUser:
-          activeSession.orchestrationStatus === 'awaiting-approval' &&
-          approvalCount === 0,
-        activity: activeSession.conversationActivity,
-        activityHint: activeSession.activityHint,
-        turnStartedAt: activeSession.openTurnStartedAt,
-      })
-    : undefined;
+  const input: ChatStatusInput = {
+    approvalCount,
+    stream: streamStatus,
+    turnLive,
+    waitingOnUser:
+      activeSession.orchestrationStatus === 'awaiting-approval' &&
+      approvalCount === 0,
+    activity: activeSession.conversationActivity,
+    activityHint: activeSession.activityHint,
+    turnStartedAt: activeSession.openTurnStartedAt,
+  };
+  useEffect(() => {
+    if (enabled) void loadChatStatusPillView().catch(() => undefined);
+  }, [enabled]);
 
   const threadIds = useMemo(
     () =>
@@ -58,7 +66,8 @@ export function useChatStatusPill({
       activeSession.conversationActivity?.openTurn?.threadId,
     ],
   );
-  const presentingApproval = status?.kind === 'approval';
+  // Approval is the pill's highest priority: any pending one is what it shows.
+  const presentingApproval = enabled && approvalCount > 0;
   useEffect(() => {
     if (!presentingApproval) return;
     return claimApprovalThreads(threadIds);
@@ -87,10 +96,16 @@ export function useChatStatusPill({
 
   if (!enabled) return null;
   return (
-    <ChatStatusPill
-      status={status}
-      onRevealApproval={onRevealApproval}
-      onRepair={() => openConnectionsModal({ mode: 'request-access' })}
+    <LazyBoundary
+      load={loadChatStatusPillView}
+      shareAcrossMounts
+      pending={null}
+      unavailable={() => null}
+      componentProps={{
+        input,
+        onRevealApproval,
+        onRepair: () => openConnectionsModal({ mode: 'request-access' }),
+      }}
     />
   );
 }

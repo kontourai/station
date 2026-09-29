@@ -10,7 +10,7 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
@@ -222,7 +222,9 @@ describe('ChatDockBody floating status pill', () => {
         ],
       } as Partial<ChatSession>),
     );
-    expect(pill()?.getAttribute('data-chat-status-pill')).toBe('approval');
+    await waitFor(() =>
+      expect(pill()?.getAttribute('data-chat-status-pill')).toBe('approval'),
+    );
     expect(pill()?.textContent).toContain('Approval needed');
     // The transcript (a lazy chunk) has rendered the assistant row…
     await screen.findByText('Editing.');
@@ -231,11 +233,16 @@ describe('ChatDockBody floating status pill', () => {
     expect(document.querySelector('.message__thinking')).toBeNull();
   });
 
-  test('a stream outage is the pill, not a banner above the composer', () => {
+  test('a stream outage is the pill, not a banner above the composer', async () => {
+    // The pill's chunk loads on demand; let it land before faking time.
+    await import('../components/status/ChatStatusPillView');
     vi.useFakeTimers();
     const apiBase = 'http://localhost:3242';
     setStreamConnectionState(apiBase, 'caught-up');
     renderDock(buildSession());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
     act(() => {
       setStreamConnectionState(apiBase, 'interrupted');
     });
@@ -249,7 +256,7 @@ describe('ChatDockBody floating status pill', () => {
     });
   });
 
-  test('a live turn shows what it is doing in the pill', () => {
+  test('a live turn shows what it is doing in the pill', async () => {
     renderDock(
       buildSession({
         orchestrationSessionStarted: true,
@@ -258,7 +265,9 @@ describe('ChatDockBody floating status pill', () => {
         messages: [{ role: 'user', content: 'Go', timestamp: 1 }],
       } as Partial<ChatSession>),
     );
-    expect(pill()?.getAttribute('data-chat-status-pill')).toBe('working');
+    await waitFor(() =>
+      expect(pill()?.getAttribute('data-chat-status-pill')).toBe('working'),
+    );
     expect(pill()?.textContent).toContain('Working');
   });
 });
