@@ -3561,7 +3561,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "config/release-manifest-keys.json",
@@ -3573,7 +3573,7 @@
         },
         {
           "path": "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
-          "digest": "d088c73563837f29d5e1c39e122785b0f45afccb5323396df40f0d1524f0b9c0"
+          "digest": "ae630ad46482a84ef322e83bf470c9936219e5ba452eeff3a7e45ecc047d43d4"
         },
         {
           "path": "packaging/portable-server/bin/station-launcher.mjs",
@@ -3613,17 +3613,19 @@
         },
         {
           "path": "packages/shared/src/prebuilt-archive.ts",
-          "digest": "d77ed4ca76a7a0a19e7c722ac9a62756eea7b307ab84220e51a7391dbfe65a69"
+          "digest": "73f956c32b937353113b247025a4c7e7feba6e4f305703d4366593b9e5ba78d8"
         }
       ],
       "checks": [
         "Context claims checked against source: launcher protocol constants and refusals (install.sh range refuse; service-launcher-protocol.ts; archive-update.ts; none in src-desktop Rust); client API compat (environment-security.ts STATION_COMPAT_*; compatibility.ts client-side refusal; host records only); home schema downgrade refusal (station-home-schema.ts); install state record read by lifecycle.ts; pinned keys (release-manifest-keys.json); per-channel identities (channel-ports.json). Decisions: owner direction and owner answers of 2026-09-29; engineering additions labeled.",
         "Review fix round: D1 restated as ring-tagged pointers now with promotion as the target (owner), verifier = packages/shared/src/release-manifest.mjs plus install.sh's golden-vector copy only, bundled-host pin (not the startup ticket) becomes a range check, supersedes ADR 0015 in part, channel records described as two agreeing records today with a single-writer target, CLI axes split, host-side refusal needs a client protocol field, D6 split updater keys (owner), engineering additions labeled, alternatives and NOT_VERIFIED added.",
         "Delta-review fixes: hold rule requires a strictly greater core (equal cores hide newer nightly code); D4 verifies only under a pinned or verified-archive Node; D6 rotation bootstrap (signed with the shared key, then retire it from nightly); migration labels split; baked-ring copy qualified.",
-        "Wording: nightly core reason corrected; lines re-wrapped."
+        "Wording: nightly core reason corrected; lines re-wrapped.",
+        "Source ADR 0015 changed by the merged #2957 evidence addendum (e8dc2e22). ADR 0020's NOT_VERIFIED carry-list and the addendum anchor match the landed text (Windows readiness and watchdog timings, stale sidecar entries, shared roots refusing first launch).",
+        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold."
       ],
       "documentDigest": "d5acbd007ab05fd13e9689943a2040edbc5a8980c4c04eb7a3f0aa6e2dc03372",
-      "sourceRevision": "9148681139c0f565135ed541a92c31048b30dcde"
+      "sourceRevision": "54e0ffb5c1ae765b4127f031e525793087fb9669"
     },
     {
       "path": "docs/architecture.md",
