@@ -2540,7 +2540,7 @@
     },
     {
       "path": "docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md",
-      "sourceRevision": "1a7acfecd7fc9013926f7e9925e909629f73fc19",
+      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
       "kind": "historical",
       "state": "classified",
       "summary": "A top status note points to ADR0014 and distinguishes the superseded flag/rollback mechanism from the retained orchestration/private-adapter/no-migration decisions. Current interactive route composition supplies the foreground orchestration seam.",
@@ -2553,7 +2553,7 @@
         },
         {
           "path": "docs/reference/session-api.md",
-          "digest": "fd07c35aa54a1602286ad5e25aeb885e997f79a91841c421fca7e90fed385601"
+          "digest": "3ffb21a461f4504f7e7247103b1fbc8c3c8a3a14ab8a48e831f1355a06bdec4f"
         },
         {
           "path": "packages/cli/src/commands/session-client.ts",
@@ -2585,7 +2585,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. The ADR's retained decisions (orchestration routing, private adapters, no migration) depend on neither; classification unchanged.",
         "#2933 round 2: session-api.md added one sentence on ACP plan-exit acceptForSession (counts as accept, allow-once, no grant); the ADR's orchestration routing, private-adapter and flag decisions do not depend on per-engine session-grant semantics. No prose change.",
-        "#2933 round 3: session-api.md gained one sentence on ACP plan-exit allow_always; the ADR's routing and adapter decisions do not depend on it. No prose change."
+        "#2933 round 3: session-api.md gained one sentence on ACP plan-exit allow_always; the ADR's routing and adapter decisions do not depend on it. No prose change.",
+        "#2932 part 1: session-api.md and claude-adapter.ts changed only in Claude approval escalation handling (which asks a session grant or autoApprove may answer, and request.opened fields). The ADR's orchestration routing, private-adapter and no-migration decisions make no claim about approval grants; still accurate."
       ]
     },
     {
@@ -5674,12 +5675,12 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "1a7acfecd7fc9013926f7e9925e909629f73fc19",
+      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical. Follow-up (#2915/#2916): added the session-grant scope section (tool, edit-mode with its mode sync, read-folder/folder, none), traced from the shared toolRequestSessionGrant through the Claude adapter's canUseTool/respondToRequest and the toast, inline card and inbox card.",
       "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
-      "documentDigest": "0950e622bc5fd7c67340f36017610453e1b72e8f2083d73d47344f1caefa77a6",
+      "documentDigest": "ce7137921f6c228cc266415b802194429addda4d6ec025857251dc52250d7b3b",
       "sources": [
         {
           "path": "package.json",
@@ -5691,7 +5692,7 @@
         },
         {
           "path": "packages/shared/src/__tests__/tool-request-preview.test.ts",
-          "digest": "83fa6ba966f39e2dc5f80eff5f27f37cb5043d200a949ed38a9fe8b790f8433b"
+          "digest": "36146252ccabc7fd0a5a2de2d19e098aaf5b7b354cc2a66f9c97397a40ad4480"
         },
         {
           "path": "packages/shared/src/redaction.ts",
@@ -5703,7 +5704,7 @@
         },
         {
           "path": "packages/shared/src/tool-request-preview.ts",
-          "digest": "6e6496b46534d24b65bb9a49a19bfce2c2f4b3ecc7affea139b323968735efa2"
+          "digest": "9e8eed2676aebff52cee60e287bcd468ac4c2ab536320e1149999859ecf33613"
         },
         {
           "path": "pnpm-lock.yaml",
@@ -5711,7 +5712,7 @@
         },
         {
           "path": "src-server/providers/__tests__/claude-adapter.test.ts",
-          "digest": "5cb6514ed56188a067f87abe8bad2d83ae36f41607f508ad37b721bca31947e0"
+          "digest": "d27d9ce1cba003e6dd839d2052402bacdd503feb6108285e52dc2e64d7717c67"
         },
         {
           "path": "src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts",
@@ -5723,11 +5724,11 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter-events.ts",
-          "digest": "62628f377e3b3ec1ed3bb134c58ab9cfd1aaf287508fdc9a3c559c1efe8d5ad7"
+          "digest": "f15231026a19a49859e47bb725dc5c8784be7ab63fd28078c8d95a266ac636f7"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "f0f117461726d92664890fee1f5db533b345148b0e68c88b35043e11d84239f3"
         },
         {
           "path": "src-server/providers/adapters/claude-approval-mode.ts",
@@ -5789,7 +5790,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "#2933: updated the Claude autoApprove paragraph. canUseTool now allows an autoApprove match only where toolRequestIsPlainCall holds (tool or edit-mode grant); the staged evaluator's isGranted allow carries toolGrant and preToolPolicyHookOutput returns no permissionDecision for it, since Claude Code 2.1.261's post-hook-allow check (jv in the bundled CLI) re-checks deny/ask rules, safety checks and requiresUserInteraction but not the working-directory check. ACP: a toolGrant allow or pattern match never answers switch_mode/ExitPlanMode. Session-grant section unchanged and still accurate.",
         "#2933 round 2: added the ACP plan-exit session answer (one-call accept, allow-once option, no approvedTools grant; payload toolKind hides the session option for switch_mode) and the denyApprovals fail-fast deny in Claude canUseTool and ACP requestPermission via the evaluator's exported delegatedApprovalDenial. Traced respondToRequest, requestPermission and canUseTool.",
-        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Re-read the ACP plan-exit and delegated-child paragraph against the reworded comments; it still says a request either adapter would otherwise open is denied at once, which matches. No prose change."
+        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Re-read the ACP plan-exit and delegated-child paragraph against the reworded comments; it still says a request either adapter would otherwise open is denied at once, which matches. No prose change.",
+        "#2932 part 1: added the always-prompt section (SandboxNetworkAccess with no session grant and a host title; dangerouslyDisableSandbox input; exact reasons dangerouslyDisableSandbox, requiresUserInteraction and the MCP org ceiling; the suppressAlwaysAllowRule/defaultToNo/requiresUserInteraction flags read when a later SDK forwards them), traced from toolRequestEscalates/toolRequestSessionGrant through canUseTool's autoApprove and grant checks and the request.opened payload the surfaces read. Stated the uncovered Bash safety checks and signal-less ask rules. Verified against the bundled CLI 2.1.261 that session-destination updates are not persisted and mapClaudeDecisionToPermissionResult rewrites every destination to session."
       ]
     },
     {
@@ -7411,7 +7413,7 @@
     {
       "path": "docs/design/connections-onboarding.md",
       "documentDigest": "dc33fe48b286ac9111bfb09c095a1c85ac62665eb89ec9e77a8637d28c3126ed",
-      "sourceRevision": "1a7acfecd7fc9013926f7e9925e909629f73fc19",
+      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7427,7 +7429,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "f0f117461726d92664890fee1f5db533b345148b0e68c88b35043e11d84239f3"
         },
         {
           "path": "src-server/providers/adapters/claude-skills-materialization.ts",
@@ -7538,7 +7540,8 @@
         "Merge review (origin/main into #2915/#2916): Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Its Codex claims are app-home and adoption wiring (getAppHomeEnv, processFactory), which neither change touches; the Claude app-home claim holds as recorded under #2915. Prose accurate.",
         "#2933: claude-adapter change is limited to canUseTool/PreToolUse autoApprove gating; no onboarding or connection claim affected. No prose change.",
         "#2933 round 2: claude-adapter change adds a denyApprovals deny in canUseTool; no onboarding claim affected. No prose change.",
-        "#2933 round 3: comment-only change in claude-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Onboarding claims unaffected. No prose change."
+        "#2933 round 3: comment-only change in claude-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Onboarding claims unaffected. No prose change.",
+        "#2932 part 1: claude-adapter.ts changed only canUseTool's escalation checks and request.opened fields. The page's connection presets, app-home, profile, source-affinity and spawn environment claims do not touch approvals; still accurate."
       ]
     },
     {
@@ -10564,8 +10567,8 @@
     },
     {
       "path": "docs/guides/agents.md",
-      "documentDigest": "ee789d568b81839f84c22cd6af595bd84e9b4ca9b2f7a09a9684d22a5162deb2",
-      "sourceRevision": "1a7acfecd7fc9013926f7e9925e909629f73fc19",
+      "documentDigest": "18f45acc81a59a121ab9fc4e260cf0feb2c7c6418048c6b567156ecc36fe6347",
+      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10625,7 +10628,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "f0f117461726d92664890fee1f5db533b345148b0e68c88b35043e11d84239f3"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -10891,7 +10894,8 @@
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. Its Tool Approval Flow describes the Station-engine route and points orchestration clients at respondToRequest; no claim covers Codex permission replies, delegated title length, Claude session grants or the recorded Auto decision. Prose accurate.",
         "#2933: added 'What autoApprove never covers' and linked it from the autoApprove bullet. Traced claude-adapter canUseTool (toolRequestIsPlainCall gate), preToolPolicyHookOutput toolGrant pass-through, acp-adapter requestPermission planExit gate; confirmed Codex, Muse and station-agent adapters have no autoApprove handling. Unattended and guardian ordering prose unchanged: the evaluator still returns allow from isGranted before the guardian.",
         "#2933 round 2: moved 'What autoApprove never covers' ahead of 'Unattended runs' (it had split that section), added the ACP one-exit session answer, and added the Unattended runs sentence: on Claude/ACP a broad pattern no longer covers escalations, so a headless run waits on an approval request and a denyApprovals child is denied at once. Checked no Discord approval channel exists, so the approval inbox is named instead.",
-        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Reworded the external-engine paragraph in Unattended runs as current behaviour, scoped to Claude Code and ACP against the preceding Station-engine paragraph."
+        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Reworded the external-engine paragraph in Unattended runs as current behaviour, scoped to Claude Code and ACP against the preceding Station-engine paragraph.",
+        "#2932 part 1: What autoApprove never covers now adds the sandbox network-host ask, a sandbox-disabled call, a user-interaction tool and the MCP organization ceiling; narrowed the ask-rule bullet to rules the engine reports, and said a Bash safety check or signal-less ask rule is still covered by a matching pattern. Rest of the guide unaffected by the canUseTool change."
       ]
     },
     {
@@ -11800,7 +11804,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "1a7acfecd7fc9013926f7e9925e909629f73fc19",
+      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11928,7 +11932,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "f0f117461726d92664890fee1f5db533b345148b0e68c88b35043e11d84239f3"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -12311,7 +12315,8 @@
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. Its approval mentions are Station signing-key and route approval; none describes engine request answers or titles. Prose accurate.",
         "#2933: no connection, credential or engine-selection claim depends on the autoApprove ordering changed in claude-adapter, acp-adapter or pre-tool-policy. No prose change.",
         "#2933 round 2: adapter changes are confined to approval handling (denyApprovals deny, ACP plan-exit session answer); no connection claim affected. No prose change.",
-        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Connection claims unaffected. No prose change."
+        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Connection claims unaffected. No prose change.",
+        "#2932 part 1: claude-adapter.ts changed only canUseTool's escalation checks and request.opened fields. Saved profiles, key ceremony, pairing trust and transport scope claims are unaffected; its one 'sandbox' mention is about read-only pairing, not the engine sandbox."
       ]
     },
     {
@@ -18250,7 +18255,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "897111efa688f89ef5dfa4fbedbbf3dddc9fa65b00bee53bcaacacb5b9b6b2b2",
-      "sourceRevision": "1a7acfecd7fc9013926f7e9925e909629f73fc19",
+      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18306,7 +18311,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "f0f117461726d92664890fee1f5db533b345148b0e68c88b35043e11d84239f3"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -18547,7 +18552,8 @@
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. It lists respond_to_task_request for an open request from a delegated worker (now answered as a one-call accept for an edit-mode session answer under #2915) and says delegated activity retains bounded request titles, which main's code-point bound with an ellipsis still satisfies. Prose accurate.",
         "#2933: station-control_* autoApprove examples remain accurate: MCP calls carry no escalation signal, so toolRequestIsPlainCall is true and canUseTool/PreToolUse behavior for them is unchanged. No prose change.",
         "#2933 round 2: station-control_* examples unaffected; MCP calls are plain calls, and the new denyApprovals deny only replaces a request a delegated child could never answer. No prose change.",
-        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. station-control_* examples unaffected. No prose change."
+        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. station-control_* examples unaffected. No prose change.",
+        "#2932 part 1: claude-adapter.ts changed only canUseTool's escalation checks. The station-control_* autoApprove example still covers attended plain calls; an org-ceiling MCP ask would now prompt, which the linked agents.md section states. Delegation and scheduling claims unaffected."
       ]
     },
     {
@@ -18792,7 +18798,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "1a7acfecd7fc9013926f7e9925e909629f73fc19",
+      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18828,7 +18834,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "f0f117461726d92664890fee1f5db533b345148b0e68c88b35043e11d84239f3"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
@@ -19038,7 +19044,8 @@
         "Merge review (origin/main into #2915/#2916): Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Its inspect-approval flow opens a request without deciding it, so neither Codex's reply change nor #2915's answer path is reached. Prose accurate.",
         "#2933: claude-adapter change is limited to autoApprove gating on escalations and plan exits; no starter-work claim describes approval behavior. No prose change.",
         "#2933 round 2: claude-adapter canUseTool delegated-child deny does not touch starter work flows or claims. No prose change.",
-        "#2933 round 3: comment-only change in claude-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Starter work claims unaffected. No prose change."
+        "#2933 round 3: comment-only change in claude-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Starter work claims unaffected. No prose change.",
+        "#2932 part 1: claude-adapter.ts changed only canUseTool's escalation checks and request.opened fields. Starter Work readiness, dispatch fences, inspection and Scheduler claims make no approval-grant claim; still accurate."
       ]
     },
     {
@@ -21191,7 +21198,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c",
-      "sourceRevision": "1a7acfecd7fc9013926f7e9925e909629f73fc19",
+      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
       "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
       "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
       "sources": [
@@ -21201,7 +21208,7 @@
         },
         {
           "path": "docs/guides/agents.md",
-          "digest": "ee789d568b81839f84c22cd6af595bd84e9b4ca9b2f7a09a9684d22a5162deb2"
+          "digest": "18f45acc81a59a121ab9fc4e260cf0feb2c7c6418048c6b567156ecc36fe6347"
         },
         {
           "path": "packages/contracts/src/agent-identity.ts",
@@ -21223,7 +21230,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "#2933: agents.md gained an autoApprove scope section; the inventory's agent identity surfaces are unaffected. No prose change.",
         "#2933 round 2: agents.md reorganised autoApprove/unattended sections; no identity surface claim changed. No prose change.",
-        "#2933 round 3: agents.md reworded the Unattended runs external-engine paragraph only; no identity surface claim affected. No prose change."
+        "#2933 round 3: agents.md reworded the Unattended runs external-engine paragraph only; no identity surface claim affected. No prose change.",
+        "#2932 part 1: agents.md changed only its What autoApprove never covers list (new Claude escalations that always prompt, and the uncovered Bash safety checks and signal-less ask rules). This inventory's Agent identity, persisted default and schema-refusal claims do not depend on that section; still accurate."
       ]
     },
     {
@@ -24998,8 +25006,8 @@
     },
     {
       "path": "docs/reference/session-api.md",
-      "documentDigest": "fd07c35aa54a1602286ad5e25aeb885e997f79a91841c421fca7e90fed385601",
-      "sourceRevision": "1a7acfecd7fc9013926f7e9925e909629f73fc19",
+      "documentDigest": "3ffb21a461f4504f7e7247103b1fbc8c3c8a3a14ab8a48e831f1355a06bdec4f",
+      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection. Follow-up (#2915/#2916): respondToRequest now states what acceptForSession grants in a Claude Session, including the session.configured mode report after an edit-mode answer.",
@@ -25023,7 +25031,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "f0f117461726d92664890fee1f5db533b345148b0e68c88b35043e11d84239f3"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -25134,7 +25142,8 @@
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Re-checked both: the respondToRequest paragraph (#2915) matches the route and service; the Codex paragraph (wire-ID preservation, adapter tests covering decisions and session grants) still holds with main's decline reply, which the tool-policy-delivery page's #2911 reference already names. Prose accurate.",
         "#2933: acceptForSession semantics unchanged; canUseTool now computes the shared grant input before the autoApprove check and reuses it for the session grant. The escalation paragraph stays accurate. No prose change.",
         "#2933 round 2: acceptForSession paragraph now states an ACP plan exit (switch_mode kind or ExitPlanMode) counts as accept, mints no grant and selects allow-once; traced acp-adapter respondToRequest planExit handling. Claude text unchanged.",
-        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Added that an ACP plan exit's allow_always option (e.g. yes and auto-accept edits) is not reachable from a session answer, matching Claude's #2916; traced respondToRequest's planExit downgrade to accept."
+        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Added that an ACP plan exit's allow_always option (e.g. yes and auto-accept edits) is not reachable from a session answer, matching Claude's #2916; traced respondToRequest's planExit downgrade to accept.",
+        "#2932 part 1: respondToRequest now lists the Claude requests that always prompt and offer no tool grant (network host, sandbox override, literal reasons, ask flags), the decisionReason and flag fields request.opened gains, the uncovered Bash safety checks and plain ask rules, and that a session answer forwards suggestions only with destination session."
       ]
     },
     {
@@ -28415,7 +28424,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "1a7acfecd7fc9013926f7e9925e909629f73fc19",
+      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28471,7 +28480,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "f0f117461726d92664890fee1f5db533b345148b0e68c88b35043e11d84239f3"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -28712,7 +28721,8 @@
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. It states four metadata reads are auto-approved and the rest remain subject to approval and the caller's authority; still true with both. Prose accurate.",
         "#2933: the four auto-approved metadata reads run on Station's engine (agent-hooks), which this change does not alter; the new toolGrant marker is ignored by the managed hook. No prose change.",
         "#2933 round 2: example runs on Station's engine; the delegatedApprovalDenial extraction keeps the managed path's reason and wording. No prose change.",
-        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Station-engine example unaffected. No prose change."
+        "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Station-engine example unaffected. No prose change.",
+        "#2932 part 1: claude-adapter.ts changed only canUseTool's escalation checks. The example's agent configuration and its 'sandbox' mention (the fixture sandbox, not the engine's) are unaffected."
       ]
     },
     {
