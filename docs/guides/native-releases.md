@@ -573,12 +573,16 @@ on every run. The attestation loop skips one asset,
 `station-portable-<ring>-manifest.json`. Publish attaches that signed
 manifest itself, so it carries no release.yml attestation; the inventory
 revalidation verifies it against the pinned release key and the attested
-payload instead. Behind `STATION_PORTABLE_RELEASE_PUBLISH`, the host-stream
-steps attach the manifest before publication. After the desktop pointer they
-re-verify the public versioned assets, refuse a non-newer version, and replace
-the `portable-<ring>` pointer last. A rerun that finds the manifest already
-attached compares its bytes and never replaces it. Details and the owner
-actions are in
+payload instead. Behind `STATION_PORTABLE_RELEASE_PUBLISH`, publish signs
+the manifest and attaches it before publication. The separate `host-pointer`
+job then moves the `portable-<ring>` pointer, so a host-pointer failure never
+skips the deploy ledger or release availability. It re-verifies the public
+versioned assets and replaces only a strictly older pointer, restoring it if
+the re-verification fails. It only re-verifies when the pointer already
+serves this run's bytes, and it leaves the pointer alone for an older tag,
+such as a desktop rollback. A rerun that finds the manifest already attached
+to the release compares its bytes and never replaces it. Details and the
+owner actions are in
 [signed host-stream manifests](release-rings.md#signed-host-stream-manifests).
 
 Stable and Preview desktop builds embed the endpoint for their rolling release.

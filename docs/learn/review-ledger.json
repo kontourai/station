@@ -10964,7 +10964,7 @@
     {
       "path": "docs/guides/android-build.md",
       "documentDigest": "37d8dffe745a92d090cb31abdd509507d7666139868987c50cac217887a11d49",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Android build, generated-project ownership, provenance and verification boundaries. Full baseline read. Traced debug/release/Nightly workflow callers, managed bootstrap and app-directory selection, Kotlin geometry/native permissions, packaged provenance writer and Settings consumer, ELF/ZIP alignment owner, signing handoff and emulator checks. No builds or recipes executed.",
@@ -10988,7 +10988,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -11240,7 +11240,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes fnv1a32 module-private in packages/cli/src/commands/dev-ports.ts without changing its behavior; prose accurate: the guide doesn't name or import that export. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2914) android-build-manifest.mjs un-exports ANDROID_PROJECT_DIR/ANDROID_ASSETS_DIR with unchanged values, channel-ports.mjs refactors generation with an optional outputRoot, tauri-context.mjs un-exports parseArgs; (#2881) install.sh/service changes do not touch Android build claims; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "#2959 delta: release.yml adds host-stream archive/manifest jobs; the Android job, provenance and signing steps are unchanged, so no Android claim changes."
+        "#2959 delta: release.yml adds host-stream archive/manifest jobs; the Android job, provenance and signing steps are unchanged, so no Android claim changes.",
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
       ]
     },
     {
@@ -13137,7 +13138,7 @@
     {
       "path": "docs/guides/desktop-build.md",
       "documentDigest": "77055f3a680def05143bb5ba04e5bb7f40ef154663094843ef7191edae473e8d",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop compile/update/CSP contract and bounded packaged Browser Preview fixture. Full baseline read. Traced clean-checkout status-entry verifier, update UI/native registration and capabilities, manifest/lock versions, CSP config and trusted registry caller. Independently probed actual fixture helpers/shared schema; traced earlier native profile-genesis refusal. No native launch or package build.",
@@ -13161,7 +13162,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -13421,13 +13422,14 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) un-exports fnv1a32 in packages/cli/src/commands/dev-ports.ts without changing port derivation; prose accurate: the guide makes no claim about that export. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2881 adds a stage-only mode and a service-launcher handoff to install.sh, launcher-link and liveness delegation to service-run.ts, and update status to service.ts. #2914 gives channel-ports sync/check an outputRoot option, makes tauri-context parseArgs and the android-build-manifest constants non-exported, and refactors the startup-readiness static test. The guide's desktop updater, 'Connected Station server' separation, clean-checkout, readiness and fixture claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "#2959 delta: release.yml adds host-stream archive/manifest jobs; desktop build, updater overlay and CSP steps unchanged. No claim changes."
+        "#2959 delta: release.yml adds host-stream archive/manifest jobs; desktop build, updater overlay and CSP steps unchanged. No claim changes.",
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
       ]
     },
     {
       "path": "docs/guides/desktop-tray.md",
       "documentDigest": "65ed27eebefb1258681b81b175dd06c183fdaec0a3c3294e79215a4ba68acdc4",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop-owned service/sidecar tray health, controls, companion lifetime and logs. Full baseline read. Traced tray snapshot/action/destination decisions and ten-second health cadence, service-command identity arguments, Windows Task Scheduler implementation, companion caller after backend health, logging registration and pinned dependency rotation. Runtime/tray OS behavior remains unverified.",
@@ -13451,7 +13453,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -13720,7 +13722,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) only makes fnv1a32 private in dev-ports.ts, and the hashing behavior is the same. Nothing in the tray health, controls, companion or logging claims depends on it. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881): `service install` now points an installer-owned archive unit on macOS/Linux at the fixed launcher <install-root>/runtime/station-launcher.mjs (service-command.ts runsLauncher, service.ts installServiceLauncher). It also adds the update-home action and the service status update line. #2914 changes to channel-ports, android-build-manifest and tauri-context are refactors or export narrowing only. src-desktop did not change, so the tray still finds no command paths for an archive manifest and refuses Start/Stop. Corrected the claim that an archive service runs `bin/station.mjs` so it also names the fixed launcher. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "#2959 delta: release.yml adds host-stream jobs only; tray and service claims unaffected."
+        "#2959 delta: release.yml adds host-stream jobs only; tray and service claims unaffected.",
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
       ]
     },
     {
@@ -15684,7 +15687,7 @@
     {
       "path": "docs/guides/mobile-release.md",
       "documentDigest": "e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all remaining documented claims through actual release/TestFlight and client callers: optional feed reads versus compile inclusion, pinned-origin fetch and HTTPS action validation, conditional writes/readback/compensation and ambiguous outcomes, container alias publication, three-profile/extension entitlement export checks, native credential persistence rejection and iOS accessibility, and pinned OIDC/Secret Manager action behavior. Corrected guarantees to the checks performed.",
@@ -15712,11 +15715,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "a3478ab47992864244e299590768b733dcd2283bd083339599b13a2e8703e40f"
+          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -15792,11 +15795,11 @@
         },
         {
           "path": "scripts/__tests__/release-artifacts.test.ts",
-          "digest": "f262f9ca0ce12c925bd468d454cfcf6e9ac5ffae28fe94ddaa2bb93232b49f63"
+          "digest": "be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f"
         },
         {
           "path": "scripts/__tests__/release-workflow.test.ts",
-          "digest": "0bf61984f95c84271ca40c9eda703d2d9a772c4958d1701594f2c139cc4ff634"
+          "digest": "b73030f0004f692abec0e0721a61820b67d3840485a85c5fcf518cf38b265965"
         },
         {
           "path": "scripts/app-store-connect-receipt.mjs",
@@ -15848,7 +15851,7 @@
         },
         {
           "path": "scripts/lib/release-artifacts.mjs",
-          "digest": "8b0f76b1f3fd5ee9b7eac971590b2a4218b1838638e9b13ccafda5c3c28f6d3e"
+          "digest": "671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42"
         },
         {
           "path": "scripts/lib/release-variants.mjs",
@@ -15864,7 +15867,7 @@
         },
         {
           "path": "scripts/release-artifacts.mjs",
-          "digest": "24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0"
+          "digest": "723faabe56568d395f3d898369423ae592da0e092953332f8241f67e539ded33"
         },
         {
           "path": "scripts/release-platform-matrix.mjs",
@@ -15930,7 +15933,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2914) native-update-feed.mjs removes the validateUpdateConfig alias (tests call resolveNativeUpdateAuthority), publish-mobile-feed-transaction tests drop helper-only fixture cases, install-macos.zsh adds `--` to print; (#2881) install.sh changes are archive-service only; publisher/wrapper behavior described is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "#2959 delta: release.yml gains host-archives/host-manifest jobs feeding assemble-draft; publish-release.yml gains gated host-stream steps; inventory schema gains host-archive/host-manifest-payload roles. No mobile feed, TestFlight, Play or credential claim changes; re-checked the draft/publish sequence claims still hold."
+        "#2959 delta: release.yml gains host-archives/host-manifest jobs feeding assemble-draft; publish-release.yml gains gated host-stream steps; inventory schema gains host-archive/host-manifest-payload roles. No mobile feed, TestFlight, Play or credential claim changes; re-checked the draft/publish sequence claims still hold.",
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
       ]
     },
     {
@@ -16024,8 +16028,8 @@
     },
     {
       "path": "docs/guides/native-releases.md",
-      "documentDigest": "5ab9f5d10bcb60c96a0de7226e50f18748803da03753347468f8056a1bfa382f",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "documentDigest": "29914388577248a3a8599ea831ad948703ceaf91ad6019955df78d8820d40931",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed detailed cohort admission/fence/ledger/partial-provider protocols, mobile and desktop compensation boundaries, macOS notarization overlap, Windows installer/payload proof limits and portable host-target staging. Actual AppImage entrypoint callers checked against Cargo.lock-verified tauri-utils resource resolution; source/config mismatch documented without claiming an executed Linux failure. Frozen Windows/shared-runtime-pruning changes traced through callers.",
@@ -16057,11 +16061,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "a3478ab47992864244e299590768b733dcd2283bd083339599b13a2e8703e40f"
+          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -16157,7 +16161,7 @@
         },
         {
           "path": "scripts/__tests__/release-artifacts.test.ts",
-          "digest": "f262f9ca0ce12c925bd468d454cfcf6e9ac5ffae28fe94ddaa2bb93232b49f63"
+          "digest": "be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f"
         },
         {
           "path": "scripts/__tests__/release-cohort.test.ts",
@@ -16169,7 +16173,7 @@
         },
         {
           "path": "scripts/__tests__/release-workflow.test.ts",
-          "digest": "0bf61984f95c84271ca40c9eda703d2d9a772c4958d1701594f2c139cc4ff634"
+          "digest": "b73030f0004f692abec0e0721a61820b67d3840485a85c5fcf518cf38b265965"
         },
         {
           "path": "scripts/__tests__/verify-release-cohort.test.ts",
@@ -16253,7 +16257,7 @@
         },
         {
           "path": "scripts/lib/release-artifacts.mjs",
-          "digest": "8b0f76b1f3fd5ee9b7eac971590b2a4218b1838638e9b13ccafda5c3c28f6d3e"
+          "digest": "671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42"
         },
         {
           "path": "scripts/lib/release-variants.mjs",
@@ -16277,7 +16281,7 @@
         },
         {
           "path": "scripts/release-artifacts.mjs",
-          "digest": "24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0"
+          "digest": "723faabe56568d395f3d898369423ae592da0e092953332f8241f67e539ded33"
         },
         {
           "path": "scripts/release-cohort-workflow.mjs",
@@ -16375,7 +16379,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "#2959: documented the native-release-publish signing secret and gate variable, the host-stream draft assets, the single attestation-loop exemption for the signed manifest (verified by inventory revalidation) and the gated step order; qualified the every-asset provenance claim. Other publish/rollback claims re-read against publish-release.yml and unchanged."
+        "#2959: documented the native-release-publish signing secret and gate variable, the host-stream draft assets, the single attestation-loop exemption for the signed manifest (verified by inventory revalidation) and the gated step order; qualified the every-asset provenance claim. Other publish/rollback claims re-read against publish-release.yml and unchanged.",
+        "#2959 review fixes: updated the host-stream paragraph for the separate host-pointer job, ledger/availability independence, compensation, rerun and rollback behavior; checked against publish-release.yml."
       ]
     },
     {
@@ -16566,7 +16571,7 @@
     {
       "path": "docs/guides/nightly.md",
       "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
@@ -16594,11 +16599,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "a3478ab47992864244e299590768b733dcd2283bd083339599b13a2e8703e40f"
+          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -16674,7 +16679,7 @@
         },
         {
           "path": "scripts/__tests__/release-artifacts.test.ts",
-          "digest": "f262f9ca0ce12c925bd468d454cfcf6e9ac5ffae28fe94ddaa2bb93232b49f63"
+          "digest": "be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f"
         },
         {
           "path": "scripts/__tests__/release-cohort.test.ts",
@@ -16682,7 +16687,7 @@
         },
         {
           "path": "scripts/__tests__/release-workflow.test.ts",
-          "digest": "0bf61984f95c84271ca40c9eda703d2d9a772c4958d1701594f2c139cc4ff634"
+          "digest": "b73030f0004f692abec0e0721a61820b67d3840485a85c5fcf518cf38b265965"
         },
         {
           "path": "scripts/__tests__/verify-release-cohort.test.ts",
@@ -16746,7 +16751,7 @@
         },
         {
           "path": "scripts/lib/release-artifacts.mjs",
-          "digest": "8b0f76b1f3fd5ee9b7eac971590b2a4218b1838638e9b13ccafda5c3c28f6d3e"
+          "digest": "671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42"
         },
         {
           "path": "scripts/lib/release-variants.mjs",
@@ -16762,7 +16767,7 @@
         },
         {
           "path": "scripts/release-artifacts.mjs",
-          "digest": "24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0"
+          "digest": "723faabe56568d395f3d898369423ae592da0e092953332f8241f67e539ded33"
         },
         {
           "path": "scripts/release-cohort-workflow.mjs",
@@ -16857,7 +16862,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "#2959 delta: portable-nightly-publication.mjs now wraps the ring-generic scripts/lib/portable-publication.mjs with its API, CLI and URLs unchanged (existing nightly tests pass unmodified); release workflow and inventory changes touch tagged releases only. Nightly claims unchanged."
+        "#2959 delta: portable-nightly-publication.mjs now wraps the ring-generic scripts/lib/portable-publication.mjs with its API, CLI and URLs unchanged (existing nightly tests pass unmodified); release workflow and inventory changes touch tagged releases only. Nightly claims unchanged.",
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
       ]
     },
     {
@@ -17462,7 +17468,7 @@
     {
       "path": "docs/guides/release-channel-ports.md",
       "documentDigest": "bdf05919cd734e87b183113da0d55a7c0fcd1fa980af544adb12467d5830f04a",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
@@ -17486,7 +17492,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -17764,13 +17770,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and, when runtime/service-state.json exists and an archive service is active, only stages the version and hands off to the fixed service launcher (trial/rollback; refuses on pending or needs-operator update state); service.ts copies runtime/station-launcher.mjs at archive service install (non-win32); lifecycle-code-root.ts moves archive helpers to @kontourai/station-shared/prebuilt-archive (re-exported, no behavior change); channel-ports.mjs adds an optional outputRoot to sync/check; android-build-manifest.mjs and tauri-context.mjs only drop exports (#2914). Corrected the archive-service upgrade paragraph, which claimed the installer always stops the service, switches current and restarts it: it now says a running launcher service stages and hands off to a launcher trial, keeps the stop/switch/restart path otherwise, and notes that an unfinished or operator-blocked launcher update refuses the upgrade. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "#2959: stable/beta also accept a signed public manifest via STATION_INSTALL_PUBLIC_MANIFEST_URL (existing install.sh behavior, ecosystem-manifest tests) and may be published per ring once the owner enables it; default path unchanged. release.yml change adds host-stream jobs only; port and identity claims unaffected."
+        "#2959: stable/beta also accept a signed public manifest via STATION_INSTALL_PUBLIC_MANIFEST_URL (existing install.sh behavior, ecosystem-manifest tests) and may be published per ring once the owner enables it; default path unchanged. release.yml change adds host-stream jobs only; port and identity claims unaffected.",
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
       ]
     },
     {
       "path": "docs/guides/release-rings.md",
-      "documentDigest": "98f70d7564e9881c91b5c3d4ef96d76bf6d82fa35b3b41f690884caaf860ad23",
-      "sourceRevision": "046fe7bf10be7412daad1dd3501b423c8bf52d4c",
+      "documentDigest": "4ee3facfe584e2e9e6b5dfe08db2c3bb49522ada508404750a2217c35e2e2d59",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Portable release trust, exact-commit promotion and recovery requirements. Full143-line baseline read. Traced install.sh default attestation and optional pinned-key public manifest branches, token lifetime, explicit channel mapping, downgrade/freshness limits, restore failure handling and publish authority. Corrected exact preview-commit promotion and routine destructive cleanup recipe.",
@@ -17802,11 +17809,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "a3478ab47992864244e299590768b733dcd2283bd083339599b13a2e8703e40f"
+          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -17842,7 +17849,7 @@
         },
         {
           "path": "scripts/__tests__/release-artifacts.test.ts",
-          "digest": "f262f9ca0ce12c925bd468d454cfcf6e9ac5ffae28fe94ddaa2bb93232b49f63"
+          "digest": "be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f"
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
@@ -17850,7 +17857,7 @@
         },
         {
           "path": "scripts/__tests__/release-workflow.test.ts",
-          "digest": "0bf61984f95c84271ca40c9eda703d2d9a772c4958d1701594f2c139cc4ff634"
+          "digest": "b73030f0004f692abec0e0721a61820b67d3840485a85c5fcf518cf38b265965"
         },
         {
           "path": "scripts/app-store-connect-receipt.mjs",
@@ -17902,7 +17909,7 @@
         },
         {
           "path": "scripts/lib/release-artifacts.mjs",
-          "digest": "8b0f76b1f3fd5ee9b7eac971590b2a4218b1838638e9b13ccafda5c3c28f6d3e"
+          "digest": "671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42"
         },
         {
           "path": "scripts/lib/release-variants.mjs",
@@ -17910,7 +17917,7 @@
         },
         {
           "path": "scripts/release-artifacts.mjs",
-          "digest": "24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0"
+          "digest": "723faabe56568d395f3d898369423ae592da0e092953332f8241f67e539ded33"
         },
         {
           "path": "scripts/release-platform-matrix.mjs",
@@ -17930,7 +17937,7 @@
         },
         {
           "path": "scripts/portable-release-publication.mjs",
-          "digest": "8673c0fd737e5469839bd2ac3b0ffefd537607c7732332f21ce70cfcbc7f8876"
+          "digest": "3c83caade50ac4649b1aebec1e6476d10d28ecf54913b43a86e9e9df479dd584"
         }
       ],
       "checks": [
@@ -17957,7 +17964,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "#2959: added the signed host-stream manifests section; checked every claim against release.yml host-archives/host-manifest, publish-release.yml gated host steps and their order, public-release-locations.mjs URLs, the key table and the installer's existing STATION_INSTALL_PUBLIC_MANIFEST_URL acceptance. States nothing is published and installer defaults are unchanged.",
-        "#2959: PUBLIC_RELEASE_REPOSITORY became module-private; the documented base URL and pointer locations are unchanged."
+        "#2959: PUBLIC_RELEASE_REPOSITORY became module-private; the documented base URL and pointer locations are unchanged.",
+        "#2959 review fixes: rewrote the gated flow to the publish job plus host-pointer job; checked pointer-plan outcomes (replace, unchanged rerun, skip-older rollback, refusals), the allow_empty_host_manifest_bootstrap input, compensation on failed replace/re-verify, and added the pre-change-tag note against publish-release.yml and portable-release-publication.mjs."
       ]
     },
     {
@@ -19193,7 +19201,7 @@
     {
       "path": "docs/guides/store-entry.md",
       "documentDigest": "147cfd2465d9fa280eda3d75b7a7d5fc963bafe32d7593d196e4fdeb629e06e8",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed owner-setup, API key, workload identity, channel profile, upload/reconciliation and bounded group-assignment claims through declared workflows, pinned action inputs and primary provider documentation. Intended names and privacy/ads answers marked as owner decisions, not observed account facts.",
@@ -19221,11 +19229,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "a3478ab47992864244e299590768b733dcd2283bd083339599b13a2e8703e40f"
+          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -19281,11 +19289,11 @@
         },
         {
           "path": "scripts/__tests__/release-artifacts.test.ts",
-          "digest": "f262f9ca0ce12c925bd468d454cfcf6e9ac5ffae28fe94ddaa2bb93232b49f63"
+          "digest": "be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f"
         },
         {
           "path": "scripts/__tests__/release-workflow.test.ts",
-          "digest": "0bf61984f95c84271ca40c9eda703d2d9a772c4958d1701594f2c139cc4ff634"
+          "digest": "b73030f0004f692abec0e0721a61820b67d3840485a85c5fcf518cf38b265965"
         },
         {
           "path": "scripts/app-store-connect-receipt.mjs",
@@ -19341,7 +19349,7 @@
         },
         {
           "path": "scripts/lib/release-artifacts.mjs",
-          "digest": "8b0f76b1f3fd5ee9b7eac971590b2a4218b1838638e9b13ccafda5c3c28f6d3e"
+          "digest": "671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42"
         },
         {
           "path": "scripts/lib/release-variants.mjs",
@@ -19357,7 +19365,7 @@
         },
         {
           "path": "scripts/release-artifacts.mjs",
-          "digest": "24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0"
+          "digest": "723faabe56568d395f3d898369423ae592da0e092953332f8241f67e539ded33"
         },
         {
           "path": "scripts/release-platform-matrix.mjs",
@@ -19414,13 +19422,14 @@
         "Integration source review through 5731eba07: #2881 adds the install.sh launcher handoff and stage-only mode. #2914 adds `print --` in install-macos.zsh, removes the validateUpdateConfig alias in favor of resolveNativeUpdateAuthority, and drops runBoundedFixture tests. None touches TestFlight/Play authority, secrets, tagging or the out-of-scope list; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "#2959 delta: release/publish workflows gain host-stream jobs and gated steps and the inventory gains two roles; store owner-setup and upload claims unaffected."
+        "#2959 delta: release/publish workflows gain host-stream jobs and gated steps and the inventory gains two roles; store owner-setup and upload claims unaffected.",
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
       ]
     },
     {
       "path": "docs/guides/store-listing.md",
       "documentDigest": "e232df90ff2b65b81e24c84bd160b17719d25a054828ab64da8fa98870ce4057",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Completed all draft copy and capture claims. Channel identity and mobile client ownership checked; seller, ads, age, privacy and tracking assertions made proposed owner-reviewed declarations. Screenshot content plan separated from current primary-provider specifications. Unpublished draft remains a design artifact.",
@@ -19448,11 +19457,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "a3478ab47992864244e299590768b733dcd2283bd083339599b13a2e8703e40f"
+          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -19488,11 +19497,11 @@
         },
         {
           "path": "scripts/__tests__/release-artifacts.test.ts",
-          "digest": "f262f9ca0ce12c925bd468d454cfcf6e9ac5ffae28fe94ddaa2bb93232b49f63"
+          "digest": "be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f"
         },
         {
           "path": "scripts/__tests__/release-workflow.test.ts",
-          "digest": "0bf61984f95c84271ca40c9eda703d2d9a772c4958d1701594f2c139cc4ff634"
+          "digest": "b73030f0004f692abec0e0721a61820b67d3840485a85c5fcf518cf38b265965"
         },
         {
           "path": "scripts/app-store-connect-receipt.mjs",
@@ -19532,7 +19541,7 @@
         },
         {
           "path": "scripts/lib/release-artifacts.mjs",
-          "digest": "8b0f76b1f3fd5ee9b7eac971590b2a4218b1838638e9b13ccafda5c3c28f6d3e"
+          "digest": "671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42"
         },
         {
           "path": "scripts/lib/release-variants.mjs",
@@ -19540,7 +19549,7 @@
         },
         {
           "path": "scripts/release-artifacts.mjs",
-          "digest": "24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0"
+          "digest": "723faabe56568d395f3d898369423ae592da0e092953332f8241f67e539ded33"
         },
         {
           "path": "scripts/release-platform-matrix.mjs",
@@ -19583,7 +19592,8 @@
         "Integration source review through 5731eba07: 3ab09593d install.sh wraps itself in a brace group and adds archive-service staging and hand-off (#2881); install-macos.zsh only adds `--` to print (#2914); neither touches store-listing claims; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "#2959 delta: release/publish workflow and inventory changes are host-stream only; listing copy and capture claims unaffected."
+        "#2959 delta: release/publish workflow and inventory changes are host-stream only; listing copy and capture claims unaffected.",
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
       ]
     },
     {
@@ -22527,7 +22537,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22535,11 +22545,11 @@
       "sources": [
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "a3478ab47992864244e299590768b733dcd2283bd083339599b13a2e8703e40f"
+          "digest": "877d9a9a2ab5bd06a7d4fcb543f875243cb0335cc453d3f51f27d944817791b3"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": "install.sh",
@@ -22787,7 +22797,7 @@
         },
         {
           "path": "scripts/__tests__/release-artifacts.test.ts",
-          "digest": "f262f9ca0ce12c925bd468d454cfcf6e9ac5ffae28fe94ddaa2bb93232b49f63"
+          "digest": "be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f"
         },
         {
           "path": "scripts/__tests__/release-sbom-generation.test.ts",
@@ -22803,7 +22813,7 @@
         },
         {
           "path": "scripts/lib/release-artifacts.mjs",
-          "digest": "8b0f76b1f3fd5ee9b7eac971590b2a4218b1838638e9b13ccafda5c3c28f6d3e"
+          "digest": "671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42"
         },
         {
           "path": "scripts/lib/release-sbom-generation.mjs",
@@ -22918,7 +22928,8 @@
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "#2959 delta: release-artifacts assemble/validate now also require the host archives and payload and verify an attached signed host manifest; the documented assemble/validate behavior (every asset digest, SBOM bindings, validation before draft and publish) still holds. No CLI claim changes."
+        "#2959 delta: release-artifacts assemble/validate now also require the host archives and payload and verify an attached signed host manifest; the documented assemble/validate behavior (every asset digest, SBOM bindings, validation before draft and publish) still holds. No CLI claim changes.",
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
       ]
     },
     {
@@ -30489,7 +30500,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -30505,7 +30516,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "6bc52a37107b40cabb33e3dd3c0554e6fe4a28cbda278307e60521dd2665b996"
+          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -30562,7 +30573,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Icon generation only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The raster channel icons and the favicon-dev swap under is-dev-build are unchanged; the CSS brand stays an amber/indigo/violet shade per channel.",
-        "#2959 delta: release.yml adds host-stream jobs; icon generation and channel overlay steps unchanged."
+        "#2959 delta: release.yml adds host-stream jobs; icon generation and channel overlay steps unchanged.",
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
       ]
     },
     {

@@ -91,17 +91,35 @@ The key is the `STATION_PORTABLE_RELEASE_MANIFEST_SIGNING_KEY` secret in the
 [`config/release-manifest-keys.json`](../../config/release-manifest-keys.json),
 and it may sign `stable` and `preview` only. With the variable enabled and the
 secret missing, the job fails before the release is published. With the gate
-on, the job:
+on, the publish job:
 
 1. signs the payload and verifies it with the pinned table;
 2. requires the owner's rolling pointer release to exist and be public;
-3. refuses a candidate that is not newer than the rolling manifest;
+3. plans the pointer against the manifest it serves now, and refuses before
+   anything is public if that manifest does not verify, if it names the same
+   version with other bytes, or if the pointer serves no manifest (the
+   owner's first publish sets `allow_empty_host_manifest_bootstrap`);
 4. attaches `station-portable-<ring>-manifest.json` to the versioned release,
-   which the existing publish step then makes public;
-5. re-downloads the versioned archives and manifest and compares them with the
-   payload;
-6. repeats the not-regressing check, replaces the rolling pointer's manifest
-   last, and re-fetches and re-verifies it with the pinned key.
+   which the existing publish step then makes public.
+
+A separate `host-pointer` job then moves the pointer, so its failure never
+skips the deploy ledger or release availability, and re-running the failed
+job retries only the pointer. It re-downloads the versioned archives and
+manifest and compares them with the payload, and plans the pointer again:
+
+- **Newer version:** it saves the served manifest, replaces it, and
+  re-verifies it with the pinned key. If the upload or the re-verification
+  fails, it restores the saved manifest (or removes a bootstrap one) and
+  fails.
+- **Same version, same bytes:** the pointer already moved (a rerun), so it
+  only re-verifies.
+- **Older tag:** for example a desktop break-glass rollback, it leaves the
+  host pointer where it is with a notice. The host pointer never moves
+  backwards.
+
+A tag built before this workflow change carries no host archives or payload,
+so its draft fails revalidation and cannot be published with it. No such tag
+exists: no tagged release has completed (#1243).
 
 The locations come from one base,
 [`scripts/lib/public-release-locations.mjs`](../../scripts/lib/public-release-locations.mjs):
@@ -114,7 +132,8 @@ versions order numerically on `X.Y.Z` and `X.Y.Z-preview.N`.
 
 Nothing has been published this way yet. These remain owner actions: add the
 secret, create the `portable-stable` and `portable-preview` pointer releases
-(public), set the variable, and cut a tagged release that completes (#1243).
+(public), set the variable, cut a tagged release that completes (#1243), and
+set `allow_empty_host_manifest_bootstrap` on each ring's first publish.
 The installer's defaults are unchanged. `install.sh` already accepts a stable
 or preview manifest through `STATION_INSTALL_PUBLIC_MANIFEST_URL`, and making
 these URLs its default is #2960.
