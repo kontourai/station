@@ -27,6 +27,7 @@ import {
   Agent as StrandsAgent,
 } from '@strands-agents/sdk';
 import type { StorageAdapter } from '@voltagent/core';
+import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   currentScheduledPrincipal,
@@ -36,7 +37,6 @@ import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
 } from '../conversation/authorized-turn-correlation.js';
-import { scrubChatErrorMarkers } from '../conversation/chat-error-marker.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import type { NativeMemoryHistoryCompanion } from '../conversation/native-memory-history.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
@@ -254,10 +254,11 @@ class StrandsAgentWrapper implements IAgent {
           return false;
         }
       };
-      // Replayed to the model: a pre-fix failed-turn marker may hold a
-      // provider's error body, so it gets the same scrub as a served read.
+      // Replayed to the model: the failed-turn marker is excluded exactly
+      // as the VoltAgent prompt view and native-memory history exclude it
+      // (it is a UI record, and a pre-fix one may hold provider text).
       messages = original
-        ? scrubChatErrorMarkers(
+        ? excludeChatErrorMarkers(
             await adapter.getMessages(userId, conversationId),
           )
         : [];

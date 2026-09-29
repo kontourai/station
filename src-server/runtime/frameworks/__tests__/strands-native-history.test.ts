@@ -566,7 +566,7 @@ test.each([
   },
 );
 
-test('a direct conversation never replays a pre-fix failed-turn marker verbatim to the model', async () => {
+test('a direct conversation never replays a failed-turn marker to the model', async () => {
   const SECRET = 'sk-live-SECRET-5f4e3d';
   const f = await fixture();
   f.users.set('direct-failed', 'user');
@@ -606,6 +606,7 @@ test('a direct conversation never replays a pre-fix failed-turn marker verbatim 
 
   const seen = JSON.stringify(model.inputs[0]);
   expect(seen).toContain('please answer');
-  expect(seen).toContain('The response stream failed.');
+  // Excluded like the VoltAgent and native-memory paths, not just scrubbed.
+  expect(seen).not.toContain('CHAT_ERROR');
   expect(seen).not.toContain(SECRET);
 });
