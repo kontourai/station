@@ -633,7 +633,11 @@ export function createConversationRoutes(
     relatedEvidenceObservations: readonly SummaryRelatedEvidenceObservation[] = [],
   ) =>
     summarySource.read({
-      messages,
+      // Model-bound: the summary's messages AND its rendered transcript both
+      // come from here, so the failed-turn marker (a UI record) is excluded
+      // before the source reads. Every summary read (staleness, generation,
+      // pre-write revision check) goes through this one function.
+      messages: excludeChatErrorMarkers(messages),
       ...(window ? { watermark: window.watermark } : {}),
       relatedEvidenceObservations,
       consumedBoundaries: (window?.contextBoundaries ?? [])
@@ -1920,9 +1924,7 @@ export function createConversationRoutes(
         );
       const generated = await generateSessionSummary({
         ctx: runtimeContext,
-        // Model-bound: the failed-turn marker is a UI record, excluded like
-        // every other model path (the served transcript keeps it, scrubbed).
-        messages: excludeChatErrorMarkers(source.messages),
+        messages: source.messages,
         transcriptOverride: source.transcript,
       });
       if (isSessionSummaryFailure(generated)) {

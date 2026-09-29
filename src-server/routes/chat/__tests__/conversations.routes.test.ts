@@ -4470,12 +4470,17 @@ describe('pre-fix failed-turn marker is never served verbatim', () => {
 
     expect(response.status).toBe(200);
     expect(generateSessionSummary).toHaveBeenCalledTimes(1);
-    const input = JSON.stringify(
-      (generateSessionSummary as any).mock.calls[0][0].messages,
-    );
+    // Both halves of the actual model input: the messages and the rendered
+    // transcript the real summary source produced (used ahead of messages).
+    const call = (generateSessionSummary as any).mock.calls[0][0];
+    const input = JSON.stringify(call.messages);
     expect(input).toContain('please answer');
     expect(input).not.toContain('CHAT_ERROR');
     expect(input).not.toContain(SECRET);
+    expect(typeof call.transcriptOverride).toBe('string');
+    expect(call.transcriptOverride).toContain('please answer');
+    expect(call.transcriptOverride).not.toContain('CHAT_ERROR');
+    expect(call.transcriptOverride).not.toContain(SECRET);
     const served = JSON.stringify(
       await json(await app.request('/station/conversations/c1/messages')),
     );
