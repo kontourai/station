@@ -168,7 +168,7 @@
 
     "Executed initial placement focused12files:180PASS,2FAIL,1SKIP in52.15s. RegionToolbarControls geometry failed its explicit missing worktree Chromium prerequisite. RegionPaneHost.project first case timed out after5000ms waiting for initial lazy ambient Chat mount; remaining11cases in that file passed. Cause remains unknown (cold import timing is only a hypothesis).",
 
-    "Executed after root-authorized prerequisite configuration: PLAYWRIGHT_BROWSERS_PATH=/Users/brian/Library/Caches/ms-playwright npm run test:focused -- src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx:34PASS/1SKIP in22.40s. Pinned Chromium1234/151.0.7922.34 ran geometry; skipped item is the intentional missing-prerequisite sentinel. No failed lazy-mount rerun.",
+    "Executed after root-authorized prerequisite configuration: PLAYWRIGHT_BROWSERS_PATH=$HOME/Library/Caches/ms-playwright npm run test:focused -- src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx:34PASS/1SKIP in22.40s. Pinned Chromium1234/151.0.7922.34 ran geometry; skipped item is the intentional missing-prerequisite sentinel. No failed lazy-mount rerun.",
 
     "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
 
