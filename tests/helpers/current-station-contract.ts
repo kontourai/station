@@ -1,6 +1,9 @@
 import {
+  DEVICE_PAIRING_PROTOCOL_VERSION,
+  REMOTE_AUTH_PROTOCOL_VERSION,
   STATION_COMPAT_MIN_CLIENT_PROTOCOL,
   STATION_COMPAT_PROTOCOL_VERSION,
+  STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -38,14 +41,16 @@ import type { Page } from '@playwright/test';
 const E2E_MOCK_CONNECTION_ID = 'e2e-mock-host';
 const E2E_MOCK_CREDENTIAL = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
+// Derived from the same contract constants the server's
+// EnvironmentSecurityService advertises, so a protocol bump reaches every mock.
 export const E2E_STATION_COMPATIBILITY = Object.freeze({
   serverVersion: '0.0.0-e2e',
   protocolVersion: STATION_COMPAT_PROTOCOL_VERSION,
   minClientProtocol: STATION_COMPAT_MIN_CLIENT_PROTOCOL,
   capabilities: {
-    remoteAuth: 1,
-    devicePairing: 1,
-    environmentProof: 1,
+    remoteAuth: REMOTE_AUTH_PROTOCOL_VERSION,
+    devicePairing: DEVICE_PAIRING_PROTOCOL_VERSION,
+    environmentProof: STATION_PROOF_PROTOCOL_VERSION,
   },
 });
 

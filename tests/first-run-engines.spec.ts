@@ -860,6 +860,9 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/agents');
+    // The route rendered, so the absences below are not a blank page (the
+    // same anchor the off-Home modal case below uses, for the same reason).
+    await page.waitForSelector('.split-pane', { timeout: 20_000 });
     await page.waitForTimeout(10_000);
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
     await expect(page.getByTestId('first-run-home-card')).toHaveCount(0);

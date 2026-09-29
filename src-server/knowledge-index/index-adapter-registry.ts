@@ -1,12 +1,7 @@
 /**
- * The K3 index-adapter registry — additive, instance-scoped, mirroring
- * `src-server/knowledge-store/adapter-registry.ts`'s `Map`-based, last-write-wins
- * pattern, keyed by index-provider `id` instead of store-adapter `id`. Pre-registers
- * the built-in `sqlite-vec` provider (ADR-0009's chosen index) in the constructor —
- * the same shape `KnowledgeStoreProvider` uses to pre-register its two Kit-format
- * store adapters. A future real-LanceDB index adapter (the ADR's documented
- * runner-up) registers alongside it the same way; plugins may register further
- * providers via `register()`.
+ * Instance-local index registry, initially containing sqlite-vec.
+ * Runtime routes create their own instance and select that built-in provider.
+ * This register method alone is not a published plugin contribution surface.
  */
 import type { KnowledgeIndexProvider } from '@kontourai/station-contracts/knowledge-index';
 import { SqliteVecIndexProvider } from './sqlite-vec-index-provider.js';

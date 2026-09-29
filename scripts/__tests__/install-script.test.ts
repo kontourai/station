@@ -1150,6 +1150,46 @@ describe('one-line Station installer', {
     expect(existsSync(purged.stationHome)).toBe(false);
   });
 
+  it('reads the whole script before an early exit when piped, as `curl | sh -s uninstall` runs it', () => {
+    // A shell reading the script from a pipe used to run `uninstall` and exit
+    // with the rest unread; past the pipe buffer, the writer's write failed
+    // (curl exits 23) and a pipefail caller saw the uninstall as a failure.
+    const root = tempDir('station-installer-');
+    const home = join(root, 'home');
+    mkdirSync(home, { recursive: true });
+    // A copy padded just before its last line, so whatever a shell leaves
+    // unread at an early exit is far past any pipe buffer. Without it the
+    // margin is the script's own length after the uninstall case, which is a
+    // few KiB over 64 KiB and was swallowed by read-ahead on Linux.
+    const script = readFileSync(installScript, 'utf8');
+    expect(script).toContain('uninstall_station "${1:-}"\n    exit 0\n');
+    const lastLine = script.lastIndexOf('\n', script.length - 2) + 1;
+    const padded = join(root, 'install-padded.sh');
+    writeFileSync(
+      padded,
+      `${script.slice(0, lastLine)}${'# padding\n'.repeat(128 * 1024)}${script.slice(lastLine)}`,
+    );
+    const writerStatus = join(root, 'writer-status');
+    const result = spawnSync(
+      'sh',
+      [
+        '-c',
+        '{ cat "$1"; echo $? >"$2"; } | sh -s uninstall',
+        'pipe',
+        padded,
+        writerStatus,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: INSTALLER_RUN_TIMEOUT_MS,
+        windowsHide: true,
+        env: { ...process.env, HOME: home, STATION_CHANNEL: 'stable' },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(writerStatus, 'utf8').trim()).toBe('0');
+  });
+
   it('refuses an unrelated launcher during uninstall', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
     roots.push(root);

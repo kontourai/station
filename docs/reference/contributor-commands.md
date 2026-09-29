@@ -104,7 +104,7 @@ if [ "$#" -eq 0 ]; then npm run test:changed -- --base=origin/main; else npm run
 
 ## `full`
 
-Run the sole completion lane without adding a second receipt protocol.
+Run full regression locally; canonical promotion receipts come from hosted workflows.
 
 Run: `just full`
 

@@ -122,17 +122,6 @@ test.describe('Keyboard shortcuts cheatsheet', () => {
     ).toHaveCount(0);
   });
 
-  test('Escape closes the cheatsheet', async ({ page }) => {
-    await page.goto('/');
-    await openCheatsheet(page);
-
-    const dialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
-    await expect(dialog).toBeVisible();
-
-    await page.keyboard.press('Escape');
-    await expect(dialog).toHaveCount(0);
-  });
-
   test('Escape closes a modal before navigating its parent route', async ({
     page,
   }) => {

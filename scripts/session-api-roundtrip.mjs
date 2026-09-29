@@ -1,218 +1,189 @@
 #!/usr/bin/env node
-/**
- * Session API round-trip proof (docs/design/chat-composer.md §4 proof standard:
- * "a scripted nonce-grade round-trip against a live instance using only
- * documented endpoints"). Companion script for docs/reference/session-api.md.
- *
- * Drives a live Station instance (`PORT` env, no other setup) through the
- * exact documented sequence for an ACP-connected agent:
- *
- *   1. POST /acp/registry/opencode/install   (idempotent: 409 already-exists is fine)
- *   2. POST /api/orchestration/commands {type:'startSession', provider:'acp', ...}
- *   3. POST /api/orchestration/commands {type:'sendTurn', ...}     asking the
- *      agent to read a nonce file this script wrote to /tmp
- *   4. GET  /api/orchestration/sessions/:threadId/events           polled until
- *      the nonce shows up inside a `content.text-delta` (or the `turn.completed`
- *      `outputText` fallback) — the canonical event methods that carry
- *      assistant-visible text (packages/contracts/src/runtime-events.ts).
- *
- * Prints a single PASS/FAIL line (plus the matched event on PASS) and exits
- * 0/1 accordingly. Starts nothing itself — point it at an already-running
- * instance via PORT.
- *
- * Along the way it auto-resolves any `request.opened` tool-permission prompt
- * with `respondToRequest`/`accept`, since the read-file turn may need one.
- */
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
-const PORT = process.env.PORT;
-if (!PORT) {
-  console.error(
-    "FAIL: PORT env var is required (the running instance's server port).",
-  );
-  process.exit(1);
-}
-
-const BASE = `http://localhost:${PORT}`;
-const CONNECTION_ID = 'opencode';
-const MODEL_ID = 'zai-coding-plan/glm-4.7';
-const TIMEOUT_MS = 120_000;
-const POLL_INTERVAL_MS = 2_000;
-
-const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const threadId = `session-api-roundtrip-${runId}`;
-const nonce = `SESSION-API-NONCE-${runId}`;
-const nonceFilePath = `/tmp/station-session-api-nonce-${runId}.txt`;
-
-async function fetchJson(path, init) {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
-  let body;
-  try {
-    body = await res.json();
-  } catch {
-    body = null;
-  }
-  return { status: res.status, body };
-}
-
-async function dispatchCommand(command) {
-  const { status, body } = await fetchJson('/api/orchestration/commands', {
-    method: 'POST',
-    body: JSON.stringify(command),
-  });
-  if (!body?.success) {
+/** Requires a configured Agent and a local workspace visible to Station.
+ * This live diagnostic never installs connections or grants tools. */
+export async function runSessionApiRoundtrip({
+  baseUrl,
+  credential,
+  agent,
+  workspaceDir,
+  timeoutMs = 120_000,
+  pollIntervalMs = 2_000,
+  fetchImpl = fetch,
+}) {
+  if (!baseUrl || !credential || !agent || !workspaceDir)
     throw new Error(
-      `Command '${command.type}' failed (HTTP ${status}): ${body?.error ?? 'no error body'}`,
+      'STATION_API_BASE, STATION_API_CREDENTIAL, STATION_AGENT_ID and STATION_SESSION_CWD are required.',
     );
-  }
-  return body;
-}
-
-/** Concatenate every `content.text-delta`'s `delta` in event order, plus any
- * `turn.completed.outputText` fallback — the exact text an assistant message
- * carries across the canonical event stream (packages/contracts/src/runtime-events.ts). */
-function extractAssistantText(events) {
-  let text = '';
-  for (const event of events) {
-    if (
-      event.method === 'content.text-delta' &&
-      typeof event.delta === 'string'
-    ) {
-      text += event.delta;
-    } else if (
-      event.method === 'turn.completed' &&
-      typeof event.outputText === 'string'
-    ) {
-      text += event.outputText;
-    }
-  }
-  return text;
-}
-
-function findOpenRequests(events) {
-  const opened = new Map();
-  for (const event of events) {
-    if (event.method === 'request.opened') opened.set(event.requestId, event);
-    if (event.method === 'request.resolved') opened.delete(event.requestId);
-  }
-  return [...opened.values()];
-}
-
-async function resolveOpenRequests(events) {
-  for (const request of findOpenRequests(events)) {
-    console.log(
-      `  (auto-accepting pending request.opened: ${request.requestId} — ${request.title ?? request.requestType})`,
+  const base = new URL(baseUrl);
+  if (
+    !['http:', 'https:'].includes(base.protocol) ||
+    base.username ||
+    base.password
+  )
+    throw new Error(
+      'Use an HTTP(S) Station API base without embedded credentials.',
     );
-    await dispatchCommand({
-      type: 'respondToRequest',
-      threadId,
-      requestId: request.requestId,
-      decision: 'accept',
+  const directory = await mkdtemp(join(resolve(workspaceDir), '.session-api-'));
+  const nonce = `SESSION-API-NONCE-${randomUUID()}`;
+  const noncePath = join(directory, 'nonce.txt');
+
+  async function request(path, body, deadline) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0)
+      throw new Error('Timed out; inspect the Session before retrying.');
+    const response = await fetchImpl(new URL(path, base), {
+      method: body === undefined ? 'GET' : 'POST',
+      redirect: 'error',
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        'Content-Type': 'application/json',
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(remaining),
     });
-  }
-}
-
-async function main() {
-  const { writeFileSync } = await import('node:fs');
-  writeFileSync(nonceFilePath, nonce, 'utf8');
-  console.log(`Wrote nonce file: ${nonceFilePath}`);
-  console.log(`Thread: ${threadId}`);
-
-  console.log(`\n1. POST /acp/registry/${CONNECTION_ID}/install`);
-  const install = await fetchJson(`/acp/registry/${CONNECTION_ID}/install`, {
-    method: 'POST',
-  });
-  if (install.status !== 409 && !install.body?.success) {
-    throw new Error(
-      `ACP registry install failed (HTTP ${install.status}): ${install.body?.error ?? 'no error body'}`,
-    );
-  }
-  console.log(
-    install.status === 409
-      ? `  connection '${CONNECTION_ID}' already installed — continuing`
-      : `  installed connection '${CONNECTION_ID}'`,
-  );
-
-  console.log('\n2. POST /api/orchestration/commands {type:"startSession"}');
-  await dispatchCommand({
-    type: 'startSession',
-    input: {
-      threadId,
-      provider: 'acp',
-      modelId: MODEL_ID,
-      cwd: '/tmp',
-      metadata: { connectionId: CONNECTION_ID },
-    },
-  });
-  console.log(
-    `  session started (provider: acp, connection: ${CONNECTION_ID})`,
-  );
-
-  console.log('\n3. POST /api/orchestration/commands {type:"sendTurn"}');
-  await dispatchCommand({
-    type: 'sendTurn',
-    input: {
-      threadId,
-      input: `Read the file at ${nonceFilePath} and reply with its exact contents, nothing else.`,
-    },
-  });
-  console.log('  turn sent — polling for the reply');
-
-  console.log(
-    `\n4. GET /api/orchestration/sessions/${threadId}/events (poll, ${TIMEOUT_MS / 1000}s timeout)`,
-  );
-  const startedAt = Date.now();
-  let lastEvents = [];
-  let matchedEvent;
-  while (Date.now() - startedAt < TIMEOUT_MS) {
-    const { status, body } = await fetchJson(
-      `/api/orchestration/sessions/${threadId}/events`,
-    );
-    if (status !== 200 || !body?.success) {
+    const payload = await response.json();
+    if (
+      !response.ok ||
+      payload.success !== true ||
+      payload.receiptStatus === 'unavailable' ||
+      payload.outcome === 'indeterminate'
+    )
       throw new Error(
-        `Events replay failed (HTTP ${status}): ${body?.error ?? 'no error body'}`,
+        `${path}: HTTP ${response.status}, ${payload.code ?? payload.error ?? 'unavailable receipt or unsuccessful response'}; inspect the Session before retrying.`,
       );
-    }
-    lastEvents = body.data;
-    await resolveOpenRequests(lastEvents);
+    return payload.data;
+  }
 
-    const assistantText = extractAssistantText(lastEvents);
-    if (assistantText.includes(nonce)) {
-      matchedEvent =
-        lastEvents.find(
+  async function runTurn(path, body, previous) {
+    const deadline = Date.now() + timeoutMs;
+    const handle = await request(path, body, deadline);
+    for (const key of ['conversationId', 'sessionId', 'providerTurnId'])
+      if (typeof handle?.[key] !== 'string' || !handle[key])
+        throw new Error(
+          `Missing ${key} in foreground handle; do not retry the dispatch.`,
+        );
+    if (previous) {
+      if (handle.conversationId !== previous.conversationId)
+        throw new Error('Continuation returned a different Conversation.');
+      if (
+        handle.sessionId === previous.sessionId &&
+        handle.providerTurnId === previous.providerTurnId
+      )
+        throw new Error(
+          'Continuation returned the previous turn; completion is unverified.',
+        );
+    }
+    const sessionPath = `/api/orchestration/sessions/${encodeURIComponent(handle.sessionId)}`;
+    while (Date.now() < deadline) {
+      const events = await request(
+        `${sessionPath}/events`,
+        undefined,
+        deadline,
+      );
+      if (!Array.isArray(events)) throw new Error('Invalid event replay.');
+      const turn = events.filter(
+        (event) => event.turnId === handle.providerTurnId,
+      );
+      const resolved = new Set(
+        events
+          .filter((event) => event.method === 'request.resolved')
+          .map((event) => event.requestId),
+      );
+      if (
+        turn.some(
           (event) =>
-            event.method === 'content.text-delta' &&
-            assistantText.includes(nonce),
-        ) ?? lastEvents.find((event) => event.method === 'turn.completed');
-      break;
+            event.method === 'request.opened' && !resolved.has(event.requestId),
+        )
+      )
+        throw new Error(
+          `Approval/input pending in ${handle.sessionId}; inspect it in Station. No decision was sent.`,
+        );
+      if (
+        turn.some(
+          (event) =>
+            event.method === 'turn.aborted' || event.method === 'runtime.error',
+        )
+      )
+        throw new Error(`Turn ${handle.providerTurnId} failed or was aborted.`);
+      if (turn.some((event) => event.method === 'turn.completed')) {
+        const messages = await request(
+          `${sessionPath}/messages`,
+          undefined,
+          deadline,
+        );
+        if (!Array.isArray(messages))
+          throw new Error('Invalid message projection.');
+        const text = messages
+          .filter(
+            (message) =>
+              message.role === 'assistant' &&
+              message.metadata?.turnId === handle.providerTurnId,
+          )
+          .flatMap((message) =>
+            message.parts
+              .filter((part) => part.type === 'text')
+              .map((part) => part.text),
+          )
+          .join('');
+        if (!text.includes(nonce))
+          throw new Error(
+            `Completed turn ${handle.providerTurnId} did not return the nonce.`,
+          );
+        return handle;
+      }
+      await delay(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
     }
-
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-  }
-
-  if (matchedEvent) {
-    console.log(
-      `\nPASS: nonce '${nonce}' found in assistant reply for thread '${threadId}' (matched event method: ${matchedEvent.method}, eventId: ${matchedEvent.eventId}).`,
+    throw new Error(
+      `Timed out waiting for ${handle.providerTurnId}; inspect the Session before retrying.`,
     );
-    process.exit(0);
   }
 
-  console.error(
-    `\nFAIL: nonce '${nonce}' not found in assistant reply within ${TIMEOUT_MS / 1000}s for thread '${threadId}'.`,
-  );
-  console.error(
-    `  Last poll returned ${lastEvents.length} event(s): ${
-      lastEvents.map((event) => event.method).join(', ') || '(none)'
-    }`,
-  );
-  process.exit(1);
+  try {
+    await writeFile(noncePath, nonce, { mode: 0o600 });
+    const first = await runTurn('/api/orchestration/chat', {
+      target: {
+        environment: { kind: 'current' },
+        agent,
+        workspace: { kind: 'directory', cwd: resolve(workspaceDir) },
+      },
+      message: `Read the file at ${noncePath} and reply with its exact contents, nothing else.`,
+    });
+    const continued = await runTurn(
+      `/api/orchestration/chat/${encodeURIComponent(first.conversationId)}/continue`,
+      {
+        message:
+          'Repeat the exact file contents from your previous answer, nothing else.',
+      },
+      first,
+    );
+    return { first, continued };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
-main().catch((error) => {
-  console.error(
-    `\nFAIL: ${error instanceof Error ? error.message : String(error)}`,
+if (invokedDirectly(import.meta.url)) {
+  runSessionApiRoundtrip({
+    baseUrl: process.env.STATION_API_BASE,
+    credential: process.env.STATION_API_CREDENTIAL,
+    agent: process.env.STATION_AGENT_ID,
+    workspaceDir: process.env.STATION_SESSION_CWD,
+  }).then(
+    (result) =>
+      console.log(
+        `PASS: nonce read and continuation completed: ${JSON.stringify(result)}`,
+      ),
+    (error) => {
+      console.error(
+        `FAIL: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      process.exitCode = 1;
+    },
   );
-  process.exit(1);
-});
+}

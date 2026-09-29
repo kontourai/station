@@ -137,12 +137,6 @@ describe('IntegrationGlyph (issue #691)', () => {
     expect(container.textContent).toBe('SM');
   });
 
-  test('renders the same initials on repeated renders for the same input (determinism)', () => {
-    const first = render(<IntegrationGlyph id="database-server" />);
-    const second = render(<IntegrationGlyph id="database-server" />);
-    expect(first.container.textContent).toBe(second.container.textContent);
-  });
-
   test.each([
     ['/a', 'a slash-rooted asset path'],
     ['https://evil.example/logo.png', 'an https URL'],

@@ -20,16 +20,18 @@ fsPromises.open = async (...args: Parameters<typeof fsPromises.open>) => {
 };
 syncBuiltinESMExports();
 const { observeAppConfigFile } = await import('../../config-loader-app.js');
-let refused = false;
+// Record which refusal fired: a bare catch would also count the ESPIPE or
+// SyntaxError a FIFO read produces once the identity guard stops refusing.
+let refusal: string | null = null;
 try {
   await observeAppConfigFile(home);
-} catch {
-  refused = true;
+} catch (error) {
+  refusal = error instanceof Error ? error.name : String(error);
 }
 process.stdout.write(
   JSON.stringify({
     swapped,
-    refused,
+    refusal,
     originalRetained: readFileSync(backup, 'utf8') === expected,
   }),
 );

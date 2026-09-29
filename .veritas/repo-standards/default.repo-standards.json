@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "station-default",
-  "description": "Veritas 1.5 Repo Standards for Station. Originally migrated from the 0.3 policy pack; product-specific structural checks remain npm proof lanes until they prove reusable. See docs/strategy/veritas/migration-0.5-record.md for the historical dispositions. The four delivery-conduct rules added 2026-08-01 (trust surfaces, evidence routing, read-path joins, verification conduct) codify docs/strategy/multi-agent-delivery-protocol.md as just-in-time agent guidance; their deterministic part is the existence of the surface and of the pinned regression tests that already prove each rule in `npm run ci:fast`. EVERY rule now carries the 1.5 `enforcementLevel` field and none carries `stage` (station#1480, station#1561, kontourai/veritas#188): `stage` was never in the 1.5 schema, the runtime ignores undefined fields, and src/rules/result.mjs passes `enforcementLevel` straight through — so a rule without it can never be blocking. The four pre-1.5 rules had therefore been advisory since the 1.5 migration despite reading `\"stage\": \"block\"`. Their migration is a per-rule human enforcement decision, not a mechanical translation: block -> Require for `required-station-governance-artifacts` (19/19 artifacts present) and `forbid-shared-root-imports` (0 matches across every governed source root), warn/recommend -> Guide for `ai-instruction-files-synced` and `brownfield-gap-log-present`, which 1.5 cannot distinguish because both are non-blocking. `trust-surfaces-name-their-gaps` and `verification-conduct-sentinels-and-fault-injection` are promoted Guide -> Require on the station#1480 owner-approved plan; the latter's `match.artifacts` was narrowed from seven entries to five first, because arming a list that cannot fail is ceremony (reasoning per entry is in that rule's explain.summary). `evidence-claims-anchor-to-executed-commands` and `read-paths-join-exactly-and-never-write` stay at Guide, and their original ~2026-08-15 date gate is replaced by an evidence trigger recorded in each rule's explain.summary: assess for Require on the first in-scope catch in docs/strategy/catches/catches.jsonl dated on or after 2026-08-01. Promotion buys exactly one thing for a required-artifacts rule and the claim is deliberately narrow: deleting a named surface or a pinned honesty test becomes a readiness FAIL instead of a warning. It does NOT make the rule detect the conduct it describes, and it does not change guidance delivery — src/explain.mjs serves the rule block at every level. Further promotions follow docs/strategy/veritas/proof-family-promotion-workflow.md.",
+  "description": "Veritas 1.5 Repo Standards for Station. Originally migrated from the 0.3 policy pack; product-specific structural checks remain npm proof lanes until they prove reusable. See docs/strategy/veritas/migration-0.5-record.md for the historical dispositions. The four delivery-conduct rules added 2026-08-01 (trust surfaces, evidence routing, read-path joins, verification conduct) codify docs/strategy/multi-agent-delivery-protocol.md as just-in-time agent guidance; their deterministic part is the existence of the surface and of the pinned regression tests that already prove each rule in `npm run ci:fast`. EVERY rule now carries the 1.5 `enforcementLevel` field and none carries `stage` (station#1480, station#1561, kontourai/veritas#188): `stage` was never in the 1.5 schema, the runtime ignores undefined fields, and src/rules/result.mjs passes `enforcementLevel` straight through \u2014 so a rule without it can never be blocking. The four pre-1.5 rules had therefore been advisory since the 1.5 migration despite reading `\"stage\": \"block\"`. Their migration is a per-rule human enforcement decision, not a mechanical translation: block -> Require for `required-station-governance-artifacts` (19/19 artifacts present) and `forbid-shared-root-imports` (0 matches across every governed source root), warn/recommend -> Guide for `ai-instruction-files-synced` and `brownfield-gap-log-present`, which 1.5 cannot distinguish because both are non-blocking. `trust-surfaces-name-their-gaps` and `verification-conduct-sentinels-and-fault-injection` are promoted Guide -> Require on the station#1480 owner-approved plan; the latter's `match.artifacts` was narrowed from seven entries to five first, because arming a list that cannot fail is ceremony (reasoning per entry is in that rule's explain.summary). `evidence-claims-anchor-to-executed-commands` and `read-paths-join-exactly-and-never-write` stay at Guide, and their original ~2026-08-15 date gate is replaced by an evidence trigger recorded in each rule's explain.summary: assess for Require on the first in-scope catch in docs/strategy/catches/catches.jsonl dated on or after 2026-08-01. Promotion buys exactly one thing for a required-artifacts rule and the claim is deliberately narrow: deleting a named surface or a pinned honesty test becomes a readiness FAIL instead of a warning. It does NOT make the rule detect the conduct it describes, and it does not change guidance delivery \u2014 src/explain.mjs serves the rule block at every level. Further promotions follow docs/strategy/veritas/proof-family-promotion-workflow.md.",
   "rules": [
     {
       "id": "required-station-governance-artifacts",
@@ -13,11 +13,18 @@
       "rollback_switch": null,
       "explain": {
         "summary": "Keep the repository trust contract present: Veritas 1.5 governance baseline, CI workflows, issue/PR templates, security and contract docs.",
-        "mustDo": ["Restore any missing governance, CI, or Veritas artifact before finishing."],
-        "mustNotDo": ["Do not delete or weaken governance files to make a readiness run pass."],
+        "mustDo": [
+          "Restore any missing governance, CI, or Veritas artifact before finishing."
+        ],
+        "mustNotDo": [
+          "Do not delete or weaken governance files to make a readiness run pass."
+        ],
         "exampleGood": "Update .veritas/repo-map.json and this standards file together when the repo layout changes.",
         "exampleBad": "Remove .github/workflows/ci.yml or .veritas/repo-standards/default.repo-standards.json.",
-        "contextLinks": [".veritas/GOVERNANCE.md", "docs/strategy/veritas/migration-0.5-record.md"]
+        "contextLinks": [
+          ".veritas/GOVERNANCE.md",
+          "docs/strategy/veritas/migration-0.5-record.md"
+        ]
       },
       "match": {
         "artifacts": [
@@ -55,14 +62,24 @@
       "rollback_switch": null,
       "explain": {
         "summary": "AGENTS.md (and its CLAUDE.md symlink) must carry the canonical marker-bounded governance block.",
-        "mustDo": ["Reapply the governance block (veritas apply governance-blocks) after editing instruction files."],
-        "mustNotDo": ["Do not hand-edit the marker-bounded block into a different meaning."],
+        "mustDo": [
+          "Reapply the governance block (veritas apply governance-blocks) after editing instruction files."
+        ],
+        "mustNotDo": [
+          "Do not hand-edit the marker-bounded block into a different meaning."
+        ],
         "exampleGood": "Keep Station-specific notes outside the marker block and regenerate the block.",
         "exampleBad": "Delete the governance block from AGENTS.md.",
-        "contextLinks": [".veritas/GOVERNANCE.md", "AGENTS.md"]
+        "contextLinks": [
+          ".veritas/GOVERNANCE.md",
+          "AGENTS.md"
+        ]
       },
       "match": {
-        "governance-block": ["AGENTS.md", "CLAUDE.md"]
+        "governance-block": [
+          "AGENTS.md",
+          "CLAUDE.md"
+        ]
       }
     },
     {
@@ -75,11 +92,17 @@
       "rollback_switch": "disable-shared-root-import-check",
       "explain": {
         "summary": "Contract types are owned by @kontourai/station-contracts; shared helpers are imported via explicit subpaths (e.g. @kontourai/station-shared/build).",
-        "mustDo": ["Import contract types from @kontourai/station-contracts/* and helpers from @kontourai/station-shared/<subpath>."],
-        "mustNotDo": ["Do not import from the bare @kontourai/station-shared package root (nor the legacy @stallion-ai/shared root)."],
+        "mustDo": [
+          "Import contract types from @kontourai/station-contracts/* and helpers from @kontourai/station-shared/<subpath>."
+        ],
+        "mustNotDo": [
+          "Do not import from the bare @kontourai/station-shared package root (nor the legacy @stallion-ai/shared root)."
+        ],
         "exampleGood": "import { buildPlugin } from '@kontourai/station-shared/build';",
         "exampleBad": "import { PluginManifest } from '@kontourai/station-shared';",
-        "contextLinks": ["docs/reference/contracts.md"]
+        "contextLinks": [
+          "docs/reference/contracts.md"
+        ]
       },
       "match": {
         "files": [
@@ -104,11 +127,17 @@
       "rollback_switch": "skip-brownfield-gap-log",
       "explain": {
         "summary": "Record Veritas product gaps and migration dispositions instead of hiding them in one-off workarounds.",
-        "mustDo": ["Append to the gap log when Veritas lacks a needed abstraction."],
-        "mustNotDo": ["Do not silently drop a previously required protection without a recorded disposition."],
+        "mustDo": [
+          "Append to the gap log when Veritas lacks a needed abstraction."
+        ],
+        "mustNotDo": [
+          "Do not silently drop a previously required protection without a recorded disposition."
+        ],
         "exampleGood": "Add a dated entry to docs/strategy/veritas/brownfield-gap-log.md.",
         "exampleBad": "Delete the migration record after the migration lands.",
-        "contextLinks": ["docs/strategy/veritas/brownfield-gap-log.md"]
+        "contextLinks": [
+          "docs/strategy/veritas/brownfield-gap-log.md"
+        ]
       },
       "match": {
         "artifacts": [
@@ -126,7 +155,7 @@
       "owner": "station-frontend",
       "rollback_switch": "skip-trust-surface-honesty-standard",
       "explain": {
-        "summary": "Any surface that makes a claim about a turn, run, agent, or build must render the honest state. A missing fact is a named gap — never 0, never implied success, never a silently omitted row. Per-record claims come from that record's own envelope, never from mutable current state (the temporal-drift class #1424 shipped and #1410 pinned). Streaming and persisted renderings must tell one story. Deterministic part of this rule: the surfaces below and their pinned honesty tests must keep existing; the conduct itself is held by review against docs/strategy/multi-agent-delivery-protocol.md §6 and proven by those tests in `npm run ci:fast`.",
+        "summary": "Any surface that makes a claim about a turn, run, agent, or build must render the honest state. A missing fact is a named gap \u2014 never 0, never implied success, never a silently omitted row. Per-record claims come from that record's own envelope, never from mutable current state (the temporal-drift class #1424 shipped and #1410 pinned). Streaming and persisted renderings must tell one story. Deterministic part of this rule: the surfaces below and their pinned honesty tests must keep existing; the conduct itself is held by review against docs/strategy/multi-agent-delivery-protocol.md \u00a76 and proven by those tests in `npm run ci:fast`.",
         "mustDo": [
           "Render an unknown value as a named gap ('not recorded', 'unavailable', and why), and pin that string in a test so it cannot decay into 0 or blank.",
           "Read per-record claims (owner, agent, engine, model, permission posture, usage) from the record's own payload; live lookups are only valid for live state.",
@@ -134,11 +163,11 @@
         ],
         "mustNotDo": [
           "Do not coalesce an absent fact into 0, an empty string, or a dropped row.",
-          "Do not render a field no producer can populate — delete the claim instead (the #1426/#1430 structured-tools removal).",
+          "Do not render a field no producer can populate \u2014 delete the claim instead (the #1426/#1430 structured-tools removal).",
           "Do not describe a historical turn from current settings, current connection state, or Date.now()."
         ],
         "exampleGood": "usage.totalTokens === undefined -> render 'tokens not recorded' and assert that copy in TurnProvenanceCard.test.tsx.",
-        "exampleBad": "<span>{usage?.totalTokens ?? 0} tokens</span> — a turn that never reported usage now claims it spent zero.",
+        "exampleBad": "<span>{usage?.totalTokens ?? 0} tokens</span> \u2014 a turn that never reported usage now claims it spent zero.",
         "contextLinks": [
           "docs/strategy/multi-agent-delivery-protocol.md",
           "src-ui/src/__tests__/MessageBubble.temporalDrift.test.tsx"
@@ -176,11 +205,11 @@
       "owner": "station-runtime",
       "rollback_switch": "skip-evidence-routing-standard",
       "explain": {
-        "summary": "Evidence services turn observed activity into claims, so a loose match manufactures proof. A claim pattern must anchor to the command actually executed at the head of the command line; a mention inside prose, an argument, or an echoed reminder must never route. A narrower run must not satisfy a wider claim — exclude it per pattern and let it fall through to the claim it does honestly support. A gate whose claim type no policy can produce is unreachable and must be diagnosed, not left silently waiting. Deterministic part of this rule: the routing policy, bridges, and their pinned tests must keep existing; `npm run ci:fast` runs those tests. PROMOTION TRIGGER (station#1480, replacing the original ~2026-08-15 date gate): this rule is assessed for `Require` when `docs/strategy/catches/catches.jsonl` records its first in-scope catch dated on or after 2026-08-01, the day the rule shipped — on evidence, never on a calendar date, because zero findings is absence of data and a second date would produce the same non-answer the first one did. In-scope classes under station#1480's mapping: `pipe-masked-exit`, `unexecuted-evidence`, `stale-evidence-as-fresh`. STATUS: the trigger has FIRED — `station-1555-tail-pipe-reported-a-commit-that-never-happened` (2026-08-03, `pipe-masked-exit`). The promotion itself is a separate human Protected Standards decision and is queued at station#1763; it is not taken here because it must repeat the artifact-tightening station#1480 required of `verification-conduct-sentinels-and-fault-injection` (promote only pins whose deletion would matter, and confirm the repo passes the tightened rule first). Disclosed dispute: `pipe-masked-exit` is also named verbatim by `verification-conduct-sentinels-and-fault-injection`'s own mustNotDo, so which rule owns that class is unsettled — a symptom of rules named for conduct that derive nothing (station#1762), not a reason to move the record.",
+        "summary": "Evidence services turn observed activity into claims, so a loose match manufactures proof. A claim pattern must anchor to the command actually executed at the head of the command line; a mention inside prose, an argument, or an echoed reminder must never route. A narrower run must not satisfy a wider claim \u2014 exclude it per pattern and let it fall through to the claim it does honestly support. A gate whose claim type no policy can produce is unreachable and must be diagnosed, not left silently waiting. Deterministic part of this rule: the routing policy, bridges, and their pinned tests must keep existing; `npm run ci:fast` runs those tests. PROMOTION TRIGGER (station#1480, replacing the original ~2026-08-15 date gate): this rule is assessed for `Require` when `docs/strategy/catches/catches.jsonl` records its first in-scope catch dated on or after 2026-08-01, the day the rule shipped \u2014 on evidence, never on a calendar date, because zero findings is absence of data and a second date would produce the same non-answer the first one did. In-scope classes under station#1480's mapping: `pipe-masked-exit`, `unexecuted-evidence`, `stale-evidence-as-fresh`. STATUS: the trigger has FIRED \u2014 `station-1555-tail-pipe-reported-a-commit-that-never-happened` (2026-08-03, `pipe-masked-exit`). The promotion itself is a separate human Protected Standards decision and is queued at station#1763; it is not taken here because it must repeat the artifact-tightening station#1480 required of `verification-conduct-sentinels-and-fault-injection` (promote only pins whose deletion would matter, and confirm the repo passes the tightened rule first). Disclosed dispute: `pipe-masked-exit` is also named verbatim by `verification-conduct-sentinels-and-fault-injection`'s own mustNotDo, so which rule owns that class is unsettled \u2014 a symptom of rules named for conduct that derive nothing (station#1762), not a reason to move the record.",
         "mustDo": [
           "Anchor every command claim pattern to the start of the command line, and cover the near-miss (a mention, an argument, a quoted reminder) with a negative test.",
           "Express scope narrowing as a per-pattern exclusion so an excluded command falls through to the lower claim it truthfully supports.",
-          "When a gate expects a claim type, prove some routable policy can produce it — surface an unreachable gate as a diagnostic instead of waiting forever."
+          "When a gate expects a claim type, prove some routable policy can produce it \u2014 surface an unreachable gate as a diagnostic instead of waiting forever."
         ],
         "mustNotDo": [
           "Do not route evidence from a command that was only read, printed, echoed, or planned.",
@@ -188,7 +217,7 @@
           "Do not widen a pattern, or relax a tool allowlist, to make a stuck gate advance."
         ],
         "exampleGood": "pattern: /^\\s*npm\\s+run\\s+ci:fast\\b/ with a test asserting `echo \"run npm run ci:fast later\"` does not route.",
-        "exampleBad": "pattern: /ci:fast/ — a comment about the lane becomes merge-readiness evidence.",
+        "exampleBad": "pattern: /ci:fast/ \u2014 a comment about the lane becomes merge-readiness evidence.",
         "contextLinks": [
           "docs/strategy/multi-agent-delivery-protocol.md",
           "src-server/services/evidence/__tests__/command-evidence-routing-policy.test.ts"
@@ -214,23 +243,23 @@
       "kind": "required-artifacts",
       "classification": "promotable-policy",
       "enforcementLevel": "Guide",
-      "message": "Joins, projections, and manifest reads resolve on an exact key or report unavailable naming every candidate — and they never write.",
+      "message": "Joins, projections, and manifest reads resolve on an exact key or report unavailable naming every candidate \u2014 and they never write.",
       "owner": "station-runtime",
       "rollback_switch": "skip-read-path-join-standard",
       "explain": {
-        "summary": "A projection is a claim about something else's state, so an ambiguous join resolved by 'newest wins' presents a coin flip as fact. Resolve on an exact key; when more than one candidate matches, report unavailable and name the candidates so a human can pick. A read path stays a read path: deriving, folding, and joining must not persist, backfill, or repair state, because an idempotent-looking write on a read still opens a lost-update window. And a capability is only claimable when a producer actually populates its field. Deterministic part of this rule: the join/fold modules and their pinned tests must keep existing; `npm run ci:fast` runs those tests. PROMOTION TRIGGER (station#1480, replacing the original ~2026-08-15 date gate): this rule is assessed for `Require` when `docs/strategy/catches/catches.jsonl` records its first in-scope catch dated on or after 2026-08-01, the day the rule shipped — on evidence, never on a calendar date, because zero findings is absence of data and a second date would produce the same non-answer the first one did. In-scope class under station#1480's mapping: `fail-open-validation`. STATUS: not fired — five records in the corpus, the most recent 2026-07-29, none since the rule shipped. When it fires, the promotion is still a human Protected Standards decision and must repeat the artifact tightening station#1480 required of `verification-conduct-sentinels-and-fault-injection`: promote only pins whose deletion would matter, and confirm the repo passes the tightened rule before arming it.",
+        "summary": "A projection is a claim about something else's state, so an ambiguous join resolved by 'newest wins' presents a coin flip as fact. Resolve on an exact key; when more than one candidate matches, report unavailable and name the candidates so a human can pick. A read path stays a read path: deriving, folding, and joining must not persist, backfill, or repair state, because an idempotent-looking write on a read still opens a lost-update window. And a capability is only claimable when a producer actually populates its field. Deterministic part of this rule: the join/fold modules and their pinned tests must keep existing; `npm run ci:fast` runs those tests. PROMOTION TRIGGER (station#1480, replacing the original ~2026-08-15 date gate): this rule is assessed for `Require` when `docs/strategy/catches/catches.jsonl` records its first in-scope catch dated on or after 2026-08-01, the day the rule shipped \u2014 on evidence, never on a calendar date, because zero findings is absence of data and a second date would produce the same non-answer the first one did. In-scope class under station#1480's mapping: `fail-open-validation`. STATUS: not fired \u2014 five records in the corpus, the most recent 2026-07-29, none since the rule shipped. When it fires, the promotion is still a human Protected Standards decision and must repeat the artifact tightening station#1480 required of `verification-conduct-sentinels-and-fault-injection`: promote only pins whose deletion would matter, and confirm the repo passes the tightened rule before arming it.",
         "mustDo": [
           "Match join keys exactly, and return an explicit unavailable result listing every candidate when the match is ambiguous.",
-          "Keep fold, projection, and freshness functions pure — return the derived value and let a caller decide whether to persist it.",
+          "Keep fold, projection, and freshness functions pure \u2014 return the derived value and let a caller decide whether to persist it.",
           "Record a disclosed gap in the module docstring when an upstream producer does not emit the field a claim would need (see flow-run-freshness.ts)."
         ],
         "mustNotDo": [
           "Do not fuzzy-match, prefix-match, or pick the newest candidate to resolve ambiguity.",
           "Do not write, backfill, or self-heal inside a read path, even when the write looks idempotent.",
-          "Do not derive a claim from a field no producer writes — report the gap instead."
+          "Do not derive a claim from a field no producer writes \u2014 report the gap instead."
         ],
         "exampleGood": "candidates.length === 1 ? candidates[0] : { status: 'unavailable', candidates: candidates.map((c) => c.id) }",
-        "exampleBad": "candidates.sort(byMtimeDesc)[0] — the newest match is presented as the answer, and the loser is never named.",
+        "exampleBad": "candidates.sort(byMtimeDesc)[0] \u2014 the newest match is presented as the answer, and the loser is never named.",
         "contextLinks": [
           "docs/strategy/multi-agent-delivery-protocol.md",
           "src-server/services/flow/__tests__/flow-run-freshness.test.ts"
@@ -265,7 +294,7 @@
       "owner": "repo-core",
       "rollback_switch": "skip-verification-conduct-standard",
       "explain": {
-        "summary": "Wrapper exits, background-task notifications, and piped tails have all reported success for failed commands in this repo, so pass/fail must be captured by a sentinel the reporter reads back. A guard that has never been made to fail is unproven: commit the fix first (a restore silently wipes uncommitted work), inject at the guard the change claims to add, and restore byte-identically. An injection that is not caught is a stop signal, not a shrug — the two best finds of the codifying arc came from injections that failed to fail. Deterministic part of this rule, and the ONLY thing `Require` buys: deleting one of the five pinned artifacts below is a readiness FAIL (exit 1) instead of a warning. It does not make this rule detect the conduct it is named for — that is held by review against the protocol, and is tracked as a re-typing question on station#1762. The list was narrowed at promotion (station#1480) from seven entries to five: `scripts/` and `tests/` were dropped because `existsSync` on a directory is true while any file remains, so they could never fail; `scripts/run-verification.mjs`, `scripts/vitest-resource-manifest.mjs` and `tests/e2e-manifest.mjs` were dropped because each has many importers and the lane itself reds loudly the moment one goes missing; `docs/strategy/local-merge-readiness.md` was dropped because its retirement when provider-hosted CI returns is foreseeable and correct, and a rule that reds on a planned removal teaches bypass. The five kept entries are the ones a plausible future change could remove silently, in the same commit as whatever else references them.",
+        "summary": "Wrapper exits, background-task notifications, and piped tails have all reported success for failed commands in this repo, so pass/fail must be captured by a sentinel the reporter reads back. A guard that has never been made to fail is unproven: commit the fix first (a restore silently wipes uncommitted work), inject at the guard the change claims to add, and restore byte-identically. An injection that is not caught is a stop signal, not a shrug \u2014 the two best finds of the codifying arc came from injections that failed to fail. Deterministic part of this rule, and the ONLY thing `Require` buys: deleting one of the five pinned artifacts below is a readiness FAIL (exit 1) instead of a warning. It does not make this rule detect the conduct it is named for \u2014 that is held by review against the protocol, and is tracked as a re-typing question on station#1762. The list was narrowed at promotion (station#1480) from seven entries to five: `scripts/` and `tests/` were dropped because `existsSync` on a directory is true while any file remains, so they could never fail; `scripts/run-verification.mjs`, `scripts/vitest-resource-manifest.mjs` and `tests/e2e-manifest.mjs` were dropped because each has many importers and the lane itself reds loudly the moment one goes missing; `docs/strategy/local-merge-readiness.md` was dropped because its retirement when provider-hosted CI returns is foreseeable and correct, and a rule that reds on a planned removal teaches bypass. The five kept entries are the ones a plausible future change could remove silently, in the same commit as whatever else references them.",
         "mustDo": [
           "Capture pass/fail as `if <cmd>; then echo OK > x.exit; else echo FAILED > x.exit; fi` and report from the sentinel file.",
           "Commit fixes before injecting a fault, restore with `git checkout -- <path>`, and prove byte-identity (`git diff` empty, or shasum against `git show HEAD:<path>`).",
@@ -273,11 +302,11 @@
         ],
         "mustNotDo": [
           "Do not use `cmd | tail -N`, a wrapper's exit, or a task notification as pass/fail evidence.",
-          "Do not `git stash` anywhere in this repo — the stash stack is shared by every worktree of this checkout.",
+          "Do not `git stash` anywhere in this repo \u2014 the stash stack is shared by every worktree of this checkout.",
           "Do not admit a check that can report green when its target is absent (conditional exits, `expect(true)`, silent optional locators)."
         ],
         "exampleGood": "if npm run ci:fast; then echo OK > ci.exit; else echo FAILED > ci.exit; fi   # then read ci.exit",
-        "exampleBad": "npm run ci:fast | tail -5 — the tail's exit is what you read, so a red lane prints success.",
+        "exampleBad": "npm run ci:fast | tail -5 \u2014 the tail's exit is what you read, so a red lane prints success.",
         "contextLinks": [
           "docs/strategy/multi-agent-delivery-protocol.md",
           "docs/strategy/local-merge-readiness.md"
@@ -298,7 +327,9 @@
       "kind": "required-artifacts",
       "classification": "promotable-policy",
       "enforcementLevel": "Require",
-      "evidenceCheckIds": ["session-transition-contract"],
+      "evidenceCheckIds": [
+        "session-transition-contract"
+      ],
       "message": "Session, provider, and reconnect changes need one explicit transition and recovery proof across every affected entry point.",
       "owner": "station-runtime",
       "rollback_switch": null,
@@ -338,7 +369,9 @@
       "kind": "required-artifacts",
       "classification": "promotable-policy",
       "enforcementLevel": "Require",
-      "evidenceCheckIds": ["bounded-work-contract"],
+      "evidenceCheckIds": [
+        "bounded-work-contract"
+      ],
       "message": "Background work needs explicit input, concurrency, retry, retention, and shutdown bounds with an observable failure state.",
       "owner": "station-runtime",
       "rollback_switch": null,
@@ -406,6 +439,58 @@
           "config/product-laws.json",
           "src-ui/src/__tests__/ChatDockMobileHeader.test.tsx",
           "tests/cross-runtime-chat-switching.spec.ts"
+        ]
+      }
+    },
+    {
+      "id": "documentation-source-currentness",
+      "kind": "required-artifacts",
+      "classification": "promotable-policy",
+      "enforcementLevel": "Guide",
+      "message": "Review affected documentation against real callers and preserve honest current, historical and evidence boundaries.",
+      "owner": "documentation",
+      "rollback_switch": null,
+      "evidenceCheckIds": [
+        "documentation-truth"
+      ],
+      "explain": {
+        "summary": "The documentation-audit skill and maintenance guide already own this workflow. Artifact presence is only structural guidance; the existing documentation truth gate checks paths, examples, publication and recorded byte freshness. Human or independent source review owns semantic correctness.",
+        "mustDo": [
+          "Run the docs:impact report from gate:for, or its --catch-up mode for accumulated changes. Review affected owners and account for unmapped paths; retain the coverage baseline until outstanding coverage is resolved.",
+          "Trace changed behavior through public callers and the owning implementation, then revisit the affected guide, README, diagram, example and generated reference.",
+          "Record the reviewed claims, document purpose, source hashes, actual checks and limits. A justified no-prose-change outcome is valid; a source hash refresh without re-review is not.",
+          "Classify dated designs and fixtures honestly. Regenerate from the owner rather than editing generated output."
+        ],
+        "mustNotDo": [
+          "Do not claim that passing links, byte freshness or inventory coverage proves every product statement or platform.",
+          "Do not invent a second documentation validator, blanket approval workflow, or mandatory prose diff for behavior-neutral changes."
+        ],
+        "exampleGood": "A source change triggers re-review of its recorded guide claims; stale evidence fails the existing strict freshness check until that review is recorded.",
+        "exampleBad": "Replace source digests to clear the gate without reading callers, or add a token documentation line to satisfy a diff rule.",
+        "contextLinks": [
+          ".agents/skills/documentation-audit/SKILL.md",
+          "docs/guides/documentation.md",
+          "docs/plans/documentation-code-audit.md",
+          "docs/learn/review-ledger.json"
+        ]
+      },
+      "match": {
+        "artifacts": [
+          "README.md",
+          "docs/",
+          "src-server/",
+          "src-ui/",
+          "src-desktop/",
+          "src-shared/",
+          "packages/",
+          "scripts/",
+          "examples/",
+          "deploy/",
+          ".agents/skills/documentation-audit/SKILL.md",
+          "docs/guides/documentation.md",
+          "scripts/docs-truth-gate-aggregate.mjs",
+          "scripts/lib/documentation-review.mjs",
+          "scripts/__tests__/docs-index-reachability.test.ts"
         ]
       }
     }

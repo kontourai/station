@@ -130,11 +130,9 @@ export interface AppConfig {
    */
   surfaceTrustFromVeritasEvidence?: boolean;
   /**
-   * Register the K2 `KnowledgeStoreProvider` seam (root registry + adapter-backed
-   * record CRUD) alongside today's `KnowledgeService`/namespace-based knowledge path.
-   * **Default off** (same pattern as `mcpUiHost`) — no read path is rewired, no data
-   * moves, and existing `ProjectConfig.knowledgeNamespaces` behavior is byte-identical
-   * with this flag unset, until an explicit future migration/cutover (ADR-0009 K3+).
+   * Create the read-only `root:conversations` projection at personal startup
+   * when absent. Default off. Disabling does not remove an existing root;
+   * hosted mode skips this projection. Other Knowledge routes are independent.
    */
   knowledgeStores?: boolean;
   /**

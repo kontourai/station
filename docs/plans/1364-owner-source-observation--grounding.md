@@ -6,9 +6,10 @@ learning lifecycle work; verification receipts and GitHub own live delivery stat
 The initial owner-only slice is retained below as grounding, not as a prohibition
 on the separately authorized source-inspection journey.
 
-## Verified publication boundary
+## Publication boundary recorded for this proposal
 
-Live npm metadata reports `@kontourai/flow-agents@6.2.0`, also Station's pin;
+The grounding review inspected published `@kontourai/flow-agents@6.2.0`,
+Station's pin at that time;
 publication `gitHead` is `bcc5310f651febc326c7fd003a400edab9b50e34`.
 Its export map includes `./console-contract`, `./kit-observability-contract`,
 and `./schemas/*.json`. Read-only ESM resolution confirmed these public schema
@@ -24,6 +25,9 @@ Tarball presence is not an API. Station's ADR-0001 and
 `scripts/knowledge-kit-import-gate.mjs` prohibit private-import/filesystem
 workarounds. Published file-format documentation is legitimate contract
 evidence, not permission to execute internal Kit modules.
+
+For the current pin, read `package.json` and `pnpm-lock.yaml`; the 6.2.0
+observations below are historical evidence, not a current registry lookup.
 
 Public types and documentation were inspected in the verified published 6.2.0
 dependency artifact of the separately owned composition worktree. This was

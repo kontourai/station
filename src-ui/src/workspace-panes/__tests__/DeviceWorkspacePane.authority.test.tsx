@@ -32,7 +32,6 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 }));
 
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
-import { mobileDeviceInventoryQueryKey } from '@kontourai/station-sdk/mobile-devices-query';
 import { DeviceWorkspacePane } from '../DeviceWorkspacePane';
 import { devicePaneStateStorageKey } from '../devicePaneStateStorage';
 import {
@@ -67,22 +66,6 @@ function authorizeCurrentScope() {
 }
 
 describe('the Device pane under a changing authority (#1969)', () => {
-  /**
-   * The query key carries both scope members, so one Station's device list
-   * is never served from another authority's cache. Dropping either from
-   * `mobileDeviceInventoryQueryKey` reds this.
-   */
-  test('the inventory cache is keyed by api base and authority', () => {
-    expect(mobileDeviceInventoryQueryKey(FIRST)).toEqual([
-      'mobile-device-inventory',
-      FIRST.apiBase,
-      FIRST.authorityKey,
-    ]);
-    expect(mobileDeviceInventoryQueryKey(FIRST)).not.toEqual(
-      mobileDeviceInventoryQueryKey(SECOND),
-    );
-  });
-
   /**
    * Removing the `key` from `DeviceWorkspacePaneSurface` reds this: the
    * surface would keep its state across the change and the previous

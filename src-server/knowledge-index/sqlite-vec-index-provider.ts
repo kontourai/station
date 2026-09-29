@@ -1,31 +1,12 @@
 /**
- * `sqlite-vec` `KnowledgeIndexProvider` — the built-in K3 index (ADR-0009 Layer 2,
- * `docs/design/knowledge-foundation.md` "K3 — Index layer"). One `node:sqlite`
- * `DatabaseSync` file (default `{dataDir}/knowledge-index/index.db`), one `vec0`
- * loadable-extension virtual table (`vec_items`) with a `store` partition-key column
- * and `distance_metric=cosine` — the exact shape ADR-0009's Probe A proved out
- * (`docs/adr/0009-...md` lines 44-88). This index is derived-only: everything it holds
- * is regenerable from a `KnowledgeStoreProvider` root via `rebuildRoot`, and it is
- * never treated as a second source of truth.
+ * Derived sqlite-vec index, partitioned by Knowledge root. Rebuild explicitly
+ * from the root adapters; this database is never the record authority.
+ * See docs/guides/knowledge.md#changing-the-embedding-model for width changes
+ * and the lack of embedding-model identity tracking.
  *
- * `node:sqlite` incantation (Probe A): `allowExtension: true` on the constructor,
- * `enableLoadExtension(true)`, `loadExtension(<vec0 loadable path>)`, then
- * `enableLoadExtension(false)` once loaded (least-privilege — no further loadable
- * extensions are expected). Vectors bind as `Uint8Array` over a `Float32Array` buffer.
- * `sqlite-vec`'s own `getLoadablePath()` resolves the platform-specific `vec0` binary
- * package (`sqlite-vec-<platform>-<arch>`) rather than hardcoding a path.
- *
- * vec0 quirk (empirically verified against `sqlite-vec@0.1.9` + Node 24's `node:sqlite`
- * in this session): vec0's own `xUpdate` type-checks bound values by their *actual*
- * SQLite fundamental type, not by column affinity-coercion the way an ordinary table
- * would. Node's `node:sqlite` binds a plain JS integer as `SQLITE_FLOAT`
- * (`sqlite3_bind_double`), which vec0 rejects for its INTEGER `rowid`/auxiliary
- * columns ("Auxiliary column type mismatch: ... but FLOAT was provided"). The fix is
- * to bind integer-typed values (`rowid`, `chunkOrdinal`) as JS `BigInt` on INSERT;
- * `rowid` is passed as `null` (auto-assign) since this provider never needs to address
- * a row by rowid directly (`store` + `recordId` + `chunkOrdinal` is the identity used
- * for delete/upsert). Ordinary `DELETE ... WHERE` comparisons are unaffected (SQLite's
- * normal affinity coercion applies there; only vec0's own insert-time check cares).
+ * vec0 checks INSERT value types rather than applying ordinary SQLite affinity.
+ * Bind integer auxiliaries as BigInt: node:sqlite binds JS numbers as FLOAT,
+ * which vec0 rejects. Keep this distinction when changing writeEntries.
  */
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';

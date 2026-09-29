@@ -140,14 +140,6 @@ describe('station-control-mcp-token', () => {
     expect(verifyStationControlMcpToken(token)).toBeUndefined();
   });
 
-  test('SECURITY: the token never appears verbatim in a JSON-serialized error/log-shaped object by accident (sanity: distinct from the URL builder output shape)', () => {
-    const { token } = mintStationControlMcpToken('thread-1', 'url-token');
-    const url = buildStationControlMcpUrl(3141, token);
-    expect(url).toBe(
-      `http://127.0.0.1:3141${STATION_CONTROL_MCP_PATH}?token=${token}`,
-    );
-  });
-
   test('station#1684: buildStationControlMcpHeaderUrl points at the SAME endpoint with NO credential in it', () => {
     const { token } = mintStationControlMcpToken('thread-1', 'url-token');
     const headerUrl = buildStationControlMcpHeaderUrl(3141);

@@ -3074,6 +3074,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/boot' },
     { method: 'GET', path: '/api/system/core-update' },
     { method: 'GET', path: '/api/system/core-update/restart-status' },
+    // A read of this install's own service-update progress, from its runtime
+    // files: no other Station's or Environment's data, nothing written. The
+    // /api/system read tier, like the restart-status leaf above.
+    { method: 'GET', path: '/api/system/core-update/service-update' },
     { method: 'POST', path: '/api/system/core-update' },
     { method: 'GET', path: '/api/system/discover' },
     { method: 'GET', path: '/api/system/identity' },

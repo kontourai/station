@@ -9,8 +9,8 @@
  *   node examples/mcp-ui-demo/server.mjs
  *
  * Register it in Station as a stdio MCP integration, then reference
- * `<serverId>/status_panel` as an `mcp-tool-ui` layout component and enable the
- * `mcpUiHost` config flag. See README.md.
+ * `<serverId>/status_panel` as an `mcp-tool-ui` layout component in the web
+ * client. The host defaults on; native shells refuse these frames. See README.md.
  */
 import {
   registerAppResource,

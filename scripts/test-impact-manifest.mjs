@@ -683,6 +683,9 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
+  // Scans src-server, packages/shared/src and packages/cli/src for Station
+  // home-root literals the store registry must list (#2675 D1).
+  'packages/shared/src/__tests__/station-home-store-registry.test.ts',
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',
@@ -694,6 +697,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/dogfood-evidence-retention.test.ts',
   'scripts/__tests__/gate-scope.test.ts',
   'scripts/__tests__/ios-agent-activity-assets.test.ts',
+  'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/module-entry.scan.test.ts',
   'scripts/__tests__/product-docs-source-links.test.ts',
   // Copies the whole tracked tree and runs the repo-governance lane CLI on it.
@@ -1192,6 +1196,46 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'generated contributor command Interface',
   },
   {
+    // Spawned as child processes, outside the import graph (#2923, #2924).
+    pattern: 'scripts/check-documentation-freshness.mjs',
+    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    reason: 'scoped documentation freshness CLI and its exit status',
+  },
+  {
+    pattern: 'scripts/record-documentation-review.mjs',
+    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    reason: 'review-ledger record command and its refusals',
+  },
+  {
+    pattern: '.github/workflows/docs-freshness-sweep.yml',
+    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    reason: 'Nightly freshness sweep schedule and permissions',
+  },
+  {
+    pattern: 'scripts/lib/learning-media.mjs',
+    tests: ['scripts/__tests__/learning-media.test.ts'],
+    reason:
+      'captured UI media provenance, immutable bytes and source freshness',
+  },
+  {
+    pattern: 'scripts/documentation-impact.mjs',
+    tests: [
+      'scripts/__tests__/documentation-impact.test.ts',
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/gate-for.test.ts',
+    ],
+    reason: 'source-to-document guidance and incremental catch-up',
+  },
+  {
+    pattern: 'scripts/gate-for.mjs',
+    tests: [
+      'scripts/__tests__/gate-for.test.ts',
+      'scripts/__tests__/documentation-impact.test.ts',
+    ],
+    reason:
+      'pre-edit guidance includes current and recorded documentation dependencies',
+  },
+  {
     pattern: 'scripts/just-interface.mjs',
     tests: [
       'scripts/__tests__/just-interface.test.ts',
@@ -1273,11 +1317,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'native window, logging, and activation documentation source seam',
   },
   {
-    pattern: 'src-desktop/src/tray.rs',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'native tray activation documentation source seam',
-  },
-  {
     pattern: 'src-desktop/tauri.conf.json',
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'native hidden-window documentation source seam',
@@ -1298,11 +1337,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'native startup static verification command contract',
   },
   {
-    pattern: 'tests/plugin-host-security.spec.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'hostile plugin browser-only evidence boundary',
-  },
-  {
     pattern: 'packages/cli/src/cli.ts',
     tests: [
       'scripts/__tests__/native-recovery-docs.test.ts',
@@ -1317,11 +1351,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'scripts/__tests__/public-doc-contract-examples.test.ts',
     ],
     reason: 'targeted lifecycle command help documentation source seam',
-  },
-  {
-    pattern: 'packages/cli/src/commands/lifecycle.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'targeted lifecycle ownership documentation source seam',
   },
   {
     pattern: 'scripts/lib/free-ports.mjs',
@@ -1653,9 +1682,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   ...E2E_CONTRACT_BOUNDARIES.map((pattern) => ({
     pattern,
     lanes: ['verify-e2e-full'],
-    ...(pattern === 'playwright.config.ts'
-      ? { tests: ['scripts/__tests__/native-recovery-docs.test.ts'] }
-      : {}),
     reason: 'E2E product-contract control boundary',
   })),
   {

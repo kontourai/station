@@ -191,11 +191,19 @@ describe('Models Routes', () => {
   });
 
   test('GET /aws-profiles reports failure without leaking file contents', async () => {
-    awsProfilesMock.mockRejectedValueOnce(new Error('unexpected read failure'));
+    awsProfilesMock.mockRejectedValueOnce(
+      new Error(
+        'cannot parse /home/bob/.aws/credentials: aws_secret_access_key=AKIASECRETVALUE',
+      ),
+    );
     const app = await buildApp();
-    const body = await json(await app.request('/aws-profiles'));
+    const res = await app.request('/aws-profiles');
+    const text = await res.text();
 
-    expect(body.success).toBe(false);
+    expect(res.status).toBe(500);
+    expect(JSON.parse(text).success).toBe(false);
+    expect(text).not.toContain('AKIASECRETVALUE');
+    expect(text).not.toContain('/home/bob');
   });
 
   test('GET /pricing/:modelId returns { success, data } with pricing fields', async () => {

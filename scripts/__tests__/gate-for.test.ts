@@ -20,9 +20,14 @@ describe('gate-for report', () => {
   });
 
   it('does not invent path guidance for an unrelated file', () => {
-    expect(
-      veritasGuidanceForPaths(['docs/plans/issue-class-prevention.md']),
-    ).toContain('no matching rules');
+    // documentation-source-currentness is a repo-wide Guide, so every path
+    // receives it; an unrelated file must receive nothing path-specific.
+    const guidance = veritasGuidanceForPaths([
+      'docs/plans/issue-class-prevention.md',
+    ]);
+    expect(guidance).toContain('documentation-source-currentness (Guide)');
+    expect(guidance).not.toContain('(Require)');
+    expect(guidance).not.toContain('session-transition-contract');
   });
   it('marks every scoped gate RUNS for a surface that feeds all four', () => {
     const report = gateReport({

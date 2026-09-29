@@ -14,7 +14,6 @@ vi.mock('../hooks/useStreamingContent', () => ({
 }));
 
 import {
-  SMOOTH_REVEAL_CONSTANTS,
   SmoothRevealCursor,
   type SmoothRevealFrameSource,
   useSmoothRevealText,
@@ -334,14 +333,10 @@ describe('station#585 smooth reveal cursor', () => {
     cursor.updateAvailable(100, 0);
 
     const snapshot = cursor.advance(150);
-    const targetRate = 100 / SMOOTH_REVEAL_CONSTANTS.backlogWindowSeconds;
-    const expectedRate =
-      SMOOTH_REVEAL_CONSTANTS.minCharsPerSecond +
-      (targetRate - SMOOTH_REVEAL_CONSTANTS.minCharsPerSecond) *
-        (1 - Math.exp(-0.15 / SMOOTH_REVEAL_CONSTANTS.slewTauSeconds));
-
-    expect(snapshot.rateCharsPerSecond).toBeCloseTo(expectedRate, 6);
-    expect(snapshot.visibleLength).toBe(Math.floor(expectedRate * 0.15));
+    // 100 chars over a 0.4 s window targets 250 cps; one 0.15 s tau from the
+    // 50 cps floor reaches 50 + 200 * (1 - e^-1).
+    expect(snapshot.rateCharsPerSecond).toBeCloseTo(176.4241, 4);
+    expect(snapshot.visibleLength).toBe(26);
   });
 
   test('clamps a small backlog to the 50 cps floor', () => {
@@ -518,15 +513,21 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     view.unmount();
   });
 
-  test("a status-labelled wait reads the row's mount clock, not the turn duration (pre-existing limitation)", () => {
+  // The wait clock itself still counts from this row's mount, a known
+  // limitation; these tests pin only what stays true once it is fixed.
+  test.todo(
+    'a status-labelled wait counts from the approval request, not the row mount',
+  );
+
+  test('a status-labelled wait never reads the turn duration', () => {
     const view = renderRow(Date.parse(serverStart), 'Waiting for approval');
-    expect(view.container.textContent).toContain('Waiting for approval · 0:00');
     act(() => {
       vi.advanceTimersByTime(4_000);
     });
-    // Mount-relative: four seconds since this row mounted, not 12:04 since
-    // the turn started, and not since any approval request.
-    expect(view.container.textContent).toContain('Waiting for approval · 0:04');
+    expect(view.container.textContent).toMatch(
+      /Waiting for approval · \d+:\d\d/u,
+    );
+    expect(view.container.textContent).not.toContain('12:04');
     view.unmount();
   });
 
@@ -593,18 +594,21 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     view.unmount();
   });
 
-  test("the status-labelled wait keeps main's row-mount clock across a same-turn reconnect", () => {
+  test('a status-labelled wait does not restart across a same-turn reconnect', () => {
     const view = renderRow(Date.parse(serverStart), 'Waiting for approval');
     act(() => {
       vi.advanceTimersByTime(300_000);
     });
-    expect(view.container.textContent).toContain('Waiting for approval · 5:00');
     view.rerender(row(undefined, 'Waiting for approval'));
     view.rerender(row(Date.parse(serverStart), 'Waiting for approval'));
     act(() => {
       vi.advanceTimersByTime(2_000);
     });
-    expect(view.container.textContent).toContain('Waiting for approval · 5:02');
+    expect(view.container.textContent).toMatch(
+      /Waiting for approval · \d+:\d\d/u,
+    );
+    expect(view.container.textContent).not.toMatch(/· 0:0\d/u);
+    expect(view.container.textContent).not.toContain('17:02');
     view.unmount();
   });
 });

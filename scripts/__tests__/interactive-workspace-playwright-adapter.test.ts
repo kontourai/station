@@ -6,7 +6,6 @@ import {
   performWorkBoardInteraction,
   reconnectDocumentGate,
   reconnectRequestFence,
-  WORK_BOARD_DRIVER_READY_TIMEOUT_MS,
 } from '../interactive-workspace-playwright-adapter.mjs';
 
 const boardConfig = {
@@ -84,10 +83,13 @@ test('waits for delayed lazy Board registration before measuring', async () => {
 });
 
 test('reports an honest bounded Board-driver readiness timeout', async () => {
-  expect(WORK_BOARD_DRIVER_READY_TIMEOUT_MS).toBe(30_000);
+  const inputs: unknown[] = [];
   const page = {
     waitForFunction: async () => undefined,
-    evaluate: async () => false,
+    evaluate: async (_callback: unknown, input: unknown) => {
+      inputs.push(input);
+      return false;
+    },
   };
 
   await expect(bridgeEvidence(page, boardConfig)).resolves.toMatchObject({
@@ -99,6 +101,8 @@ test('reports an honest bounded Board-driver readiness timeout', async () => {
       },
     ],
   });
+  // The in-browser race gives up after this bound rather than waiting forever.
+  expect(inputs).toEqual([expect.objectContaining({ timeoutMs: 30_000 })]);
 });
 
 test('holds document refetch until the exact product strategy releases it', async () => {

@@ -60,28 +60,9 @@ export function setShortcutContext(key: ShortcutContextKey, value: boolean) {
 }
 
 /**
- * "A modal dialog is open" — DERIVED from the document, never claimed.
- *
- * archive#3767: this used to be a claim (`acquireShortcutContext('dialogOpen')`)
- * that exactly one component in the app ever made, `ResponsiveDialogSurface`.
- * Every other modal surface — the command launcher, the shortcuts cheatsheet,
- * the command palette, the delegation launcher, the mobile task switcher — is
- * `role="dialog" aria-modal="true"` with its own overlay and focus trap, and
- * none of them knew to claim it. So the app's global chords stayed live
- * underneath them: the dock-toggle chord typed into the launcher's own input
- * collapsed the dock behind it, and Escape on the cheatsheet ALSO ran the
- * route-level "go up one level" fallback (archive#3759).
- *
- * A label a surface must remember to set is a label that some surface will
- * forget. `aria-modal="true"` is the same fact, already in the DOM, already
- * required for the surface to be a modal at all, and it cannot drift from
- * what is rendered. `components/notifications/BannerHost.tsx` reached the
- * same conclusion independently for its own Escape handling; it reads this
- * helper now rather than re-querying, so the shell has one answer.
- *
- * Not "is anything focus-trapped": a non-modal popover (`aria-modal="false"`,
- * e.g. `first-run/Coachmark.tsx`) annotates the page and deliberately leaves
- * the shortcuts live.
+ * Derive modal state from rendered aria-modal="true" surfaces. A context flag
+ * previously missed custom modals and let global shortcuts fire beneath them
+ * (archive#3767, archive#3759). Non-modal popovers leave shortcuts active.
  */
 export function isModalDialogOpen(ownerDocument?: Document): boolean {
   const doc =
@@ -142,17 +123,9 @@ function areDirectComplements(left?: ShortcutWhen, right?: ShortcutWhen) {
 }
 
 /**
- * The registry as a subscribable store, not as React state.
- *
- * `register` used to bump a `registryRevision` state on the provider, which
- * rebuilt the context value and re-rendered EVERY consumer of this context.
- * Any consumer whose registering effect depended on a callback identity then
- * registered again on that render, and the two fed each other: React error
- * archive#185 (maximum update depth), which took out every route the moment the
- * first command-enabled skill existed (archive#3736). Writes now go to a ref
- * and are published through `subscribe`, so registering re-renders only the
- * surfaces that actually READ the registry — and only when what they read
- * changed.
+ * Publish registry changes to subscribed readers without re-rendering registering
+ * components. Provider-state updates previously caused a registration/render
+ * loop and React maximum-depth failure (archive#3736).
  */
 interface ShortcutRegistryStore {
   register: (shortcut: KeyboardShortcut) => () => void;
@@ -168,27 +141,10 @@ interface ShortcutRegistryStore {
 }
 
 /**
- * The registry's complete OBSERVABLE identity — everything a reader can see.
- *
- * Three things belong in it that a first cut left out:
- *
- *  - registration ORDER, because equal-priority dispatch resolves by it and
- * `getAllShortcuts` returns it. Sorting it away meant two registrations
- *    could swap which one fires and no reader was told;
- * - a per-registration TOKEN, because `getAllShortcuts` hands readers the
- *    HANDLERS. Two registrations under one id with identical metadata and
- *    different handlers replace the map entry silently, so an open command
- *    palette kept invoking the action the keyboard had already stopped
- *    invoking. Handlers cannot be compared, so what is compared is the write:
- *    every `register` call gets a number, and re-registering changes it;
- *  - a JSON encoding, because the previous NUL/SOH joins were not injective —
- *    a control character inside a description could forge a boundary.
- *
- * Re-registration therefore publishes. That is the point, and it does not
- * re-open archive#3736: the loop needed registration to re-render a component
- * that then registers again, and only READERS re-render now — while
- * `useKeyboardShortcut`'s deps are stable, so a reader's re-render does not
- * re-register.
+ * Include registration order and identity: priority ties depend on order, and a
+ * replaced handler must invalidate readers even when metadata is unchanged.
+ * JSON encoding preserves boundaries that control characters could forge in a
+ * delimiter-joined signature. Stable registering hooks avoid the archive#3736 loop.
  */
 function registrySignature(
   entries: Iterable<[KeyboardShortcut, number]>,
@@ -216,14 +172,8 @@ const isMac =
   navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 
 /**
- * Spell a chord the way the platform the user is on presses it.
- *
- * This is the ONE place that decides `⌘K` versus `Ctrl+K`, and it is exported
- * so a surface drawing a keycap has somewhere to route to. A hardcoded `⌘`
- * outside macOS is not a typography problem, it is a false label: it
- * advertises a chord the user cannot press (#1649). It is also the reason the
- * Mac keycap codepoints — none of which is in the bundled font subsets — only
- * ever reach the DOM on macOS, where the system font draws them.
+ * Use the viewer's platform spelling for chords (#1649); consumers must not
+ * advertise a Mac-only Command key on other platforms.
  */
 export function formatShortcutChord(
   modifiers: readonly ShortcutModifier[],
@@ -249,12 +199,8 @@ export function orderShortcuts(
 }
 
 /**
- * Two live shortcuts claiming one chord. Today `priority` arbitrates
- * silently, so the loser simply never fires and nothing says why — the
- * settings surface and cheatsheet can now say it (archive#2576). A disabled
- * shortcut does not conflict; a priority TIE on a shared chord is the
- * ambiguous case worth shouting about, and a decided priority is still worth
- * listing so the loser's silence is explicable.
+ * Enabled shortcuts sharing a chord, including lower-priority entries whose
+ * suppression should remain explainable (archive#2576).
  */
 export interface ShortcutConflict {
   chord: string;
@@ -294,13 +240,8 @@ export function findShortcutConflicts(
 }
 
 /**
- * The one predicate the live dispatch loop consults before firing a shortcut.
- *
- * archive#3767: this was exported, documented as the guard, and called by
- * nothing but its own unit test since archive#2579 replaced it in the dispatcher
- * with a `dialogOpen` claim plus an Escape-only variant. A test measuring a
- * predicate the product does not run is not coverage, and the modal hole it
- * was still asserting had been open ever since. It is the live path again.
+ * The live dispatcher must call this modal/input guard. An earlier replacement
+ * left it tested but unused, reopening the modal leak (archive#3767, archive#2579).
  */
 export function shouldIgnoreShortcut(
   shortcut: KeyboardShortcut,
@@ -551,10 +492,8 @@ function useShortcutStore(): ShortcutRegistryStore {
 }
 
 /**
- * For REGISTERING and for binding changes. Deliberately does not expose the
- * registry's contents: a component that reads them without subscribing goes
- * stale the moment another surface registers, and a component that re-renders
- * on every registration is what archive#3736 was.
+ * Registration/binding actions without a registry subscription. Reading here
+ * would go stale; subscribing registering components caused archive#3736.
  */
 export function useKeyboardShortcuts(): Omit<
   ShortcutRegistryStore,
@@ -563,11 +502,7 @@ export function useKeyboardShortcuts(): Omit<
   return useShortcutStore();
 }
 
-/**
- * For READING the registry — the cheatsheet, the palette, the settings list,
- * and any label that carries a chord. Subscribes, so it re-renders when the
- * registry's content changes and never when it merely gets rewritten.
- */
+/** Subscribe to registry content and registration identity for displayed commands. */
 export function useShortcutRegistry(): Omit<
   ShortcutRegistryStore,
   'subscribe' | 'getSignature'

@@ -1,6 +1,7 @@
 # Signed release rings
 
-Station portable installs use signed GitHub release rings. Stable is the default;
+Station's default portable installer uses GitHub-attested release rings.
+Stable is the default;
 Beta is opt-in with `STATION_CHANNEL=beta`. Its public release protocol remains
 named `preview`, and a preview tag has the form
 `vMAJOR.MINOR.PATCH-preview.N`; a stable tag has the form `vMAJOR.MINOR.PATCH`.
@@ -10,21 +11,28 @@ preview numbering lives only in immutable `vX.Y.Z-preview.N` tags and their
 release overlays. Promotion never edits source, moves a tag, or relabels a
 preview artifact.
 
+Nightly is a separate, opt-in signed-public-manifest path:
+`STATION_CHANNEL=nightly` requires `STATION_INSTALL_PUBLIC_MANIFEST_URL`.
+The authenticated GitHub-release path serves Stable and Beta only. See
+[channel identity and coexistence](release-channel-ports.md) for Nightly's
+home/port admission and the distinction between the public manifest signature
+and a signed Git tag. Publication remains separate from installer support.
+
 ## Release artifacts and trust boundary
 
-Every release contains exactly these installer inputs:
+The Stable/preview source-archive path uses these three installer inputs:
 
 - `station-release-ring-stable.json` or `station-release-ring-preview.json`
 - `station-portable.tar.gz.sha256`
 - `station-portable.tar.gz`
 
-The tag-triggered release workflow builds those inputs in that order and uploads
+The tag-triggered release workflow produces those inputs and uploads
 them only after the full native release inventory validates. It creates a draft;
 the protected manual `Publish Station release` workflow revalidates that draft
 and is the only workflow allowed to publish it. The tag workflow identity and
 the release tag must name the same Git ref.
 
-The installer requires an authenticated `gh` with attestation support. Before it
+The default installer path requires an authenticated `gh` with attestation support. Before it
 parses a manifest, checksum, or archive, it verifies that file against:
 
 - repository `kontourai/station`
@@ -44,15 +52,32 @@ temporary environment prevents accidental inheritance of the verifier token and
 normal GitHub CLI credential lookup; it does not claim to confine malicious code
 already authorized through the pinned repository/workflow/tag policy.
 
+The optional `STATION_INSTALL_PUBLIC_MANIFEST_URL` path instead verifies an
+Ed25519 envelope against pinned channel-authorized keys, then verifies the
+archive digest. It needs no `gh` token. This is a separate opt-in trust path,
+not the default ring resolver: signature validity proves origin/integrity,
+not freshness. Existing-install downgrade guards do not prevent an old signed
+manifest from being offered to a fresh installation. Read the exact owner in
+[`install.sh`](../../install.sh) before changing that policy.
+
+This public path also accepts the platform-array v2 manifest for prebuilt
+server archives. It checks the selected host, launcher protocol, signed size
+and hash, and the archive's release identity before activation. Those archives
+use `versions/<version>` and their bundled Node runtime; schema-v1 source
+manifests use `releases/` and run dependencies/build steps. This does not change
+the default GitHub-attested source path described above. See the
+[manifest consumer table](../../packaging/manifest/README.md#formats-and-consumers).
+
 ## Publish a preview
 
-Start from the exact reviewed commit on `main`:
+Release actions below require an authorized release handoff. Use a clean
+exclusive checkout of the exact reviewed `main` commit, and choose the version
+from current repository/provider state rather than these illustrative tags:
 
 ```sh
-git switch main
-git pull --ff-only origin main
 git status --short
-git tag -s v0.2.0-preview.1 -m 'Station v0.2.0-preview.1'
+reviewed_sha=<exact-reviewed-commit>
+git tag -s v0.2.0-preview.1 "$reviewed_sha" -m 'Station v0.2.0-preview.1'
 git push origin v0.2.0-preview.1
 ```
 
@@ -92,9 +117,8 @@ If a fix was needed, publish and dogfood a new preview tag from that newer
 commit first; Stable always names bytes that Beta already exercised:
 
 ```sh
-git switch main
-git pull --ff-only origin main
-git tag -s v0.2.0 -m 'Station v0.2.0'
+reviewed_sha=$(git rev-parse 'v0.2.0-preview.1^{commit}')
+git tag -s v0.2.0 "$reviewed_sha" -m 'Station v0.2.0'
 git push origin v0.2.0
 ```
 
@@ -107,29 +131,38 @@ reviewed; do not promote on a fixed calendar when evidence is incomplete.
 
 The installer records the selected channel and canonical install/data roots in a
 mode-0600 state file only as part of promotion. `station upgrade` delegates to the
-same signed installer contract and never falls back to another ring or unsigned
-assets. The previous release link and prior ring state are restored if the new
-release cannot start.
+same installer contract and does not silently switch rings or accept unsigned
+inputs. Failed startup attempts restoration of the prior link/state and runtime.
+A failed rollback is reported separately; it is not a guarantee that recovery
+will always succeed.
 
-For a failed draft, fix the source and publish a new version; do not reuse a tag.
-Delete an unpublished, incomplete release and its remote tag before creating the
-replacement:
+An installer-owned prebuilt version carries its installer. Its schema-4 state
+also records the public manifest URL, which `station upgrade` reuses unless an
+explicit `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. When a running
+Station service's fixed launcher runs that install, the installer only stages
+the new version: the launcher trials it and, if the trial fails, restores its
+home backup and the previous version (see the
+[`service` reference](../reference/cli.md#service)). A manually
+extracted archive has no installer-owned upgrade target and still requires
+manual replacement. [Channel coexistence](release-channel-ports.md) describes
+the shared home/state and owned-file removal boundaries.
 
-```sh
-gh release delete v0.2.0-preview.1 --repo kontourai/station --yes
-git push origin :refs/tags/v0.2.0-preview.1
-git tag -d v0.2.0-preview.1
-```
+For a failed draft, fix the source and use a new immutable tag. Do not move
+or reuse the failed tag. Retaining its draft, artifacts and receipts preserves
+diagnosis; deletion is a separate owner-managed retention decision, not a
+routine prerequisite to the replacement release.
 
-If a published release is compromised, immediately remove it from installer
-resolution and then announce the affected version:
+For an authorized withdrawal, making the tag release a draft removes it from
+the default installer resolver:
 
 ```sh
 gh release edit v0.2.0 --repo kontourai/station --draft
 ```
 
-Publish a higher replacement version and rerun the signed installer. Never
-silently move the compromised tag.
+That does not repair independent desktop rolling feeds or external stores.
+Follow [native release recovery](native-releases.md#stage-inspect-publish-and-roll-back)
+for those authorities, communicate the affected version through the incident
+owner, and publish a higher fixed version. Never silently move the tag.
 
 ## Rotating the attestation action pin
 

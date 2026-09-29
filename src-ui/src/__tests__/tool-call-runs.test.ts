@@ -22,6 +22,7 @@ describe('isToolCallPart', () => {
 
   test('rejects non-tool parts and empty input', () => {
     expect(isToolCallPart({ type: 'text' })).toBe(false);
+    expect(isToolCallPart({ type: 'reasoning' })).toBe(false);
     expect(isToolCallPart(undefined)).toBe(false);
     expect(isToolCallPart(null)).toBe(false);
     expect(isToolCallPart({} as any)).toBe(false);

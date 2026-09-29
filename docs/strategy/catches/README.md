@@ -141,7 +141,7 @@ into **`none` over a stated window**, which is a finding a decision can rest on.
 Append a line. Keep the file sorted by `date` then `id`. Then:
 
 ```sh
-npx vitest run scripts/__tests__/catch-log.test.ts
+npm run test:focused -- scripts/__tests__/catch-log.test.ts
 ```
 
 That validates JSON Lines shape, required fields, the class enum, id

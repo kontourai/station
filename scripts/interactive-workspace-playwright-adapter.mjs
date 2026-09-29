@@ -33,12 +33,12 @@ const MAX_CONTROL_RECEIPT_BYTES = 32 * 1024;
 // The real 10k reconnect seed can legitimately keep the private control
 // request open for much longer than ordinary browser actions. Keep that
 // exception bounded and local to this reference-only socket.
-export const REFERENCE_CONTROL_SOCKET_RESPONSE_TIMEOUT_MS = 30 * 60 * 1000;
+const REFERENCE_CONTROL_SOCKET_RESPONSE_TIMEOUT_MS = 30 * 60 * 1000;
 const RECONNECT_RELEASE_BINDING =
   '__stationInteractiveWorkspaceReconnectRelease';
-export const WORK_BOARD_DRIVER_READY_TIMEOUT_MS = 30_000;
-export const RECONNECT_POOL_BATCH_SIZE = 1;
-export const RECONNECT_EDITOR_READY_TIMEOUT_MS = 60_000;
+const WORK_BOARD_DRIVER_READY_TIMEOUT_MS = 30_000;
+const RECONNECT_POOL_BATCH_SIZE = 1;
+const RECONNECT_EDITOR_READY_TIMEOUT_MS = 60_000;
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 const now = () =>

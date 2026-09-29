@@ -1,5 +1,16 @@
 # Design: server-ordered approval posture
 
+> **Reading status: accepted design and implementation history.** Section 3's
+> surface map, line numbers, comparisons with `main`, and test reports describe
+> the recorded revisions below. They are not a fresh authorization audit.
+> Current posture resolution is owned by
+> [ApprovalPosture](../../src-server/services/orchestration/approval-posture.ts),
+> applied by [OrchestrationService](../../src-server/services/orchestration/orchestration-service.ts);
+> [coding authority](../../src-server/security/coding-authority.ts) separately
+> owns full-access grants. Use the [Session API](../reference/session-api.md)
+> for current requests. The historical “full access” descriptions do not replace
+> those current authority and engine boundaries.
+
 > Status: **accepted (owner decision on #2436, 2026-09-23); implemented on the
 > branch that closes #2436, #2418 and #2409.** It replaces the client-side pick
 > bookkeeping that #2449 added in `src-ui/src/utils/approvalMode.ts`. Line

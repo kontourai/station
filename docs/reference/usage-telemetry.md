@@ -4,7 +4,14 @@ Station product telemetry is server-side only and sends no prompts, paths, repos
 
 ## Disclosure and activation
 
-Usage telemetry is enabled by default and has a visible Station Settings toggle. **No ingestion endpoint is configured by default, so Station sends nothing at all:** it creates no telemetry timer, retains no telemetry buffer, and makes no request. If an endpoint is configured, Station still refuses to buffer or send until this Station has shown and recorded acknowledgement of the inventory below. The same disclosure remains available in Settings.
+Usage telemetry is enabled by default and has a visible Station Settings toggle.
+The saved `telemetryEnabled` setting takes precedence over
+`STATION_TELEMETRY_ENABLED`, then the default. **Without an ingestion endpoint,
+this service sends nothing:** it starts no telemetry timer, buffers no events
+and makes no ingestion request. The repository configures no default endpoint.
+With an endpoint, it still requires a current disclosure acknowledgement before
+buffering or sending. The first-run UI and Settings show the inventory below;
+the stored acknowledgement records acceptance, not proof the user read it.
 
 A receipt records its acknowledgement timestamp and the SHA-256 revision of this inventory under `STATION_HOME/config/usage-telemetry-disclosure.json`. A changed inventory invalidates an older receipt and stops emission until it is shown and acknowledged again: new data must not leave before the user has seen it.
 
@@ -18,7 +25,36 @@ When an operator configures `STATION_TELEMETRY_ENDPOINT`, Station POSTs batches 
 
 Consequences while it happens: unique-installation counts can be overstated, and one installation's events can be split across two identities, fragmenting funnels, retention and per-install sequences. Treat `distinct_id` as a stable installation identity **except** across a repair.
 
-This is a deliberate trade, not an oversight. Serializing the repair means a cross-process lock, and station#2238 removed exactly that primitive after concluding a hand-rolled filesystem lock without owner identity or stale-lock recovery is not one bug from correct: a crash while holding it strands the lock, and every later repair then fails permanently — telemetry that never sends again. A bounded identity split is preferable to a permanent failure mode for an anonymous analytics identifier.
+The repair intentionally uses atomic replacement and readback without a
+cross-process lock. The earlier lock was removed in #2238 to avoid stale-lock
+recovery becoming a prerequisite for anonymous telemetry. Preserve this tradeoff
+when changing identity storage; the hash is not an account identity or a unique
+person count.
+
+## Buffering, delivery and source
+
+[UsageTelemetryService](../../src-server/services/usage-telemetry-service.ts)
+accepts only the inventory's event/property vocabulary. Its memory buffer holds
+100 events, dropping the oldest on overflow. It flushes batches of 20 at a
+10-second interval or when a batch fills. A request has a one-second timeout;
+failed batches remain in memory for a later attempt. There is no durable queue
+or exactly-once guarantee: an endpoint may accept a request whose response is
+lost. Disabling telemetry clears buffered events and aborts an active request;
+it cannot retract data the endpoint already accepted. Shutdown attempts a
+bounded flush and can drop unsent events.
+
+The producers are
+[runtime startup](../../src-server/runtime/bootstrap/station-runtime.ts) and
+[orchestration](../../src-server/services/orchestration/orchestration-service.ts).
+The current `station_started` call precedes the last awaited registry-policy
+publication and the runtime's `ready` event. Despite the inventory description
+below, this event is not proof every startup step completed. It is also not
+replayed when disclosure is first acknowledged after that startup call.
+
+[Service tests](../../src-server/services/__tests__/usage-telemetry-service.test.ts)
+and the [disclosure route test](../../src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts)
+cover activation, inventory rejection, buffering and disclosure. They use
+controlled endpoints; a live ingestion deployment needs its own delivery evidence.
 
 # Event inventory
 

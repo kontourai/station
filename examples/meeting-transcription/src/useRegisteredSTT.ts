@@ -23,7 +23,7 @@ import {
 import { useCallback, useSyncExternalStore } from 'react';
 
 export interface RegisteredSTT {
-  /** False when no registered provider can listen in this browser. */
+  /** False when no registered provider reports support in this browser. */
   supported: boolean;
   state: STTState;
   transcript: string;

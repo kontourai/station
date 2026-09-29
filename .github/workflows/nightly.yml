@@ -165,6 +165,10 @@ jobs:
       source_sha: ${{ needs.test-gate.outputs.source_sha }}
       marketing_version: ${{ needs.native-stage.outputs.marketing_version }}
       version_code: ${{ needs.native-stage.outputs.bundle_version }}
+    # A reusable workflow's job sees its environment's secrets only when the
+    # caller inherits: without this the signing key arrived empty inside
+    # portable-nightly-signing. Only the callee's publish job reads a secret.
+    secrets: inherit
 
   nightly-cli:
     name: 3 · Publish CLI to npm nightly

@@ -875,7 +875,6 @@ describe('runtime COPY source parser', () => {
   describe('current runtime COPY sources are accepted (not broad, allowlisted)', () => {
     test.each([...ALLOWED_RUNTIME_COPY_SOURCES])('accepts %s', (src) => {
       expect(isBroadCopySource(src)).toBe(false);
-      expect(ALLOWED_RUNTIME_COPY_SOURCES.has(src)).toBe(true);
     });
   });
 

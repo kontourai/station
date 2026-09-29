@@ -4,7 +4,7 @@ import {
   bootPayloadServed,
 } from '../../telemetry/metrics.js';
 
-export const BOOT_PAYLOAD_VERSION = 1;
+const BOOT_PAYLOAD_VERSION = 1;
 
 export interface BootPayloadProviders {
   auth: () => Promise<unknown>;

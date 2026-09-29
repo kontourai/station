@@ -8,6 +8,8 @@
  * Drives the real `POST /preview` and `POST /install` (real staging, real
  * consent check, real installer) over a real proposal store, then reads the
  * installed package back through `GET /` (git info) and the update scan.
+ * A proposed remote git URL is cloned, then staged without the clone's
+ * `.git`; an operator's own remote install keeps it.
  */
 import {
   existsSync,
@@ -30,6 +32,30 @@ import { execGitSync } from '../../../utils/git-exec.js';
 import { isGitMetadataName } from '../../../utils/git-metadata-name.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import { createPluginProposalRoutes } from '../plugin-proposal-routes.js';
+
+/**
+ * A remote git source, simulated: `execGit` clones a local bare repository
+ * when asked for this https URL, and is otherwise real.
+ */
+const REMOTE = 'https://git.example.test/acme/checkout-plugin.git';
+const remote = vi.hoisted(() => ({ repository: '' }));
+vi.mock('../../../utils/git-exec.js', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('../../../utils/git-exec.js')>();
+  return {
+    ...original,
+    execGit: (
+      args: string[],
+      options: Parameters<typeof original.execGit>[1],
+    ) =>
+      args.includes(REMOTE)
+        ? original.execGit(
+            args.map((arg) => (arg === REMOTE ? remote.repository : arg)),
+            { ...options, hardening: { allowFileProtocol: true } },
+          )
+        : original.execGit(args, options),
+  };
+});
 
 const tempDir = trackTempDirs();
 
@@ -207,6 +233,58 @@ function proposedCheckout(root: string) {
   return source;
 }
 
+/** A bare repository served as {@link REMOTE}. */
+function remoteRepository(root: string) {
+  const upstream = join(root, 'upstream');
+  mkdirSync(upstream);
+  git(upstream, 'init', '-q', '-b', 'main');
+  commitManifest(upstream, '1.0.0');
+  remote.repository = join(root, 'served.git');
+  git(root, 'clone', '-q', '--bare', upstream, remote.repository);
+}
+
+/**
+ * A bare repository served as {@link REMOTE} whose tree holds
+ * `sub/.g<U+200C>it/config`: a folder HFS+ resolves as `.git`. Built with
+ * plumbing, since git refuses to add such a path from a working tree.
+ */
+function remoteRepositoryWithHfsDotGit(root: string) {
+  const upstream = join(root, 'upstream');
+  mkdirSync(upstream);
+  git(upstream, 'init', '-q', '-b', 'main');
+  const plumb = (args: string[], input: string) =>
+    String(
+      execGitSync(args, { cwd: upstream, input, encoding: 'utf-8' }),
+    ).trim();
+  const manifest = plumb(
+    ['hash-object', '-w', '--stdin'],
+    JSON.stringify({ name: 'checkout-plugin', version: '1.0.0' }),
+  );
+  const config = plumb(['hash-object', '-w', '--stdin'], '[core]\n');
+  const inner = plumb(['mktree'], `100644 blob ${config}\tconfig\n`);
+  const dotGit = plumb(['mktree'], `040000 tree ${inner}\t.g\u200cit\n`);
+  const tree = plumb(
+    ['mktree'],
+    `100644 blob ${manifest}\tplugin.json\n040000 tree ${dotGit}\tsub\n`,
+  );
+  const commit = plumb(
+    [
+      '-c',
+      'user.name=Station Test',
+      '-c',
+      'user.email=station@example.test',
+      'commit-tree',
+      tree,
+      '-m',
+      'v1.0.0',
+    ],
+    '',
+  );
+  git(upstream, 'update-ref', 'refs/heads/main', commit);
+  remote.repository = join(root, 'served.git');
+  git(root, 'clone', '-q', '--bare', upstream, remote.repository);
+}
+
 const agent = { principal: 'agent' as const };
 
 describe('git metadata in a proposed local install (#2719)', () => {
@@ -345,6 +423,93 @@ describe('git metadata in a proposed local install (#2719)', () => {
     const basis = await preview(source);
     expect(basis.gitMetadata).toBe('excluded');
     expect(basis.contentDigest).toBe(recorded);
+  });
+
+  test('an agent-proposed remote git source installs without its clone’s .git', async () => {
+    const root = tempDir('station-proposed-remote-');
+    remoteRepository(root);
+    const { pluginsDir, proposals, log, previewAndInstall, listed } =
+      harness(root);
+    const { proposal } = await proposals.propose({
+      kind: 'install',
+      source: REMOTE,
+      rationale: 'Adds the checkout pane.',
+      author: agent,
+    });
+
+    const { preview, install } = await previewAndInstall(REMOTE, proposal.id);
+    expect(preview.gitMetadata).toBe('excluded');
+    expect(install.proposal).toEqual({ id: proposal.id, status: 'completed' });
+
+    const installed = join(pluginsDir, 'checkout-plugin');
+    expect(existsSync(join(installed, 'plugin.json'))).toBe(true);
+    expect(gitMetadataEntries(installed)).toEqual([]);
+    expect(preview.git).toBeUndefined();
+    expect(preview.contentDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(computePluginContentDigest(pluginsDir, 'checkout-plugin')).toBe(
+      preview.contentDigest,
+    );
+    // No git-backed updates: it updates by previewing its URL again.
+    expect((await listed())?.git).toBeUndefined();
+    const { updates } = await checkPluginUpdates({ pluginsDir, logger: log });
+    expect(updates.filter((u) => u.name === 'checkout-plugin')).toEqual([]);
+    expect(
+      readdirSync(pluginsDir).filter((name) => name.startsWith('.preview-')),
+    ).toEqual([]);
+  });
+
+  test('an agent-proposed remote tree holding a path HFS+ reads as .git is refused on every platform', async () => {
+    const root = tempDir('station-proposed-remote-hfs-');
+    remoteRepositoryWithHfsDotGit(root);
+    // Where git's own defaults would check the path out (Linux), as the
+    // operator's global config may also say anywhere.
+    const globalConfig = join(root, 'gitconfig');
+    writeFileSync(
+      globalConfig,
+      '[core]\n\tprotectHFS = false\n\tprotectNTFS = false\n',
+    );
+    vi.stubEnv('GIT_CONFIG_GLOBAL', globalConfig);
+    try {
+      const { pluginsDir, proposals, preview } = harness(root);
+
+      // Positive control: the operator's own preview checks it out.
+      const ordinary = await preview(REMOTE);
+      expect(ordinary, JSON.stringify(ordinary)).toMatchObject({
+        valid: true,
+      });
+
+      await proposals.propose({
+        kind: 'install',
+        source: REMOTE,
+        rationale: 'Adds the checkout pane.',
+        author: agent,
+      });
+      const refused = await preview(REMOTE);
+      expect(refused.valid, JSON.stringify(refused)).toBe(false);
+      expect(refused.error).toMatch(/^Failed to clone: .*invalid path/s);
+      expect(
+        readdirSync(pluginsDir).filter((name) => name.startsWith('.preview-')),
+      ).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('an operator’s own install of a remote git source keeps its .git (positive control)', async () => {
+    const root = tempDir('station-operator-remote-');
+    remoteRepository(root);
+    const { pluginsDir, previewAndInstall, listed } = harness(root);
+
+    const { preview } = await previewAndInstall(REMOTE);
+    expect(preview.gitMetadata).toBeUndefined();
+    expect(preview.git).toMatchObject({ hash: expect.any(String) });
+
+    const installed = join(pluginsDir, 'checkout-plugin');
+    expect(lstatSync(join(installed, '.git')).isDirectory()).toBe(true);
+    expect(computePluginContentDigest(pluginsDir, 'checkout-plugin')).toBe(
+      preview.contentDigest,
+    );
+    expect((await listed())?.git).toMatchObject({ hash: expect.any(String) });
   });
 
   test('an operator’s own install of a checkout keeps its .git (positive control)', async () => {

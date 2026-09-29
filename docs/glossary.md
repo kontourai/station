@@ -1,6 +1,8 @@
 # Glossary
 
-The canonical vocabulary for Station. This document is the source of truth — when usage elsewhere conflicts, fix the other usage. One word per concept, one concept per word.
+The canonical vocabulary for Station. Naming rules describe the intended labels;
+they do not certify that every existing UI string follows them. Behavioral
+definitions below link to their implementation or canonical guide.
 
 > **Naming:** the product is **Station** — `@kontourai/station-*` packages and
 > the `./station` CLI. `~/.station` is the default app-owned `STATION_ROOT`;
@@ -23,9 +25,11 @@ running on a Station distinct.
 - **Broker** — an optional service that helps a Device reach a Station when a
   direct path is unavailable. One broker may serve many Stations and Devices;
   it handles bounded routing/signaling metadata, not Project data or agent work.
-- **Push gateway** — the Kontour-operated service that forwards a Station's
-  signed notifications to Google (and later Apple) push, which only the app's
-  publisher can send to. It keeps no state and no Project data. It is not a
+- **Push gateway** — the service that forwards a Station's signed push
+  requests to Google FCM or Apple APNs using the publisher's credentials.
+  Notification content is sealed to a registered phone; routing metadata and
+  fixed alert categories remain visible to the gateway and push provider.
+  It is not a
   Broker and not a relay: those let a Device reach a Station; the push gateway
   lets a Station wake a Device.
 - **Route grant** — a separately issued, revocable broker credential kept by a
@@ -34,9 +38,9 @@ running on a Station distinct.
   surface. Neither binding proves a person's identity. A route grant does not
   approve the Station signing key, pair a Device, sign a person in, or grant
   Project access.
-- **Client** — an agent app a Station runs: Claude Code, Codex, opencode,
-  cursor-agent. See `bin/clients/`, `station_require_dogfood_client`,
-  `client-preflight.sh`.
+- **Client** — an agent app a Station runs, such as Claude Code or Codex.
+  See [engine names](../packages/contracts/src/engine-display.ts) and the
+  [Connections guide](guides/connections.md).
 
 > **Do not call a device a "client".** The word is already taken by the agent
 > apps above, and a sentence containing both meanings cannot be read twice the
@@ -53,16 +57,10 @@ technical phrase **Station client role** may describe a connection initiator in
 architecture text, but it never shortens to **Client** and never replaces the
 user-facing **Device** noun.
 
-**Host** and **client** as a topology pair are accurate and dull, and they make
-the reader think about architecture at the moment they only want their phone
-connected. The station metaphor already does that work: a station is somewhere
-you dock, and devices arrive, pair, leave, and come back.
+## Agents and engines
 
-## The one question: what runs the agent?
-
-Every agent is executed by an **engine** — that's still the one question ("what runs
-the agent?"), but the answer is a **property of the agent** (which engine it binds to),
-not a type the agent belongs to:
+An **engine** executes an Agent. Its binding is a property of the Agent, not a
+permanent category:
 
 - **Engine** — what executes an agent: **Claude Code**, **Codex**, a custom CLI engine
   (**OpenCode**, **Kiro**, …), or **Station's engine** (VoltAgent/Strands driving a
@@ -88,8 +86,8 @@ OpenCode”, never infer the engine from the agent's name.
 
 ## Connections
 
-The Connections tabs are **Models** and **Engines**, and **the tab owns the
-noun** (#592): the Models tab's user-facing objects are **Model connections**
+Within Connections, **Models** and **Engines** cover model and agent setup.
+**The tab owns the noun** (#592): the Models tab's user-facing objects are **Model connections**
 (list title, add flow, delete confirm — all say "model connection"); the
 Engines tab's objects are **Engines**. "Provider" is no longer a user-facing
 object name anywhere — it survives only as the brand/service word inside
@@ -113,7 +111,12 @@ distinction:
 > and the second pair **Engines**, and reveals setup differences only when
 > they matter.
 
-> **Choosing a model is universal — it is not what separates the two.** Every agent picks a model: an agent on Station's engine picks from its **Model** connection (`qwen3-vl`, `claude-sonnet`, `nova`…); an agent on an external engine picks from that **engine connection** (Claude Code's `sonnet`/`opus`, Codex's tiers). The dividing line is **who runs the loop**, not who has models — Station's engine drives a Model connection directly, while an external engine runs its own loop and Station hands it a model (plus effort/thinking). So "Model connection" names *where Station runs inference*, not "the connection that happens to have models."
+Both engine families can offer model selection. Station's engine selects from
+a Model connection; an external engine can expose its own model and
+effort/thinking options. An engine that reports no catalog may use its own
+default. The distinction is which engine owns the loop, not whether its UI has
+a model picker. The [engine capability matrix](../packages/contracts/src/engine-capability-matrix.ts)
+records delivery differences.
 
 **Capabilities** describe what a connection can do (`llm`, `tool-calls`, `approvals`, …) — orthogonal to the Model/engine-connection split.
 
@@ -122,7 +125,7 @@ distinction:
 - **Project-owned agent** — an agent whose record names an owning project (`AgentSpec.project`, `agent-engine-unification.md` §3.3, station#1004 unification slice 7). Appears only inside its owning project (never subject to `ProjectConfig.agents`, never visible elsewhere, including the global/no-project context); deleting the owning project orphans it visibly (a validation state naming the missing project) rather than deleting it. Distinct from `ProjectConfig.agents`, which only opt-in-filters GLOBAL (unowned) agents.
 - **Task** — a durable work identity owned by a Project. A Task can retain an exact workspace binding and typed references and can be reopened after Station restarts.
 - **Task workspace** — the `/tasks/:taskId` surface for one durable Task. It keeps identity, files, diffs, artifacts, receipts, and exact Session correlation in context.
-- **Task experience** — a working mode inside one Task workspace. **Direct** is Station-owned; **Deliver** is Builder Kit-owned; **Learn** is Knowledge Kit-owned; **Operate** is Console-owned. The labels are provisional while #495 is experimental.
+- **Task experience** — a working mode inside one Task workspace. **Direct** is Station-owned; **Deliver**, **Learn**, and **Operate** name intended Builder Kit, Knowledge Kit, and Console integrations. Installed, enabled plugin capability declarations make the optional tabs visible. Their current panels describe the integration boundary; visibility does not prove an operational integration. See [the Task experience resolver](../src-ui/src/views/task-experiences.ts) and [Task workspace](../src-ui/src/views/TaskWorkspaceView.tsx).
 - **Session** — one bounded execution episode. A Task may have no Session or correlate an exact Session; a Session is not itself a durable Task.
 - **Draft** (session state) — a Session that nothing has been sent to: no turn has started and no send was attempted anywhere in its conversation's lineage, nothing in that lineage produced output, and it carries no history from elsewhere (attached, adopted, a Station-dispatched delegation, or a fork, which carries copied messages). The server derives it (`OrchestrationSessionSummary.draft`, #2310) so every device computes the same answer from the same read; a Draft is listed under **Drafts**, never under "Active now". A send that was attempted and did not take, with no activity since, is not a Draft either — that Session reads **Failed** with the reason ("Station refused the send before it started", or "The send failed and no activity has been recorded since", since a failed send may still have reached the engine); activity landing later clears it, and a send refused because the caller may not act on the Session changes nothing. The first turn ends a Draft: the sending device re-reads at once, other devices on their next session-list read (live push to other devices depends on #2307 and #2309 Phase B). **Discard draft** (#2312) deletes a Draft on the server — the whole conversation, since the Draft fact is conversation-wide — so every device's next session-list read agrees; the server re-derives the fact and refuses anything that is not a Draft. Drafts created more than 24 hours ago fold under "N older drafts" (creation, because a Draft's other clocks move without anyone touching it — a stop rewrites `updatedAt`) in each Drafts group; nothing is deleted automatically. Not the same thing as a composer draft — unsent text in a chat's input, kept per device.
 - **Agent run** — one agent working through a request from start to stop: the thing a step limit counts steps of, an output-token ceiling bounds, and a workspace is chosen for. It is the vocabulary the product already uses in its own settings help ("Station stops an agent run once it has taken this many steps",
@@ -140,8 +143,8 @@ We do **not** use "runtime" as a user-facing word; it meant too many things. Eac
 | the `src-server` orchestrator | **Station core** / the server |
 | a `kind:'runtime'` connection | **Engine** connection |
 | "Runtime Chat" picker group | per-**engine** groups (§8.3) |
-| `executionMode: 'runtime'` | **external** (shipped, slice 6/station#1003 — the VALUE itself is now `'external'`; a read-time shim normalizes older `'runtime'`-valued `agent.json`/remote payloads) |
-| `executionMode: 'provider-managed'` | **station** (shipped, slice 6/station#1003 — same shim covers `'provider-managed'` → `'station'`) |
+| `executionMode: 'runtime'` | **external**; the old value is retired, with no read-time normalization shim |
+| `executionMode: 'provider-managed'` | **station**; the old value is retired, with no read-time normalization shim |
 
 ## Capabilities (Station agents own these; External agents can opt in to MCP or skills passthrough)
 
@@ -235,8 +238,7 @@ design record and `src-ui/src/__tests__/placement-vocabulary.test.ts` pins the
 retired names.
 
 - **Region** — a fixed shell slot: `main`, `left`, `right`, `bottom`
-  (`REGION_IDS`). The shell owns regions; nothing placed in one reads which
-  region it is in.
+  (`REGION_IDS`). The shell owns their placement and chrome.
 - **Surface** — a thing registered to occupy a region, with an id, title,
   icon, optional keyboard chord, default region and who offers it
   (`REGION_SURFACE_REGISTRY`; `exposure`). Chat, Activity and, since #2047,
@@ -245,7 +247,7 @@ retired names.
   rather than the toolbar, and bound to the dock's active project. "Surface"
   means this in the region model and its chrome; older prose still uses the
   lowercase word for any page or area, and the Kontour product Surface is
-  always written with its product name. The twenty navigable places the
+  always written with its product name. The navigable places the
   palette and sidebar send you to are **destinations**
   (`APP_DESTINATION_REGISTRY`).
 - **Layout** — a named view the sidebar navigates between: Coding, Tasks,
@@ -274,8 +276,7 @@ retired names.
   region as a pane beside Chat (`board:<layoutId>`, #2157;
   [design/placement.md](design/placement.md)).
 
-  The word is overloaded in this codebase and the overload is deliberate to
-  name, not to resolve: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,
+  Board has other qualified meanings in this codebase: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,
   a layout `type`) and the **board face** (`NavigationView`'s `board` member at
   `/board/task/…`, archive#4079) are unrelated objects that share the English
   word. A Board in the D1 sense routes at `/boards/:slug` and its view type is
@@ -322,29 +323,54 @@ retired names.
 
 ## Browser pane, live surface, control lease
 
-Decided in [ADR 0019](adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md).
-None of it is implemented yet.
+The design began in
+[ADR 0019](adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md).
+The current code composes the Browser pane and live-surface routes on personal
+hosts; hosted tenant runtimes do not mount those routes. The ADR retains its
+original design and verification gaps and is not a current availability report.
 
-- **Browser pane** — the Workspace Pane that shows a web page rendered by a
-  browser on the Station host, streamed to every client. The Station operator
-  and the admins and owners of the session's Project, and their agents, can
-  operate it.
-  It supersedes the loopback-only
-  **Browser Preview** pane (`packages/contracts/src/workspace-browser-preview.ts`),
-  which remains the shipped `1.0` pane until the `2.0` migration lands.
+Use the [Browser workspace guide](guides/browser-workspace.md) for acquisition,
+profiles, target access and Agent permissions, the
+[Device guide](guides/mobile-device-workspace.md) for simulator/emulator setup,
+and the [module map](architecture/module-map.md#shared-live-surface) for shared
+frame, input and lifecycle ownership.
+
+- **Browser pane** — a Workspace Pane that displays a browser session running
+  on the Station host. Authorized Devices view its streamed frames. The
+  Station operator can view and control sessions across profiles; active
+  Project admins and owners are restricted to sessions in their own profile.
+  Agent operations need a separately verified grant. Pane state `2.0` stores
+  the Project ID and browser-session reference. Opening a legacy `1.0` Browser
+  Preview record restores or opens a server session for its URL and saves the
+  new reference after attachment.
 - **Live surface** — the host-neutral primitive behind a streamed pane: one
   producer's frames fanned out to any number of viewers, a typed input
-  channel, and a control lease. It is shared by the Browser pane and, later,
-  the Device pane. It is a developer-contract term. Always write it as the
+  channel, and a control lease. Browser and Device sessions use it. It is a
+  developer-contract term. Always write it as the
   two-word phrase. It is **not** a placement **Surface** (a thing that
   occupies a region) and it is not the Kontour product Surface. Never shorten
   it to "surface".
 - **Control lease** — the right to send input to a live surface. At most one
-  holder (a human or an agent session) at a time; watching needs no lease.
-  Every claim increments the lease's **epoch**. Human input claims it
-  automatically, which interrupts an agent operation already in flight. An
-  agent claim never preempts a human holder. The right to view and the right
-  to hold the lease are authorized separately.
+  holder (a human on one Device or an agent Session) controls it at a time;
+  watching needs no lease. Human input can claim control when its observed
+  **epoch** is current; a stale epoch is refused. The epoch advances when a
+  different controller takes over, not when the same holder renews or returns
+  after a lapse. A separate **fence** advances on every holder change,
+  including release and expiry, so work from an earlier claim cannot become
+  valid when the same agent reclaims control. An agent cannot preempt a live
+  human lease. Viewing and controlling are authorized separately.
+
+Follow the implementation through
+[runtime composition](../src-server/runtime/routes/runtime-routes.ts),
+[pane state and migration](../src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx),
+[browser authorization](../src-server/services/browser/browser-live-surfaces.ts),
+and the [lease state machine](../src-server/services/live-surface/control-lease.ts).
+The [runtime route tests](../src-server/runtime/routes/__tests__/runtime-routes-live-surface.test.ts)
+exercise caller admission and the hosted-mode boundary; the
+[lease tests](../src-server/services/live-surface/__tests__/control-lease.test.ts)
+cover takeover, stale input, renewal, release, and expiry. These checks do not
+establish physical-device operation, browser availability on every host, or
+release delivery.
 
 ## User-facing labels
 
@@ -371,12 +397,21 @@ None of it is implemented yet.
 ## Persisted identity records
 
 - **`config/agent-registry.json`** — the sole authority for engine-connection identity and its owned default Agent. An external connection and its default Agent intentionally share the same clean text ID while remaining distinct typed namespaces (`EngineConnectionId` and `AgentId`).
-- **`station`** — the persisted, non-deletable default Agent owned by Station's engine. There is no hidden `default` alias.
+- **`station`** — the persisted, non-deletable default Agent. Its engine is selected in Station settings, separately from the Agent record. There is no hidden `default` alias.
 - Default Agents are records, not readiness projections. Disabled, degraded, disconnected, and unprobed engines retain their Agent; availability is an explicit field and reason.
 
 ## Rename status
 
-This is the current pre-release vocabulary. Station does not preserve incompatible identity schemas: a non-empty unversioned or wrong-version home fails before data loading with `STATION_HOME_RESET_REQUIRED`, which names the supported `station home reset --confirm` command (station#1913) rather than requiring a manual, improvised fix.
+This is the current vocabulary. The
+[home-schema gate](../packages/shared/src/station-home-schema.ts) checks
+compatibility before application data is loaded. At schema version `2`, a
+home with existing data but no valid marker, or a version below `2`, requires
+explicit archive-and-reset (`STATION_HOME_RESET_REQUIRED`). A home from a
+newer schema instead fails with `STATION_HOME_SCHEMA_DOWNGRADE_REFUSED`; it
+is not treated as a reset candidate. Fresh, recognized bootstrap scaffolding
+can receive the current marker. The production migration registry is empty.
+See the [schema tests](../packages/shared/src/__tests__/station-home-schema.test.ts)
+and [reset command](reference/cli.md#home-reset) for the separate outcomes.
 
 - **User-facing labels:** the Connections tab owns the noun (#592) — **Model
   connection** on the Models tab, **Engine** on the Engines tab, **Model** for

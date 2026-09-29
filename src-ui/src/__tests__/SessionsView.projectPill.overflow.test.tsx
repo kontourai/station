@@ -260,22 +260,6 @@ describe.skipIf(!chromiumAvailable)(
       },
     );
 
-    test('the evidence button no longer takes its width before the chip sees any', async () => {
-      const { pill, evidence, trailing } = await measure(280);
-      if (!pill || !evidence || !trailing)
-        throw new Error('the row did not render');
-      // Pre-fix both sat on one line inside a 38% cap and the pill took what
-      // was left. Either they now share the slot with the pill still legible,
-      // or the pill has taken the line below — both are readable outcomes, and
-      // asserting only one of them would pin a layout rather than the property.
-      const sharesALine = pill.top < evidence.bottom - 1;
-      if (sharesALine) {
-        expect(pill.width).toBeGreaterThanOrEqual(MIN_READABLE_PILL_PX);
-      } else {
-        expect(pill.top).toBeGreaterThanOrEqual(evidence.bottom - 1);
-      }
-    });
-
     /**
      * The measurements this fix is worth, at the same fixture: the pill went
      * from 40.8px at every rail width (three glyphs) to 82 / 104.8 / 153.3 at
@@ -302,5 +286,17 @@ describe.skipIf(!chromiumAvailable)(
       expect(pill.left).toBeGreaterThanOrEqual(row.left - 1);
       expect(nameText.width).toBeGreaterThan(0);
     });
+  },
+);
+
+test.skipIf(chromiumAvailable)(
+  'Activity session row project chip — Chromium not installed, cannot verify (#1582 E7)',
+  () => {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so the session ' +
+        'row’s project chip width could not be measured — this is a missing ' +
+        'precondition, not a passing check. Install it with ' +
+        '`npm run install:playwright` and re-run.',
+    );
   },
 );

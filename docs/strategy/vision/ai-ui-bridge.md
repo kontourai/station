@@ -1,5 +1,13 @@
 # Vision: AI ↔ UI Bridge
 
+> **Vision and August 2026 implementation snapshot.** Present-tense statements
+> below describe that assessment and are not a current capability guarantee.
+> Use the [module map](../../architecture/module-map.md),
+> [SDK reference](../../reference/sdk.md), and
+> [engine delivery guide](../../conformance/tool-policy-delivery.md) for current
+> callers, supported integration paths, and differences between engines.
+
+
 > The north star for Station's core differentiator. This document describes
 > where we're going, what exists today, what's next, and what's aspirational.
 > It evolves as capabilities are built.

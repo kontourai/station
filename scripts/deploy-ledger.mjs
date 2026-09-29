@@ -99,6 +99,50 @@ export const DEPLOY_LEDGER_VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+~-]*$/;
  * generous for a `date -u` taken in the same second as the publish. */
 const FUTURE_TIMESTAMP_SKEW_MS = 5 * 60_000;
 
+function validateChangelog(changelog) {
+  if (changelog === undefined || changelog === null) return [];
+  if (typeof changelog !== 'object' || Array.isArray(changelog))
+    return ['changelog must be an object or null'];
+  const errors = [];
+  if (
+    changelog.previousSha !== null &&
+    (typeof changelog.previousSha !== 'string' ||
+      !SHA_PATTERN.test(changelog.previousSha))
+  )
+    errors.push('changelog.previousSha must be a full SHA or null');
+  if (
+    changelog.note !== undefined &&
+    changelog.note !== null &&
+    (typeof changelog.note !== 'string' || !changelog.note.trim())
+  )
+    errors.push('changelog.note must be a non-empty string or null');
+  if (changelog.groups === undefined) {
+    if (typeof changelog.note !== 'string' || !changelog.note.trim())
+      errors.push('A historical changelog without groups needs a note');
+  } else if (
+    !changelog.groups ||
+    typeof changelog.groups !== 'object' ||
+    Array.isArray(changelog.groups)
+  ) {
+    errors.push('changelog.groups must map known groups to string arrays');
+  } else {
+    for (const [group, lines] of Object.entries(changelog.groups)) {
+      if (
+        !Object.hasOwn(GROUP_TITLES, group) ||
+        !Array.isArray(lines) ||
+        lines.some((line) => typeof line !== 'string' || !line.trim())
+      )
+        errors.push(`Invalid changelog group: ${group}`);
+    }
+  }
+  if (
+    (changelog.groups !== undefined || changelog.commitCount !== undefined) &&
+    (!Number.isSafeInteger(changelog.commitCount) || changelog.commitCount < 0)
+  )
+    errors.push('changelog.commitCount must be a non-negative safe integer');
+  return errors;
+}
+
 export function validateEntry(entry) {
   const errors = [];
   if (
@@ -189,6 +233,7 @@ export function validateEntry(entry) {
   ) {
     errors.push('notes must be null or an array of non-empty strings');
   }
+  errors.push(...validateChangelog(entry.changelog));
   return { ok: errors.length === 0, errors };
 }
 
@@ -333,7 +378,7 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
   const lines = [
     '# Deploy ledger',
     '',
-    'Every ship this repository makes, recorded by the workflow that shipped it — the answer to "on this date, this version was deployed; how out of date am I?" (archive#4572).',
+    "Release records appended by the publishing workflows, plus explicitly qualified historical entries (archive#4572). Check each record's source revision, workflow and caveats; this ledger is not proof that every attempted publication succeeded or was recorded.",
     '',
     '## Machine-readable source of truth',
     '',
@@ -355,7 +400,7 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
     '',
     '### Site consumption',
     '',
-    'This file decides nothing about how `station.kontourai.io` will read the ledger (archive#4572 site follow-up). What is true today: the in-repo path and schema above are the source of truth, every publish appends exactly one entry per shipped surface and commits it back to `main`, and the public raw JSON URL above is available to consumers without authentication. The site PR decides whether it reads that URL directly or copies the JSON, along with caching, refresh, and presentation. Because `main` moves, consumers should retain each entry’s `sha` and `workflowRunUrl` as evidence rather than treating a later fetch as an immutable release receipt.',
+    'The public raw JSON URL can be read without authentication. Publishing workflows invoke the appender for their shipped surfaces and use a separate commit-back step. A publication and its ledger update can fail independently; this Markdown cannot establish completeness or current artifact availability. Consumers may read the JSON directly or copy it under their own caching and refresh policy. Because `main` moves, retain each entry’s `sha` and `workflowRunUrl` rather than treating a later fetch as an immutable release receipt.',
     '',
     '## Ledger',
     '',

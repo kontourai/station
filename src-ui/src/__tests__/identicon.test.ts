@@ -2,9 +2,14 @@ import { describe, expect, test } from 'vitest';
 import { identiconHue } from '../utils/identicon';
 
 describe('identiconHue (station#1424)', () => {
-  test('is deterministic — the same seed always yields the same hue', () => {
-    expect(identiconHue('claude-code')).toBe(identiconHue('claude-code'));
-    expect(identiconHue('my-agent-slug')).toBe(identiconHue('my-agent-slug'));
+  test('is stable across reloads and clients — pinned to the published FNV-1a vectors', () => {
+    // FNV-1a 32-bit reference values ('a' -> 0xe40c292c, 'foobar' ->
+    // 0xbf9cf968), reduced mod 360. A changed hash re-colours every agent on
+    // every client, so the hue itself is the contract, not self-agreement.
+    expect(identiconHue('a')).toBe(0xe40c292c % 360);
+    expect(identiconHue('a')).toBe(340);
+    expect(identiconHue('foobar')).toBe(0xbf9cf968 % 360);
+    expect(identiconHue('foobar')).toBe(160);
   });
 
   test('different seeds typically yield different hues', () => {
@@ -20,8 +25,7 @@ describe('identiconHue (station#1424)', () => {
     }
   });
 
-  test('an empty seed still resolves deterministically rather than throwing', () => {
-    expect(() => identiconHue('')).not.toThrow();
-    expect(identiconHue('')).toBe(identiconHue(''));
+  test('an empty seed takes the same hue as the fallback seed "agent"', () => {
+    expect(identiconHue('')).toBe(identiconHue('agent'));
   });
 });

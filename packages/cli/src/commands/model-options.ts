@@ -1,24 +1,10 @@
 /**
- * Shared per-invocation settings collection for `station chat`
- * (`session-client.ts`) and `station delegate` (`delegate.ts`) — station#978.
- *
- * `--approval-mode=<v>` (contracts `APPROVAL_MODES`), `--effort=<v>`,
- * `--thinking=<true|false>`, and repeated `--model-option key=value` all
- * merge into one `modelOptions` bag; `--cwd=<path>` is collected alongside
- * it since both flow into the same `startSession`/`sendTurn` call sites.
- *
- * Precedence (AC7): `--model-option` entries are merged first, then the
- * four named flags are applied on top — a named flag always wins a key
- * collision with `--model-option` (e.g. `--effort=high --model-option
- * effort=low` sends `effort: 'high'`).
- *
- * Value validation is deliberately narrow: only `--approval-mode`'s value is
- * checked, against the contracts `ApprovalMode` vocabulary (AC5) — every
- * other key's *support* (not its value shape) is the server's
- * `PROVIDER_MODEL_OPTION_SUPPORT` to enforce (`unsupportedModelOptionKeys`),
- * not the CLI's. Duplicating provider-specific value knowledge here would
- * defeat non-CLI callers hitting the same server routes (plan stop-short
- * risk).
+ * Shared chat/delegate option parsing (archive#978). Named flags override
+ * repeated --model-option=key=value entries; cwd is a separate workspace
+ * value. Local checks validate approval mode, booleans and nonempty values.
+ * The serving Station owns provider-specific option support so non-CLI
+ * callers use the same enforcement. The core parser requires equals syntax;
+ * rejecting its bare --model-option form remains tracked in #2732.
  */
 import {
   APPROVAL_MODES,
@@ -77,7 +63,7 @@ function coerceBooleanFlagValue(
 }
 
 /**
- * `--model-option key=value` values are always raw argv strings; coerce the
+ * `--model-option=key=value` values are raw argv strings; coerce the
  * two literal boolean spellings so a key like `fastMode`/`autoMode` (read by
  * `typeof options?.fastMode === 'boolean'` in claude-adapter.ts) actually
  * applies instead of being silently ignored as a non-boolean. Everything
@@ -93,7 +79,7 @@ function coerceModelOptionValue(raw: string): unknown {
 
 /**
  * Reads `--approval-mode`/`--effort`/`--thinking`/`--cwd` plus repeated
- * `--model-option key=value` flags off an already-parsed command line.
+ * `--model-option=key=value` flags off an already-parsed command line.
  * Throws a usage error (caller's ordinary exit-1 path, before any request)
  * for an invalid `--approval-mode` value, a valueless `--effort`/`--cwd`, a
  * non-boolean `--thinking`, or a malformed `--model-option` (missing `=`).

@@ -559,13 +559,19 @@ test.describe('Default agent workflow', () => {
     await sendButton.click();
     await expect(page.locator('body')).toContainText('Conversation Statistics');
 
+    // /clear and /new announce themselves with the same notice, so /new is
+    // only observable as a second one: the first alone would satisfy a
+    // presence check before /new ran at all.
+    const clearedNotices = page
+      .getByRole('log', { name: 'Conversation transcript' })
+      .getByText('Conversation cleared', { exact: true });
     await textarea.fill('/clear');
     await sendButton.click();
-    await expect(page.locator('body')).toContainText('Conversation cleared');
+    await expect(clearedNotices).toHaveCount(1);
 
     await textarea.fill('/new');
     await sendButton.click();
-    await expect(page.locator('body')).toContainText('Conversation cleared');
+    await expect(clearedNotices).toHaveCount(2);
 
     await page.getByRole('button', { name: 'Conversation history' }).click();
     await expect(page.locator('.conversation-history')).toContainText(

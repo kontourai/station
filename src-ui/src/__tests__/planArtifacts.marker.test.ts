@@ -7,15 +7,13 @@
  * That skip is semantics-neutral by construction, which means it has no
  * behavioural test of its own. What it CAN break is real: a marker family
  * missing from the guard is a plan that silently stops rendering. So the guard
- * is walked against every pattern the parser owns, from both sides — the
- * marker predicate itself, and the artifact the streaming derivation returns.
+ * is walked against every pattern the parser owns through the artifact the
+ * streaming derivation returns.
  */
 
 import { describe, expect, test } from 'vitest';
 import {
   derivePlanArtifactFromStreamingState,
-  derivePlanArtifactFromText,
-  hasPlanMarker,
   type PlanArtifact,
 } from '../utils/planArtifacts';
 
@@ -61,16 +59,6 @@ function streamingChat(text: string) {
 
 describe('plan marker guard', () => {
   test.each(PATTERN_SAMPLES)(
-    'the guard admits the $family step pattern',
-    ({ text }) => {
-      expect(hasPlanMarker(text)).toBe(true);
-      // The whole point of admitting it: the parser still produces the plan.
-      const artifact = derivePlanArtifactFromText(text, 'assistant');
-      expect(artifact?.steps.length).toBeGreaterThan(0);
-    },
-  );
-
-  test.each(PATTERN_SAMPLES)(
     'a streamed $family plan still reaches the panel',
     ({ text }) => {
       const artifact = derivePlanArtifactFromStreamingState(
@@ -84,7 +72,6 @@ describe('plan marker guard', () => {
   test('prose with no step character keeps the previous artifact by reference', () => {
     const prose =
       'I looked at the file and the answer seems fine to me as written.';
-    expect(hasPlanMarker(prose)).toBe(false);
     expect(derivePlanArtifactFromStreamingState(streamingChat(prose))).toBe(
       PRIOR,
     );

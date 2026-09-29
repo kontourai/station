@@ -170,7 +170,7 @@ test('mounted history controls seek canonical replay turns, fork with durable id
   liveLog.remove();
 });
 
-test('indexes the maximum 20,000-frame archive without consulting mounted rows', () => {
+test('indexes the maximum 20,000-frame archive in one linear pass and memoizes it', () => {
   const frames = Array.from({ length: 20_000 }, (_, index) => ({
     kind: 'runtime' as const,
     atMs: index,
@@ -181,6 +181,8 @@ test('indexes the maximum 20,000-frame archive without consulting mounted rows',
   expect(landmarks).toHaveLength(20_000);
   expect(conversationTimelineLandmarks({ frames })).toBe(landmarks);
   expect(landmarks[19_999]?.endFrame).toBe(19_999);
+  // A complexity guard, not a latency budget: the linear pass measured ~15ms
+  // and a quadratic one (a slice per landmark) ~800ms on the same machine.
   expect(performance.now() - started).toBeLessThan(250);
 });
 

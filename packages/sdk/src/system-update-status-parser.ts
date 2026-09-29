@@ -17,6 +17,8 @@
 import type {
   DevicePresentation,
   SelfUpdateUnavailableCode,
+  ServiceUpdatePhase,
+  ServiceUpdateProgress,
   SystemIdentityResponse,
   SystemRuntimeIdentity,
   UpdateProvenanceIssue,
@@ -34,6 +36,27 @@ const PROVENANCE_ISSUES: readonly UpdateProvenanceIssue[] = [
 const SELF_UPDATE_UNAVAILABLE_CODES: readonly SelfUpdateUnavailableCode[] = [
   'service-managed',
   'supervised',
+];
+
+const INSTALL_KINDS: ReadonlyArray<
+  NonNullable<CoreUpdateStatus['installKind']>
+> = [
+  'source-checkout',
+  'desktop-bundle',
+  'archive',
+  'archive-service',
+  'unknown',
+];
+
+const RELEASE_CHECKS: ReadonlyArray<
+  NonNullable<CoreUpdateStatus['releaseCheck']>
+> = ['verified', 'unreachable', 'unverified', 'not-recorded'];
+
+const SERVICE_UPDATE_PHASES: readonly ServiceUpdatePhase[] = [
+  'stopping',
+  'backing-up',
+  'trial',
+  'restoring',
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -118,6 +141,134 @@ export function parseSystemIdentityResponse(
   };
 }
 
+function optionalRequestId(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return isNonEmptyString(value) ? value : undefined;
+}
+
+/**
+ * Parse a launcher-run archive's update progress (#2675). Every state is
+ * checked for the fields it carries; anything else — a malformed record or a
+ * state this SDK does not know — reads as `unavailable`, never as a
+ * neighbouring state nobody reported.
+ */
+export function parseServiceUpdateProgress(
+  value: unknown,
+): ServiceUpdateProgress {
+  const unavailable: ServiceUpdateProgress = { state: 'unavailable' };
+  if (!isRecord(value)) return unavailable;
+  const text = (key: string) =>
+    isNonEmptyString(value[key]) ? (value[key] as string) : null;
+  switch (value.state) {
+    case 'idle':
+    case 'unavailable':
+      return { state: value.state };
+    case 'queued':
+    case 'staging': {
+      const requestId = text('requestId');
+      return requestId ? { state: value.state, requestId } : unavailable;
+    }
+    case 'updating': {
+      const requestId = optionalRequestId(value.requestId);
+      const fromVersion = text('fromVersion');
+      const targetVersion = text('targetVersion');
+      if (
+        requestId === undefined ||
+        !fromVersion ||
+        !targetVersion ||
+        !SERVICE_UPDATE_PHASES.includes(value.phase as ServiceUpdatePhase) ||
+        !Number.isSafeInteger(value.attempts)
+      )
+        return unavailable;
+      return {
+        state: 'updating',
+        requestId,
+        phase: value.phase as ServiceUpdatePhase,
+        fromVersion,
+        targetVersion,
+        attempts: value.attempts as number,
+      };
+    }
+    case 'committed':
+    case 'rolled-back':
+    case 'failed': {
+      const requestId = optionalRequestId(value.requestId);
+      const fromVersion = text('fromVersion');
+      const targetVersion = text('targetVersion');
+      const finishedAt = text('finishedAt');
+      if (
+        requestId === undefined ||
+        !fromVersion ||
+        !targetVersion ||
+        !finishedAt
+      )
+        return unavailable;
+      if (value.state === 'committed')
+        return {
+          state: 'committed',
+          requestId,
+          fromVersion,
+          targetVersion,
+          finishedAt,
+        };
+      const reason = text('reason');
+      if (!reason) return unavailable;
+      return {
+        state: value.state,
+        requestId,
+        fromVersion,
+        targetVersion,
+        reason,
+        finishedAt,
+      };
+    }
+    case 'needs-operator': {
+      const requestId = optionalRequestId(value.requestId);
+      const fromVersion = text('fromVersion');
+      const targetVersion = text('targetVersion');
+      const reason = text('reason');
+      const finishedAt = text('finishedAt');
+      if (
+        requestId === undefined ||
+        !fromVersion ||
+        !targetVersion ||
+        !reason ||
+        !finishedAt ||
+        !Number.isSafeInteger(value.restoreAttempts)
+      )
+        return unavailable;
+      return {
+        state: 'needs-operator',
+        requestId,
+        fromVersion,
+        targetVersion,
+        reason,
+        restoreAttempts: value.restoreAttempts as number,
+        finishedAt,
+      };
+    }
+    case 'up-to-date': {
+      const requestId = text('requestId');
+      const version = text('version');
+      const finishedAt = text('finishedAt');
+      return requestId && version && finishedAt
+        ? { state: 'up-to-date', requestId, version, finishedAt }
+        : unavailable;
+    }
+    case 'staging-failed':
+    case 'rejected': {
+      const requestId = text('requestId');
+      const reason = text('reason');
+      const finishedAt = text('finishedAt');
+      return requestId && reason && finishedAt
+        ? { state: value.state, requestId, reason, finishedAt }
+        : unavailable;
+    }
+    default:
+      return unavailable;
+  }
+}
+
 /**
  * Parse a `GET /api/system/core-update` status. Throws on a non-boolean
  * `updateAvailable` or a malformed supplied count/flag used for state
@@ -180,9 +331,30 @@ export function parseSystemUpdateStatus(value: unknown): CoreUpdateStatus {
     ahead: value.ahead as number | undefined,
     updateAvailable: value.updateAvailable,
     noUpstream: value.noUpstream as boolean | undefined,
-    installKind: value.installKind as CoreUpdateStatus['installKind'],
+    // An install kind this SDK does not know is left out rather than passed
+    // through as a kind a consumer would branch on.
+    installKind: INSTALL_KINDS.includes(
+      value.installKind as NonNullable<CoreUpdateStatus['installKind']>,
+    )
+      ? (value.installKind as CoreUpdateStatus['installKind'])
+      : undefined,
     channel: typeof value.channel === 'string' ? value.channel : undefined,
     applyMethod: value.applyMethod as CoreUpdateStatus['applyMethod'],
+    currentVersion: isNonEmptyString(value.currentVersion)
+      ? value.currentVersion
+      : undefined,
+    latestVersion: isNonEmptyString(value.latestVersion)
+      ? value.latestVersion
+      : undefined,
+    releaseCheck: RELEASE_CHECKS.includes(
+      value.releaseCheck as NonNullable<CoreUpdateStatus['releaseCheck']>,
+    )
+      ? (value.releaseCheck as CoreUpdateStatus['releaseCheck'])
+      : undefined,
+    serviceUpdate:
+      value.serviceUpdate === undefined
+        ? undefined
+        : parseServiceUpdateProgress(value.serviceUpdate),
     remoteUnreachable: value.remoteUnreachable as boolean | undefined,
     message: typeof value.message === 'string' ? value.message : undefined,
     error: typeof value.error === 'string' ? value.error : undefined,

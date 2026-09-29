@@ -1,5 +1,13 @@
 # Design: Instance Registry (`<STATION_HOME>/instances.json`)
 
+> **Reading status: current storage contract with recorded race evidence.**
+> [Shared registry](../../packages/shared/src/instance-registry.ts),
+> [CLI lifecycle](../../packages/cli/src/commands/lifecycle.ts),
+> [service management](../../packages/cli/src/commands/service.ts), and the
+> [Desktop bridge](../../src-server/tools/instance-registry-bridge.ts) are the
+> implementation owners. The historical race and platform claims below need
+> their own evidence; current owner links alone do not re-prove them.
+
 > Status: **landed and wired for durable services and Desktop sidecars**. The module
 > (`packages/shared/src/instance-registry.ts`, published as
 > `@kontourai/station-shared/instance-registry`) is built and tested — including
@@ -79,11 +87,14 @@ The cross-concept topology and authority boundary is defined in
   Merge semantics make it wrong for producers publishing a complete entry
   over a possibly-foreign one (station#3047): every field the partial omits
   survives from the existing entry.
-- `claimInstanceEntry(id, entry, { home?, protectedTypes? })` — locked,
+- `claimInstanceEntry(id, entry, { home?, protectedTypes?, adoptTypes? })` — locked,
   ownership-checked **replacement** (station#3047): refuses a
   `protectedTypes` entry (dead or alive) or an entry owned by a live process
   (birth-aware, fail-open; `entry.pid` may refresh its own), else writes
-  exactly `entry`. The guard runs inside the mutation lock — this is the
+  exactly `entry`. A caller may explicitly adopt an owned type through
+  `adoptTypes`; service reconfiguration uses this for `service` entries while
+  its backend protocol owns replacement. `protectedTypes` still wins over
+  adoption. The guard runs inside the mutation lock — this is the
   owned-upsert primitive #2904's review asked for.
 - `replaceInstance(id, entry, home?)` — locked unconditional exact write; for
   compensation paths restoring a captured prior entry.
@@ -95,8 +106,15 @@ The cross-concept topology and authority boundary is defined in
   path's counterpart to `claimInstanceEntry`.
 - `entryOwnedByLiveProcess(entry, selfPid?)` — the liveness-ownership
   predicate the claim guard uses, exported for pre-checks.
-- `findRunning(home?)` — read-only; the subset of instances whose `pid` is set
-  and alive (`process.kill(pid, 0)`).
+- `findRunning(home?)` — read-only; excludes records without a numeric pid,
+  processes proven dead, and recorded birth fingerprints proven to belong to
+  a reused pid. Unknown liveness or a failed birth lookup retains the record;
+  the result is not proof that every returned process is running.
+
+Shape validation checks the version, instance map, finite numeric port and
+recognized type. It is not a closed validator for every optional metadata
+field. Producers and consumers must validate the fields they use; registry
+metadata alone does not authenticate a process or grant lifecycle authority.
 
 ### The `component` field on `GET /api/system/instance`
 
@@ -104,7 +122,7 @@ The sibling HTTP route this slice also adds
 (`src-server/routes/system/system-status-routes.ts`, `GET /api/system/instance`,
 station#1985/#1983) self-reports `component: 'command-station'` alongside
 whatever build/port fields it can determine — it does not read this registry
-file (see [Explicit non-goals of this slice](#explicit-non-goals-of-this-slice)).
+file (see [Producers, consumers, and remaining non-goals](#producers-consumers-and-remaining-non-goals)).
 It is documented here because both concepts share this design doc's context.
 
 - **Value space today: exactly `'command-station'`.** That is the server
@@ -141,20 +159,26 @@ itself is temp-write + `fsyncSync` + `renameSync` + a directory `fsync` (via
 `fsyncDirectorySync` from `packages/shared/src/fs-windows-compat.ts`, already
 Windows-safe) + re-open-and-verify — the same atomic-write-with-verify shape
 `packages/cli/src/commands/lifecycle.ts`'s `writeInstanceState` uses, minus its
-per-record backup/restore ceremony. That ceremony exists to protect a
-concurrent reader from ever observing a half-written file; here the entire
-read-modify-write happens inside the single lock acquisition, so there is no
-window in which a reader could observe a torn intermediate state a backup
-would need to roll back from. The directory fsync wires
+per-record backup/restore ceremony. The mutation lock serializes writers;
+readers do not acquire it. Publishing a complete temporary file by atomic rename
+lets a reader observe the old or new payload instead of partially written JSON.
+A failure after rename can still leave the new payload visible and must not be
+interpreted as rollback. The directory fsync wires
 `fsyncDirectorySync`'s `checkIdentity` callback with a dev/ino snapshot of the
 `STATION_HOME` directory taken before the rename, so a directory replaced
 mid-publish fails closed rather than silently fsyncing the wrong directory.
 
-This is proven, not just documented: `packages/shared/src/__tests__/instance-registry.test.ts`
-spawns two real child processes racing `upsertInstance` against the same
-registry file (the exact shape `packages/shared/src/__tests__/lifecycle-events.test.ts`'s
-existing race test already uses) and asserts the union of both children's
-writes lands with no lost update and no torn read.
+POSIX ownership/mode checks do not establish Windows ACL custody. The shared
+registry reader does not inspect Windows DACLs, and directory fsync is skipped
+on Windows while its identity callback still runs. Platform caller checks and
+actual durability/recovery qualification remain separate.
+
+The fixture in `packages/shared/src/__tests__/instance-registry.test.ts`
+spawns two real child processes, each performing ten `upsertInstance` calls
+against the same registry. It requires both children to exit successfully and
+the final read to contain their combined entries. That exercises concurrent
+writers and final readability; it is not a crash, power-loss, or independent
+reader stress test. A historical pass is not a new platform qualification.
 
 `readInstanceRegistry` is fail-closed the same way
 `packages/cli/src/commands/profile-store.ts`'s `readProfileStore` is: absence
@@ -164,10 +188,12 @@ or replaced.
 
 Two disclosed limits of the discipline (verified by probe, not assumed):
 
-- **The parent-trust check covers the immediate parent only.** A symlinked
+- **The registry's parent-trust check covers the immediate parent only.** A symlinked
   `STATION_HOME` is rejected; a symlink at a *deeper* ancestor is allowed —
   the same scope `readProfileStore` checks. Deeper ancestors are trusted like
-  every other store in this repo.
+  the registry's trust model. Separately, `admitStationRuntimeHome` canonicalizes
+  existing ancestry and refuses shared Station control containers; this does not
+  add owner/mode validation to every ancestor of an otherwise admitted home.
 - **A relative `STATION_HOME` is out of contract.** `resolve()` anchors it at
   each calling process's own cwd, so two processes with different cwds would
   derive two disjoint registries with no error. Every supervisor in this repo
@@ -183,15 +209,18 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   `claimInstanceEntry` (replace, never merge): installing over a foreign
   (CLI) entry previously inherited its pid/birth into a `type: 'service'`
   chimera that could flip Desktop's home-ownership decision off a live CLI
-  process. Install now refuses while a live process owns the id (pre-check
-  before any backend mutation, re-checked under the lock), replaces a dead
-  entry cleanly, and derives origin policy/env only from a prior
+  process. Install refuses a foreign live owner (pre-check before backend
+  mutation, re-checked under the lock), explicitly adopts a service-typed entry
+  during its own reconfiguration, replaces a dead entry cleanly, and derives origin policy/env only from a prior
   service-typed entry.
 - **Desktop sidecar producer and consumer.** Desktop resolves one absolute
-  `STATION_HOME`, reads service candidates through the packaged Node bridge,
-  and probes them before spawning. It attaches only to one verified live
-  service; otherwise it publishes, updates, and removes its own `type:
-  'sidecar'` record through the same bridge. Rust never writes
+  `STATION_HOME` and reads service candidates and process liveness through the
+  packaged Node bridge. One live service record makes that service the home
+  owner and suppresses a sidecar; Desktop reports it without setting an API
+  base or attaching automatically. Opening it remains a user choice. Multiple
+  live services or an unreadable registry refuse ownership selection. When
+  sidecar ownership is available, Desktop publishes, updates and removes its
+  own `type: 'sidecar'` record through the same bridge. Rust never writes
   `instances.json` directly, so owner checks, atomic publishing, and the
   cross-process mutation lock remain shared-module responsibilities.
 - **Producers (updated, station#2904 slice 2).** `station start` now publishes
@@ -199,8 +228,8 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   `'inline'` otherwise; pid + birth fingerprint; best-effort with a stderr
   note on failure) and `station stop` removes the entry — identity-checked on
   pid, ownership-checked on type, including the already-absent stop path so a
-  crashed instance's entry is reaped on the next stop. The CWD-scoped
-  `.station/instances/*` mechanism still exists and remains the only record
+  crashed instance's entry is reaped on the next stop. The separate CLI lifecycle
+  state mechanism still exists and remains the only record
   visible when the registry write was declined or failed. Desktop neither
   selects a service from stale registry data alone nor treats a sidecar
   record as a durable-service candidate.
@@ -208,38 +237,51 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   **The one-owner invariant** this registry serves: every server process has
   exactly one owner that assigned its identity, port, and data dir, enforced
   at the layer native to each surface — the OS-level single-instance lock for
-  the Desktop app (#3045), this registry plus the shared-home warning (and a
-  planned same-home refuse) for the CLI, and the home-scoped sidecar claim as
-  the cross-surface floor. Producers never adopt or delete an entry another
-  surface owns.
+  the Desktop app (#3045), the CLI's shared-home start check, and the home-scoped
+  sidecar claim. The CLI now refuses a new start when its registry observations
+  find another live instance on that home. Existing co-located restarts and
+  explicit `--allow-shared-home` bypass that check; failed registry reads can
+  leave the collision set empty. This is a guarded launch policy, not a global
+  proof that two writers cannot coexist. Producers use ownership checks before
+  adopting or deleting another surface's entry.
 - **Manifest migration bridge.** On the pre-registry bridge (no registry entry
   yet) `station service install` seeds the registry's origins from the existing
   `<home>/service/*.json` manifest and re-validates them; the manifest is now a
   derived mirror + one-time migration fallback rather than the authority. The
-  broader `.station/instances/*` mechanism is still untouched and unmigrated.
+  separate CLI lifecycle records are not replaced by this registry.
 - **No `STATION_HOME_SCHEMA_VERSION` bump.** This file is purely additive.
 
 ## Distinction from `.station/instances/*`
 
 `docs/reference/cli.md`'s "Instance State Mechanism" section documents the
-pre-existing, **CWD-anchored** mechanism: `station start` writes
+**CWD-anchored source-checkout** mechanism: `station start` writes
 `.station/instances/<instance-id>.json` in the *current working directory* of
 the checkout that launched it, recording that one checkout's server/UI PIDs so
 `station stop` can find and terminate the matching instance.
 
+Prebuilt server archives instead put those per-instance lifecycle records in
+`<root>/state/<channel>/instances/`, outside the extracted version. The resolved
+home determines the root; service status and stop calls carry that same home.
+Archives share their shipped build and refuse an in-place build. An archive
+installed under the installer's `versions/` layout can upgrade through its
+recorded installer; a loose extracted archive still requires manual replacement.
+See [the CLI reference](../reference/cli.md#instance-state-mechanism) for root
+selection and manual archive replacement. This differs from the source-checkout
+mechanism without replacing the shared registry described here.
+
 `<STATION_HOME>/instances.json` (this document) is **home-scoped**: one file
-per Station home (`~/.station` by default, or wherever `STATION_HOME` points),
+per selected Station runtime home (see [topology](station-topology.md)),
 intended to describe every instance associated with that home regardless of
 which checkout or working directory started it. That is a real distinction,
 not a naming collision to "fix":
 
 | | `.station/instances/<id>.json` | `<STATION_HOME>/instances.json` |
 |---|---|---|
-| Scope | Per-checkout (CWD-anchored) | Per-home (host-wide) |
+| Scope | Per-checkout for source; home-derived channel state root for prebuilt archives | Per-home |
 | Cardinality | One file per instance | One file, many instances inside it |
 | Owner | `station start`/`station stop` (CLI lifecycle) | `station service install` (durable service), Desktop's shared-registry bridge (desktop-owned sidecar), and — since station#2904 slice 2 — `station start`/`stop` themselves (types `'inline'`/`'worktree'`) |
-| Purpose | "Which PID/port did *this checkout* start, so I can stop it?" | "What instances exist under *this home*, across checkouts?" |
+| Purpose | "Which processes did this lifecycle target start, so I can stop them?" | "What instances exist under *this home*, across checkouts?" |
 
-A future slice may derive one from the other, or keep them independent
-producers of overlapping information — that design is deferred until the
-registry has actual producers/consumers wired (see the non-goals above).
+Both mechanisms now have real producers and consumers. Deriving one from the
+other remains a separate design choice; neither file can simply replace the
+other without preserving those callers' ownership and recovery behavior.

@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
 import type {
   CoreUpdateRestartExpectation,
   CoreUpdateRestartStatus,
@@ -36,12 +37,34 @@ let applyOptions:
         updating?: boolean;
         restarting?: boolean;
         restart?: CoreUpdateRestartExpectation;
+        serviceUpdate?: { requestId: string };
       }) => void;
     }
   | undefined;
+/** The service-update progress poll (#2675 D3): its data and its options. */
+const serviceProgressState: {
+  data: ServiceUpdateProgress | undefined;
+  isError: boolean;
+} = { data: undefined, isError: false };
+let serviceProgressOptions:
+  | {
+      enabled: boolean;
+      refetchInterval: (
+        progress: ServiceUpdateProgress | undefined,
+      ) => number | false;
+    }
+  | undefined;
+const applyReset = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
   useCoreUpdateStatusQuery: () => queryState,
+  useServiceUpdateProgressQuery: (
+    _apiBase: string,
+    options: typeof serviceProgressOptions,
+  ) => {
+    serviceProgressOptions = options;
+    return serviceProgressState;
+  },
   useApplyCoreUpdateMutation: (
     _apiBase: string,
     options: typeof applyOptions,
@@ -49,6 +72,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     applyOptions = options;
     return {
       mutate: vi.fn(),
+      reset: applyReset,
       isPending: false,
       error: null,
     };
@@ -153,6 +177,11 @@ afterEach(() => {
   vi.mocked(queryState.refetch).mockReset();
   applyOptions = undefined;
   queryState.isFetching = false;
+  serviceProgressState.data = undefined;
+  serviceProgressState.isError = false;
+  serviceProgressOptions = undefined;
+  applyReset.mockReset();
+  queryState.dataUpdatedAt = 1_786_000_000_000;
 });
 
 describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
@@ -1007,5 +1036,305 @@ describe('the update channel row', () => {
     renderWith(behindCheckout({ channel: 'nightly' }));
     expect(screen.queryByText(/·\s*Channel: nightly/)).toBeNull();
     expect(screen.getAllByText(/nightly/)).toHaveLength(1);
+  });
+});
+
+describe('a prebuilt release archive (#2675 D3)', () => {
+  const REQUEST_ID = '0f8b7a1e-2f4c-4d7a-9b1e-3c5d7f9a1b2c';
+
+  /** The shape the server writes for a launcher-run archive. */
+  function archiveService(
+    overrides: Partial<CoreUpdateStatus> = {},
+  ): CoreUpdateStatus {
+    return {
+      installKind: 'archive-service',
+      applyMethod: 'service-update',
+      channel: 'preview',
+      currentVersion: '0.8.0-preview.1',
+      latestVersion: '0.8.0-preview.2',
+      releaseCheck: 'verified',
+      updateAvailable: true,
+      serverIdentity: ANSWER_IDENTITY,
+      provenanceIssue: null,
+      technicalDetail: null,
+      selfUpdateUnavailableReason: null,
+      selfUpdateUnavailableCode: null,
+      serviceUpdate: { state: 'idle' },
+      ...overrides,
+    };
+  }
+
+  test('a verified newer release offers the service update, with versions and no source-update copy', () => {
+    renderWith(archiveService());
+    expect(
+      screen.getByRole('button', { name: 'Update server to 0.8.0-preview.2' }),
+    ).toBeTruthy();
+    const line = screen.getByText(
+      'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
+    );
+    expect(line.className).toContain('settings__update-msg--warning');
+    expect(screen.getByText(/Version: 0\.8\.0-preview\.1/)).toBeTruthy();
+    expect(screen.getByText(/Latest release: 0\.8\.0-preview\.2/)).toBeTruthy();
+    expect(
+      screen.getByText(/Update channel: preview \(set at install\)/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/[Ss]ource update/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Update server checkout' }),
+    ).toBeNull();
+  });
+
+  test('the newest release reads as up to date, in the success voice, with no apply', () => {
+    renderWith(
+      archiveService({
+        latestVersion: '0.8.0-preview.1',
+        updateAvailable: false,
+      }),
+    );
+    const line = screen.getByText(
+      'This server runs the newest preview release (0.8.0-preview.1).',
+    );
+    expect(line.className).toContain('settings__update-msg--success');
+    expect(line.querySelector('svg')).not.toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Update server to/ }),
+    ).toBeNull();
+  });
+
+  test('an archive no launcher runs says how to update instead of offering it', () => {
+    renderWith(
+      archiveService({
+        installKind: 'archive',
+        applyMethod: 'station-upgrade',
+        serviceUpdate: undefined,
+        selfUpdateUnavailableReason:
+          'this server is not run by the Station service’s launcher, so it cannot update itself; update it on the host with "station upgrade"',
+      }),
+    );
+    expect(screen.queryByRole('button', { name: /Update server/ })).toBeNull();
+    expect(
+      screen.getByText(
+        /Server update cannot be applied from here: this server is not run by/,
+      ).textContent,
+    ).toContain('"station upgrade"');
+  });
+
+  test('a manifest that did not verify is an error, never an update or up-to-date claim', () => {
+    renderWith(
+      archiveService({
+        latestVersion: undefined,
+        releaseCheck: 'unverified',
+        updateAvailable: false,
+        message:
+          'The preview release manifest did not verify against Station’s pinned signing keys.',
+        technicalDetail: 'manifest signature did not verify',
+      }),
+    );
+    const line = screen.getByText(
+      /did not verify against Station’s signing keys/,
+    );
+    expect(line.className).toContain('settings__update-msg--error');
+    expect(screen.queryByRole('button', { name: /Update server/ })).toBeNull();
+    expect(screen.queryByText(/newest preview release/)).toBeNull();
+  });
+
+  test('an update already under way closes the offer and is polled', () => {
+    renderWith(
+      archiveService({
+        serviceUpdate: {
+          state: 'updating',
+          requestId: REQUEST_ID,
+          phase: 'trial',
+          fromVersion: '0.8.0-preview.1',
+          targetVersion: '0.8.0-preview.2',
+          attempts: 1,
+        },
+      }),
+    );
+    expect(
+      screen.queryByRole('button', { name: /Update server to/ }),
+    ).toBeNull();
+    expect(
+      screen.getByText(
+        'Trying Station 0.8.0-preview.2 (attempt 1). The server restarts during the trial.',
+      ),
+    ).toBeTruthy();
+    expect(serviceProgressOptions?.enabled).toBe(true);
+  });
+
+  test('an accepted apply follows its request until the correlated outcome, then re-checks', () => {
+    const view = renderWith(archiveService());
+    expect(serviceProgressOptions?.enabled).toBe(false);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server to 0.8.0-preview.2' }),
+    );
+    act(() => {
+      applyOptions?.onSuccess?.({
+        success: true,
+        serviceUpdate: { requestId: REQUEST_ID },
+      });
+    });
+    expect(serviceProgressOptions?.enabled).toBe(true);
+    // No progress yet, a stage in flight, and an earlier update's finished
+    // record all keep the poll going.
+    expect(serviceProgressOptions?.refetchInterval(undefined)).toBe(2_000);
+    expect(
+      serviceProgressOptions?.refetchInterval({
+        state: 'staging',
+        requestId: REQUEST_ID,
+      }),
+    ).toBe(2_000);
+    const earlier: ServiceUpdateProgress = {
+      state: 'committed',
+      requestId: '11111111-2222-4333-8444-555555555555',
+      fromVersion: '0.8.0-preview.0',
+      targetVersion: '0.8.0-preview.1',
+      finishedAt: '2026-09-01T00:00:00.000Z',
+    };
+    expect(serviceProgressOptions?.refetchInterval(earlier)).toBe(2_000);
+
+    serviceProgressState.data = { state: 'staging', requestId: REQUEST_ID };
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    expect(
+      screen.getByText('Downloading and verifying the release…'),
+    ).toBeTruthy();
+    // The offer stays closed while this request is followed.
+    expect(
+      screen.queryByRole('button', { name: /Update server to/ }),
+    ).toBeNull();
+    expect(queryState.refetch).not.toHaveBeenCalled();
+
+    const outcome: ServiceUpdateProgress = {
+      state: 'rolled-back',
+      requestId: REQUEST_ID,
+      fromVersion: '0.8.0-preview.1',
+      targetVersion: '0.8.0-preview.2',
+      reason: 'prepared-timeout',
+      finishedAt: '2026-09-27T12:00:00.000Z',
+    };
+    expect(serviceProgressOptions?.refetchInterval(outcome)).toBe(false);
+    serviceProgressState.data = outcome;
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    const rolledBack = screen.getByText(
+      /The update to 0\.8\.0-preview\.2 was rolled back: the new version did not become ready in time\. The server runs 0\.8\.0-preview\.1/,
+    );
+    expect(rolledBack.className).toContain('settings__update-msg--warning');
+    expect(queryState.refetch).toHaveBeenCalledTimes(1);
+    // The accepted POST no longer styles anything, and the pre-update
+    // comparison earns no offer until the re-check it triggered answers.
+    expect(applyReset).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole('button', { name: /Update server to/ }),
+    ).toBeNull();
+    queryState.dataUpdatedAt = Date.now() + 1;
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    const again = screen.getByRole('button', {
+      name: 'Update server to 0.8.0-preview.2',
+    }) as HTMLButtonElement;
+    expect(again.disabled).toBe(false);
+  });
+
+  test('an update that could not be rolled back names the operator’s recovery and offers no apply', () => {
+    renderWith(
+      archiveService({
+        serviceUpdate: {
+          state: 'needs-operator',
+          requestId: REQUEST_ID,
+          fromVersion: '0.8.0-preview.1',
+          targetVersion: '0.8.0-preview.2',
+          reason: 'prepared-timeout',
+          restoreAttempts: 3,
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+      }),
+    );
+    const line = screen.getByText(/could not be rolled back/);
+    expect(line.className).toContain('settings__update-msg--error');
+    expect(line.textContent).toContain('after 3 attempts');
+    expect(line.textContent).toContain(
+      'station service stop --instance=view-instance && station service start --instance=view-instance',
+    );
+    expect(screen.queryByText(/cannot be read/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Update server to/ }),
+    ).toBeNull();
+  });
+
+  test('following an update expires on a timer whatever the last state, and says where to look', () => {
+    vi.useFakeTimers({ now: new Date('2026-09-27T12:00:00.000Z') });
+    const view = renderWith(archiveService());
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server to 0.8.0-preview.2' }),
+    );
+    act(() => {
+      applyOptions?.onSuccess?.({
+        success: true,
+        serviceUpdate: { requestId: REQUEST_ID },
+      });
+    });
+    // The last read is one this card cannot correlate: it would otherwise be
+    // followed forever.
+    serviceProgressState.data = { state: 'idle' };
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    expect(serviceProgressOptions?.enabled).toBe(true);
+    expect(screen.queryByText(/stopped following the update/)).toBeNull();
+    // 45 minutes (SERVICE_UPDATE_FOLLOW_MS), with nothing else re-rendering.
+    act(() => {
+      vi.advanceTimersByTime(45 * 60 * 1000);
+    });
+    expect(
+      screen.getByText(/stopped following the update/).textContent,
+    ).toContain('station service status --instance=view-instance');
+    expect(serviceProgressOptions?.enabled).toBe(false);
+    // A manual re-check clears it.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
+    expect(screen.queryByText(/stopped following the update/)).toBeNull();
+  });
+
+  test('a server that stops answering mid-update says it is restarting, not that the update failed', () => {
+    serviceProgressState.data = {
+      state: 'updating',
+      requestId: REQUEST_ID,
+      phase: 'stopping',
+      fromVersion: '0.8.0-preview.1',
+      targetVersion: '0.8.0-preview.2',
+      attempts: 0,
+    };
+    serviceProgressState.isError = true;
+    renderWith(archiveService());
+    expect(
+      screen.getByText(
+        'Stopping Station 0.8.0-preview.1 to switch to 0.8.0-preview.2…',
+      ),
+    ).toBeTruthy();
+    const waiting = screen.getByText(
+      /The server is not answering while it restarts/,
+    );
+    // It names where the real state is when no server can answer.
+    expect(waiting.textContent).toContain(
+      'station service status --instance=view-instance',
+    );
   });
 });

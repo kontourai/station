@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-09-27T21-40-57-476Z-1d79d99785fc",
+  "kind": "policy-change",
+  "actor": {
+    "id": "briananderson1222",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson@kontourai.io",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-09-27T21:40:57.476Z",
+  "repoStandardsHash": "sha256:739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46",
+  "repoMapHash": "sha256:d683b09c5100dfa5e0b31ec6efe07e788348ea4c4d5af74c477f2e3c6bdccb69",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-09-23T15-24-02-502Z-0b2e3b612e37",
+  "validUntilDays": 90,
+  "notes": "Brian explicitly approved activation of the reviewed documentation-maintenance proposal in this conversation. Add documentation-truth to default and required evidence and the documentation-source-currentness Guide rule; preserve all prior policy and authority settings. Candidate drift/refusal and restoration controls, macOS ci:fast and Linux verify:static were recorded before activation.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-09-23T15-24-02-502Z-0b2e3b612e37",
+    "approvalRef": "conversation:2026-09-27:station-documentation-maintenance-approved",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-09-27T21-40-57-476Z-1d79d99785fc",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "be1177f6c204c62e0952bb8bd784f164813901fdea3b12bb96f9799e3bb0017d",
+        "validUntil": "2026-12-26T21:40:57.476Z"
+      },
+      "createdAt": "2026-09-27T21:40:57.476Z",
+      "updatedAt": "2026-09-27T21:40:57.476Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-09-27T21-40-57-476Z-1d79d99785fc",
+      "claimId": "veritas.attestation.policy-change-2026-09-27T21-40-57-476Z-1d79d99785fc",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Brian explicitly approved activation of the reviewed documentation-maintenance proposal in this conversation. Add documentation-truth to default and required evidence and the documentation-source-currentness Guide rule; preserve all prior policy and authority settings. Candidate drift/refusal and restoration controls, macOS ci:fast and Linux verify:static were recorded before activation.",
+      "observedAt": "2026-09-27T21:40:57.476Z",
+      "collectedBy": "briananderson1222",
+      "integrityRef": "be1177f6c204c62e0952bb8bd784f164813901fdea3b12bb96f9799e3bb0017d",
+      "metadata": {
+        "actor": {
+          "id": "briananderson1222",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-09-27T21:40:57.476Z",
+        "validUntil": "2026-12-26T21:40:57.476Z",
+        "contentHash": "be1177f6c204c62e0952bb8bd784f164813901fdea3b12bb96f9799e3bb0017d"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-09-27T21-40-57-476Z-1d79d99785fc.verified",
+      "claimId": "veritas.attestation.policy-change-2026-09-27T21-40-57-476Z-1d79d99785fc",
+      "status": "verified",
+      "actor": "briananderson1222",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-09-27T21-40-57-476Z-1d79d99785fc"
+      ],
+      "createdAt": "2026-09-27T21:40:57.476Z",
+      "verifiedAt": "2026-09-27T21:40:57.476Z"
+    }
+  }
+}

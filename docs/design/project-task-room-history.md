@@ -1,24 +1,43 @@
 # Project/Task room history
 
+> **Reading status: current persistence-module note.**
+> [EventStore](../../src-server/services/orchestration/event-store.ts) composes
+> the [history module](../../src-server/services/orchestration/project-task-room-history.ts)
+> and its [SQLite worker](../../src-server/services/orchestration/project-task-room-history-worker.ts).
+> [Room runtime](../../src-server/services/orchestration/project-task-room-runtime.ts)
+> and [routes](../../src-server/routes/orchestration/project-task-rooms.ts) add
+> caller authority and transport. The core's `L0` assurance below does not
+> become a membership or signature guarantee merely through that composition.
+
 `ProjectTaskRoomHistory` is Station's durable, asynchronous Project/Task
 rendezvous. It is deliberately distinct from an active live-work session: a
 session can start, end presence, or deliberately finish work in history, but liveness, presence, transport,
 and pane rendering remain outside this module.
 
-The module is deep. `EventStore` privately owns an asynchronous worker-thread
+`EventStore` privately owns an asynchronous worker-thread
 adapter; that worker constructs the separate SQLite connection to the existing
-orchestration database. Synchronous `node:sqlite` work, including busy-timeout
-waiting, never runs on the server event loop. `ProjectTaskRoomHistory.close()`
+orchestration database. In this room-history path, synchronous `node:sqlite`
+work and busy-timeout waiting run on that worker. `ProjectTaskRoomHistory.close()`
 is the awaitable worker/SQLite settlement seam; the still-synchronous
 `EventStore.close()` only initiates that close and never blocks with
 `Atomics.wait` or claims settlement it cannot synchronously prove.
-Callers receive only room intents (`open`, `append`, and `read`), never a
-database, table name, raw channel proposal, channel id, actor identity, or
-policy revision. An injected capability authority revalidates every operation
+Callers submit room intents (`open`, `append`, and `read`) rather than raw
+database operations or caller-authored channel authority. Open results and
+cursors expose channel identity; history records include resolved principal
+and grant evidence. An injected capability authority revalidates every operation
 and resolves the opaque grant to its canonical Project UUID, Project slug,
 Task, principal, capability, and policy revision. Grant shape is never treated
 as authority; discover, history-read, human write, lifecycle append, resolved
 link, and agent publish remain separate.
+
+The history interface also offers `findByProposal` for exact-proposal reconciliation,
+`readSourceSeal` to inspect a transfer seal, and `sealSource` with a
+`home-transfer` grant. The retained private local-owner adapter can invoke
+`sealSource`; it has no production callsite. The public controller observes
+existing seals. Sealing can report pending publication or execution instead of
+claiming the source is ready to move. The
+[transfer-controller guide](../guides/home-transfer-controller.md) owns that
+separate admission and handoff journey.
 
 The stored record is a `station.channel-proposal/v1` embedded in a
 `station.channel-sequence/v1`. Its room-local `(epoch, seq)`, proposal digest,
@@ -30,8 +49,8 @@ prevalidated authority adapters; a caller-supplied string is not authority.
 The proposal idempotency digest covers resolved scope, principal, occurrence,
 correlation and causation, resolved link projections, and the authority receipt.
 
-Inputs and stored projections use an allocation-free incremental JSON byte
-counter that includes syntax and escaping bytes before serialization. Body,
+Inputs and stored projections use an incremental JSON byte counter that
+includes syntax and escaping without allocating the serialized payload. Body,
 request, envelope, receipt, and complete-page budgets are independent.
 The page item ceiling is derived once from the closed worst-case record shape
 (agent principal, full lifecycle/run link, correlation, causation, and grant)

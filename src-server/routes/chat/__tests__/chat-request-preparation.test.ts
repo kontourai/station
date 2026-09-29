@@ -129,13 +129,14 @@ describe('chat-request-preparation', () => {
       warn: vi.fn(),
       debug: vi.fn(),
     };
+    const resolveProvider = vi.fn(async () => {
+      throw new Error('boom');
+    });
 
     const result = await prepareChatRequest({
       ctx: {
         providerService: {
-          resolveProvider: vi.fn(async () => {
-            throw new Error('boom');
-          }),
+          resolveProvider,
           listProviderConnections: vi.fn(() => []),
         },
         knowledgeService: {
@@ -156,6 +157,7 @@ describe('chat-request-preparation', () => {
     });
 
     expect(result.options.model).toBeUndefined();
+    expect(resolveProvider).not.toHaveBeenCalled();
     expect(result.resolvedProviderConn).toBeNull();
     expect(logger.warn).not.toHaveBeenCalled();
   });
@@ -242,41 +244,6 @@ describe('chat-request-preparation', () => {
     });
     expect(result.options.model).toBe('llama3.2');
     expect(result.options.providerId).toBe('ollama-local');
-  });
-
-  test('prepareChatRequest does not resolve provider fallback without an explicit flag', async () => {
-    const result = await prepareChatRequest({
-      ctx: {
-        providerService: {
-          resolveProvider: vi.fn(async () => ({
-            model: 'llama3.2',
-            providerId: 'ollama-local',
-          })),
-          listProviderConnections: vi.fn(() => [
-            { id: 'ollama-local', type: 'ollama' },
-          ]),
-        },
-        knowledgeService: {
-          getInjectContext: vi.fn(async () => null),
-          getRAGContextDetailed: vi.fn(async () => null),
-        },
-        feedbackService: {
-          getBehaviorGuidelinesDetailed: vi.fn(() => null),
-        },
-        storageAdapter: {} as any,
-        activeAgents: new Map(),
-        logger: {
-          warn: vi.fn(),
-          debug: vi.fn(),
-        },
-      } as any,
-      slug: 'default',
-      input: 'hello',
-      options: {},
-    });
-
-    expect(result.options.model).toBeUndefined();
-    expect(result.resolvedProviderConn).toBeNull();
   });
 
   test('prepareChatRequest surfaces provider resolution failures when provider-managed fallback is explicit', async () => {

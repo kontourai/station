@@ -1,5 +1,21 @@
 # Local-bootstrap token (station#1991)
 
+> **Status: historical launch design with an evolved implementation;
+> current-owner check 2026-09-26.** The
+> [CLI opener](../../packages/cli/src/commands/lazy-start.ts),
+> [mint/exchange routes](../../src-server/runtime/routes/runtime-routes.ts), and
+> [browser bootstrap](../../src-ui/src/lib/local-ui-bootstrap.ts) own the current
+> path. The server now keeps a current token per bootstrap purpose, rather than
+> one global token, and can retain an existing valid device session while
+> consuming a presented capability. The credential-free loopback compatibility
+> floor mentioned below has been removed; see
+> [Deployment authentication](../guides/deployment-authentication.md).
+> The retained design is not an exhaustive account of current origin checks,
+> rate limits, refusal handling or browser recovery, and no live launch was
+> exercised for this classification.
+
+## Retained launch design
+
 ## Problem
 
 `station` (with no verb, in a TTY) opens a running Station in the browser. For
