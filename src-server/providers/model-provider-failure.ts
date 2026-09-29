@@ -9,6 +9,13 @@
  * the same live, after a reload, and in Activity.
  */
 
+/**
+ * A credential refusal Station INFERRED from an error's wording (no HTTP
+ * response supplied a status), so it names no status code.
+ */
+export const MODEL_PROVIDER_CREDENTIALS_REJECTED =
+  'The model provider rejected the credentials.';
+
 /** A 4xx/5xx integer, else undefined. */
 export function modelProviderHttpStatus(value: unknown): number | undefined {
   return typeof value === 'number' &&

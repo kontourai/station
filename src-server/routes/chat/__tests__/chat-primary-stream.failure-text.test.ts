@@ -161,6 +161,18 @@ describe('streamPrimaryAgentChat failed-turn marker text', () => {
     expect(persisted.join('\n')).not.toContain('/Users/operator');
   });
 
+  test('an inferred credential refusal persists the unnumbered sentence', async () => {
+    const { persisted, marker } = await run(
+      new Error(`invalid credential ${SECRET}`),
+    );
+
+    expect(marker).toContain(
+      '[SYSTEM_EVENT] [CHAT_ERROR] The model provider rejected the credentials.',
+    );
+    expect(marker).not.toContain('HTTP');
+    expect(persisted.join('\n')).not.toContain(SECRET);
+  });
+
   test("Station's own abort constant is kept so a reload still reads as stopped", async () => {
     const { marker } = await run(new Error('Stream aborted by client'));
 

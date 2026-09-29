@@ -69,6 +69,7 @@ import {
 } from '../adapter-shape.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import {
+  MODEL_PROVIDER_CREDENTIALS_REJECTED,
   modelProviderFailureMessage,
   modelProviderHttpStatus,
 } from '../model-provider-failure.js';
@@ -741,14 +742,20 @@ export function mapStationAgentStreamEvent(options: {
   if (event.type === 'error') {
     // The chunk's `errorText` is the outward generic and is never read;
     // only the numeric `statusCode` (`writeSSEError`) is, and it becomes a
-    // sentence composed here, so no provider text reaches the event.
-    const httpStatus = modelProviderHttpStatus(event.statusCode);
+    // sentence composed here, so no provider text reaches the event. A 401
+    // flagged `statusInferred` came from the error's wording, not an HTTP
+    // response, so it is neither quoted nor recorded as a status.
+    const reportedStatus = modelProviderHttpStatus(event.statusCode);
+    const inferredCredentials =
+      reportedStatus === 401 && event.statusInferred === true;
+    const httpStatus = inferredCredentials ? undefined : reportedStatus;
     publish({
       ...base,
       method: 'runtime.error',
       severity: 'error',
-      message:
-        httpStatus === undefined
+      message: inferredCredentials
+        ? MODEL_PROVIDER_CREDENTIALS_REJECTED
+        : httpStatus === undefined
           ? 'Station agent turn failed'
           : modelProviderFailureMessage(httpStatus),
       code: 'station_agent_turn_failed',

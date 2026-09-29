@@ -2712,6 +2712,32 @@ describe('StationAgentAdapter — inner /chat error frame becomes a classified r
     },
   );
 
+  test('an inferred credential 401 is worded without a status and records none', async () => {
+    const { writeSSEError } = await import(
+      '../../runtime/conversation/stream-orchestrator.js'
+    );
+    const writes: string[] = [];
+    await writeSSEError(
+      { write: async (value: string) => writes.push(value) },
+      new Error(`missing credential ${SECRET}`),
+    );
+    const frame = JSON.parse(writes[0].replace(/^data: /, '').trim()) as Record<
+      string,
+      unknown
+    >;
+
+    const { error, events } = await runFailedTurn(frame);
+
+    expect(error).toMatchObject({
+      message: 'The model provider rejected the credentials.',
+      code: 'station_agent_turn_failed',
+      retriable: true,
+    });
+    expect(error).not.toHaveProperty('details');
+    expect(JSON.stringify(events)).not.toContain('HTTP 401');
+    expect(JSON.stringify(events)).not.toContain('sk-live-SECRET');
+  });
+
   test('the real writeSSEError frame for an ai-sdk APICallError reaches the relay as its status', async () => {
     const { APICallError } = await import('@ai-sdk/provider');
     const { writeSSEError } = await import(

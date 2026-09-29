@@ -424,10 +424,21 @@ describe('translateChatError', () => {
       expect(result.hint).toMatch(/credentials/i);
     });
 
+    it('accepts the unnumbered inferred-credentials reason', () => {
+      const result = translateChatError({
+        message: 'The model provider rejected the credentials.',
+        code,
+      });
+
+      expect(result.body).toBe('The model provider rejected the credentials.');
+      expect(result.hint).toMatch(/credentials/i);
+    });
+
     it.each([
       'upstream exploded sk-live-SECRET-42 leaked detail',
       'The model provider returned an error (HTTP 500). sk-live-SECRET-42',
       'The model provider said sk-live-SECRET-42 (HTTP 500).',
+      'The model provider sk live secret words.',
     ])('never quotes any other text under the code: %j', (message) => {
       const result = translateChatError({ message, code });
 

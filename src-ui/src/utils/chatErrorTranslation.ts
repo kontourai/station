@@ -179,13 +179,15 @@ const STATION_AGENT_TURN_FAILED_CODE = 'station_agent_turn_failed';
 /**
  * The only non-generic messages the adapter publishes under that code: a
  * sentence it composed from the model provider's HTTP status alone
- * (`stationAgentTurnFailureMessage`), e.g. "The model provider returned an
- * error (HTTP 500)." Matched whole and anchored, so the card quotes that
- * sentence and nothing else; any other text under the code keeps the generic
- * copy rather than being shown.
+ * (`model-provider-failure.ts`), e.g. "The model provider returned an error
+ * (HTTP 500).", or the unnumbered "The model provider rejected the
+ * credentials." for a refusal Station inferred without a status. Matched
+ * whole and anchored against that fixed vocabulary, so the card quotes that
+ * sentence and nothing else; any other text under the code keeps the
+ * generic copy rather than being shown.
  */
 const STATION_AGENT_CLASSIFIED_REASON =
-  /^The model provider [a-z -]{1,60} \(HTTP ([45]\d\d)\)\.$/;
+  /^The model provider (rejected the credentials|could not find the model|timed out|rate-limited the request|returned an error|refused the request)(?: \(HTTP [45]\d\d\))?\.$/;
 
 /**
  * archive#3299: the stream ended without a well-formed body — the client
@@ -456,7 +458,7 @@ export function translateChatError(
         title: 'This turn did not complete',
         body: reason[0],
         hint:
-          reason[1] === '401' || reason[1] === '403'
+          reason[1] === 'rejected the credentials'
             ? "Check the model connection's credentials, then send your message again."
             : 'Your message was kept — send it again to retry.',
       };

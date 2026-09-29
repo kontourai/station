@@ -5,6 +5,7 @@
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
+  MODEL_PROVIDER_CREDENTIALS_REJECTED,
   modelProviderFailureMessage,
   modelProviderHttpStatus,
 } from '../../providers/model-provider-failure.js';
@@ -263,28 +264,36 @@ function isCredentialShapedError(error: unknown): boolean {
 }
 
 /**
- * The status a `/chat` failure may carry to a client. The credential-shaped
- * 401 keeps its pre-existing precedence; any other error reports the model
+ * The status a `/chat` failure may carry to a client. A credential-shaped
+ * error keeps its pre-existing 401 precedence, flagged `statusInferred`
+ * because no HTTP response supplied it; any other error reports the model
  * provider's own status (ai-sdk's `APICallError.statusCode`, read
  * structurally by `providerHttpErrorStatus`) when it is a 4xx/5xx integer.
  */
-function outwardFailureStatus(error: unknown): number | undefined {
-  return isCredentialShapedError(error)
-    ? 401
-    : modelProviderHttpStatus(providerHttpErrorStatus(error));
+function outwardFailureStatus(error: unknown): {
+  statusCode?: number;
+  statusInferred?: true;
+} {
+  if (isCredentialShapedError(error)) {
+    return { statusCode: 401, statusInferred: true };
+  }
+  const statusCode = modelProviderHttpStatus(providerHttpErrorStatus(error));
+  return statusCode === undefined ? {} : { statusCode };
 }
 
 /**
  * The failure text a `/chat` turn may persist and serve (the `[CHAT_ERROR]`
  * transcript marker, `chat-lifecycle.ts`). Never the thrown error's own
  * message: a provider error's text is remote-controlled and has carried
- * response bodies and secrets. It is the status sentence when a status is
- * known, Station's own abort constant for an abort, else the fixed outward
- * generic.
+ * response bodies and secrets. It is the status sentence when a provider
+ * status is known, the unnumbered credentials sentence when the refusal was
+ * inferred, Station's own abort constant for an abort, else the fixed
+ * outward generic.
  */
 export function outwardTurnFailureText(error: unknown): string {
-  const status = outwardFailureStatus(error);
-  if (status !== undefined) return modelProviderFailureMessage(status);
+  const { statusCode, statusInferred } = outwardFailureStatus(error);
+  if (statusInferred) return MODEL_PROVIDER_CREDENTIALS_REJECTED;
+  if (statusCode !== undefined) return modelProviderFailureMessage(statusCode);
   if (error instanceof Error && error.message === STREAM_ABORTED_BY_CLIENT) {
     return STREAM_ABORTED_BY_CLIENT;
   }
@@ -298,17 +307,21 @@ export function outwardTurnFailureText(error: unknown): string {
  * never crosses. What may cross is the HTTP status (`outwardFailureStatus`):
  * a bare integer carries no provider-controlled text, and it is what lets
  * the station-agent relay tell the user WHY the turn failed ("rejected the
- * credentials", "rate-limited") instead of only that it did.
+ * credentials", "rate-limited") instead of only that it did. An inferred
+ * credential 401 says so with `statusInferred: true`, so no consumer quotes
+ * it as a status the provider returned.
  */
 export async function writeSSEError(
   streamWriter: any,
   error: unknown,
 ): Promise<void> {
+  const { statusCode, statusInferred } = outwardFailureStatus(error);
   await streamWriter.write(
     `data: ${JSON.stringify({
       type: 'error',
       errorText: outwardTransportError('sse'),
-      statusCode: outwardFailureStatus(error),
+      statusCode,
+      ...(statusInferred ? { statusInferred } : {}),
     })}\n\n`,
   );
 }

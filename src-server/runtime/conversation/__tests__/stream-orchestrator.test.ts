@@ -228,6 +228,10 @@ describe('writeSSEError', () => {
     expect(
       writes.map((w) => JSON.parse(w.replace(/^data: /, '')).statusCode),
     ).toEqual([401, undefined, undefined, 401]);
+    // Only the inferred 401s say they were inferred.
+    expect(
+      writes.map((w) => JSON.parse(w.replace(/^data: /, '')).statusInferred),
+    ).toEqual([true, undefined, undefined, true]);
   });
 });
 
