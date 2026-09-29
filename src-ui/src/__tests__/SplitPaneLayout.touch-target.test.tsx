@@ -113,7 +113,9 @@ function fixtureHtml(): string {
           trailing: (
             <>
               {chip('x')}
-              {chip('solo-pill')}
+              {/* Wider than the slot's 38% cap leaves beside 'x', so a
+                  wrapping slot would stack the two in one row. */}
+              {chip('solo-pill-with-a-long-label')}
             </>
           ),
         },
@@ -235,10 +237,28 @@ describe.skipIf(!chromiumAvailable)(
           return {
             coarse: matchMedia('(pointer: coarse)').matches,
             edgeThieves,
+            narrowestControl: Math.min(
+              ...[
+                ...document.querySelectorAll<HTMLElement>('[data-probe]'),
+              ].map((element) => element.getBoundingClientRect().width),
+            ),
+            stackedTrailing: [
+              ...document.querySelectorAll<HTMLElement>(
+                '.split-pane__item-trailing',
+              ),
+            ].some((slot) => {
+              const tops = [...slot.children].map((child) =>
+                Math.round(child.getBoundingClientRect().top),
+              );
+              return new Set(tops).size > 1;
+            }),
             collapse: { width: collapse.width, height: collapse.height },
             toggleHeight: toggle.height,
             rowHeight: box('.split-pane__item').height,
-            trailing: hitsAbove('[data-probe="solo-pill"]', 21),
+            trailing: hitsAbove(
+              '[data-probe="solo-pill-with-a-long-label"]',
+              21,
+            ),
             groupTrailing: hitsAbove('[data-probe="root-pill"]', 21),
             summary: hitsAbove('[data-probe="summary"]', 21),
           };
@@ -277,6 +297,12 @@ describe.skipIf(!chromiumAvailable)(
         const result = await measure(coarse);
         expect(result.coarse).toBe(coarse);
         expect(result.edgeThieves).toEqual([]);
+        if (coarse) {
+          // Width is real, not borrowed from a neighbour; and no slot stacks
+          // two controls into one 44px row.
+          expect(result.narrowestControl).toBeGreaterThanOrEqual(TOUCH_TARGET);
+          expect(result.stackedTrailing).toBe(false);
+        }
       },
     );
 
