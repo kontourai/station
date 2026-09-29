@@ -97,17 +97,15 @@ describe('CheckpointIndexStore', () => {
     // not return stayed pristine.
     const readBack = store.readTurn('t-1', 'turn-1');
     expect(readBack?.settle?.status).toBe('failed');
-    if (readBack?.baseline?.status === 'skipped') {
-      expect(readBack.baseline.reason).toBe('unborn_head');
-    }
+    const pristineBaseline = {
+      status: 'skipped',
+      reason: 'unborn_head',
+      recordedAt: '2026-08-15T00:00:00.000Z',
+    };
+    expect(readBack?.baseline).toEqual(pristineBaseline);
     // A reader mutating its copy cannot corrupt the store.
-    if (readBack?.baseline) {
-      (readBack.baseline as { reason: string }).reason = 'READER MUTATION';
-    }
-    const again = store.readTurn('t-1', 'turn-1');
-    if (again?.baseline?.status === 'skipped') {
-      expect(again.baseline.reason).toBe('unborn_head');
-    }
+    (readBack?.baseline as { reason: string }).reason = 'READER MUTATION';
+    expect(store.readTurn('t-1', 'turn-1')?.baseline).toEqual(pristineBaseline);
   });
 
   it('lists a thread\u2019s turns in write order and persists across store instances', () => {

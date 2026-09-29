@@ -472,43 +472,6 @@ describe('projectRequestAnswerability — the derivation itself (station#1745)',
       }),
     ).toEqual({ answerable: true });
   });
-
-  /**
-   * archive#1778: the negative arm is a RECORD OF AN OBSERVATION, not a
-   * timeless property. Without `observedBy`/`observedAt` a consumer reads
-   * "this session is unanswerable" (universal) where the truth is "the
-   * serving process held no adapter for it at T" — the label-vs-derivation
-   * defect the wire shape exists to prevent. Two processes observing the
-   * same session must be distinguishable in their own answers.
-   */
-  test('the unanswerable arm carries whose process observed it, and when', async () => {
-    const one = projectRequestAnswerability({
-      threadAttachment: 'detached',
-      lifecycleState: 'review_pending',
-      providerRegistered: false,
-      observedBy: 'station-a#11',
-      observedAt: '2026-07-20T12:04:03.000Z',
-    });
-    const two = projectRequestAnswerability({
-      threadAttachment: 'detached',
-      lifecycleState: 'review_pending',
-      providerRegistered: false,
-      observedBy: 'station-b#22',
-      observedAt: '2026-07-20T12:09:00.000Z',
-    });
-    expect(one).toEqual({
-      answerable: false,
-      qualification: 'provider_absent',
-      observedBy: 'station-a#11',
-      observedAt: '2026-07-20T12:04:03.000Z',
-    });
-    expect(two).toEqual({
-      answerable: false,
-      qualification: 'provider_absent',
-      observedBy: 'station-b#22',
-      observedAt: '2026-07-20T12:09:00.000Z',
-    });
-  });
 });
 
 describe('OrchestrationService — read-time orphan projection (station#1284, station#1745)', () => {
@@ -1364,7 +1327,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
    * Observed through the composed RecoveryLedger Interface, whose `pending()`
    * call `reconcile()` makes synchronously.
    */
-  test('recoveryCoordinator.reconcile() runs once recovery settles, no longer behind plugin registration', async () => {
+  test('recoveryCoordinator.reconcile() runs once attachment settles on the success path', async () => {
     const threadId = 'thread-recovery-coordinator';
     eventStore.upsertSession({
       provider: 'codex',

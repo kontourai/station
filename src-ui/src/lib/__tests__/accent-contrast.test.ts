@@ -149,4 +149,24 @@ describe('applyAccentColor', () => {
     applyAccentColor(root, 'not-a-color');
     expect(root.style.getPropertyValue('--text-on-accent')).toBe('');
   });
+
+  test('never writes an accent that is not a hex colour', () => {
+    const root = document.createElement('div');
+    applyAccentColor(root, '#6366f1');
+    for (const hostile of [
+      'red; background:url(x)',
+      'var(--k-bg)',
+      'url(x)',
+      'red',
+      'rgb(1 2 3)',
+    ]) {
+      applyAccentColor(root, hostile);
+      // An invalid value clears the previous override rather than keeping it
+      // or writing the string through.
+      expect(root.style.getPropertyValue('--accent-primary')).toBe('');
+      expect(root.style.getPropertyValue('--text-on-accent')).toBe('');
+      expect(root.style.getPropertyValue('--accent-hover-fill')).toBe('');
+      expect(root.getAttribute('style') ?? '').not.toContain('url(');
+    }
+  });
 });

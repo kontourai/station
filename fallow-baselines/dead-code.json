@@ -585,7 +585,6 @@
     "src-server/services/scheduling/builtin-scheduler.ts:BuiltinScheduler.listRunLogs",
     "src-server/services/scheduling/scheduler-ledger.ts:SchedulerStorageUnavailableError.code",
     "src-server/services/scheduling/scheduler-ledger.ts:SchedulerStorageCorruptError.code",
-    "src-server/services/scheduling/scheduler-service.ts:SchedulerService.addProvider",
     "src-server/services/scheduling/scheduler-service.ts:SchedulerService.prepareStarterManualIntent",
     "src-server/services/ssh/environment-security-service.ts:EnvironmentSecurityService.rotateCredential",
     "src-server/services/ssh/environment-security-service.ts:EnvironmentSecurityService.resetEnvironment",

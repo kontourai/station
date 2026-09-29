@@ -416,6 +416,60 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     );
   });
 
+  test('a conversation occupied only under its real owning userId gets the FileMemory banner written under that userId', async () => {
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId: 'thread-owned',
+      provider: 'station-agent',
+      agentSlug: 'demo-agent',
+      userId: 'owner-user',
+      boundaryState: 'invoking',
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'station-agent',
+      threadId: 'thread-owned',
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+
+    // Empty under the conventional agent:<slug> id; the prompt lives under
+    // the conversation's real owner, as a read through the messages route
+    // would find it.
+    const adapter = fakeMemoryAdapter({
+      conventionalUserId: 'agent:demo-agent',
+      conversation: {
+        userId: 'owner-user',
+        messages: [
+          {
+            id: 'm1',
+            role: 'user',
+            parts: [{ type: 'text', text: 'do the thing' }],
+          },
+        ],
+      },
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      memoryAdapters: new Map([['demo-agent', adapter]]),
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    expect(adapter.addMessage).toHaveBeenCalledOnce();
+    const [message, userId, conversationId] = adapter.addMessage.mock.calls[0];
+    expect(message.parts[0].text).toMatch(
+      /^\[SYSTEM_EVENT\] \[TURN_INTERRUPTED\]/,
+    );
+    expect(userId).toBe('owner-user');
+    expect(conversationId).toBe('thread-owned');
+  });
+
   test('boots after a crash and banners an EMPTY-store session (any provider) via the event-projected path, never FileMemory', async () => {
     const path = databasePath();
     const eventStore = bootAfterCrash({

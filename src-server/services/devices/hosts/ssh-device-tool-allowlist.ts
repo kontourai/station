@@ -46,7 +46,7 @@ export function isAllowedSshDeviceToolArgv(
 export type SerializedArgPart = string | { re: string };
 
 /** The shapes as plain JSON (a RegExp by its source; flags are refused). */
-export function serializeArgvShapes(
+function serializeArgvShapes(
   shapes: Readonly<Record<string, readonly (readonly ArgPart[])[]>>,
 ): Record<string, SerializedArgPart[][]> {
   const out: Record<string, SerializedArgPart[][]> = {};

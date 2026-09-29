@@ -6,7 +6,6 @@ import {
   getRuntimeAuthenticatedRequestPrincipal,
   isBoundLocalGrantMintedOperator,
   isBoundRuntimeLocalOperator,
-  isLocalRuntimeCaller,
   type RuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../runtime-request-security.js';
@@ -46,51 +45,68 @@ const internalTokenPrincipal: RuntimeAuthenticatedRequestPrincipal = {
   locality: 'home-possession',
 };
 
-describe('isLocalRuntimeCaller — mint-time home-possession only', () => {
+/**
+ * Every classification goes through the production seam: the auth boundary's
+ * `bindRuntimeLocalOperator(request, principal)` write, then the
+ * `isBoundRuntimeLocalOperator(request)` read every consumer uses.
+ */
+function boundLocal(
+  principal: RuntimeAuthenticatedRequestPrincipal | undefined,
+  init?: RequestInit,
+): boolean {
+  const request = new Request('http://station.test/api/diagnostics/logs', init);
+  bindRuntimeLocalOperator(request, principal);
+  return isBoundRuntimeLocalOperator(request);
+}
+
+describe('bound local operator — mint-time home-possession only', () => {
   it('treats a local-grant-minted credential as local', () => {
-    expect(isLocalRuntimeCaller({ principal: homePossession })).toBe(true);
+    expect(boundLocal(homePossession)).toBe(true);
   });
 
   it('treats the process-local internal-token principal as local', () => {
-    expect(isLocalRuntimeCaller({ principal: internalTokenPrincipal })).toBe(
-      true,
-    );
+    expect(boundLocal(internalTokenPrincipal)).toBe(true);
   });
 
   it('a same-origin credential minted via access-request is NOT local', () => {
-    expect(isLocalRuntimeCaller({ principal: accessRequestSameOrigin })).toBe(
-      false,
-    );
+    expect(boundLocal(accessRequestSameOrigin)).toBe(false);
   });
 
   it('an operator credential is NOT local, including over loopback', () => {
-    expect(isLocalRuntimeCaller({ principal: operatorPrincipal })).toBe(false);
+    expect(boundLocal(operatorPrincipal)).toBe(false);
   });
 
   it('a pairing credential is NOT local', () => {
-    expect(isLocalRuntimeCaller({ principal: pairingPrincipal })).toBe(false);
+    expect(boundLocal(pairingPrincipal)).toBe(false);
   });
 
-  it('ignores socket and proxy headers; only the recorded field counts', () => {
+  it('ignores proxy and forwarding headers; only the recorded field counts', () => {
     expect(
-      isLocalRuntimeCaller({
-        environment: { incoming: { socket: { remoteAddress: '8.8.8.8' } } },
-        header: () => 'remote',
-        principal: homePossession,
+      boundLocal(homePossession, {
+        headers: { 'x-forwarded-for': '8.8.8.8', forwarded: 'for=8.8.8.8' },
       }),
     ).toBe(true);
     expect(
-      isLocalRuntimeCaller({
-        environment: { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
-        header: () => 'local',
-        principal: operatorPrincipal,
+      boundLocal(operatorPrincipal, {
+        headers: { 'x-forwarded-for': '127.0.0.1', forwarded: 'for=127.0.0.1' },
       }),
     ).toBe(false);
   });
 
   it('fails closed with no principal', () => {
-    expect(isLocalRuntimeCaller({})).toBe(false);
-    expect(isLocalRuntimeCaller({ principal: undefined })).toBe(false);
+    // Explicit undefined falls back to the request's own principal: none.
+    expect(boundLocal(undefined)).toBe(false);
+    const request = new Request('http://station.test/api/diagnostics/logs');
+    expect(bindRuntimeLocalOperator(request)).toBe(false);
+    expect(isBoundRuntimeLocalOperator(request)).toBe(false);
+  });
+
+  it('an unbound request is not local', () => {
+    expect(
+      isBoundRuntimeLocalOperator(
+        new Request('http://station.test/api/diagnostics/logs'),
+      ),
+    ).toBe(false);
   });
 
   it('bindRuntimeLocalOperator is the flag diagnostics reads', () => {

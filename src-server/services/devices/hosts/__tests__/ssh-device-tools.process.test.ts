@@ -35,7 +35,10 @@ import { dirname, join } from 'node:path';
 import { DEVICE_AX_RESPONSE_MAX_BYTES } from '@kontourai/station-contracts/device-tools';
 import { afterEach, describe, expect, test } from 'vitest';
 import { createDeviceHostResolver } from '../../device-host-resolver.js';
-import { androidRotateCommands } from '../../device-host-tools.js';
+import {
+  ANDROID_ROTATE_ARGV_SHAPES,
+  androidRotateCommands,
+} from '../../device-host-tools.js';
 import type { DeviceHubEndpoint } from '../../device-hub-endpoint.js';
 import { DeviceLiveSurfaceProducer } from '../../device-live-surface-producer.js';
 import { DeviceHostBusyError } from '../../device-shares.js';
@@ -68,7 +71,6 @@ import {
 import {
   SSH_DEVICE_TOOL_ALLOWLIST_JSON,
   SSH_DEVICE_TOOL_ARGV_SHAPES,
-  serializeArgvShapes,
 } from '../ssh-device-tool-allowlist.js';
 import {
   createSshDeviceHostActions,
@@ -432,13 +434,18 @@ describe('the host program’s tool mode (run for real, no ssh)', () => {
     expect(REMOTE_DEVICE_HOST_SCRIPT).toContain(
       `const TOOL_SHAPES = ${SSH_DEVICE_TOOL_ALLOWLIST_JSON};`,
     );
-    const shapes = JSON.parse(SSH_DEVICE_TOOL_ALLOWLIST_JSON);
-    expect(shapes).toEqual(serializeArgvShapes(SSH_DEVICE_TOOL_ARGV_SHAPES));
-    expect(Object.keys(shapes).sort()).toEqual(['adb', 'xcrun']);
-    expect(shapes.xcrun).toEqual(
-      serializeArgvShapes(DEVICE_TOOL_ARGV_SHAPES).xcrun,
+    expect(Object.keys(SSH_DEVICE_TOOL_ARGV_SHAPES).sort()).toEqual([
+      'adb',
+      'xcrun',
+    ]);
+    expect(SSH_DEVICE_TOOL_ARGV_SHAPES.xcrun).toBe(
+      DEVICE_TOOL_ARGV_SHAPES.xcrun,
     );
-    expect(shapes.adb).toHaveLength(DEVICE_TOOL_ARGV_SHAPES.adb.length + 3);
+    expect(SSH_DEVICE_TOOL_ARGV_SHAPES.adb).toEqual([
+      ...DEVICE_TOOL_ARGV_SHAPES.adb,
+      ...ANDROID_ROTATE_ARGV_SHAPES,
+    ]);
+    expect(ANDROID_ROTATE_ARGV_SHAPES).toHaveLength(3);
   });
 });
 

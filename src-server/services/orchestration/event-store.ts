@@ -1806,20 +1806,27 @@ export class EventStore {
     dbPath: string,
     turnDedupMaxEntries = TURN_DEDUP_MAX_ENTRIES,
     turnProcessIdentity?: TurnIdempotencyProcessIdentity,
-    /** Private fault seam: proves post-write recovery readback, not production policy. */
-    private readonly recoveryTransitionFault?: () => void,
-    /** Private fault seam for native direct-invocation terminal readback. */
-    private readonly nativeInvocationTransitionFault?: () => void,
-    /** Private fault seam for startup-gate retry proof. */
-    private readonly nativeInvocationStartupFault?: () => void,
-    /** Private fault seam for voice terminal post-write readback proof. */
-    private readonly voiceTurnTransitionFault?: () => void,
-    /** Private fault seam proving work-item terminal settlement shares the event savepoint. */
-    private readonly sessionWorkItemAdmissionFault?: () => void,
-    /** Private fault seam proving no admission is taken before SAVEPOINT opens. */
-    private readonly sessionWorkItemSavepointOpenFault?: () => void,
-    /** Private fault seam for unknown package-admission commit acknowledgement. */
-    private readonly packageMcpCommitFault?: () => void,
+    /**
+     * Private fault seams, named so an added seam cannot silently rebind
+     * another's injection. Each proves one failure path; no production
+     * caller passes any of them.
+     */
+    private readonly faults: {
+      /** Post-write recovery readback. */
+      recoveryTransition?: () => void;
+      /** Native direct-invocation terminal readback. */
+      nativeInvocationTransition?: () => void;
+      /** Startup-gate retry. */
+      nativeInvocationStartup?: () => void;
+      /** Voice terminal post-write readback. */
+      voiceTurnTransition?: () => void;
+      /** Work-item terminal settlement shares the event savepoint. */
+      sessionWorkItemAdmission?: () => void;
+      /** No admission is taken before SAVEPOINT opens. */
+      sessionWorkItemSavepointOpen?: () => void;
+      /** Unknown package-admission commit acknowledgement. */
+      packageMcpCommit?: () => void;
+    } = {},
   ) {
     this.databasePath = dbPath;
     this.turnDedupMaxEntries = turnDedupMaxEntries;
@@ -3494,7 +3501,7 @@ export class EventStore {
       this.projectRequestState(event, requestId, nextSequence);
       this.projectSessionProjectionFacts(event);
       this.recordDeclaredOutputs(event, declaredOutputs);
-      if (workItemAdmission) this.sessionWorkItemAdmissionFault?.();
+      if (workItemAdmission) this.faults.sessionWorkItemAdmission?.();
       if (workItemAdmission?.kind === 'association')
         this.recordSessionWorkItemAssociation(
           event,
@@ -3582,7 +3589,7 @@ export class EventStore {
   }
 
   private openAppendEventSavepoint(): void {
-    this.sessionWorkItemSavepointOpenFault?.();
+    this.faults.sessionWorkItemSavepointOpen?.();
     this.db.exec('SAVEPOINT append_event_history');
   }
 
@@ -9491,7 +9498,7 @@ export class EventStore {
     this.packageMcpAdmissionJournal ??= composePackageMcpAdmissionJournal(
       this.db,
       this.recoveryLedgerOwner,
-      this.packageMcpCommitFault,
+      this.faults.packageMcpCommit,
       (receipt) =>
         registryReceiptMatchesAppliedPolicy(
           receipt,
@@ -9553,7 +9560,7 @@ export class EventStore {
       read: (runId: string) => this.readNativeInvocationRun(runId),
       list: () => this.listNativeInvocationRuns(),
       active: () => {
-        this.nativeInvocationStartupFault?.();
+        this.faults.nativeInvocationStartup?.();
         return this.readActiveNativeInvocationRuns();
       },
     };
@@ -9638,7 +9645,7 @@ export class EventStore {
                 record.startedAt,
                 record.updatedAt,
               ) as { changes?: number };
-            if (changed.changes === 1) this.voiceTurnTransitionFault?.();
+            if (changed.changes === 1) this.faults.voiceTurnTransition?.();
             return changed.changes === 1 ? 'started' : 'duplicate';
           } catch {
             try {
@@ -9730,7 +9737,7 @@ export class EventStore {
               ...(input.ownerId ? [input.ownerId] : []),
               ...input.from,
             );
-            this.voiceTurnTransitionFault?.();
+            this.faults.voiceTurnTransition?.();
             // Do not trust the driver's write acknowledgement as proof. The
             // exact durable row is the terminal fact, including after a
             // write-success/readback-boundary fault.
@@ -11252,7 +11259,7 @@ export class EventStore {
         .run(outcome, now, fingerprint, outcome) as {
         changes: number | bigint;
       };
-      this.recoveryTransitionFault?.();
+      this.faults.recoveryTransition?.();
       return recoveryTransition(result);
     } catch (error) {
       // A durable UPDATE can succeed before the caller observes a driver or
@@ -12191,7 +12198,7 @@ export class EventStore {
           input.ownerId,
           ...input.from,
         );
-      this.nativeInvocationTransitionFault?.();
+      this.faults.nativeInvocationTransition?.();
       const row = this.db
         .prepare(
           `SELECT state, updated_at, completed_at, failure_message

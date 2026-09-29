@@ -7,14 +7,16 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import { describe, expect, test, vi } from 'vitest';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { WorktreeProvisioningService } from '../../projects/worktree-provisioning-service.js';
 import {
-  canonicalHandoffEffectDigest,
   createConversationHandoffIntent,
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
@@ -404,25 +406,64 @@ describe('executeForegroundMessage', () => {
     );
   });
 
-  test('canonicalizes resolved handoff options while binding every value', () => {
-    const first = canonicalHandoffEffectDigest({
-      modelOptions: {
-        effort: 'high',
-        nested: { sandbox: 'workspace', fast: true },
+  test('binds the handoff digest to resolved option values, not their key order', async () => {
+    const deps = dependencies();
+    deps.getAgent = vi.fn(async (_access, id) => ({
+      slug: id,
+      available: true,
+      execution: { agentConnectionId: engineConnectionId('codex') },
+    }));
+    deps.getConnection = vi.fn(async () => ({
+      id: 'codex',
+      name: 'codex',
+      kind: 'agent' as const,
+      type: 'codex',
+      enabled: true,
+      status: 'ready' as const,
+      capabilities: ['agent-runtime' as const],
+      config: { provider: 'codex' },
+      prerequisites: [],
+    }));
+    deps.readSessionBinding = vi.fn(async () => ({
+      environmentId: 'environment-kontour',
+      agentId: 'agent-a',
+    }));
+    deps.prepareConversationHandoff = vi.fn(async (_access, _input) => ({
+      marker: {
+        predecessorSessionId: 'conversation:test',
+        sessionId: 'conversation:test:session:b',
+        targetAgentId: 'agent-b',
+        targetEnvironmentId: 'environment-kontour',
       },
-    });
-    const reordered = canonicalHandoffEffectDigest({
-      modelOptions: {
-        nested: { fast: true, sandbox: 'workspace' },
-        effort: 'high',
-      },
-    });
-    const changed = canonicalHandoffEffectDigest({
-      modelOptions: {
-        effort: 'low',
-        nested: { sandbox: 'workspace', fast: true },
-      },
-    });
+      transcriptSeed: 'prior transcript',
+      outcome: 'created' as const,
+      carried: ['authorizedTranscript'],
+      reset: ['providerNativeCursor'],
+    }));
+    const handoffWith = (options: Record<string, unknown>) =>
+      executeForegroundMessage(
+        {
+          userId: 'test-user',
+          target: {
+            environment: { kind: 'current' as const },
+            agent: agentId('agent-b'),
+            model: { options },
+          },
+          conversationId: 'conversation:test',
+          message: 'Continue with B',
+          handoffIntent: createConversationHandoffIntent('handoff-1'),
+        },
+        deps,
+      );
+
+    await handoffWith({ effort: 'high', fastMode: true });
+    await handoffWith({ fastMode: true, effort: 'high' });
+    await handoffWith({ effort: 'low', fastMode: true });
+
+    const [first, reordered, changed] = vi
+      .mocked(deps.prepareConversationHandoff!)
+      .mock.calls.map(([, input]) => input.messageDigest);
+    expect(first).toMatch(/^[0-9a-f]{64}$/);
     expect(reordered).toBe(first);
     expect(changed).not.toBe(first);
   });

@@ -9,7 +9,7 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from '../../../../scripts/lib/owned-process.mjs';
-import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
+import { createAuthorizedSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 
 const children: Array<ReturnType<typeof executeOwnedProcess>> = [];
 const roots: string[] = [];
@@ -30,10 +30,10 @@ const moduleUrl = new URL('../planned-home-transfer-store.ts', import.meta.url)
   .href;
 const source = `
 import { DatabaseSync } from 'node:sqlite';
-import { createSqlitePlannedHomeTransferStore } from ${JSON.stringify(moduleUrl)};
+import { createAuthorizedSqlitePlannedHomeTransferStore } from ${JSON.stringify(moduleUrl)};
 const db = new DatabaseSync(process.argv[1]);
 db.exec('PRAGMA busy_timeout=5000');
-const store = createSqlitePlannedHomeTransferStore(db);
+const store = createAuthorizedSqlitePlannedHomeTransferStore(db, () => true);
 const owner = store.inspect('tenant', 'channel');
 if (owner.kind !== 'stored' || owner.value.revision !== 0 || owner.value.homeRef !== 'source') throw Error('Unexpected initial owner');
 process.send({ kind: 'ready' });
@@ -81,7 +81,10 @@ test('two independently running contenders observe the same owner but only one r
   const path = join(root, 'authority.sqlite');
   const db = new DatabaseSync(path);
   try {
-    const store = createSqlitePlannedHomeTransferStore(db);
+    const store = createAuthorizedSqlitePlannedHomeTransferStore(
+      db,
+      () => true,
+    );
     expect(
       store.initialize({
         tenantId: 'tenant',

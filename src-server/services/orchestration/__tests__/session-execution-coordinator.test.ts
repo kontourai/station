@@ -2,6 +2,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { describe, expect, test, vi } from 'vitest';
 import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
 import type { SessionTurnBoundaryAuthority } from '../session-turn-boundary.js';
+import { WorkspaceExecutionBusyError } from '../workspace-execution-barrier.js';
 
 function deferred() {
   let resolve!: () => void;
@@ -12,7 +13,7 @@ function deferred() {
 }
 
 function event(
-  method: 'turn.started' | 'turn.completed' | 'turn.aborted',
+  method: 'turn.started' | 'turn.completed' | 'turn.aborted' | 'runtime.error',
   turnId: string,
 ): CanonicalRuntimeEvent {
   return {
@@ -102,6 +103,27 @@ describe('SessionExecutionCoordinator', () => {
     coordinator.observe(event('turn.completed', 'turn-1'));
     expect(coordinator.hasActiveTurn('thread-1')).toBe(false);
   });
+
+  test.each(['turn.completed', 'runtime.error'] as const)(
+    'an observed %s releases the turn workspace for exclusive work',
+    async (terminal) => {
+      const coordinator = new SessionExecutionCoordinator();
+      const restore = () =>
+        coordinator.runWorkspaceExclusive('/repo', async () => 'restore');
+      await coordinator.runTurnStart(
+        'thread-1',
+        async () => {
+          coordinator.markTurnAccepted('thread-1', 'turn-a');
+        },
+        '/repo',
+      );
+      await expect(restore()).rejects.toBeInstanceOf(
+        WorkspaceExecutionBusyError,
+      );
+      coordinator.observe(event(terminal, 'turn-a'));
+      await expect(restore()).resolves.toBe('restore');
+    },
+  );
 
   test('does not resurrect a fast turn that completed before sendTurn resolved', async () => {
     const coordinator = new SessionExecutionCoordinator();

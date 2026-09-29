@@ -1515,6 +1515,7 @@ export async function runRepresentativeNarrowDiffFixture({
     });
     return {
       fixture: targetPath,
+      paths: result.paths,
       elapsedMs: now() - startedAt,
       counts: result.receipt.counts,
       selection: result.selection,
