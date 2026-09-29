@@ -66,3 +66,24 @@ export function modelProviderFailureMessage(httpStatus: number): string {
   }
   return `The model provider refused the request ${suffix}`;
 }
+
+/** A model provider request that failed without an HTTP status. */
+export const MODEL_PROVIDER_REQUEST_FAILED =
+  'The model provider request failed.';
+
+/**
+ * Outward text for a model provider's error (an ai-sdk `APICallError`):
+ * the status sentence, or {@link MODEL_PROVIDER_REQUEST_FAILED} without a
+ * status. Undefined for any other error, which the caller keeps handling as
+ * before — Station-authored refusals ("Agent not found", configuration
+ * conflicts) stay readable because they are not provider errors.
+ */
+export function outwardModelProviderErrorText(
+  error: unknown,
+): string | undefined {
+  if (!APICallError.isInstance(error)) return undefined;
+  const status = modelProviderErrorStatus(error);
+  return status === undefined
+    ? MODEL_PROVIDER_REQUEST_FAILED
+    : modelProviderFailureMessage(status);
+}

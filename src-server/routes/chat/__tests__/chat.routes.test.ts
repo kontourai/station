@@ -461,6 +461,61 @@ describe('Chat Routes', () => {
     expect(streamPrimaryAgentChat).not.toHaveBeenCalled();
   });
 
+  test.each([
+    [
+      'a model provider error',
+      'provider',
+      'The model provider could not find the model (HTTP 404).',
+    ],
+    ['a Station-authored error', 'station', 'Prompt template is missing'],
+  ])(
+    '%s thrown while preparing the turn is returned as outward text',
+    async (_label, kind, expected) => {
+      const { APICallError } = await import('@ai-sdk/provider');
+      const secret = 'sk-live-SECRET-6d5c4b';
+      vi.mocked(prepareChatRequest).mockImplementationOnce(async () => {
+        throw kind === 'provider'
+          ? new APICallError({
+              message: `model gone ${secret}`,
+              url: `https://provider.example.test/v1/models?key=${secret}`,
+              requestBodyValues: { secret },
+              statusCode: 404,
+              responseBody: secret,
+            })
+          : new Error('Prompt template is missing');
+      });
+      const app = createChatRoutes({
+        configLoader: { getLaunchabilityRevision: () => 0 },
+        providerService: {
+          getLaunchabilityRevision: () => 0,
+          listProviderConnections: () => [],
+        },
+        getAgentConfigurationRevision: () => 0,
+        activeAgents: new Map([['default', { id: 'agent' }]]),
+        agentSpecs: new Map([['default', {}]]),
+        agentTools: new Map([['default', []]]),
+        memoryAdapters: new Map(),
+        logger: {
+          error: vi.fn(),
+          warn: vi.fn(),
+          info: vi.fn(),
+          debug: vi.fn(),
+        },
+      } as any);
+
+      const response = await app.request('/default/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: 'ping' }),
+      });
+      const text = await response.text();
+
+      expect(response.status).toBe(500);
+      expect(JSON.parse(text).error).toBe(expected);
+      expect(text).not.toContain(secret);
+    },
+  );
+
   test('launches a persisted-but-unregistered agent when a valid model override is provided', async () => {
     const createModel = vi.fn(async () => ({ id: 'resolved-model' }));
     const createTempAgent = vi.fn(async () => ({ id: 'override-agent' }));

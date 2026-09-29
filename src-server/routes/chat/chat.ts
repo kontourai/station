@@ -16,6 +16,7 @@ import { WORKSPACE_PANE_HOST_ACTION_METADATA_KEY } from '@kontourai/station-cont
 import { Hono } from 'hono';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { resolveMaxSteps } from '../../constants.js';
+import { outwardModelProviderErrorText } from '../../providers/model-provider-failure.js';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
@@ -376,7 +377,12 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         );
       ctx.logger.error('Chat error', { error });
       chatErrors.add(1, { agent: slug, plugin });
-      const errMsg = errorMessage(error);
+      // A model provider's error (a launch or model resolution that called
+      // the provider) is returned as its outward sentence: its own text can
+      // carry the request URL and response body, and the station-agent relay
+      // republishes this reason as a durable runtime.error.
+      const errMsg =
+        outwardModelProviderErrorText(error) ?? errorMessage(error);
       const isCredentialError =
         errMsg.includes('credential') ||
         errMsg.includes('accessKeyId') ||
