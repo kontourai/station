@@ -344,10 +344,8 @@ export function ChatDockBody({
    * an empty "Start a conversation" placeholder and a second red line under
    * the composer — three contradictory claims about a healthy conversation.
    */
-  const conversationLoading =
-    resolvingOpen ||
-    transcript.catchingUp ||
-    (transcript.enabled && !transcript.settled);
+  const transcriptPending =
+    transcript.catchingUp || (transcript.enabled && !transcript.settled);
   /*
    * station#2530 review 2: `transcript.catchingUp` legitimately blanks
    * `transcript.messages` for BACKGROUND refetches too — a revision bump
@@ -377,9 +375,21 @@ export function ChatDockBody({
   const displayedTranscriptMessages =
     transcript.messages.length > 0
       ? transcript.messages
-      : transcript.catchingUp
+      : transcriptPending
         ? stickyTranscriptRef.current.messages
         : transcript.messages;
+  /*
+   * Loading is the FIRST read of this session's transcript, not every refetch
+   * after it. A turn ending bumps the history revision (and can re-key the
+   * window when the conversation id lands), and that refetch is a background
+   * refresh of a transcript already on screen: counting it flashed a
+   * "Loading conversation" skeleton and a "Start new chat" escape under the
+   * finished answer on every turn. Once this session has shown messages, a
+   * pending refetch keeps showing them and claims nothing is loading.
+   */
+  const transcriptLoaded = stickyTranscriptRef.current.messages.length > 0;
+  const conversationLoading =
+    resolvingOpen || (transcriptPending && !transcriptLoaded);
   /*
    * The wait is BOUNDED but not short: both reads go through the SDK client,
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
