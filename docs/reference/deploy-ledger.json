@@ -1,5 +1,38 @@
 [
   {
+    "timestampUtc": "2026-09-29T06:59:09Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2463.1",
+    "sha": "e8cbb9412176d0fd372de92ef455132e952a409f",
+    "artifactBuiltAt": "2026-09-29T06:10:14.929Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36526165983",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery success (run 36526165983)",
+      "android: NOT_VERIFIED (android provider outcome unknown: unresolved:run:36526165983:play-upload-or-query (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "99f9520b0fde970a123c4dabc22137a55747aa17",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2944](https://github.com/kontourai/station/pull/2944) fix(ui): channel brand text meets AA on its real surfaces",
+          "[#2940](https://github.com/kontourai/station/pull/2940) fix(ui): keep the approval card legible at narrow width, with accessible button states (#2917)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2951](https://github.com/kontourai/station/pull/2951) test(docs): stop the atlas browser test from dequeuing PRs over another PR's stale review"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-09-29T06:54:46Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2463.36526165983",
