@@ -36,7 +36,7 @@ function chipStatus(
   stage: ComposerAttachmentStageSnapshot | undefined,
   refused: boolean,
 ): { label: string; tone: 'ok' | 'pending' | 'blocked' } | null {
-  if (refused) return { label: "Can't send to this engine", tone: 'blocked' };
+  if (refused) return { label: "Not accepted here", tone: 'blocked' };
   if (!stage) return null;
   if (stage.delivery === 'legacy-inline')
     return { label: 'Ready (inline delivery)', tone: 'ok' };
