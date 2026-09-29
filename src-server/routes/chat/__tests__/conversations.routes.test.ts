@@ -4432,5 +4432,55 @@ describe('pre-fix failed-turn marker is never served verbatim', () => {
     );
     expect(prompt).toContain('please answer');
     expect(prompt).not.toContain(SECRET);
+    // Model-bound: the marker is excluded, not merely scrubbed.
+    expect(prompt).not.toContain('CHAT_ERROR');
+  });
+
+  test('summary generation never sends the marker to the summary model, while /messages keeps it scrubbed', async () => {
+    (generateSessionSummary as any).mockClear();
+    const store = {
+      read: vi.fn(async () => null),
+      write: vi.fn(async () => {}),
+      dismiss: vi.fn(async () => {}),
+    };
+    const app = createConversationRoutes(
+      new Map([['default', markerAdapter()]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => 'agent:default',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {} as any,
+      store as any,
+    );
+
+    const response = await app.request('/station/conversations/c1/summary', {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(200);
+    expect(generateSessionSummary).toHaveBeenCalledTimes(1);
+    const input = JSON.stringify(
+      (generateSessionSummary as any).mock.calls[0][0].messages,
+    );
+    expect(input).toContain('please answer');
+    expect(input).not.toContain('CHAT_ERROR');
+    expect(input).not.toContain(SECRET);
+    const served = JSON.stringify(
+      await json(await app.request('/station/conversations/c1/messages')),
+    );
+    expect(served).toContain(
+      '[SYSTEM_EVENT] [CHAT_ERROR] The response stream failed.',
+    );
   });
 });

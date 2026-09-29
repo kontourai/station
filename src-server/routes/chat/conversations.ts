@@ -29,6 +29,7 @@ import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
+import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { ReservedAgentIdentityError } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { ConversationRecord } from '../../domain/storage-adapter.js';
@@ -1355,9 +1356,9 @@ export function createConversationRoutes(
           );
         }
         if (!runtimeContext) throw new Error('Title generation unavailable');
-        // The title prompt quotes every user message, which includes any
-        // persisted failed-turn marker; scrub it like any served read.
-        const messages = scrubChatErrorMarkers(
+        // Model-bound: the title prompt quotes every user message, so the
+        // failed-turn marker (a UI record) is excluded, not just scrubbed.
+        const messages = excludeChatErrorMarkers(
           await adapter.getMessages(getUserId(), conversationId),
         );
         const textFor = (role: string) =>
@@ -1919,7 +1920,9 @@ export function createConversationRoutes(
         );
       const generated = await generateSessionSummary({
         ctx: runtimeContext,
-        messages: source.messages,
+        // Model-bound: the failed-turn marker is a UI record, excluded like
+        // every other model path (the served transcript keeps it, scrubbed).
+        messages: excludeChatErrorMarkers(source.messages),
         transcriptOverride: source.transcript,
       });
       if (isSessionSummaryFailure(generated)) {
