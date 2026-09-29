@@ -50,6 +50,16 @@ const sourceAwareComponents: NonNullable<Options['components']> = {
     );
   },
   img: MarkdownImage,
+  // A table scrolls sideways inside its own box instead of squeezing to the
+  // message width. Squeezed, the message's `overflow-wrap: anywhere` let
+  // every cell shrink to one character, so a phone showed "Dire / ctor / y".
+  // Chromium makes a scroll container keyboard-focusable itself when it
+  // overflows, so the wrapper needs no tabIndex of its own.
+  table: ({ node: _node, ...props }) => (
+    <div className="chat-markdown-table">
+      <table {...props} />
+    </div>
+  ),
 };
 // After GFM, so a URL it autolinks is already a link and is not re-scanned
 // for path mentions.

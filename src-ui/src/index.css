@@ -4031,11 +4031,36 @@ button:hover {
   max-width: 90%;
 }
 
-/* Table styling for slash command responses */
+/* Markdown tables in an answer (`MarkdownRenderer` wraps each in
+   `.chat-markdown-table`). The wrapper scrolls sideways; the table is at
+   least the message width and otherwise as wide as its words need, because
+   the cells opt back out of the message's `overflow-wrap: anywhere` — that
+   value lowers min-content to a single character, which is what split a
+   phone's first column letter by letter. Inline code in a cell stays on one
+   line (`ls -la` no longer breaks at its hyphen). The old column rules here
+   (a 500px description column, a centred fourth column) were written for a
+   slash-command listing that now renders its own inline-styled HTML, and
+   applied to every answer's tables. */
+.chat-markdown-table {
+  max-width: 100%;
+  margin: 1em 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.chat-markdown-table:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 .message.assistant table {
   border-collapse: collapse;
-  width: 100%;
+  min-width: 100%;
   margin: 1em 0;
+}
+
+.message.assistant .chat-markdown-table table {
+  margin: 0;
 }
 
 .message.assistant table th,
@@ -4043,34 +4068,21 @@ button:hover {
   padding: 8px 12px;
   border: 1px solid var(--border-primary);
   text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.message.assistant table td code,
+.message.assistant table th code,
+.message.assistant table a.chat-link-chip {
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .message.assistant table th {
   background: var(--bg-secondary);
   font-weight: 600;
-}
-
-/* Description column with flexible height based on row */
-.message.assistant table td:nth-child(2) {
-  max-width: 500px;
-  padding: 8px 12px;
-  vertical-align: middle;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  word-break: break-word;
-}
-
-/* Fixed width for parameters column with wrapping */
-.message.assistant table td:nth-child(3) {
-  max-width: 250px;
-  word-wrap: break-word;
-  white-space: normal;
-}
-
-/* Center align trusted column */
-.message.assistant table td:nth-child(4),
-.message.assistant table th:nth-child(4) {
-  text-align: center;
 }
 
 .message.loading {
@@ -9197,7 +9209,16 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .chat-dock__mobile-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(80px, 28%) minmax(0, 1fr);
+  /* The title stays centred (equal edge tracks) and takes all but a fixed
+     reserve for the edges: the leading edge's drawer or dock toggle plus a
+     44px project control, mirrored on the right. The project name is what
+     gives way — one line, ellipsised — not the chat title, which used to be
+     held to 28% of the bar and clamped to two lines beside empty space. */
+  --chat-dock-mobile-header-edge: 96px;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(80px, calc(100% - 2 * var(--chat-dock-mobile-header-edge)))
+    minmax(0, 1fr);
   align-items: center;
   gap: var(--space-1);
   /* 12px of horizontal padding is a deliberate grab margin: the bar is the

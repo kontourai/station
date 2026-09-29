@@ -2185,6 +2185,10 @@
   gap: 0;
 }
 .message-row--compact:not(.message-row--user) > .message {
+  /* Exactly the row: not a shrink-to-fit box (`.message.assistant` is
+     `align-self: flex-start`, which let a wide table grow the answer past the
+     screen) and not capped at the base 80%. */
+  align-self: stretch;
   max-width: none;
 }
 .message-row--compact:not(.message-row--user) > .message-details__trigger {

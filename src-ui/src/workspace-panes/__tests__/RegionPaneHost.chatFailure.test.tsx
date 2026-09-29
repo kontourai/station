@@ -69,7 +69,9 @@ vi.mock('../../hooks/useKeyboardShortcut', () => ({
 
 const STORE_KEY = 'chat-failure-store-key';
 const CONVERSATION_ID = 'conversation-that-crashes';
-const TITLE = 'Are you running the latest version?';
+// A derived title is the user's first words, markdown included.
+const TITLE = 'Are you running the **latest** version? Run `ls -la`';
+const PLAIN_TITLE = 'Are you running the latest version? Run ls -la';
 const CRASH = "Cannot read properties of undefined (reading 'capabilities')";
 
 /** Throws while its conversation is the open one, like a conversation-specific crash. */
@@ -147,8 +149,22 @@ test('a crashed Chat pane names the conversation, shows the error, and goes back
     'workspace-pane-host--chromeless-failure',
   );
   expect(within(failure).getByText('Chat couldn’t open')).toBeTruthy();
-  // Which conversation failed, not just which pane.
-  expect(within(failure).getByText(TITLE)).toBeTruthy();
+  // Which conversation failed, not just which pane: labelled, and as plain
+  // text rather than raw markdown.
+  const name = within(failure).getByText(PLAIN_TITLE);
+  expect(name.className).toBe('workspace-pane-failure__subject-name');
+  expect(
+    name.previousElementSibling?.textContent,
+    'the name is labelled as the chat',
+  ).toBe('Chat');
+  expect(within(failure).queryByText(TITLE)).toBeNull();
+  // The raw details sit inside the failure card, under its actions.
+  expect(
+    within(failure)
+      .getByRole('button', { name: 'Try again' })
+      .closest('.workspace-pane-failure__footer')
+      ?.querySelector('details'),
+  ).not.toBeNull();
   // The error the boundary caught, kept behind a disclosure rather than
   // discarded.
   const details = within(failure)
@@ -194,7 +210,7 @@ test('with no conversation open the failure offers only the retry', async () => 
   expect(
     within(failure).queryByRole('button', { name: 'Back to chats' }),
   ).toBeNull();
-  expect(within(failure).queryByText(TITLE)).toBeNull();
+  expect(within(failure).queryByText(PLAIN_TITLE)).toBeNull();
 
   crash = false;
   fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }));

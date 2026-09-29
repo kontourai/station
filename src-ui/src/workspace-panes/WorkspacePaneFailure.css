@@ -5,23 +5,50 @@
 .workspace-pane-failure {
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-3);
   min-width: 0;
   padding: calc(var(--k-space-4) + var(--k-space-3)) var(--k-space-4)
     var(--k-space-4);
   overflow-y: auto;
 }
 
+/* What failed, labelled: a small caption over the plain-text name, clamped
+   to two lines with an ellipsis instead of a bold raw excerpt. */
 .workspace-pane-failure__subject {
-  display: block;
-  margin-bottom: var(--k-space-1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: var(--k-space-2);
+}
+
+.workspace-pane-failure__subject-label {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.workspace-pane-failure__subject-name {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
   color: var(--k-text);
-  font-weight: 600;
+  font-weight: 400;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .workspace-pane-failure__reason {
   display: block;
+}
+
+.workspace-pane-failure__footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--k-space-3);
+  width: 100%;
 }
 
 .workspace-pane-failure__actions {
@@ -32,19 +59,49 @@
 }
 
 .workspace-pane-failure__details {
-  align-self: stretch;
-  max-width: 40rem;
   width: 100%;
-  margin-inline: auto;
+  border-top: 1px solid var(--k-line);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
+  text-align: left;
 }
 
+/* A disclosure that reads as one: a chevron that turns when open, a 44px
+   row, and a visible keyboard focus ring. The summary is natively focusable
+   and toggled by Enter and Space. The chevron turns with a transform only,
+   on the motion token the global reduced-motion reset zeroes. */
 .workspace-pane-failure__details summary {
   display: flex;
   align-items: center;
+  gap: var(--k-space-2);
   min-height: 44px;
+  border-radius: var(--k-radius-sm);
   cursor: pointer;
+  list-style: none;
+}
+
+.workspace-pane-failure__details summary::-webkit-details-marker {
+  display: none;
+}
+
+.workspace-pane-failure__details summary::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.workspace-pane-failure__details[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.workspace-pane-failure__details summary:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .workspace-pane-failure__detail-text {

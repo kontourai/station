@@ -21,8 +21,11 @@ export interface WorkspacePaneFailureDetail {
  * specific to that conversation.
  */
 export interface WorkspacePaneFailureContext {
-  /** The thing inside the pane that failed, e.g. the open chat's title. */
-  subject?: string;
+  /**
+   * The thing inside the pane that failed, as plain text (the owner strips
+   * any markup), and what it is — e.g. `{ label: 'Chat', name: <title> }`.
+   */
+  subject?: { label: string; name: string };
   /**
    * A recovery that changes what the pane opens. The host retries the pane
    * after running it, so the pane remounts on the new state.
@@ -90,7 +93,15 @@ export function WorkspacePaneFailure({
           <>
             {context?.subject ? (
               <span className="workspace-pane-failure__subject">
-                {context.subject}
+                <span className="workspace-pane-failure__subject-label">
+                  {context.subject.label}
+                </span>
+                <span
+                  className="workspace-pane-failure__subject-name"
+                  title={context.subject.name}
+                >
+                  {context.subject.name}
+                </span>
               </span>
             ) : null}
             <span className="workspace-pane-failure__reason">
@@ -103,40 +114,44 @@ export function WorkspacePaneFailure({
           </>
         }
         action={
-          <span className="workspace-pane-failure__actions">
-            <Button variant="primary" onClick={onRetry}>
-              Try again
-            </Button>
-            {context?.back ? (
-              <Button onClick={context.back.onBack}>
-                {context.back.label}
+          <span className="workspace-pane-failure__footer">
+            <span className="workspace-pane-failure__actions">
+              <Button variant="primary" onClick={onRetry}>
+                Try again
               </Button>
-            ) : null}
+              {context?.back ? (
+                <Button onClick={context.back.onBack}>
+                  {context.back.label}
+                </Button>
+              ) : null}
+            </span>
+            {/* Inside the card, under its actions: the raw error belongs to
+                this failure, not to the page around it. */}
+            <details className="workspace-pane-failure__details">
+              <summary>Technical details</summary>
+              <pre className="workspace-pane-failure__detail-text">{text}</pre>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  void Promise.resolve()
+                    .then(() => navigator.clipboard.writeText(text))
+                    .then(
+                      () => setCopied('copied'),
+                      () => setCopied('failed'),
+                    );
+                }}
+              >
+                {copied === 'copied'
+                  ? 'Copied'
+                  : copied === 'failed'
+                    ? 'Copy failed — select the text above'
+                    : 'Copy details'}
+              </Button>
+            </details>
           </span>
         }
       />
-      <details className="workspace-pane-failure__details">
-        <summary>Technical details</summary>
-        <pre className="workspace-pane-failure__detail-text">{text}</pre>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            void Promise.resolve()
-              .then(() => navigator.clipboard.writeText(text))
-              .then(
-                () => setCopied('copied'),
-                () => setCopied('failed'),
-              );
-          }}
-        >
-          {copied === 'copied'
-            ? 'Copied'
-            : copied === 'failed'
-              ? 'Copy failed — select the text above'
-              : 'Copy details'}
-        </Button>
-      </details>
     </section>
   );
 }

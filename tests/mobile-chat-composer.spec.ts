@@ -2073,6 +2073,19 @@ test('the maximized phone dock header clears the status bar once, not twice', as
     JSON.stringify({ resting: resting.height, ...geometry }),
   ).toBeLessThanOrEqual(resting.height + 1);
   expect(geometry.leadingTop - geometry.dockTop).toBeLessThan(SAFE_TOP_PX / 2);
+
+  // The centred title takes the bar minus a fixed reserve for each edge; the
+  // project name is what truncates. At 28% of the bar it got ~107px here.
+  const identity = (await header
+    .getByRole('button', { name: /^Switch task/ })
+    .boundingBox())!;
+  expect(identity.width).toBeGreaterThanOrEqual(180);
+  const headerBox = (await header.boundingBox())!;
+  expect(
+    Math.abs(
+      identity.x + identity.width / 2 - (headerBox.x + headerBox.width / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
 });
 
 /**

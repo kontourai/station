@@ -529,6 +529,22 @@ describe('SessionQueryModule', () => {
     ).toHaveLength(2);
     expect(later.conversation.title).toBe('Deploy the docs');
 
+    // A long first message is cut at a word boundary and marked as cut,
+    // never sliced mid-word.
+    const long = await conversationFor([
+      {
+        method: 'turn.started',
+        threadId: 'thread-t',
+        turnId: 't3',
+        prompt:
+          'Are you running the latest version of the tooling here? Run `ls -la`, `git status`, and read README.md',
+      },
+    ]);
+    expect(long.conversation.title).toBe(
+      'Are you running the latest version of the tooling here? Run `ls -la`, `git\u2026',
+    );
+    expect(Array.from(long.conversation.title).length).toBeLessThanOrEqual(80);
+
     const untitled = await conversationFor([]);
     expect(untitled.conversation.title).toBe('New chat');
     expect(untitled.conversation.title).not.toContain('opencode');

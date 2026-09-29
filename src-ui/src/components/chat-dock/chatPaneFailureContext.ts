@@ -26,12 +26,26 @@ export function ambientChatPaneFailureContext():
     ([storeId, chat]) =>
       storeId === activeChat || chat.conversationId === activeChat,
   )?.[1];
-  const title = open?.title?.trim();
+  const title = open?.title ? plainChatTitle(open.title) : '';
   return {
-    ...(title ? { subject: title } : {}),
+    ...(title ? { subject: { label: 'Chat', name: title } } : {}),
     back: {
       label: 'Back to chats',
       onBack: () => navigationStore.setActiveChat(null),
     },
   };
+}
+
+/**
+ * A chat title as plain text. Untitled chats are titled by the first thing
+ * the user wrote, which is often markdown ("Run `ls -la`"); the failure
+ * screen shows it as a name, not as markup.
+ */
+function plainChatTitle(title: string): string {
+  return title
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[`*_~]+/g, '')
+    .replace(/^\s*(?:#{1,6}|>|[-+]|\d+\.)\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
