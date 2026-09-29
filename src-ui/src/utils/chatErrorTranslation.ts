@@ -362,7 +362,7 @@ export function translateChatError(
     return {
       title: "This engine can't take these attachments",
       body: `${text || 'This engine cannot take the attached files.'} Nothing was sent.`,
-      hint: 'Remove the attachments to send your text, or switch to an engine or model that accepts images.',
+      hint: 'Remove the attachments to send your text, or switch to an engine or model that accepts them.',
       retryable: false,
     };
   }
