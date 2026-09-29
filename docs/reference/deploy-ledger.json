@@ -1,5 +1,40 @@
 [
   {
+    "timestampUtc": "2026-09-29T13:27:50Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2463.2",
+    "sha": "0690c93997c7abf1c0e410be6166e5f615cefd4b",
+    "artifactBuiltAt": "2026-09-29T12:47:05.040Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36569268737",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36569268737)"
+    ],
+    "changelog": {
+      "previousSha": "99f9520b0fde970a123c4dabc22137a55747aa17",
+      "groups": {
+        "feat": [
+          "[#2892](https://github.com/kontourai/station/pull/2892) feat(relay): add opt-in native application signaling bridge"
+        ],
+        "fix": [
+          "[#2943](https://github.com/kontourai/station/pull/2943) fix(container,docs): restore the docs build inputs and the public Pages link",
+          "[#2944](https://github.com/kontourai/station/pull/2944) fix(ui): channel brand text meets AA on its real surfaces",
+          "[#2940](https://github.com/kontourai/station/pull/2940) fix(ui): keep the approval card legible at narrow width, with accessible button states (#2917)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2951](https://github.com/kontourai/station/pull/2951) test(docs): stop the atlas browser test from dequeuing PRs over another PR's stale review"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-09-29T13:20:39Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2463.36569268737",
