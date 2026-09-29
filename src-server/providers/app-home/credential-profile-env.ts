@@ -62,7 +62,7 @@ export class CredentialProfileEnvUnavailableError extends Error {
  * value-free `envInvalid` marker; a marked profile fails closed here
  * instead of silently un-routing the session.
  */
-export function credentialProfileOverlayEnv(
+function credentialProfileOverlayEnv(
   credentialRecovery: unknown,
   ref: string,
 ): Record<string, string> {
