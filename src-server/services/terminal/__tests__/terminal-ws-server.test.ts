@@ -1,20 +1,25 @@
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { request } from 'node:http';
+import { createServer, connect as netConnect } from 'node:net';
 import { terminalPtyUnavailableReason } from '@kontourai/station-shared/terminal-capability';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { PtyUnavailableError } from '../../../domain/pty-adapter.js';
+import { RuntimeAuthFailureLimiter } from '../../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../../security/station-browser-origins.js';
 import { TerminalWebSocketServer } from '../terminal-ws-server.js';
 
 const TEST_CREDENTIAL = 'terminal-test-credential-not-for-production';
 
-async function listeningPort(terminal: TerminalWebSocketServer): Promise<{
+async function listeningPort(
+  terminal: TerminalWebSocketServer,
+  host = '127.0.0.1',
+): Promise<{
   port: number;
   wss: ReturnType<TerminalWebSocketServer['start']>;
 }> {
-  const wss = terminal.start(0, '127.0.0.1');
+  const wss = terminal.start(0, host);
   await once(wss, 'listening');
   const address = wss.address();
   if (!address || typeof address === 'string')
@@ -46,6 +51,53 @@ async function closesWithin(ws: WebSocket, timeoutMs = 200): Promise<boolean> {
       setTimeout(() => resolve(false), timeoutMs),
     ),
   ]);
+}
+
+/**
+ * Why this host cannot deliver an IPv4 connection to a `::` listener as an
+ * IPv4-mapped peer (`::ffff:127.0.0.1`), or `undefined` when it can.
+ */
+async function dualStackUnavailableReason(): Promise<string | undefined> {
+  let resolvePeer!: (address: string | undefined) => void;
+  const peer = new Promise<string | undefined>((resolve) => {
+    resolvePeer = resolve;
+  });
+  const server = createServer((socket) => {
+    resolvePeer(socket.remoteAddress);
+    socket.destroy();
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '::', () => resolve());
+    });
+  } catch (error) {
+    return `cannot listen on '::' (${(error as NodeJS.ErrnoException).code ?? String(error)})`;
+  }
+  try {
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      return 'the :: listener has no port';
+    const client = netConnect(address.port, '127.0.0.1');
+    try {
+      await Promise.race([
+        once(client, 'connect'),
+        once(client, 'error').then(([error]) => {
+          throw error;
+        }),
+      ]);
+    } catch (error) {
+      return `the :: listener refuses IPv4 connections (${(error as NodeJS.ErrnoException).code ?? String(error)})`;
+    } finally {
+      client.destroy();
+    }
+    const remoteAddress = await peer;
+    return remoteAddress === '::ffff:127.0.0.1'
+      ? undefined
+      : `IPv4 peer is not reported IPv4-mapped (${remoteAddress})`;
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 }
 
 /** The close reason the server sent within the window, if it closed. */
@@ -614,6 +666,67 @@ describe('terminal websocket remote authentication', () => {
     await closeServer(terminal, wss);
     expect(reason).toBe('query_credential_rejected');
     expect(service.open).not.toHaveBeenCalled();
+  });
+
+  it('a query-credential failure from an IPv4-mapped peer rate-limits the same peer on the auth-frame path', async (context) => {
+    const unavailable = await dualStackUnavailableReason();
+    if (unavailable)
+      context.skip(`needs a dual-stack :: listener: ${unavailable}`);
+    const service = {
+      subscribe: vi.fn(() => vi.fn()),
+      open: vi.fn(),
+      close: vi.fn(),
+    };
+    const auth = {
+      ...remoteAuthOptions(),
+      // Records the raw socket address for the precondition below.
+      classifyPeer: vi.fn((_address: string | undefined): 'remote' => 'remote'),
+      authTimeoutMs: 10_000,
+      limiter: new RuntimeAuthFailureLimiter({ maxFailures: 1 }),
+    };
+    const terminal = new (TerminalWebSocketServer as any)(
+      service,
+      auth,
+    ) as TerminalWebSocketServer;
+    const { port, wss } = await listeningPort(terminal, '::');
+    try {
+      const rejected = new WebSocket(`ws://127.0.0.1:${port}/?credential=x`);
+      const rejectedReason = await closeReasonWithin(rejected, 2_000);
+      expect(rejectedReason).toBe('query_credential_rejected');
+      // Precondition: the server saw the raw IPv4-mapped form, so the two
+      // limiter calls only share a bucket if both normalize it.
+      expect(auth.classifyPeer.mock.calls[0]?.[0]).toBe('::ffff:127.0.0.1');
+
+      const retry = new WebSocket(`ws://127.0.0.1:${port}/`);
+      await once(retry, 'open');
+      const closed = once(retry, 'close');
+      const acknowledged = once(retry, 'message');
+      retry.send(
+        JSON.stringify({
+          type: 'auth',
+          protocolVersion: 1,
+          credential: TEST_CREDENTIAL,
+        }),
+      );
+      // Either the limiter refuses the peer, or (the regression) the valid
+      // credential is accepted and the server acknowledges it.
+      const outcome = await Promise.race([
+        closed.then(([code, reason]) => ({ code, reason: String(reason) })),
+        acknowledged.then(([raw]) => ({ acknowledged: String(raw) })),
+        new Promise<{ timedOut: true }>((resolve) =>
+          setTimeout(() => resolve({ timedOut: true }), 2_000),
+        ),
+      ]);
+      if (retry.readyState === WebSocket.OPEN) retry.close();
+      expect(outcome).toEqual({
+        code: 4429,
+        reason: 'authentication_rate_limited',
+      });
+      expect(auth.verifyCredential).not.toHaveBeenCalled();
+      expect(service.open).not.toHaveBeenCalled();
+    } finally {
+      await closeServer(terminal, wss);
+    }
   });
 
   it('bounds an idle remote auth handshake with a timeout', async () => {

@@ -36,7 +36,7 @@
  *    back out over an API boundary, so this redaction is load-bearing,
  *    not decorative, for every remote/paired caller. `query({ redact:
  *    false })` is reserved for a caller that has already been classified
- *    local by the bound `isLocalRuntimeCaller` flag; it is never a query-string
+ *    local by the bound `isBoundRuntimeLocalOperator` flag; it is never a query-string
  *    flag a client can set. Critically, `q` is matched against the
  *    rendering the caller will actually receive, never the other one
  *    (archive#1896 review round 2, HIGH #1): a remote caller can only
@@ -115,7 +115,7 @@ export interface ServerLogQueryOptions {
   /**
    * Whether to redact each returned entry (and to match `q` against that
    * redacted rendering). Default `true` — fail-closed. Only a caller
-   * already classified local by the bound `isLocalRuntimeCaller` flag may pass `false`.
+   * already classified local by the bound `isBoundRuntimeLocalOperator` flag may pass `false`.
    */
   redact?: boolean;
 }
