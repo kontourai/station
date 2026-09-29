@@ -887,7 +887,9 @@ kind/name does not invent a new engine adapter.
 Creation normally returns 201, update 200, with `{success: true, data}`. A saved
 configuration awaiting runtime activation returns 202 and
 `configurationActivation`, as with Agent writes. The returned definition is
-redacted. Invalid saves return a structured 400 response.
+redacted. Invalid saves return a structured 400 response. A POST whose `id`
+names an existing Model connection returns 409 and changes nothing; replacing
+it, including its stored API key, is a PUT.
 
 ### Delete or Reset a Connection
 
