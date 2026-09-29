@@ -53,21 +53,11 @@ export function SessionPullRequestConflictChip({
   const result = mergeability.data as
     | PullRequestResult<PullRequestBranchMergeability[]>
     | undefined;
-  // The session's pull request is the one whose head is where this branch is
-  // pushed. The owner is compared only when the context names it: a checkout
-  // that fetches one repository and pushes to another (`pushurl`) reports no
-  // head owner, and its pull request's source owner is the push target.
-  const forgeBranch = identity?.head?.branch ?? identity?.branch;
-  const forgeOwner = identity?.head?.owner?.toLowerCase();
   const isConflicted =
-    forgeBranch !== undefined &&
     result?.available === true &&
     result.data?.some(
       (pullRequest) =>
-        pullRequest.sourceBranch === forgeBranch &&
-        (forgeOwner === undefined ||
-          pullRequest.sourceOwner === undefined ||
-          pullRequest.sourceOwner.toLowerCase() === forgeOwner) &&
+        pullRequest.sourceBranch === identity?.branch &&
         pullRequest.mergeability === 'conflicting',
     );
 

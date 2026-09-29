@@ -154,16 +154,6 @@ export function createPullRequestRoutes(
         ...(resolution.context.branch
           ? { branch: resolution.context.branch }
           : {}),
-        ...(resolution.context.branch && resolution.context.head
-          ? {
-              head: {
-                branch: resolution.context.head.branch,
-                ...(resolution.context.head.owner
-                  ? { owner: resolution.context.head.owner }
-                  : {}),
-              },
-            }
-          : {}),
       },
     });
   });

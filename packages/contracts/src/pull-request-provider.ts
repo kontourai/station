@@ -97,13 +97,6 @@ export type PullRequestClientContext =
        * worktree; absent when it is detached or not pushed to its upstream.
        */
       branch?: string;
-      /**
-       * Where that branch is pushed, as the forge names it, when its
-       * upstream is recorded: the upstream branch, and a fork's owner when
-       * the upstream remote is another repository. An absent owner is not a
-       * claim that the push target is `repository` (a `pushurl` can differ).
-       */
-      head?: { branch: string; owner?: string };
     }
   | {
       available: false;
@@ -143,12 +136,6 @@ export interface PullRequest {
 export interface PullRequestBranchMergeability {
   ref: string;
   sourceBranch: string;
-  /**
-   * Owner of the repository the source branch lives in, when the provider
-   * reports it: a fork's pull request can share a branch name with this
-   * repository's own.
-   */
-  sourceOwner?: string;
   mergeability: PullRequest['mergeability'];
 }
 export interface PullRequestListQuery {

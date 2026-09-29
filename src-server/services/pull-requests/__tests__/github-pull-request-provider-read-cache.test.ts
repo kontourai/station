@@ -355,7 +355,7 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
         // so a longer list is refused rather than served partially.
         '101',
         '--json',
-        'number,headRefName,headRepositoryOwner,mergeable',
+        'number,headRefName,mergeable',
       ],
     ]);
     expect(gh.count('auth')).toBe(1);
@@ -399,7 +399,6 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
           Array.from({ length: rows }, (_, index) => ({
             number: index + 1,
             headRefName: `branch-${index + 1}`,
-            headRepositoryOwner: { login: 'kontourai' },
             mergeable: 'MERGEABLE',
           })),
         ),
@@ -420,43 +419,6 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
       }
     },
   );
-
-  test('the narrow read reports the source branch owner so a fork is distinguishable', async () => {
-    const gh = fakeGh();
-    const { provider } = providerWith(gh);
-    gh.stdoutNext(
-      'pr list',
-      JSON.stringify([
-        {
-          number: 7,
-          headRefName: 'feature',
-          headRepositoryOwner: { login: 'kontourai' },
-          mergeable: 'CONFLICTING',
-        },
-        {
-          number: 9,
-          headRefName: 'feature',
-          headRepositoryOwner: { login: 'a-fork' },
-          mergeable: 'CONFLICTING',
-        },
-      ]),
-    );
-    const result = await provider.listOpenPullRequestMergeability(station);
-    expect(result.data).toEqual([
-      {
-        ref: '7',
-        sourceBranch: 'feature',
-        sourceOwner: 'kontourai',
-        mergeability: 'conflicting',
-      },
-      {
-        ref: '9',
-        sourceBranch: 'feature',
-        sourceOwner: 'a-fork',
-        mergeability: 'conflicting',
-      },
-    ]);
-  });
 
   test('one repository name under two owners is two availability probes with their own merge methods', async () => {
     const calls: string[][] = [];

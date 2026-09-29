@@ -216,11 +216,9 @@ function normalizeGitHubBranchMergeability(
 ): PullRequestBranchMergeability {
   if (!Number.isInteger(value?.number) || typeof value.headRefName !== 'string')
     throw new Error('GitHub CLI returned an incomplete pull request');
-  const sourceOwner = value.headRepositoryOwner?.login;
   return {
     ref: String(value.number),
     sourceBranch: value.headRefName,
-    ...(typeof sourceOwner === 'string' ? { sourceOwner } : {}),
     mergeability: githubMergeability(value.mergeable),
   };
 }
@@ -543,7 +541,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         '--limit',
         String(GITHUB_MERGEABILITY_LIST_LIMIT + 1),
         '--json',
-        'number,headRefName,headRepositoryOwner,mergeable',
+        'number,headRefName,mergeable',
       ],
       true,
       (parsed) => {

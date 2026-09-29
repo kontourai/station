@@ -85,40 +85,6 @@ describe('pull request operator gate', () => {
       },
     });
 
-    const forked = createPullRequestRoutes(
-      () => [x.provider],
-      async () => {
-        const resolved = await context();
-        return {
-          ...resolved,
-          context: {
-            ...resolved.context,
-            // The resolver's head also names the fork repository; the
-            // client context carries only branch and owner.
-            head: {
-              branch: 'b-upstream',
-              owner: 'fork-owner',
-              repository: 'r-fork',
-            },
-          },
-        };
-      },
-      { operatorIdentityForRequest: () => undefined },
-    );
-    await expect(
-      (await forked.request('/context?project=station')).json(),
-    ).resolves.toEqual({
-      success: true,
-      data: {
-        available: true,
-        provider: 'github',
-        host: 'github.com',
-        repository: { owner: 'o', name: 'r' },
-        branch: 'b',
-        head: { branch: 'b-upstream', owner: 'fork-owner' },
-      },
-    });
-
     const unavailable = createPullRequestRoutes(
       () => [x.provider],
       async () => ({ available: false, reason: 'Checkout has no remote' }),
@@ -330,7 +296,7 @@ describe('pull request operator gate', () => {
     });
     expect(getPullRequest).not.toHaveBeenCalled();
     expect(transport.mock.calls.at(-1)?.[0]).toContain(
-      'number,headRefName,headRepositoryOwner,mergeable',
+      'number,headRefName,mergeable',
     );
   });
 
