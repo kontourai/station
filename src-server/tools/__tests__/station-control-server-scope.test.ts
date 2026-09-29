@@ -18,7 +18,7 @@ import {
   stationServerScopeHeaders,
 } from '../../security/station-server-scope.js';
 import {
-  __resetStationControlStdioCallerCredentialForTests,
+  __resetStationControlStdioEntryForTests,
   controlRequestOptions,
   withStationControlCallerContext,
 } from '../station-control-shared.js';
@@ -26,7 +26,7 @@ import {
 const context = { token: 'caller-token', resolve: () => null };
 
 beforeAll(() => {
-  __resetStationControlStdioCallerCredentialForTests();
+  __resetStationControlStdioEntryForTests();
   enableStationServerSelfAttestation();
 });
 afterAll(() => {

@@ -747,6 +747,14 @@ so a cache that refreshed only one side would tell two stories about it.
 
 Fetches conversations for an agent. Disabled when `agentSlug` is undefined.
 
+### `useBrandingQuery(config?)`
+
+Fetches the branding provider's answer (`appName`, `logo`, `theme`,
+`welcomeMessage`). `theme` is `unknown`: the white-label overrides exactly as
+the provider returned them, unvalidated, so parse them before use (see
+[examples/custom-branding](../../examples/custom-branding/README.md) for the
+shape and rules). An error answer rejects rather than resolving as no branding.
+
 ### `useConfigQuery(config?)`
 
 Fetches app configuration.
@@ -3539,6 +3547,14 @@ partial; the response says which content could not be supplied.
 
 See the [SDK client](../../packages/sdk/src/client/pull-request-review.ts) and
 [forge review adapter](../../src-server/services/pull-requests/pull-request-review.ts).
+
+`usePullRequestMergeabilityQuery(provider, host, owner, repo, project, config)`
+reads a repository's open pull requests narrowed to `PullRequestBranchMergeability`.
+Its key, `pullRequestMergeabilityQueryKey`, names the project and repository and
+no Session, so every observer of one repository shares one cache entry. It
+resolves the checkout from the project alone. `QueryConfig.refetchOnWindowFocus`
+opts one read back into refetching a stale answer when the window returns;
+Station's client default leaves it off.
 
 ## Conversation pull-request links
 

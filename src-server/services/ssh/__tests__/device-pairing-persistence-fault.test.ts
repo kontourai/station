@@ -8,18 +8,15 @@ import {
 } from '../device-pairing-service.js';
 
 /**
- * archive#3277: the persist-before-mutate contract on the four clone-and-swap
+ * archive#3277: the persist-before-mutate contract on the clone-and-swap
  * mutation paths (exchange, revokeDevice, removeRevokedDevice,
  * recordCredentialActivity — each builds a next registry, persists it, and
- * only then swaps it into memory) is proven elsewhere by revoking write
- * permission on the security directory,
- * which some hosts cannot express — Windows maps chmod onto the read-only
- * attribute (creating and renaming inside the directory still succeeds) and
- * root bypasses modes entirely, so those tests are correctly skipped there.
- *
- * That left the fault path unproven on the one platform whose write path
- * actually diverges: `#persistRegistry` skips `fchmodSync` on win32, and a
- * transiently locked registry (antivirus, backup) is a win32-shaped failure.
+ * only then swaps it into memory). This file is the contract's only owner.
+ * It used to be proven by revoking write permission on the security
+ * directory, which Windows (chmod maps onto the read-only attribute) and root
+ * cannot express, so those tests skipped exactly where the write path
+ * diverges: `#persistRegistry` skips `fchmodSync` on win32, and a transiently
+ * locked registry (antivirus, backup) is a win32-shaped failure.
  *
  * Faulting the syscall itself is portable, so that is what this pins. The
  * mock delegates to the real `node:fs` and fails only the durable rename,

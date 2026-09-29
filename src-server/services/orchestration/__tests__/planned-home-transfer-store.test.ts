@@ -6,7 +6,6 @@ import { afterEach, expect, test } from 'vitest';
 import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
 import {
   createAuthorizedSqlitePlannedHomeTransferStore,
-  createSqlitePlannedHomeTransferStore,
   type PlannedHomeTransfer,
   type TransferStoreResult,
 } from '../planned-home-transfer-store.js';
@@ -70,12 +69,12 @@ function fixture() {
     return db;
   };
   const db = open();
-  const store = createSqlitePlannedHomeTransferStore(db);
+  const store = createAuthorizedSqlitePlannedHomeTransferStore(db, () => true);
   stored(store.initialize(owner));
   return { db, store, open };
 }
 function ready(
-  store: ReturnType<typeof createSqlitePlannedHomeTransferStore>,
+  store: ReturnType<typeof createAuthorizedSqlitePlannedHomeTransferStore>,
 ): PlannedHomeTransfer {
   stored(store.prepare(intent));
   const closed = stored(
@@ -134,7 +133,10 @@ test('only closure plus matching target readiness permits an ownership decision'
 });
 test('independent connections cannot reserve competing moves or reuse an operation for a different intent', () => {
   const { store, open } = fixture();
-  const other = createSqlitePlannedHomeTransferStore(open());
+  const other = createAuthorizedSqlitePlannedHomeTransferStore(
+    open(),
+    () => true,
+  );
   const prepared = stored(store.prepare(intent));
   expect(stored(other.prepare(intent))).toEqual(prepared);
   expect(other.prepare({ ...intent, operationId: 'competing' }).kind).toBe(
@@ -155,7 +157,10 @@ test('a lost commit response resolves to the same decision after reopening', () 
   ready(store);
   const committed = stored(store.commit(owner.tenantId, intent.operationId));
   db.close();
-  const reopened = createSqlitePlannedHomeTransferStore(open());
+  const reopened = createAuthorizedSqlitePlannedHomeTransferStore(
+    open(),
+    () => true,
+  );
   expect(stored(reopened.resolve(owner.tenantId, intent.operationId))).toEqual(
     committed,
   );
@@ -216,26 +221,29 @@ test('a write failure rolls ownership and operation state back together', () => 
   const { db, store } = fixture();
   ready(store);
   let injectedFailureReached = false;
-  const faulted = createSqlitePlannedHomeTransferStore({
-    exec: (sql) => db.exec(sql),
-    prepare(sql) {
-      const statement = db.prepare(sql);
-      return {
-        get: (...values) => statement.get(...values),
-        all: (...values) => statement.all(...values),
-        run: (...values) => {
-          if (
-            sql.startsWith('INSERT INTO planned_home_transfers') &&
-            String(values.at(-1)).includes('"phase":"committed"')
-          ) {
-            injectedFailureReached = true;
-            throw new Error('Injected persistence failure');
-          }
-          return statement.run(...values);
-        },
-      };
+  const faulted = createAuthorizedSqlitePlannedHomeTransferStore(
+    {
+      exec: (sql) => db.exec(sql),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          get: (...values) => statement.get(...values),
+          all: (...values) => statement.all(...values),
+          run: (...values) => {
+            if (
+              sql.startsWith('INSERT INTO planned_home_transfers') &&
+              String(values.at(-1)).includes('"phase":"committed"')
+            ) {
+              injectedFailureReached = true;
+              throw new Error('Injected persistence failure');
+            }
+            return statement.run(...values);
+          },
+        };
+      },
     },
-  });
+    () => true,
+  );
   expect(faulted.commit(owner.tenantId, intent.operationId).kind).toBe(
     'unavailable',
   );
@@ -290,14 +298,17 @@ test('unknown fields and accessor input cannot enter durable authority records',
 test('an error after durable commit resolves without assigning a second revision', () => {
   const { db, store } = fixture();
   ready(store);
-  const lostAcknowledgement = createSqlitePlannedHomeTransferStore({
-    exec(sql) {
-      db.exec(sql);
-      if (sql === 'COMMIT')
-        throw new Error('Injected lost commit acknowledgement');
+  const lostAcknowledgement = createAuthorizedSqlitePlannedHomeTransferStore(
+    {
+      exec(sql) {
+        db.exec(sql);
+        if (sql === 'COMMIT')
+          throw new Error('Injected lost commit acknowledgement');
+      },
+      prepare: (sql) => db.prepare(sql),
     },
-    prepare: (sql) => db.prepare(sql),
-  });
+    () => true,
+  );
   expect(
     lostAcknowledgement.commit(owner.tenantId, intent.operationId).kind,
   ).toBe('unavailable');
@@ -315,9 +326,9 @@ test('an error after durable commit resolves without assigning a second revision
 test('refuses an in-memory authority database', () => {
   const db = new DatabaseSync(':memory:');
   databases.push(db);
-  expect(() => createSqlitePlannedHomeTransferStore(db)).toThrow(
-    'file-backed SQLite',
-  );
+  expect(() =>
+    createAuthorizedSqlitePlannedHomeTransferStore(db, () => true),
+  ).toThrow('file-backed SQLite');
 });
 test('a later durability downgrade cannot commit or silently reassign ownership', () => {
   const { db, store } = fixture();
@@ -471,7 +482,10 @@ test('unresolved admission blocks commit across reopen until its exact receipt i
   expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(owner);
   db.close();
   const reopened = open();
-  const resumed = createSqlitePlannedHomeTransferStore(reopened);
+  const resumed = createAuthorizedSqlitePlannedHomeTransferStore(
+    reopened,
+    () => true,
+  );
   const resumedAdmissions = createPlannedHomeAdmissionStore(
     reopened,
     () => true,
@@ -505,6 +519,41 @@ test('unresolved admission blocks commit across reopen until its exact receipt i
     kind: 'stored',
     value: committed,
   });
+});
+
+test('one finished admission cannot clear commit while another on the channel is unresolved', () => {
+  const { db, store } = fixture();
+  const write = {
+    tenantId: owner.tenantId,
+    channelId: owner.channelId,
+    admissionId: 'write-1',
+    ownerRevision: 0,
+    homeRef: owner.homeRef,
+    kind: 'room-write' as const,
+    intentDigest: 'd'.repeat(64),
+  };
+  const execution = {
+    ...write,
+    admissionId: 'execution-1',
+    kind: 'execution' as const,
+    intentDigest: 'c'.repeat(64),
+  };
+  const admissions = createPlannedHomeAdmissionStore(db, () => true);
+  expect(admissions.begin(write).kind).toBe('stored');
+  expect(admissions.begin(execution).kind).toBe('stored');
+  expect(
+    admissions.finish({ ...write, receiptDigest: 'f'.repeat(64) }).kind,
+  ).toBe('stored');
+  ready(store);
+  expect(store.commit(owner.tenantId, intent.operationId)).toEqual({
+    kind: 'admission-pending',
+  });
+  expect(
+    admissions.finish({ ...execution, receiptDigest: 'e'.repeat(64) }).kind,
+  ).toBe('stored');
+  expect(stored(store.commit(owner.tenantId, intent.operationId)).phase).toBe(
+    'committed',
+  );
 });
 
 test.each(['channel_id', 'tenant_id'])(

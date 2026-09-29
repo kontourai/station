@@ -23,7 +23,6 @@ import {
   type BrowserTarget,
   type BrowserViewport,
   type CdpTransport,
-  createLocalBrowserHostResolver,
   LOCAL_BROWSER_HOST_ID,
 } from './browser-host.js';
 import {
@@ -394,25 +393,6 @@ export function redactBrowserUrl(url: string): string {
   }
 }
 
-/** The profile a host request names (same derivation as browserProfileFor). */
-function profileForRequest(request: {
-  projectId: string;
-  principalKey: string;
-}): BrowserProfile {
-  return {
-    projectId: request.projectId,
-    principalKey: request.principalKey,
-    reach: request.principalKey === 'operator' ? 'operator' : 'project',
-    key: `${request.projectId}\u001f${request.principalKey}`,
-    profileRef: posix.join(
-      'browser',
-      'profiles',
-      digest(request.projectId),
-      digest(request.principalKey),
-    ),
-  };
-}
-
 export function browserProfileDir(
   stationHome: string,
   profileRef: string,
@@ -427,12 +407,7 @@ export interface BrowserSessionRegistryOptions {
    * The one path to a browser host (#90 D13): one new host per launch; the
    * registry never reuses an exited host.
    */
-  hostResolver?: BrowserHostResolver;
-  /**
-   * Convenience for a local-only registry (tests): wrapped into a local
-   * {@link BrowserHostResolver}, which remains the only path to a host.
-   */
-  createHost?(profile: BrowserProfile): BrowserHost | Promise<BrowserHost>;
+  hostResolver: BrowserHostResolver;
   idleShutdownMs?: number;
   now?: () => Date;
   newId?: () => string;
@@ -498,17 +473,7 @@ export class BrowserSessionRegistry {
     this.now = options.now ?? (() => new Date());
     this.newId = options.newId ?? (() => `bs_${randomUUID()}`);
     this.hostKind = options.hostKind ?? 'server-chromium';
-    const createHost = options.createHost;
-    const resolver =
-      options.hostResolver ??
-      (createHost
-        ? createLocalBrowserHostResolver((request) =>
-            createHost(profileForRequest(request)),
-          )
-        : undefined);
-    if (!resolver)
-      throw new Error('a browser session registry needs a host resolver');
-    this.hostResolver = resolver;
+    this.hostResolver = options.hostResolver;
     this.load();
   }
 

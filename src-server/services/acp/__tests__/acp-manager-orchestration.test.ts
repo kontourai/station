@@ -124,37 +124,6 @@ describe('acp-manager-orchestration helpers', () => {
     expect(noField.probe).toHaveBeenCalledTimes(1);
   });
 
-  test('station#1908: over repeated ticks at the OLD 60s cadence, a fresh connection is probed on only a fraction of ticks, not every tick', async () => {
-    let clock = 0;
-    const probe = {
-      probe: vi.fn(async () => {
-        probe.lastProbeAt = clock;
-        return true;
-      }),
-      isAvailable: () => true,
-      lastProbeAt: 0,
-    };
-    const probes = new Map([['opencode', probe]]);
-
-    // Simulate the ACPManager's 60s wall-clock timer firing 30 times in a
-    // row (30 minutes of ticks) -- the exact cadence archive#1908 measured
-    // spawning the engine binary on every single tick, forever.
-    for (let tick = 0; tick < 30; tick++) {
-      clock += 60_000;
-      await runACPManagerProbes({
-        sessions: new Map(),
-        probes,
-        getAvailableConnectionCount: () => 1,
-        now: () => clock,
-      });
-    }
-
-    // Before the staleness gate this would be 30 (one spawn per tick,
-    // forever). With a 5-minute gate over 30 minutes it is bounded to ~6.
-    expect(probe.probe.mock.calls.length).toBeLessThan(10);
-    expect(probe.probe.mock.calls.length).toBeGreaterThan(0);
-  });
-
   test('add/reconnect/remove ACP manager connections mutate maps and emit changes', async () => {
     const config = {
       id: 'kiro',

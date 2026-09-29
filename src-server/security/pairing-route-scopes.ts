@@ -2167,8 +2167,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // default tier is enough. (This no longer rests on ownerless sessions
     // being readable by every personal caller; none is readable at all.)
     { method: 'GET', path: '/api/orchestration/presence/summary' },
-    // Station #90 lane D: the verified-caller projection for station-control
-    // stdio children. Internal-only at the route: every non-internal
+    // Station #90 lane D: the verified-caller projection, which stdio
+    // children once read (no production client now). Internal-only at the route: every non-internal
     // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },

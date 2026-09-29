@@ -1191,7 +1191,7 @@ function sameRealPath(left: string, right: string): boolean {
   }
 }
 
-export function canonicalHandoffEffectDigest(value: unknown): string {
+function canonicalHandoffEffectDigest(value: unknown): string {
   const canonicalize = (candidate: unknown): unknown => {
     if (Array.isArray(candidate)) return candidate.map(canonicalize);
     if (candidate && typeof candidate === 'object') {

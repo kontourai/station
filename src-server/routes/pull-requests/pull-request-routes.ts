@@ -176,6 +176,33 @@ export function createPullRequestRoutes(
       ),
     });
   });
+  // Registered before `/:ref`, which would otherwise claim this path. A
+  // conflict indicator's read (#2937): branch mergeability only, never the
+  // review list's bodies, commits, reviews and comments.
+  app.get('/:provider/:host/:owner/:repo/mergeability', async (c) => {
+    const x = await resolve(c, false);
+    if ('refused' in x)
+      return c.json({ success: false, error: x.refused }, 404);
+    if (!x.provider.listOpenPullRequestMergeability)
+      return c.json(
+        {
+          success: false,
+          error: 'This provider does not report branch mergeability',
+        },
+        404,
+      );
+    pullRequestOps.add(1, {
+      operation: 'mergeability',
+      repo: `${x.context.repository.owner}/${x.context.repository.name}`,
+    });
+    return c.json({
+      success: true,
+      data: narrow(
+        x.provider,
+        await x.provider.listOpenPullRequestMergeability(x.context),
+      ),
+    });
+  });
   app.get('/:provider/:host/:owner/:repo/:ref', async (c) => {
     const x = await resolve(c, false);
     if ('refused' in x)

@@ -752,8 +752,9 @@ export type StationControlToolName = keyof typeof STATION_CONTROL_TOOL_POLICY;
  * Routes a station-control tool process reaches that belong to no single
  * tool. Each is authorized by its own handler (`enforcedBy: 'route'`):
  *
- * - the caller projection a stdio child reads to learn its own caller; it
- *   answers only from the forwarded credential, never widening anything;
+ * - the verified-caller projection (no production client since stdio
+ *   children stopped carrying a caller token); it answers only from the
+ *   forwarded credential, never widening anything;
  * - the browser-agent operations the station-browser tools use; that route
  *   already requires a bound, elevation-eligible caller (#122/#123) and is
  *   deliberately unchanged here.

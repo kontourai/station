@@ -51,6 +51,8 @@ export interface QueryConfig<_T> {
    * refetch-on-mount, so for data that can change outside this client's own
    * mutations, polling is the only refresh path — pass this explicitly. */
   refetchInterval?: number;
+  /** Opt back into refetch-on-focus for a stale answer; see `refetchInterval`. */
+  refetchOnWindowFocus?: boolean;
   retry?: boolean | number | ((failureCount: number, error: Error) => boolean);
   retryDelay?: number | ((attemptIndex: number, error: Error) => number);
   /** Cancel an in-flight request or scheduled retry when the final enabled
@@ -204,6 +206,9 @@ function useApiQueryWithMountPolicy<T>(
         ? { refetchOnMount: defaultRefetchOnMount }
         : {}),
     refetchInterval: config?.refetchInterval,
+    ...(config?.refetchOnWindowFocus === undefined
+      ? {}
+      : { refetchOnWindowFocus: config.refetchOnWindowFocus }),
     // station#2327: only when the caller chose one. query-core merges
     // `{ ...defaults, ...options }`, so an explicit `retry: undefined` erased
     // the QueryClient's own default and its retryer fell back to THREE

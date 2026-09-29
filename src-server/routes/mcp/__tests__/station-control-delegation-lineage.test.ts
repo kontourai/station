@@ -78,7 +78,7 @@ import {
 import { StationControlToolRegistry } from '../../../tools/station-control-mcp-server.js';
 import { registerOperationsTools } from '../../../tools/station-control-operations-tools.js';
 import {
-  __resetStationControlStdioCallerCredentialForTests,
+  __resetStationControlStdioEntryForTests,
   STATION_CONTROL_CALLER_TOKEN_HEADER,
 } from '../../../tools/station-control-shared.js';
 import {
@@ -497,7 +497,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   __resetStationControlMcpTokensForTests();
-  __resetStationControlStdioCallerCredentialForTests();
+  __resetStationControlStdioEntryForTests();
   peerReceived.length = 0;
   delegateTask.mockClear();
   executeForegroundMessage.mockClear();

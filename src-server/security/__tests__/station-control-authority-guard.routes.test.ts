@@ -66,9 +66,9 @@ import {
   type StationControlToolPolicy,
 } from '../../tools/station-control-policy.js';
 import {
-  __resetStationControlStdioCallerCredentialForTests,
+  __resetStationControlStdioEntryForTests,
   api,
-  installStationControlStdioCallerCredential,
+  installStationControlStdioEntry,
   STATION_CONTROL_CALLER_PATH,
   STATION_CONTROL_CALLER_TOKEN_HEADER,
   stationControlCallerPrincipal,
@@ -352,13 +352,13 @@ afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await new Promise<void>((resolve) => peerServer.close(() => resolve()));
   delete process.env.STATION_API_BASE;
-  __resetStationControlStdioCallerCredentialForTests();
+  __resetStationControlStdioEntryForTests();
   __resetStationServerSelfAttestationForTests();
 });
 
 beforeEach(() => {
   __resetStationControlMcpTokensForTests();
-  __resetStationControlStdioCallerCredentialForTests();
+  __resetStationControlStdioEntryForTests();
   hits.length = 0;
   refusals.length = 0;
   lastHeaders.clear();
@@ -451,7 +451,7 @@ async function engineFor(
   if (channel === 'pooled') {
     // A pooled stdio child: the stdio entry ran with no per-session caller
     // credential, and the server has no caller context for it.
-    installStationControlStdioCallerCredential({});
+    installStationControlStdioEntry();
     const pooled = createStationControlMcpServer();
     const { transport, request } = memoryTransport();
     await pooled.connect(transport);
@@ -507,7 +507,7 @@ async function callTool(
     };
   } finally {
     await engine.close();
-    __resetStationControlStdioCallerCredentialForTests();
+    __resetStationControlStdioEntryForTests();
   }
 }
 
@@ -864,7 +864,7 @@ describe('the server enforces the same refusal for each channel’s forwarded cr
   });
 
   test('a pooled child’s own REST call carries no caller and no server attestation', async () => {
-    installStationControlStdioCallerCredential({});
+    installStationControlStdioEntry();
     expect(
       await api('/config/app', { method: 'PUT', body: '{}' }),
     ).toMatchObject({

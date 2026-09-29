@@ -45,11 +45,3 @@ export function createDeviceHostResolver(input: {
     },
   };
 }
-
-export function createLocalDeviceHostResolver(
-  local: DeviceHubEndpoint,
-): DeviceHostResolver {
-  return {
-    resolve: ({ hostId }) => (hostId === LOCAL_DEVICE_HOST_ID ? local : null),
-  };
-}

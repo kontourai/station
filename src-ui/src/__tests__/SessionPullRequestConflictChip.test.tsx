@@ -4,18 +4,18 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 let contextQuery: any;
-let pullRequestsQuery: any;
+let mergeabilityQuery: any;
 const contextInputs: unknown[] = [];
-let pullRequestsOptions: { enabled?: boolean } | undefined;
+let mergeabilityOptions: { enabled?: boolean } | undefined;
 
 vi.mock('@kontourai/station-sdk', () => ({
   usePullRequestContextQuery: (input: unknown) => {
     contextInputs.push(input);
     return contextQuery;
   },
-  usePullRequestsQuery: (...args: unknown[]) => {
-    pullRequestsOptions = args[6] as { enabled?: boolean };
-    return pullRequestsQuery;
+  usePullRequestMergeabilityQuery: (...args: unknown[]) => {
+    mergeabilityOptions = args[5] as { enabled?: boolean };
+    return mergeabilityQuery;
   },
 }));
 
@@ -34,7 +34,7 @@ function observed(
 ) {
   return {
     available: true,
-    data: [{ sourceBranch, mergeability }],
+    data: [{ ref: '7', sourceBranch, mergeability }],
   };
 }
 
@@ -49,7 +49,7 @@ describe('SessionPullRequestConflictChip', () => {
         branch: 'feat/produced-by-session',
       },
     };
-    pullRequestsQuery = { data: observed('conflicting') };
+    mergeabilityQuery = { data: observed('conflicting') };
 
     const rendered = render(
       <SessionPullRequestConflictChip session={session} />,
@@ -59,24 +59,26 @@ describe('SessionPullRequestConflictChip', () => {
       project: 'station',
       thread: 'thread-produced-pr',
     });
-    expect(pullRequestsOptions?.enabled).toBe(true);
+    expect(mergeabilityOptions?.enabled).toBe(true);
 
     // Another branch's conflict in the same repository is not this session's.
-    pullRequestsQuery = { data: observed('conflicting', 'feat/someone-else') };
+    mergeabilityQuery = {
+      data: observed('conflicting', 'feat/someone-else'),
+    };
     rendered.rerender(<SessionPullRequestConflictChip session={session} />);
     expect(screen.queryByText('PR conflict')).toBeNull();
 
-    pullRequestsQuery = { data: observed('mergeable') };
+    mergeabilityQuery = { data: observed('mergeable') };
     rendered.rerender(<SessionPullRequestConflictChip session={session} />);
     expect(screen.queryByText('PR conflict')).toBeNull();
   });
 
   test('does not observe the forge while the checkout context is unavailable', () => {
     contextQuery = { data: { available: false } };
-    pullRequestsQuery = { data: undefined };
+    mergeabilityQuery = { data: undefined };
 
     render(<SessionPullRequestConflictChip session={session} />);
-    expect(pullRequestsOptions?.enabled).toBe(false);
+    expect(mergeabilityOptions?.enabled).toBe(false);
     expect(screen.queryByText('PR conflict')).toBeNull();
   });
 });

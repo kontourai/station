@@ -210,7 +210,14 @@ export interface MonitoringMetric {
 export interface BrandingData {
   appName: string;
   logo: { src: string; alt?: string } | null;
-  theme: Record<string, string> | null;
+  /**
+   * White-label overrides exactly as the branding provider returned them:
+   * by convention flat `--k-*` keys for both modes and per-mode `dark` /
+   * `light` objects. `unknown` because nothing on the way validates it —
+   * a consumer must parse it before use (Station's UI does, in
+   * `src-ui/src/lib/branding-theme.ts`).
+   */
+  theme: unknown;
   welcomeMessage: string | null;
 }
 

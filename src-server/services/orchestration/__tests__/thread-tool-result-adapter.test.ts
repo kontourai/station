@@ -2,14 +2,20 @@ import { describe, expect, test } from 'vitest';
 import {
   MAX_TOOL_RESULT_DESCRIPTOR_OUTPUT_BYTES,
   projectToolCompletedDescriptor,
-  projectToolCompletedEvent,
+  type ToolCompletedEventDescriptor,
 } from '../thread-tool-result-adapter.js';
+
+/** The only production entry: a store descriptor for a `tool.completed` row. */
+const project = (
+  event: Omit<ToolCompletedEventDescriptor, 'method'>,
+): ReturnType<typeof projectToolCompletedDescriptor> =>
+  projectToolCompletedDescriptor({ method: 'tool.completed', ...event });
 
 describe('Station Thread tool-result adapter', () => {
   test.each(['success', 'error', 'cancelled'] as const)(
     'retains the exact %s terminal status and event identity',
     (status) => {
-      const result = projectToolCompletedEvent({
+      const result = project({
         eventId: `event-${status}`,
         threadId: 'session-1',
         turnId: 'turn-1',
@@ -24,6 +30,7 @@ describe('Station Thread tool-result adapter', () => {
           resultId: `event-${status}`,
           terminalStatus: status,
           name: 'shell',
+          content: [{ type: 'text', text: 'inert output' }],
           correlations: expect.arrayContaining([
             {
               namespace: 'kontourai.station',
@@ -45,25 +52,8 @@ describe('Station Thread tool-result adapter', () => {
   // station#1558: Station's `unresolved` has no member of its own in Thread's
   // published enum, but Thread already names this exact case — `unknown`.
   // Folding it into `cancelled` or `error` would export a claim nothing
-  // observed.
-  test("projects an unresolved completion as Thread's own unknown terminal status", () => {
-    const result = projectToolCompletedEvent({
-      eventId: 'event-unresolved',
-      threadId: 'session-1',
-      turnId: 'turn-1',
-      toolCallId: 'open-call',
-      toolName: 'shell',
-      status: 'unresolved',
-      output:
-        'No result was reported before the session ended; whether the tool ran is unknown.',
-    });
-    expect(result).toMatchObject({
-      state: 'available',
-      result: { resultId: 'event-unresolved', terminalStatus: 'unknown' },
-    });
-  });
-
-  test('accepts an unresolved descriptor instead of dropping it as unvalidatable', () => {
+  // observed, and dropping the descriptor would hide the call entirely.
+  test("projects an unresolved descriptor as Thread's own unknown terminal status", () => {
     const projected = projectToolCompletedDescriptor({
       eventId: 'event-unresolved-descriptor',
       threadId: 'session-1',
@@ -91,7 +81,7 @@ describe('Station Thread tool-result adapter', () => {
   });
 
   test('uses only the exact policyDenied marker and published inert projection', () => {
-    const denied = projectToolCompletedEvent({
+    const denied = project({
       eventId: 'event-denied',
       threadId: 'session',
       toolCallId: 'call',
@@ -100,7 +90,7 @@ describe('Station Thread tool-result adapter', () => {
       error: 'denied',
       policyDenied: true,
     });
-    const ordinary = projectToolCompletedEvent({
+    const ordinary = project({
       eventId: 'event-ordinary',
       threadId: 'session',
       toolCallId: 'call',
@@ -108,8 +98,10 @@ describe('Station Thread tool-result adapter', () => {
       status: 'error',
       error: 'denied by prose only',
     });
+    // Both the denial marker and the error text survive the descriptor entry.
     expect(denied).toMatchObject({
       result: {
+        content: [{ type: 'text', text: 'denied' }],
         authorityDecision: {
           decision: 'denied',
           authority: 'kontourai.station',
@@ -125,7 +117,7 @@ describe('Station Thread tool-result adapter', () => {
   });
 
   test('keeps repeated call ids distinct by terminal event id and never denies success', () => {
-    const first = projectToolCompletedEvent({
+    const first = project({
       eventId: 'event-a',
       threadId: 'session',
       toolCallId: 'same-call',
@@ -134,7 +126,7 @@ describe('Station Thread tool-result adapter', () => {
       output: 'first',
       policyDenied: true,
     });
-    const second = projectToolCompletedEvent({
+    const second = project({
       eventId: 'event-b',
       threadId: 'session',
       toolCallId: 'same-call',
@@ -164,6 +156,20 @@ describe('Station Thread tool-result adapter', () => {
       toolName: 'shell',
       status: 'success',
     } as const;
+    // Positive controls: the valid descriptor and both at-limit fields pass.
+    expect(MAX_TOOL_RESULT_DESCRIPTOR_OUTPUT_BYTES).toBe(64 * 1024);
+    expect(projectToolCompletedDescriptor(valid)).toMatchObject({
+      state: 'available',
+    });
+    expect(
+      projectToolCompletedDescriptor({ ...valid, toolName: 'x'.repeat(256) }),
+    ).toMatchObject({ state: 'available' });
+    expect(
+      projectToolCompletedDescriptor({
+        ...valid,
+        output: 'x'.repeat(MAX_TOOL_RESULT_DESCRIPTOR_OUTPUT_BYTES),
+      }),
+    ).toMatchObject({ state: 'available' });
     expect(
       projectToolCompletedDescriptor({ ...valid, method: 'turn.started' }),
     ).toBeNull();
@@ -182,7 +188,7 @@ describe('Station Thread tool-result adapter', () => {
   });
 
   test('does not carry structured output, URLs, bytes, or tool arguments across the projection', () => {
-    const result = projectToolCompletedEvent({
+    const result = project({
       eventId: 'event-safe',
       threadId: 'session',
       toolCallId: 'call',
