@@ -216,8 +216,15 @@ describe('resolveBrandingTheme', () => {
     expect(
       contrastRatio(brand, SHIPPED.light['--k-panel']),
     ).toBeGreaterThanOrEqual(4.5);
+    // A readable action of its own, so the brand is not also expanded into
+    // the action role and only the brand rule can reject this theme.
     const { overrides, violations } = resolveBrandingTheme({
-      light: { '--k-brand': brand, '--k-brand-contrast': '#ffffff' },
+      light: {
+        '--k-brand': brand,
+        '--k-brand-contrast': '#ffffff',
+        '--k-action': '#1d4ed8',
+        '--k-action-contrast': '#ffffff',
+      },
     });
     expect(overrides).toEqual({});
     expect(violations).toEqual([
@@ -228,6 +235,67 @@ describe('resolveBrandingTheme', () => {
         surface: '--k-bg',
       }),
     ]);
+  });
+
+  test('a brand-only mode also becomes the action, with its contrast', () => {
+    const { overrides, violations } = resolveBrandingTheme({
+      dark: { '--k-brand': '#60a5fa', '--k-brand-contrast': '#06080b' },
+      light: { '--k-brand': '#1d4ed8' },
+    });
+    expect(violations).toEqual([]);
+    expect(overrides).toEqual({
+      dark: {
+        '--k-brand': '#60a5fa',
+        '--k-brand-contrast': '#06080b',
+        '--k-action': '#60a5fa',
+        '--k-action-contrast': '#06080b',
+      },
+      // No brand contrast given: the shipped action contrast for the mode.
+      light: {
+        '--k-brand': '#1d4ed8',
+        '--k-action': '#1d4ed8',
+        '--k-action-contrast': SHIPPED.light['--k-action-contrast'],
+      },
+    });
+  });
+
+  test('a theme that sets its own action keeps it', () => {
+    const { overrides, violations } = resolveBrandingTheme({
+      light: {
+        '--k-brand': '#1d4ed8',
+        '--k-action': '#0e7c64',
+        '--k-action-contrast': '#ffffff',
+      },
+    });
+    expect(violations).toEqual([]);
+    expect(overrides.light?.['--k-action']).toBe('#0e7c64');
+  });
+
+  test('the brand as action must pass the action rules too', () => {
+    // #0e8270 fails Station's text rule on the light page as a brand; as the
+    // expanded action it fails the same way, so nothing applies.
+    const { overrides, violations } = resolveBrandingTheme({
+      light: { '--k-brand': '#0e8270' },
+    });
+    expect(overrides).toEqual({});
+    expect(violations).toContainEqual(
+      expect.objectContaining({
+        kind: 'station-surface-text',
+        property: '--k-action',
+      }),
+    );
+  });
+
+  test('an invalid flat value rejects the theme even when every mode shadows it', () => {
+    const { overrides, violations } = resolveBrandingTheme({
+      '--k-focus': 'red',
+      dark: { '--k-focus': '#fbbf24' },
+      light: { '--k-focus': '#0e7c64' },
+    });
+    expect(overrides).toEqual({});
+    expect(
+      violations.map((v) => `${v.kind}:${'mode' in v ? v.mode : ''}`),
+    ).toEqual(['invalid-value:dark', 'invalid-value:light']);
   });
 
   test('accepts a readable per-mode theme whole', () => {

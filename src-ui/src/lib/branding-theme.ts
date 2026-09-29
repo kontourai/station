@@ -15,7 +15,9 @@
  *
  * - The input shape. Station also accepts the original flat
  *   `Record<string, string>` form; flat keys are expanded into both modes
- *   (per-mode entries winning) before the shared validator sees them.
+ *   (per-mode entries winning) before the shared validator sees them, and a
+ *   flat value a mode entry shadows must still be a hex colour. A mode that
+ *   sets only the brand also gets it as its action (see `expandModes`).
  *
  *     { "--k-brand": "#…",                      // flat: expanded into both modes
  *       "dark":  { "--k-action": "#…", … },      // per mode: wins over flat
@@ -150,6 +152,14 @@ function copyInto(
  * top-level keys go into both modes, per-mode entries win for their mode. A
  * mode entry that is not an object is passed through unchanged, so the
  * validator reports it. A mode with nothing in it is left out.
+ *
+ * A mode that sets `--k-brand` but neither action property also gets the
+ * brand as its action (`--k-action`), with `--k-brand-contrast` (or the
+ * shipped action contrast) as `--k-action-contrast`. Before @kontourai/ui
+ * defined the action role, buttons, links and the accent read the brand; the
+ * installed tokens now define `--k-action` as a literal, so without this a
+ * brand-only theme would leave them on the shipped colour. The expanded pair
+ * goes through the validator and Station's action rule like any other.
  */
 function expandModes(input: Record<string, unknown>): Record<string, unknown> {
   const flat: Record<string, unknown> = Object.create(null);
@@ -167,9 +177,50 @@ function expandModes(input: Record<string, unknown>): Record<string, unknown> {
     const merged: Record<string, unknown> = Object.create(null);
     copyInto(merged, flat);
     if (specific) copyInto(merged, specific);
+    if (
+      Object.hasOwn(merged, '--k-brand') &&
+      !Object.hasOwn(merged, '--k-action') &&
+      !Object.hasOwn(merged, '--k-action-contrast')
+    ) {
+      copyInto(merged, {
+        '--k-action': merged['--k-brand'],
+        '--k-action-contrast': Object.hasOwn(merged, '--k-brand-contrast')
+          ? merged['--k-brand-contrast']
+          : SHIPPED_THEMES[BRANDING_BASE_THEME][mode]['--k-action-contrast'],
+      });
+    }
     if (Object.keys(merged).length > 0) expanded[mode] = merged;
   }
   return expanded;
+}
+
+/**
+ * A flat value a per-mode entry replaces never reaches the validator, but it
+ * is still part of the theme: an invalid one rejects the theme, as before the
+ * swap to the shared validator. Reported against each mode that shadows it,
+ * in the validator's own `invalid-value` shape.
+ */
+function shadowedFlatViolations(
+  input: Record<string, unknown>,
+): BrandOverrideViolation[] {
+  const violations: BrandOverrideViolation[] = [];
+  for (const mode of MODES) {
+    const specific = Object.hasOwn(input, mode) ? input[mode] : undefined;
+    if (!isPlainObject(specific)) continue;
+    for (const property of BRANDING_THEME_PROPERTIES) {
+      if (!Object.hasOwn(input, property) || !Object.hasOwn(specific, property))
+        continue;
+      const value = input[property];
+      if (isHexColor(value)) continue;
+      violations.push({
+        kind: 'invalid-value',
+        mode,
+        property,
+        message: `${mode}: flat ${property} ${String(value).slice(0, 64)} is not a #rgb or #rrggbb colour (shadowed by the ${mode} entry)`,
+      });
+    }
+  }
+  return violations;
 }
 
 export interface ResolvedBrandingTheme {
@@ -197,6 +248,7 @@ export function resolveBrandingTheme(input: unknown): ResolvedBrandingTheme {
     overrides: expanded,
   });
   const all: BrandingThemeViolation[] = [...violations];
+  if (isPlainObject(input)) all.push(...shadowedFlatViolations(input));
   if (isPlainObject(expanded)) {
     for (const mode of MODES) {
       const values = expanded[mode];

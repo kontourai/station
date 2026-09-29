@@ -77,7 +77,10 @@ A branding provider's `getTheme()` answer is applied by
 all or nothing: an unknown key, a non-hex value or a failed contrast check in
 either mode keeps the defaults. The check is `validateBrandOverride` from
 `@kontourai/ui/contrast`; Station adds the flat-key input shape and two
-stricter text-contrast rules for the action fill and the brand. `main.tsx` applies the last validated copy from
+stricter text-contrast rules for the action fill and the brand. A mode that
+sets only the brand also gets it as its action role, because the installed
+tokens define `--k-action` and would otherwise keep buttons and links on the
+shipped colour. `main.tsx` applies the last validated copy from
 localStorage before the first render, re-validating it, and
 [BrandingThemeBridge](../../src-ui/src/components/BrandingThemeBridge.tsx)
 replaces it once the branding query answers. A device accent still sets

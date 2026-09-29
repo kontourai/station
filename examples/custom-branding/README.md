@@ -74,7 +74,14 @@ What Station accepts:
   theme is applied and the default stays. Each rejection is logged in the
   browser console with a `[branding-theme]` prefix.
 - Flat keys are expanded into both modes before checking, so a flat value must
-  pass in both. One value rarely does; prefer the `dark` / `light` objects.
+  pass in both. One value rarely does; prefer the `dark` / `light` objects. A
+  flat value that a mode object replaces must still be a `#rgb` or `#rrggbb`
+  colour, or the theme is rejected.
+- A mode that sets `--k-brand` but neither `--k-action` nor
+  `--k-action-contrast` uses the brand as its action too, with
+  `--k-brand-contrast` (or the default action contrast) as the text on it. So a
+  brand-only theme still colours buttons, links and focus rings, and the brand
+  must also pass the action rules.
 - A device accent chosen in **Settings → Appearance** still colours buttons and
   links on that device over the theme's action colour. Focus rings follow
   `--k-focus` when the theme (or a Dev, Beta or Nightly build) sets it, and

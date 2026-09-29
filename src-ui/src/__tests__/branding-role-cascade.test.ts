@@ -39,8 +39,14 @@ interface Measured {
   actionContrast: string;
   focus: string;
   outline: string;
+  primaryFill: string;
   focused: boolean;
 }
+
+// The kit's buttons transition their fill; the inline role values land after
+// load, so a mid-transition colour would be measured without this.
+const NO_TRANSITIONS =
+  '*,*::before,*::after{transition:none!important;animation:none!important}';
 
 function toHex(color: string): string {
   const value = color.trim().toLowerCase();
@@ -74,7 +80,7 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
     const page = await browser.newPage();
     try {
       await page.setContent(
-        `<!doctype html><html data-theme="${mode}"><head><style>${css}</style></head><body><button type="button" id="probe">probe</button></body></html>`,
+        `<!doctype html><html data-theme="${mode}"><head><style>${css}</style><style>${NO_TRANSITIONS}</style></head><body><button type="button" id="probe">probe</button><button type="button" class="btn btn-primary" id="primary">primary</button></body></html>`,
       );
       await page.evaluate(
         ({ channel, inline, focusAttribute }) => {
@@ -107,6 +113,8 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
           actionContrast: read('--k-action-contrast'),
           focus: read('--k-focus'),
           outline: getComputedStyle(probe).outlineColor,
+          primaryFill: getComputedStyle(document.getElementById('primary')!)
+            .backgroundColor,
           focused: document.activeElement === probe,
         };
       });
@@ -175,6 +183,27 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
       });
       expect(toHex(m.accent)).toBe('#d946ef');
       expect(toHex(m.outline)).toBe('#abcdef');
+    },
+  );
+
+  test.each(['dark', 'light'] as const)(
+    'a brand-only theme in %s mode drives buttons, accent and focus',
+    async (mode) => {
+      // Before the package defined --k-action, everything read the brand. The
+      // resolver expands a brand-only mode into the action role; apply what
+      // it accepted, as applyBrandingTheme would.
+      const brand = mode === 'dark' ? '#60a5fa' : '#1d4ed8';
+      const { overrides, violations } = resolveBrandingTheme({
+        [mode]: { '--k-brand': brand },
+      });
+      expect(violations).toEqual([]);
+      const m = await measure(mode, 'release', {
+        inline: { ...overrides[mode] },
+      });
+      expect(toHex(m.brand)).toBe(brand);
+      expect(toHex(m.primaryFill)).toBe(brand);
+      expect(toHex(m.accent)).toBe(brand);
+      expect(toHex(m.outline)).toBe(brand);
     },
   );
 
