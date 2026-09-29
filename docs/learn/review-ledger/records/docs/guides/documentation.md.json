@@ -9,7 +9,7 @@
 
   "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
 
-  "document": {"digest":"31aa6267f3278cf66c4583de1890ca592b72c938638e6d489621ca9c98c1d246","revision":"49fbaef78e2df915b67dc8dbcd79452b797e67e5"},
+  "document": {"digest":"d42aca889c91168cdf664e063fbf118237933d042f6ec1a147f3779be6ef9178","revision":"75ef817fd8b4a0ad20fe2f453007ae759255c437"},
 
   "sources": [
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
@@ -34,7 +34,7 @@
 
     {"path":"scripts/lib/review-binding.mjs","digest":"09c45446e0d7070b8310fd86f888b37dbe873f53854f48e8bf63ed18481fa692","revision":"6c3604888394821808a5617ddd044c6e61d86fc2"},
 
-    {"path":"scripts/migrate-review-ledger.mjs","digest":"108da5ef2f319ccc5d3720d275d4a83be85249cde55365640cce9a605d86c6fe","revision":"e7b3c06466279f70980b3a8aaec2096b5b8636fd"}
+    {"path":"scripts/migrate-review-ledger.mjs","digest":"17254859ee90994b6d914a70591c3452ba88cfeb522716c4b319aee59901d2c1","revision":"221b5bfc0f1e72b6b346e52cf3378431ec8b652e"}
   ],
 
   "checks": [
