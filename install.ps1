@@ -24,18 +24,6 @@
 # the script block below, so `iex` parses the whole script before running
 # any of it, and a failure never exits the caller's interactive session.
 
-# A script block records the file it was read from, and has none when the
-# text runs through Invoke-Expression (`irm | iex`). $PSCommandPath cannot tell
-# the two apart: under iex inside a caller's script it is the caller's path.
-# Only a run of this file takes arguments or sets the process exit code;
-# under iex the caller's arguments are not ours, and exiting would end the
-# caller.
-$stationInstallFromFile = [bool]({}).File
-# Assigned, not taken from an `if` expression: PowerShell unrolls a
-# one-element array returned that way into a scalar, which then splats wrong.
-[object[]]$stationInstallArguments = @()
-if ($stationInstallFromFile) { $stationInstallArguments = $args }
-
 $stationInstallStatus = & {
   Set-StrictMode -Version 2.0
   $ErrorActionPreference = 'Stop'
@@ -844,12 +832,14 @@ UmVmdXNhbAp9KTsK
     $env:STATION_INSTALLER_TEMP = $savedTemporary
     Remove-Item -LiteralPath $temporary -Recurse -Force -ErrorAction SilentlyContinue
   }
-} @stationInstallArguments
+} @args
 
-# `powershell -File install.ps1` reports the status as its exit code; under
-# `irm | iex` exiting would end the caller, so a failure is reported and the
-# caller continues.
-if ($stationInstallFromFile) {
+# `powershell -File install.ps1` reports the status as its exit code. Text run
+# through Invoke-Expression (`irm | iex`) sees an empty $PSCommandPath and
+# empty $args, even inside a caller's script run with arguments (the Windows
+# smoke checks both PowerShells), so it takes no arguments and never exits the
+# caller: a failure is reported and the caller continues.
+if ($PSCommandPath) {
   exit $stationInstallStatus
 } elseif ($stationInstallStatus -ne 0) {
   Write-Warning "The Station installer exited with status $stationInstallStatus."
