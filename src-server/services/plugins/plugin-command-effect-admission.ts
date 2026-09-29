@@ -70,10 +70,10 @@ export type PluginCommandRequirementResolver = (input: {
  *   session read goes through; a session the caller cannot read is `missing`,
  *   exactly like one that does not exist. A composer target must be that
  *   same session.
- * - `project` and `task` have no per-principal read predicate on main (see
- *   `routes/board.ts`'s authorization note): Station answers project and task
- *   existence to any caller of its project and task routes. These checks use
- *   that same existence authority, so they reveal nothing those routes do not.
+ * - `project` and `task` answer EXISTENCE only: the deps below take no caller
+ *   authority, so project membership is not consulted. A person who can reach
+ *   admission can learn whether a project or task exists even when they cannot
+ *   read it (kontourai/station#2969).
  */
 export function createPluginCommandRequirementResolver(deps: {
   canReadSession(sessionId: string, authority: Request): boolean;
