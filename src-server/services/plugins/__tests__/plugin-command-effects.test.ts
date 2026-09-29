@@ -636,6 +636,18 @@ describe('plugin command withdrawals (LP-W, LP-C)', () => {
       outcome: 'applied',
       disposition: 'late',
     });
+    // Only the first late report is recorded: the next transaction re-reads
+    // the ledger from disk, so this also proves `lateOutcome` survives a read.
+    const eventsAfterFirstLate = h.events.length;
+    await expect(settleOne(h, b.input, 'aborted')).resolves.toEqual([
+      { requestId: b.input.requestId, status: 'recorded-late' },
+    ]);
+    expect(h.events).toHaveLength(eventsAfterFirstLate);
+    expect(
+      h
+        .ledger()
+        .effects.find((effect) => effect.effectId === b.receipt.effectId),
+    ).toMatchObject({ state: 'abandoned', lateOutcome: 'applied' });
     await expect(
       h.service.withdrawal(merged!.withdrawalId),
     ).resolves.toMatchObject({ status: 'closed-indeterminate' });
