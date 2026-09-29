@@ -335,3 +335,354 @@ test.each(['github', 'gitlab'] as const)(
     expect(run.mock.calls.some(([args]) => args.includes('POST'))).toBe(false);
   },
 );
+
+/**
+ * Checks and inline review comments. GitHub fixtures are trimmed copies of
+ * real `gh pr view --json statusCheckRollup` and
+ * `gh api repos/{o}/{r}/pulls/{n}/comments` output (field names, casing and
+ * nesting as gh returns them); GitLab fixtures follow the merge-request API's
+ * `head_pipeline` and discussions shapes.
+ */
+describe('checks and inline review comments', () => {
+  const PATCH =
+    'diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n';
+  const githubRollup = [
+    {
+      __typename: 'CheckRun',
+      completedAt: '2026-09-29T04:00:13Z',
+      conclusion: 'SUCCESS',
+      detailsUrl: 'https://github.com/kontourai/station/actions/runs/1/job/2',
+      name: 'classify',
+      startedAt: '2026-09-29T04:00:02Z',
+      status: 'COMPLETED',
+      workflowName: 'Build iOS verification artifact',
+    },
+    {
+      __typename: 'CheckRun',
+      completedAt: '2026-09-29T04:06:03Z',
+      conclusion: 'FAILURE',
+      detailsUrl: 'https://github.com/kontourai/station/actions/runs/3/job/4',
+      name: 'Windows PR portable floor',
+      startedAt: '2026-09-29T04:00:03Z',
+      status: 'COMPLETED',
+      workflowName: 'Windows PR Verification',
+    },
+    {
+      __typename: 'CheckRun',
+      completedAt: '0001-01-01T00:00:00Z',
+      conclusion: '',
+      detailsUrl: 'https://github.com/kontourai/station/actions/runs/5/job/6',
+      name: 'fast-checks',
+      startedAt: '2026-09-29T04:00:03Z',
+      status: 'IN_PROGRESS',
+      workflowName: 'CI',
+    },
+    {
+      __typename: 'StatusContext',
+      context: 'ci/legacy',
+      state: 'ERROR',
+      targetUrl: 'javascript:alert(1)',
+    },
+  ];
+  const githubComments = [
+    {
+      id: 3936106037,
+      in_reply_to_id: 3930895953,
+      line: 2754,
+      original_line: 2648,
+      path: 'src-server/routes/plugins/plugin-install-shared.ts',
+      side: 'RIGHT',
+      subject_type: 'line',
+      user: { login: 'reviewer' },
+      body: 'Addressed.',
+      created_at: '2026-09-04T16:43:39Z',
+      html_url:
+        'https://github.com/kontourai/station/pull/1408#discussion_r3936106037',
+      commit_id: head,
+    },
+    {
+      id: 3930000001,
+      line: null,
+      original_line: 12,
+      path: 'src/old.ts',
+      side: 'LEFT',
+      subject_type: 'line',
+      user: { login: 'reviewer' },
+      body: 'Outdated.',
+      created_at: '2026-09-03T10:00:00Z',
+      html_url:
+        'https://github.com/kontourai/station/pull/1408#discussion_r3930000001',
+      commit_id: base,
+    },
+  ];
+
+  function githubRun(extra: Record<string, unknown> = {}) {
+    return vi.fn(async (args: string[]) => {
+      if (args[1] === 'view') {
+        const fields = args[args.indexOf('--json') + 1] ?? '';
+        return json({
+          ...raw('github'),
+          ...(fields.includes('statusCheckRollup')
+            ? { statusCheckRollup: githubRollup, ...extra }
+            : {}),
+        });
+      }
+      if (args[1].includes('/comments?')) return json(githubComments);
+      return { stdout: PATCH };
+    });
+  }
+
+  test('github: maps the rollup onto check states and drops unsafe links', async () => {
+    const run = githubRun();
+    const result = await readPullRequestReview(
+      'github',
+      'forge.test',
+      context,
+      '17',
+      run,
+      () => normalized,
+    );
+    expect(result.checks).toEqual({
+      state: 'available',
+      partial: false,
+      checks: [
+        {
+          name: 'classify',
+          state: 'success',
+          group: 'Build iOS verification artifact',
+          url: 'https://github.com/kontourai/station/actions/runs/1/job/2',
+        },
+        {
+          name: 'Windows PR portable floor',
+          state: 'failure',
+          group: 'Windows PR Verification',
+          url: 'https://github.com/kontourai/station/actions/runs/3/job/4',
+        },
+        {
+          name: 'fast-checks',
+          state: 'pending',
+          group: 'CI',
+          url: 'https://github.com/kontourai/station/actions/runs/5/job/6',
+        },
+        // An ERROR status is a failure; a non-https target is not a link.
+        { name: 'ci/legacy', state: 'failure' },
+      ],
+    });
+    // Checks are read on the closing detail, the one that confirmed the head.
+    const views = run.mock.calls
+      .map(([args]) => args)
+      .filter((args) => args[1] === 'view');
+    expect(views.at(-1)?.join(' ')).toContain('statusCheckRollup');
+    expect(views[0].join(' ')).not.toContain('statusCheckRollup');
+  });
+
+  test('github: an unknown check kind makes the observation partial, not guessed', async () => {
+    const result = await readPullRequestReview(
+      'github',
+      'forge.test',
+      context,
+      '17',
+      githubRun({
+        statusCheckRollup: [...githubRollup, { __typename: 'Mystery' }],
+      }),
+      () => normalized,
+    );
+    expect(result.checks).toMatchObject({ state: 'available', partial: true });
+    expect(
+      result.checks?.state === 'available' && result.checks.checks.length,
+    ).toBe(4);
+  });
+
+  test('github: inline comments keep their diff side and line, outdated ones none', async () => {
+    const result = await readPullRequestReview(
+      'github',
+      'forge.test',
+      context,
+      '17',
+      githubRun(),
+      () => normalized,
+    );
+    expect(result.reviewComments).toEqual({
+      state: 'available',
+      partial: false,
+      comments: [
+        {
+          id: '3930000001',
+          author: 'reviewer',
+          body: 'Outdated.',
+          createdAt: '2026-09-03T10:00:00Z',
+          path: 'src/old.ts',
+          side: 'deletions',
+          line: null,
+          url: 'https://github.com/kontourai/station/pull/1408#discussion_r3930000001',
+        },
+        {
+          id: '3936106037',
+          author: 'reviewer',
+          body: 'Addressed.',
+          createdAt: '2026-09-04T16:43:39Z',
+          path: 'src-server/routes/plugins/plugin-install-shared.ts',
+          side: 'additions',
+          line: 2754,
+          inReplyTo: '3930895953',
+          url: 'https://github.com/kontourai/station/pull/1408#discussion_r3936106037',
+        },
+      ],
+    });
+  });
+
+  test('a failed comments read is unavailable while the review still loads', async () => {
+    const run = vi.fn(async (args: string[]) => {
+      if (args[1] === 'view') return json(raw('github'));
+      if (args[1].includes('/comments?')) throw new Error('HTTP 502');
+      return { stdout: PATCH };
+    });
+    const result = await readPullRequestReview(
+      'github',
+      'forge.test',
+      context,
+      '17',
+      run,
+      () => normalized,
+    );
+    expect(result.diff.state).toBe('available');
+    expect(result.reviewComments).toEqual({
+      state: 'unavailable',
+      reason: 'The provider could not supply inline review comments.',
+    });
+    // No rollup in the answer is "not reported", never "no checks".
+    expect(result.checks).toEqual({
+      state: 'unavailable',
+      reason: 'The provider did not report checks.',
+    });
+  });
+
+  function gitlabRun(pipeline: unknown, discussions: unknown) {
+    return vi.fn(async (args: string[]) => {
+      if (args[1] === 'view')
+        return json({ ...raw('gitlab'), head_pipeline: pipeline });
+      if (args[1].includes('notes?')) return json([]);
+      if (args[1].endsWith('/approvals')) return json({ approved_by: [] });
+      if (args[1].includes('/discussions?')) return json(discussions);
+      return { stdout: PATCH };
+    });
+  }
+
+  test('gitlab: the head pipeline is the check, and only for the observed head', async () => {
+    const current = await readPullRequestReview(
+      'gitlab',
+      'forge.test',
+      context,
+      '17',
+      gitlabRun(
+        {
+          id: 991,
+          sha: head,
+          status: 'running',
+          web_url: 'https://forge.test/group/nested/repo/-/pipelines/991',
+        },
+        [],
+      ),
+      () => ({ ...normalized, provider: 'gitlab' }),
+    );
+    expect(current.checks).toEqual({
+      state: 'available',
+      partial: false,
+      checks: [
+        {
+          name: 'Pipeline 991',
+          state: 'pending',
+          url: 'https://forge.test/group/nested/repo/-/pipelines/991',
+        },
+      ],
+    });
+    const stale = await readPullRequestReview(
+      'gitlab',
+      'forge.test',
+      context,
+      '17',
+      gitlabRun({ id: 990, sha: changed, status: 'success' }, []),
+      () => ({ ...normalized, provider: 'gitlab' }),
+    );
+    expect(stale.checks).toEqual({
+      state: 'unavailable',
+      reason: 'The latest pipeline ran on a different revision.',
+    });
+  });
+
+  test('gitlab: diff notes become placed comments only on the observed head', async () => {
+    const result = await readPullRequestReview(
+      'gitlab',
+      'forge.test',
+      context,
+      '17',
+      gitlabRun(null, [
+        {
+          id: 'd1',
+          notes: [
+            {
+              id: 501,
+              type: 'DiffNote',
+              body: 'Why?',
+              author: { username: 'alice' },
+              created_at: '2026-01-03T00:00:00Z',
+              position: {
+                head_sha: head,
+                new_path: 'a',
+                old_path: 'a',
+                new_line: 1,
+                old_line: null,
+              },
+            },
+            {
+              id: 502,
+              type: 'DiffNote',
+              body: 'Because.',
+              author: { username: 'bob' },
+              created_at: '2026-01-04T00:00:00Z',
+              position: {
+                head_sha: changed,
+                new_path: 'a',
+                old_path: 'a',
+                new_line: null,
+                old_line: 1,
+              },
+            },
+          ],
+        },
+        { id: 'd2', notes: [{ id: 600, type: null, body: 'General' }] },
+      ]),
+      () => ({ ...normalized, provider: 'gitlab' }),
+    );
+    expect(result.checks).toEqual({
+      state: 'available',
+      checks: [],
+      partial: false,
+    });
+    expect(result.reviewComments).toEqual({
+      state: 'available',
+      partial: false,
+      comments: [
+        {
+          id: '501',
+          author: 'alice',
+          body: 'Why?',
+          createdAt: '2026-01-03T00:00:00Z',
+          path: 'a',
+          side: 'additions',
+          line: 1,
+        },
+        {
+          id: '502',
+          author: 'bob',
+          body: 'Because.',
+          createdAt: '2026-01-04T00:00:00Z',
+          path: 'a',
+          side: 'deletions',
+          line: null,
+          inReplyTo: '501',
+        },
+      ],
+    });
+  });
+});
