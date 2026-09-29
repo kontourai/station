@@ -301,7 +301,7 @@ export interface SessionQueryModule {
 }
 
 /** The title a conversation shows before anything renames it. */
-export const UNTITLED_CONVERSATION_TITLE = 'New chat';
+const UNTITLED_CONVERSATION_TITLE = 'New chat';
 
 /**
  * A conversation's derived title: the first thing its user wrote, from
