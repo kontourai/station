@@ -779,6 +779,12 @@
     font-size: 1rem;
   }
 
+  /* The detail's action row (SessionDetail.css) starts under the title once
+     the header stacks, instead of hugging the far edge. */
+  .sessions-detail__header .sessions-detail__actions {
+    justify-content: flex-start;
+  }
+
   .sessions-detail__context {
     display: flex;
     gap: 0.4rem;
@@ -869,6 +875,7 @@
   }
 
   .sessions-detail--viewport-compact .sessions-detail__eyebrow,
+  .sessions-detail--viewport-compact .sessions-detail__meta-line,
   .sessions-detail--viewport-compact .sessions-detail__stop-task,
   .sessions-detail--viewport-compact .sessions-detail__live-indicator {
     display: none;

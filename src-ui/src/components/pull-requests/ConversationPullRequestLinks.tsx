@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
-import { ErrorState, SkeletonList } from '../state';
+import { Empty, ErrorState, SkeletonList } from '../state';
 import './ConversationPullRequestLinks.css';
 
 const EMPTY: PullRequestLinkIdentity = {
@@ -135,9 +135,7 @@ export function ConversationPullRequestLinks({
           description={links.error.message}
         />
       ) : visibleLinks.length === 0 ? (
-        <p className="conversation-pr-links__empty">
-          No pull requests are linked to this conversation.
-        </p>
+        <Empty label="Nothing is linked to this conversation yet." />
       ) : (
         <ul>
           {visibleLinks.map((link) => (

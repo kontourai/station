@@ -4,6 +4,7 @@ import { type ReactNode, useMemo } from 'react';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { ChatMessage } from '../../types';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
+import { Empty } from '../state';
 
 /**
  * Only durable events carry an `eventId`; the projection is defined over
@@ -56,11 +57,13 @@ export function SessionTranscript({
     >
       {controls}
       {messages.length === 0 ? (
-        <p className="session-transcript__empty">
-          {isStreaming
-            ? 'Waiting for the first message…'
-            : 'No messages in this session yet.'}
-        </p>
+        <Empty
+          label={
+            isStreaming
+              ? 'Waiting for the first message…'
+              : 'No messages in this session yet.'
+          }
+        />
       ) : (
         messages.map((message, index) => {
           const contentParts = message.parts.map((part) => ({

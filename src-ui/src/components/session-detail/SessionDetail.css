@@ -115,7 +115,6 @@
   font-weight: var(--weight-semibold);
 }
 
-.session-transcript__empty,
 .session-transcript__working {
   margin: 0;
   color: var(--text-secondary);
@@ -164,16 +163,4 @@
 
 .sessions-detail__session-id .button {
   min-height: 44px;
-}
-
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .sessions-detail__actions {
-    justify-content: flex-start;
-  }
-
-  /* Keyboard open: title and status stay; the meta line is the first thing
-     that is not identity. */
-  .sessions-detail--viewport-compact .sessions-detail__meta-line {
-    display: none;
-  }
 }

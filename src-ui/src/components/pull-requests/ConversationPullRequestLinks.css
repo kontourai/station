@@ -53,7 +53,6 @@
   margin: 0;
   font-size: var(--text-md);
 }
-.conversation-pr-links__empty,
 .conversation-pr-links__add p {
   margin: 0;
   color: var(--text-secondary);
@@ -66,15 +65,10 @@
 .conversation-pr-links__add summary {
   display: flex;
   align-items: center;
-  min-height: 32px;
+  min-height: 44px;
   color: var(--text-primary);
   cursor: pointer;
 }
 .conversation-pr-links__add[open] > summary {
   margin-bottom: 8px;
-}
-@media (pointer: coarse) {
-  .conversation-pr-links__add summary {
-    min-height: 44px;
-  }
 }
