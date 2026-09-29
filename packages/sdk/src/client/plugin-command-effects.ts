@@ -6,7 +6,8 @@
  * settlement both answer with an ordinary JSON envelope for every REFUSED or
  * unsettled outcome (never an HTTP error status alone), so these functions
  * never throw for a business refusal — only for a genuinely malformed
- * response, which the caller (the client coordinator,
+ * response, or a request deadline reached while the body is read (the SDK's
+ * `StationRequestTimeoutError`, passed on unchanged), which the caller (the client coordinator,
  * `src-ui/src/components/plugin-command-effect-coordinator.ts`) treats the
  * same as a network failure: the admission's fate is unknown, so it cancels
  * rather than guesses.
@@ -20,6 +21,7 @@ import type {
 } from '@kontourai/station-contracts/plugin-command-effect';
 import type { ApiRequestScope } from './http.js';
 import { mutateJson } from './http.js';
+import { rethrowDeadline } from './request-deadline.js';
 
 export type PluginCommandEffectAdmitOutcome =
   | { kind: 'admitted'; receipt: PluginCommandEffectReceipt }
@@ -74,7 +76,8 @@ export async function admitPluginCommandEffect(
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     return { kind: 'network-error' };
   }
   if (!isRecord(body)) return { kind: 'network-error' };
@@ -158,7 +161,8 @@ export async function settlePluginCommandEffects(
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     return null;
   }
   if (
