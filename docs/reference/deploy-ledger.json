@@ -1,5 +1,43 @@
 [
   {
+    "timestampUtc": "2026-09-29T05:21:53Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2463.36520805311",
+    "sha": "99f9520b0fde970a123c4dabc22137a55747aa17",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36520805311",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2463.36520805311 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe",
+      "groups": {
+        "feat": [
+          "[#2902](https://github.com/kontourai/station/pull/2902) feat(ui): apply validated white-label branding theme; action/focus roles with fallbacks"
+        ],
+        "fix": [
+          "[#2938](https://github.com/kontourai/station/pull/2938) fix(pull-requests): observe session PR conflicts with one narrow, coalesced read per repository (#2937)",
+          "[#2931](https://github.com/kontourai/station/pull/2931) fix(verification): report the narrow-diff fixture's changed paths",
+          "[#2921](https://github.com/kontourai/station/pull/2921) fix(codex): session grants never auto-approve escalations; approval titles cannot be spoofed (#2911)"
+        ],
+        "ci": [],
+        "docs": [
+          "[#2946](https://github.com/kontourai/station/pull/2946) docs(agents): point status styling at the kit tones, not hex"
+        ],
+        "other": [
+          "[#2945](https://github.com/kontourai/station/pull/2945) refactor: remove dead station-control stdio caller token and isLocalRuntimeCaller; key terminal query-credential failures on the normalized peer",
+          "[#2918](https://github.com/kontourai/station/pull/2918) test: test-audit Server services (batches 42, 43, 44, 51, 54, 56, 60, 65)"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-09-29T00:28:17Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2462.3",
