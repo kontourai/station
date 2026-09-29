@@ -1432,6 +1432,18 @@ formatted failure, not necessarily the literal `User not found`.
 The name is provider-supplied. An absent optional logo/theme/welcome method
 produces `null`; other returned values belong to the provider contract.
 
+`theme` is the white-label override surface: flat `--k-*` keys that are
+expanded into both modes, and optional `dark` / `light` objects that override
+per mode. The route passes it through unvalidated. The
+[UI validation](../../src-ui/src/lib/branding-theme.ts) applies it only if
+every key is one of `--k-brand`, `--k-brand-contrast`, `--k-action`,
+`--k-action-contrast` or `--k-focus`, every value is `#rgb`/`#rrggbb`, and
+every check from the "White-label overrides" section in
+[`@kontourai/ui`'s DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md#white-label-overrides)
+passes in both modes; otherwise it applies none of it and keeps the default.
+The rules and a worked provider are in
+[examples/custom-branding](../../examples/custom-branding/README.md).
+
 ## Events (SSE)
 
 ### Subscribe to Real-Time Events

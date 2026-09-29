@@ -287,12 +287,14 @@ describe('portable Nightly publication workflow: token, secret and effect scope'
     expect(secretSteps[0].run).toContain(
       '--key-id station-portable-nightly-2026-09',
     );
-    // The workflow declares no secrets to be passed in, and the Nightly
-    // caller passes none: the key lives only in the environment.
+    // The workflow declares no secrets to be passed in; the key lives only in
+    // the environment. The caller must still inherit, because a reusable
+    // workflow's job reads its environment's secrets only then: without it
+    // the first enabled Nightly signed with an empty key.
     expect(JSON.stringify(publication.on?.workflow_call)).not.toContain(
       'secrets',
     );
-    expect(nightly.jobs['portable-nightly'].secrets).toBeUndefined();
+    expect(nightly.jobs['portable-nightly'].secrets).toBe('inherit');
   });
 
   it('keeps every publication effect in the publish job, rolling manifest last and re-verified', () => {

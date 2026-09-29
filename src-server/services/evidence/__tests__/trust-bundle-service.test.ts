@@ -54,6 +54,7 @@ describe('TrustBundleService', () => {
   const tempDirs: string[] = [];
 
   afterEach(() => {
+    vi.useRealTimers();
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -213,6 +214,11 @@ describe('TrustBundleService', () => {
 
   describe('getTrustReport', () => {
     test('derives a trust report from a valid bundle', async () => {
+      // The report stamps generatedAt and freshness from the clock, so pin it:
+      // the service's call and the expected value's call can land a
+      // millisecond apart.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-09-28T12:00:00.000Z'));
       const cwd = createWorkspace();
       writeWorkspaceBundle(cwd, 'survey-session.json', validBundle());
       const result = await new TrustBundleService().getTrustReport(

@@ -109,16 +109,18 @@ function capturedPlan(
 
 /**
  * A peer process that holds a write lock on `databasePath` for `holdMs`, then
- * commits and reports when it let go. A write that began before that moment
- * and returned after it waited through the lock; one that began later
- * proves nothing.
+ * commits and reports when it let go. The time is read just before COMMIT, so
+ * it is a lower bound a waiting writer cannot beat even if the peer is
+ * preempted before reporting. A write that began before that moment and
+ * returned after it waited through the lock; one that began later proves
+ * nothing.
  */
 async function holdPeerWriteLock(databasePath: string, holdMs: number) {
   const holder = spawn(
     process.execPath,
     [
       '-e',
-      `const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(process.argv[1]); db.exec('BEGIN IMMEDIATE'); process.stdout.write('locked\\n'); setTimeout(() => { db.exec('COMMIT'); process.stdout.write('released ' + Date.now() + '\\n'); db.close(); }, ${holdMs});`,
+      `const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(process.argv[1]); db.exec('BEGIN IMMEDIATE'); process.stdout.write('locked\\n'); setTimeout(() => { const releasingAt = Date.now(); db.exec('COMMIT'); process.stdout.write('released ' + releasingAt + '\\n'); db.close(); }, ${holdMs});`,
       databasePath,
     ],
     { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },

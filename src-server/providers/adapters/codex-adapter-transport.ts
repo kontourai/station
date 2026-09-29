@@ -887,9 +887,10 @@ export class CodexAdapterTransport {
     const payload = (request.params ?? {}) as Record<string, unknown>;
     const toolName = deriveApprovalToolName(request.method, payload);
     // Tool-level session grant: "Allow for this session" covers every later
-    // call of the tool, not just the one call the engine asked about (the
-    // command/file-change/elicitation wire responses carry no session
-    // scope). Granted tools never re-prompt; denies are never cached. A
+    // call of the tool, not just the one call the engine asked about
+    // (Station's own grant, on top of the decision Codex was sent; see
+    // `deriveApprovalToolName` for requests that never match one). Granted
+    // tools never re-prompt; denies are never cached. A
     // data-collecting elicitation has no truthful auto-acceptance, so it
     // always re-prompts even under a grant.
     const grantedAutoApproval =

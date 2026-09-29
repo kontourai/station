@@ -28,8 +28,16 @@ migration is complete.
 Station does not currently select a package `theme-console`/`theme-flow`/
 `theme-survey`/`theme-surface` class. It consumes the base dark/light skin and
 applies local adoption rules. `:root.is-dev-build` and `data-app-channel`
-selectors override the brand/contrast pair and select channel logo assets.
-These are existing Station channel overrides, not new shared product themes.
+selectors override the brand/contrast pair and the interaction roles
+(`--k-action`, `--k-action-contrast`, `--k-focus`), and select channel logo
+assets. These are existing Station channel overrides, not new shared product
+themes. `--accent-primary` and `--text-on-accent` read the action role with a
+brand fallback, and the focus-visible outline reads `--k-focus` with an
+`--accent-primary` fallback, so the same rules work whether or not the
+installed package defines the roles (1.12.0 does not).
+[branding-role-cascade.test.ts](../../src-ui/src/__tests__/branding-role-cascade.test.ts)
+measures those fallbacks and contrast-checks every channel value in a real
+browser.
 Do not copy the package's theme or primitive styles into a feature; propose a
 shared value upstream when it belongs to the public design system.
 
@@ -44,8 +52,23 @@ to the Device; changing a server or Project is not a separate theme choice.
 The [accent helper](../../src-ui/src/lib/accent-contrast.ts) applies a custom
 accent together with its foreground contrast partner and hover treatment.
 Use that owner rather than setting only `--accent-primary`; clearing the
-preference must clear its companion overrides too. Do not infer legibility for
-every tinted background from a foreground-on-solid-accent calculation.
+preference must clear its companion overrides too. It refuses a value that is
+not `#rgb`/`#rrggbb` and clears the override instead. Do not infer legibility
+for every tinted background from a foreground-on-solid-accent calculation.
+
+## White-label branding theme
+
+A branding provider's `getTheme()` answer is applied by
+[branding-theme.ts](../../src-ui/src/lib/branding-theme.ts) as inline
+`--k-brand`, `--k-brand-contrast`, `--k-action`, `--k-action-contrast` and
+`--k-focus` on the document element, for the current `data-theme` mode. It is
+all or nothing: an unknown key, a non-hex value or a failed contrast check in
+either mode keeps the defaults. `main.tsx` applies the last validated copy from
+localStorage before the first render, re-validating it, and
+[BrandingThemeBridge](../../src-ui/src/components/BrandingThemeBridge.tsx)
+replaces it once the branding query answers. A device accent still sets
+`--accent-primary` above the theme's action role. The accepted shape and
+thresholds are in [examples/custom-branding](../../examples/custom-branding/README.md).
 
 ## Components and evidence
 
