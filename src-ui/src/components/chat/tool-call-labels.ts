@@ -35,7 +35,7 @@ interface KindVerbs {
   pendingVerb: string;
 }
 
-export const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
+const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
   read: { verb: 'Read', progressiveVerb: 'Reading', pendingVerb: 'Read' },
   write: { verb: 'Edited', progressiveVerb: 'Editing', pendingVerb: 'Edit' },
   exec: { verb: 'Ran', progressiveVerb: 'Running', pendingVerb: 'Run' },
