@@ -10058,7 +10058,7 @@
     {
       "path": "docs/design/station-peer-pairing.md",
       "documentDigest": "52cb07412cb45ae4d82fd9e47ba27bc6537ee76f746937e1dd858eb38415ea22",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "a95fa6de327c78270e93e332d28a5fdffbbd7742",
       "kind": "historical",
       "state": "classified",
       "summary": "Historical peer design and supersession log linked to actual credential/delegation/scope owners; original proposal body preserved.",
@@ -10074,7 +10074,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         }
       ],
       "checks": [
@@ -10085,7 +10085,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Reviewed landing deltas through 111744681: Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 adds PAIRING_SCOPE_DESCRIPTIONS (insertion at line 472) and FullAccessRevocationReport types (from line 1125) to contracts environment-security.ts. It changes no peer, delegation-preset or PairedDeviceKind semantics, and the lines the dated supersession table cites (174, 393, 414) have identical content before and after. That table's :393/:414 references to PairedDeviceKind were already offset before #2904 (702 at base, now 779); this is dated history and #2904 did not cause it. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c inserted decision-delivery code in station-control-delegation.ts at line 1196 and later. The doc's cited ranges (:87-93, :100, :335-356, :643-648, :716-760) and its target-resolution claims are unaffected; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c inserted decision-delivery code in station-control-delegation.ts at line 1196 and later. The doc's cited ranges (:87-93, :100, :335-356, :643-648, :716-760) and its target-resolution claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
@@ -12338,7 +12339,7 @@
     {
       "path": "docs/guides/delegation-attempt-claims.md",
       "documentDigest": "34c8d048c03a6f1c6baf4382ccd8f45e30bcec42e8f82a32b503e86223e4e07d",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "a95fa6de327c78270e93e332d28a5fdffbbd7742",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Opt-in receiver-side portable delegation duplicate suppression and lookup. Full57-line baseline read. Followed actual route schema/lookup currentness, SDK lookup, forwarding capability check, receiver reservation/dedup path and store capacity/state definitions; route fixtures passed.",
@@ -12486,7 +12487,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -12535,7 +12536,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports. The guide's receiver claim/lookup claims do not depend on them; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
@@ -15163,7 +15165,7 @@
     {
       "path": "docs/guides/machine-relationships.md",
       "documentDigest": "6b6c076e7fff46673e339e0a4188705c45a5ab10db2d8ed95593da00f6c2a1d9",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "a95fa6de327c78270e93e332d28a5fdffbbd7742",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented direction/authority/persistence distinctions across paired Devices, server-owned SSH, remote visibility, fleet inference and account/Project sharing. Traced the shared-work and guest administration boundaries; archived issue references corrected. No behavioral prose correction was otherwise needed.",
@@ -15287,7 +15289,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -15359,7 +15361,8 @@
         "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain; native account continuation is additive and separately admitted; existing browser/provider, Device and Project claims retain their documented scope. Changed inputs reviewed: src-server/routes/system/application-session-routes.ts, src-server/runtime/bootstrap/runtime-http.ts, src-server/services/identity/application-session-service.ts, src-server/services/identity/deployment-authentication-service.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through d72f79b08: #2904 adds main's 'What a paired device may do, and full access' section, the config route's structured refusal, and the runtime-routes scope/revoke reset (fullAccessRevocation, resetFullAccess, device-revoked cause). Checked the section against resetFullAccessGrantedBy: Ask for the device's never, a Default that reaches full access, Auto on a host session it unconfined, and host starts it granted; re-confinement versus engine-restart; the listed exceptions with the 50-entry cap; and account sessions getting no grant. Also checked it against PAIRING_SCOPE_DESCRIPTIONS and the refusal module. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) returns 403 rather than 401 when an ordinary device credential is recognized but not admitted (e.g. /api/pairing device inventory), so the browser session is not revoked; prose accurate: the guide describes scoped, revocable device credentials and named refusals without claiming a status code or that an out-of-scope request ends the session. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c added lastDecision/earlierUnacknowledgedDecisions and request.delivery projection to station-control-delegation.ts. Remote target admission and authenticated forwarding are unchanged; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c added lastDecision/earlierUnacknowledgedDecisions and request.delivery projection to station-control-delegation.ts. Remote target admission and authenticated forwarding are unchanged; prose accurate. Source review is separate from executed test evidence.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
@@ -16958,7 +16961,7 @@
     {
       "path": "docs/guides/private-runner-partition.md",
       "documentDigest": "3a71d00a2de396d6ec7ccf680c41e99d9e7afd1f07e0217bdef00f41042ce8b9",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "a95fa6de327c78270e93e332d28a5fdffbbd7742",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Conditional operator plan for separating fleet listeners, with current routing context. Full59-line baseline read. Checked current hosted CI, persistent Linux container-smoke and Windows diagnostic/performance workflow labels, capacity step and actionlint routing policy.",
@@ -17106,7 +17109,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -17155,13 +17158,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused re-exports of canonical descriptor predicates; the doc cites none of them; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
       "path": "docs/guides/product-law-authoring.md",
       "documentDigest": "e73cd5b9a92cfe8795d643d6c583b120b486366eea57f015ff412f35524336c6",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "a95fa6de327c78270e93e332d28a5fdffbbd7742",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Normative authoring and interpretation of selected executable product laws. Full29-line baseline read. Traced manifest bounds, path dispositions, exact structured observation and timeout/infrastructure result classification; focused owner tests passed.",
@@ -17309,7 +17313,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -17359,7 +17363,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) trims unused re-exports from builtinWorkspacePaneRegistry. The guide makes no claim about those exports; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
@@ -17910,7 +17915,7 @@
     {
       "path": "docs/guides/repository-layout.md",
       "documentDigest": "9db07997f2440ee4cf5062fd805657beb7baffc40831f1f31625089695e7c021",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "a95fa6de327c78270e93e332d28a5fdffbbd7742",
       "kind": "policy",
       "state": "classified",
       "summary": "Repository navigation, ownership conventions and contributor routing. Full69-line baseline read. Current directories and links checked; root instructions and module-map routing retain their normative purpose. No stale text requiring edit found.",
@@ -18058,7 +18063,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -18107,7 +18112,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) only dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry.tsx. The file and its role are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
@@ -20061,7 +20067,7 @@
     {
       "path": "docs/guides/work-board-security.md",
       "documentDigest": "ec519bd0a32aefd4172f8fe3d20068ccc480ae9236d16fe9797eba4570fc7cc2",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "a95fa6de327c78270e93e332d28a5fdffbbd7742",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Trusted Work Board rendering, Home eligibility and owner-resolved reference storage boundaries. Full16-line baseline read. Checked builtin registry/Pane frame React error boundary, actual plugin-only Home eligibility and granted-Home recovery, closed store/reference shape, request-bound resolved route and owner projection tests.",
@@ -20209,7 +20215,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -20258,13 +20264,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx removes unused canonical-descriptor re-exports only. It is still the built-in registry that selects the trusted Work Board renderer; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
       "path": "docs/guides/workspace-packages.md",
       "documentDigest": "01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "a95fa6de327c78270e93e332d28a5fdffbbd7742",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented AES envelope, Git snapshot/content/path/expansion limits, source rechecks, fresh destination and cleanup, read-only verification, and import-project durable intent/create/readback caller semantics. Current prose accurately distinguishes metadata verification from target filesystem and execution authority.",
@@ -20424,7 +20431,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -20478,7 +20485,8 @@
         "Integration source review through 5731eba07: #2919 trims unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports from builtinWorkspacePaneRegistry. The guide does not reference those exports; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
