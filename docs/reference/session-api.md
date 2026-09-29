@@ -146,8 +146,10 @@ taken it, as a `setApprovalMode` of Auto based on the decision standing
 before the answer would. If any decision was recorded after the answer was
 sent, that decision stands and nothing is recorded. It is not recorded over a
 standing Auto or full access. It then lasts until the next approval-mode
-decision. Through the delegated-task respond route or the inbox, the same
-answer is sent as `accept` and records nothing. Where nothing can be
+decision. Through the delegated-task respond route for a task on this Station,
+or the inbox, the same answer is sent as `accept` and records nothing. A
+delegated answer for a task on a saved Environment reaches that Station as
+this command, and that Station applies the same rule. Where nothing can be
 forwarded, for a file edit in plan mode or under full access, and for
 `ExitPlanMode`, `acceptForSession` counts as `accept` (#2915, #2916).
 

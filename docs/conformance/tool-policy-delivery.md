@@ -110,9 +110,12 @@ card label it:
   later turns and their metadata then show Auto, and picking Ask ends it. An
   answer from another path is sent to the engine as a one-call accept: no mode
   change is forwarded and nothing is recorded. That covers the delegated
-  `respond_to_task_request` path, which admits a bound Project approver who
-  may not set the approval mode, and the approval inbox. The inbox card does
-  not offer the option at all.
+  `respond_to_task_request` path for a task on this Station, which admits a
+  bound Project approver who may not set the approval mode, and the approval
+  inbox. The inbox card does not offer the option at all. For a task on a
+  saved Environment, the answer reaches that Station through its command
+  route with this Station's enrolled credential, and that Station applies
+  the same rule.
 - A turn applies the conversation's approval mode only when it differs from
   the mode Station last requested, never merely because the engine moved. An
   engine that entered plan mode stays there through the user's follow-ups
