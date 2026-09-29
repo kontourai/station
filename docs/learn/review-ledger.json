@@ -3890,7 +3890,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "426153191586e330abfdfca99debbeab43855d09",
+      "sourceRevision": "99822caec8da2e28aadac4edeb384374ffb0543d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -5314,7 +5314,7 @@
         },
         {
           "path": "src-ui/src/app-shell/destination-registry.ts",
-          "digest": "0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea"
+          "digest": "e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6"
         },
         {
           "path": "src-ui/src/app-shell/routing.ts",
@@ -5322,7 +5322,7 @@
         },
         {
           "path": "src-ui/src/components/CommandPalette.tsx",
-          "digest": "9fdfadbad42aa869be9311d840262cb96eedeedd3d9431f9a6752ecd043dfcec"
+          "digest": "5f014ce497321c0bbbad91fd9463c9a5a8eb2613822929c30a5187d289ae9543"
         },
         {
           "path": "src-ui/src/components/home/StarterWorkCard.tsx",
@@ -5639,7 +5639,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; registry.ts only deleted the caller-less registerBrandingProvider (getBrandingProvider default unchanged); chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "activity-nav: ProjectSidebarNav and CommandPalette still consume the destination registry's ordered sidebar/palette projections; their regionSurface entries now call useShowSurfacePage (main placement) instead of showSurface. No module-map claim names the row's toggle, so no prose change."
+        "activity-nav: ProjectSidebarNav and CommandPalette still consume the destination registry's ordered sidebar/palette projections; their regionSurface entries now call useShowSurfacePage (main placement) instead of showSurface. No module-map claim names the row's toggle, so no prose change.",
+        "activity-nav round 2: destination-registry change is comment-only (regionSurface field doc now names the page opener); CommandPalette comment reworded. Module-map claims about ordered sidebar/palette projections still hold."
       ]
     },
     {
@@ -8722,7 +8723,7 @@
     {
       "path": "docs/design/pane-or-shell.md",
       "documentDigest": "628156637ea2f89baab9ba73c53100e6313754b0361c80e37bff94c90ed9ef23",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "99822caec8da2e28aadac4edeb384374ffb0543d",
       "kind": "policy",
       "state": "classified",
       "summary": "Adopted pane/shell criterion and runtime trust policy; surface inventory explicitly scoped to its migration stage.",
@@ -8730,7 +8731,7 @@
       "sources": [
         {
           "path": "src-ui/src/app-shell/destination-registry.ts",
-          "digest": "0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea"
+          "digest": "e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6"
         },
         {
           "path": "src-ui/src/app-shell/routing.ts",
@@ -8744,13 +8745,14 @@
       "checks": [
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Entire original body byte-identical after removing reading banner and inventory qualification.",
-        "Reviewed integration deltas: src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged."
+        "Reviewed integration deltas: src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged.",
+        "activity-nav round 2: destination-registry change is doc comments only; the activityDeepLink worked example and /activity redirect claims are unchanged."
       ]
     },
     {
       "path": "docs/design/placement.md",
-      "documentDigest": "cd0fb09f6bf7046086a18b4ad60561917c054b435a3e36ebbbf6432fa4b2b4ed",
-      "sourceRevision": "426153191586e330abfdfca99debbeab43855d09",
+      "documentDigest": "9823db3624336415dcd9d3e7f5047ec9b5a4f296cd77366ff1f34dbb39a722e2",
+      "sourceRevision": "99822caec8da2e28aadac4edeb384374ffb0543d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8806,7 +8808,7 @@
         },
         {
           "path": "src-ui/src/app-shell/destination-registry.ts",
-          "digest": "0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea"
+          "digest": "e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6"
         },
         {
           "path": "src-ui/src/app-shell/project-layout-kind.ts",
@@ -8870,7 +8872,7 @@
         },
         {
           "path": "src-ui/src/contexts/RegionModelContext.tsx",
-          "digest": "e9f4ea517fdba0718e91f22ea85787ceb5ed8bad20902f1297046919fa3871fa"
+          "digest": "baccc2a5b2a123d9dfb7269529c043ae1beb3a61a314addb64648e5aff09cacf"
         },
         {
           "path": "src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx",
@@ -9053,7 +9055,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Its disabled claims concern pane chooser rows and its dockSlotPlacement right/left dock claims are unchanged by this CSS; no approval-button claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "activity-nav: added the place-row rule (sidebar/palette/Home View Activity open Activity in main via useShowSurfacePage = showSurface with region main; aria-current derived from main occupant at /; contextual producers and chord unchanged; defaultRegion stays right; no history entry for a Home/Activity swap at /) and corrected the leaving-main note (sidebar row makes it the page again). Traced ProjectSidebarNav, CommandPalette, HomeSurface, RegionModelContext.showSurface/openSurfaceInRegion target branch and phone overChat guard."
+        "activity-nav: added the place-row rule (sidebar/palette/Home View Activity open Activity in main via useShowSurfacePage = showSurface with region main; aria-current derived from main occupant at /; contextual producers and chord unchanged; defaultRegion stays right; no history entry for a Home/Activity swap at /) and corrected the leaving-main note (sidebar row makes it the page again). Traced ProjectSidebarNav, CommandPalette, HomeSurface, RegionModelContext.showSurface/openSurfaceInRegion target branch and phone overChat guard.",
+        "activity-nav round 2: place-row rule now covers Project 'All activity', the phone un-maximize on a main landing (RegionModelContext commit, bottomOnly or isMobile, also Home), ending a phone layer that shows the same pane via its restore, the transient remembered dock region for the chord return (cleared by explicit placement, lost on reload), and the no-history-entry accepted gap with its phone Back consequence. Traced commit, openSurfaceInRegion target branch, toggleSurface, restorePhoneLayer."
       ]
     },
     {
@@ -10233,7 +10236,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "99822caec8da2e28aadac4edeb384374ffb0543d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10445,7 +10448,7 @@
         },
         {
           "path": "src-ui/src/app-shell/destination-registry.ts",
-          "digest": "0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea"
+          "digest": "e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6"
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
@@ -10514,7 +10517,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports layout constants and helpers; behavior and the glossary's terms are unchanged and the glossary cites none of the removed exports; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "activity-nav round 2: destination-registry change is comment-only; the Surface/destination vocabulary is unchanged."
       ]
     },
     {
@@ -24066,7 +24070,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "426153191586e330abfdfca99debbeab43855d09",
+      "sourceRevision": "99822caec8da2e28aadac4edeb384374ffb0543d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24823,7 +24827,7 @@
         },
         {
           "path": "src-ui/src/components/CommandPalette.tsx",
-          "digest": "9fdfadbad42aa869be9311d840262cb96eedeedd3d9431f9a6752ecd043dfcec"
+          "digest": "5f014ce497321c0bbbad91fd9463c9a5a8eb2613822929c30a5187d289ae9543"
         },
         {
           "path": "src-ui/src/components/EnvironmentPicker.tsx",
@@ -25067,7 +25071,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "activity-nav: CommandPalette change is the Activity navigation entry opening the page (useShowSurfacePage); the SDK reference's palette claim concerns Workspace search mode, unchanged."
+        "activity-nav: CommandPalette change is the Activity navigation entry opening the page (useShowSurfacePage); the SDK reference's palette claim concerns Workspace search mode, unchanged.",
+        "activity-nav round 2: CommandPalette change is a comment on the Activity entry; the SDK reference's Workspace search palette claim is unchanged."
       ]
     },
     {
