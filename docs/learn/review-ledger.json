@@ -88,7 +88,7 @@
     {
       "path": ".changeset/README.md",
       "documentDigest": "381524670e36ead2172f0bda86d439055458085dcb6401544c863056efbe2ab7",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checked the managed Changesets command, package discovery, retained-note validation, and ci:fast ordering.",
@@ -100,7 +100,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "b52be129141784035fbb7998c02c8351c5d1bfd73fb9410ce5d264f8052b7531"
+          "digest": "962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2"
         },
         {
           "path": "scripts/check-changesets.mjs",
@@ -117,7 +117,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope.",
         "Reviewed landing deltas through 111744681: Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
         "Reviewed the run-ci-fast.mjs delta (five added static gates after gate:workflows); the changeset status check this README describes still runs in ci:fast.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -3898,7 +3899,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4090,7 +4091,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/__tests__/startup-readiness-static.test.ts",
@@ -5647,7 +5648,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; registry.ts only deleted the caller-less registerBrandingProvider (getBrandingProvider default unchanged); chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -5678,7 +5680,7 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical.",
@@ -5707,7 +5709,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/providers/__tests__/claude-adapter.test.ts",
@@ -5770,7 +5772,8 @@
         "Integration source review through e0314c727: claude-adapter.ts dropped the unused stdio `mintStationControlCallerToken` fallback and its test, and package.json/pnpm-lock removed only @kontourai/bearing and @kontourai/forage (Agent SDK still 0.3.261). The explicit mcpServers/strictMcpConfig, PreToolUse and delivery claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata and stamps acknowledgement on request.resolved in the claude and acp adapters, and adds handleRequestDeliveryEvent plus the toast copy 'this request is no longer open.' in approvalHandlers.ts (tests updated). None of this touches the tool-request preview readers, the pre-tool seams or the Ask-mode permission path the document describes. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Updated the locked Agent SDK version from 0.3.261 to 0.3.278 and confirmed the installed 0.3.278 sdk.d.ts still documents that omitted settingSources loads all filesystem settings; the 0.3.224 experiment references stay historical."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Updated the locked Agent SDK version from 0.3.261 to 0.3.278 and confirmed the installed 0.3.278 sdk.d.ts still documents that omitted settingSources loads all filesystem settings; the 0.3.224 experiment references stay historical.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -7293,7 +7296,7 @@
     {
       "path": "docs/design/conduit-runtime-integration.md",
       "documentDigest": "92b017dfab71e1bd1ed9c41545c8e5aab4373b8093c9246f80667d544a9f32f0",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete Station-engine hook projection against actual VoltAgent and Strands callers, before/after-tool and completion forwarding, public Conduit adapter, capability classification, lockfile identity and generated conformance report. Clarified what the host-bound label and portable probes establish.",
@@ -7309,7 +7312,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/generate-runtime-conformance.mjs",
@@ -7347,7 +7350,8 @@
         "Integration source review through d1e0facc2: Tests now call the real adapter capability/projection surface. Capabilities became a private immutable constant with the same availability values. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: package.json and pnpm-lock.yaml only removed the root bearing/forage dependencies. Conduit 0.7.1 and the VoltAgent/Strands lockfile identities are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -7753,7 +7757,7 @@
     {
       "path": "docs/design/inference-fleet.md",
       "documentDigest": "b277197bc0f392a48132fb418660b1d363dfdbfdae2173119e928ae5b7b146c6",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "design",
       "state": "classified",
       "summary": "Full chronological fleet record classified; current serving/admission/Dispatch/receipt owners linked, buffered behavior and nonlocal consumer refusal inspected, obsolete loopback bypass and blanket privacy claim corrected, dependency inventory explicitly historical.",
@@ -7769,7 +7773,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/routes/inference/fleet-inference.ts",
@@ -7806,7 +7810,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) pairing-route-scopes.ts adds one inherited /api/system leaf, GET /api/system/core-update/service-update, near line 3084. The doc's /api/connections leaf-override claims and cited line anchors (:94, :143, :518) come before the insertion and are unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -9259,7 +9264,7 @@
     {
       "path": "docs/design/pnpm-workspace-installation.md",
       "documentDigest": "e1a144f23d106180bc3bbb6085fb6e889880faadf50f5d2bb78dc763bfba3439",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete implemented installation design and delivery checklist against managed phase ordering, exact manager pin, inert pnpm arguments/settings, lock and workspace parity, lifecycle allowlist/hooks/artifacts, guard retirement, dependency receipt identity, importer-specific installed-version preflight, advisory closure and production SBOM graph. Checklist remains required evidence rather than a claim all delivery probes ran; root advisory view explicitly includes all managed importers.",
@@ -9279,11 +9284,11 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "b52be129141784035fbb7998c02c8351c5d1bfd73fb9410ce5d264f8052b7531"
+          "digest": "962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2"
         },
         {
           "path": "scripts/__tests__/dependency-lifecycle.test.ts",
@@ -9377,7 +9382,8 @@
         "Integration source review through e0314c727: package.json and pnpm-lock.yaml only removed the root @kontourai/bearing and @kontourai/forage importer entries. The installation design names neither package, and its manager pin, lifecycle, lock-parity and advisory claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2914 removes a raw-backslash resolveLockEntry pin test; the nested-importer and toLockRelDir coverage remain. It also removes a schema-vs-guard receipt test and points to the guard suites. The design's preflight and receipt-identity claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); the lifecycle allowlist only drops entries for packages the new lock no longer materializes (Playwright's nested fsevents 2.3.2 and the per-workspace esbuild 0.28.1 copies); dependencies:check and dependencies:ci pass; pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); the lifecycle allowlist only drops entries for packages the new lock no longer materializes (Playwright's nested fsevents 2.3.2 and the per-workspace esbuild 0.28.1 copies); dependencies:check and dependencies:ci pass; pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -10136,7 +10142,7 @@
     {
       "path": "docs/design/survey-flow-review.md",
       "documentDigest": "85cc721ee00fca17ff7a5a6b19e83155f59ac5f256cf95123adcd30b638002aa",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete review-composition document against Project store envelope/binding, unique opaque-reference lookup, route schemas/statuses, cross-Project partial failures and public Flow Agents delegation. Separated Station checks from Survey/Flow-owned lifecycle validation and actual cross-harness continuation.",
@@ -10148,7 +10154,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/routes/evidence/__tests__/flow-runs.routes.test.ts",
@@ -10184,7 +10190,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: flow-runs.routes.test.ts only renamed one POST /init test; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only flow-runs.routes.test.ts, renaming one POST /init test title (verified with git diff d0ca944c5 062fad816); the page makes no claim about that test; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -10917,7 +10924,7 @@
     {
       "path": "docs/guides/android-build.md",
       "documentDigest": "37d8dffe745a92d090cb31abdd509507d7666139868987c50cac217887a11d49",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Android build, generated-project ownership, provenance and verification boundaries. Full baseline read. Traced debug/release/Nightly workflow callers, managed bootstrap and app-directory selection, Kotlin geometry/native permissions, packaged provenance writer and Settings consumer, ELF/ZIP alignment owner, signing handoff and emulator checks. No builds or recipes executed.",
@@ -10993,7 +11000,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
@@ -11193,7 +11200,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes fnv1a32 module-private in packages/cli/src/commands/dev-ports.ts without changing its behavior; prose accurate: the guide doesn't name or import that export. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2914) android-build-manifest.mjs un-exports ANDROID_PROJECT_DIR/ANDROID_ASSETS_DIR with unchanged values, channel-ports.mjs refactors generation with an optional outputRoot, tauri-context.mjs un-exports parseArgs; (#2881) install.sh/service changes do not touch Android build claims; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -12357,7 +12365,7 @@
     {
       "path": "docs/guides/delegation-attempt-claims.md",
       "documentDigest": "34c8d048c03a6f1c6baf4382ccd8f45e30bcec42e8f82a32b503e86223e4e07d",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Opt-in receiver-side portable delegation duplicate suppression and lookup. Full57-line baseline read. Followed actual route schema/lookup currentness, SDK lookup, forwarding capability check, receiver reservation/dedup path and store capacity/state definitions; route fixtures passed.",
@@ -12417,7 +12425,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "b52be129141784035fbb7998c02c8351c5d1bfd73fb9410ce5d264f8052b7531"
+          "digest": "962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -12555,13 +12563,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
       "path": "docs/guides/dependency-security.md",
       "documentDigest": "3348ad71d919b973193e69af22e7681573fc64c86ec621f8180b0cbfa2366036",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete dependency-security guide against managed inert installation and exact hook admission, allowlist/artifact ownership, VoltAgent patch and real-framework regression, pnpm advisory normalization/reachability, exact exception/residual policy, event-based scope classification, scheduled issue lifecycle, legacy npm diagnostics, and protected-base CodeQL/dependency-review workflow. Clarified root workspace closure and structural SARIF validation versus producer provenance. Dated advisory matrices remain historical.",
@@ -12601,11 +12610,11 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "b52be129141784035fbb7998c02c8351c5d1bfd73fb9410ce5d264f8052b7531"
+          "digest": "962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2"
         },
         {
           "path": "scripts/__tests__/codeql-sarif-policy.test.ts",
@@ -12719,13 +12728,14 @@
         "Integration source review through e0314c727: package.json and pnpm-lock.yaml dropped the unused root @kontourai/bearing and @kontourai/forage dependencies; ci.yml fast-checks shards gained a zsh provisioning step (timeout 60 to 65) that actionlint-gate.mjs pins. The guide names neither package, and the advisory tables are dated history, so the managed-install, allowlist, advisory and workflow claims are unaffected and the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2914 reworks dependency-advisory-policy tests with no advisory-policy source change. The guide's policy claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); the lifecycle allowlist only drops entries for packages the new lock no longer materializes (Playwright's nested fsevents 2.3.2 and the per-workspace esbuild 0.28.1 copies); dependencies:check and dependencies:ci pass; pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); the lifecycle allowlist only drops entries for packages the new lock no longer materializes (Playwright's nested fsevents 2.3.2 and the per-workspace esbuild 0.28.1 copies); dependencies:check and dependencies:ci pass; pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
       "path": "docs/guides/deployment-authentication.md",
       "documentDigest": "807e4c84220d4ae4f255f3b3728811f2736a101e608e369eef1729e6bcef84d2",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented authentication descriptor/dispatch, account-bound Device, member projection/administration, guarded shared-content delivery, browser continuation and proof-bound application-session contracts. Preserved the reviewed local-account/OIDC startup, verification, storage and recovery qualifications; clarified which credential the resource proof hashes.",
@@ -12745,7 +12755,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/routes/projects/project-shared-tasks.ts",
@@ -12886,7 +12896,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) pairing-route-scopes.ts adds GET /api/system/core-update/service-update to the /api/system read tier; the doc makes no /api/system leaf claims; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -13089,7 +13100,7 @@
     {
       "path": "docs/guides/desktop-build.md",
       "documentDigest": "86bb87f004892c11d9eca946680a914572d9078d43fbf82a68d6e80502e4cbb1",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop compile/update/CSP contract and bounded packaged Browser Preview fixture. Full baseline read. Traced clean-checkout status-entry verifier, update UI/native registration and capabilities, manifest/lock versions, CSP config and trusted registry caller. Independently probed actual fixture helpers/shared schema; traced earlier native profile-genesis refusal. No native launch or package build.",
@@ -13165,7 +13176,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
@@ -13373,13 +13384,14 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) un-exports fnv1a32 in packages/cli/src/commands/dev-ports.ts without changing port derivation; prose accurate: the guide makes no claim about that export. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2881 adds a stage-only mode and a service-launcher handoff to install.sh, launcher-link and liveness delegation to service-run.ts, and update status to service.ts. #2914 gives channel-ports sync/check an outputRoot option, makes tauri-context parseArgs and the android-build-manifest constants non-exported, and refactors the startup-readiness static test. The guide's desktop updater, 'Connected Station server' separation, clean-checkout, readiness and fixture claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Updated the reviewed @tauri-apps/cli range to ^2.11.5; Rust tauri 2.11.5, tauri-build 2.6.3 and @tauri-apps/api ^2.11.1 are unchanged (plugin-updater deliberately held at 2.11.0 to match its crate)."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Updated the reviewed @tauri-apps/cli range to ^2.11.5; Rust tauri 2.11.5, tauri-build 2.6.3 and @tauri-apps/api ^2.11.1 are unchanged (plugin-updater deliberately held at 2.11.0 to match its crate).",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
       "path": "docs/guides/desktop-tray.md",
       "documentDigest": "65ed27eebefb1258681b81b175dd06c183fdaec0a3c3294e79215a4ba68acdc4",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop-owned service/sidecar tray health, controls, companion lifetime and logs. Full baseline read. Traced tray snapshot/action/destination decisions and ten-second health cadence, service-command identity arguments, Windows Task Scheduler implementation, companion caller after backend health, logging registration and pinned dependency rotation. Runtime/tray OS behavior remains unverified.",
@@ -13455,7 +13467,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
@@ -13672,7 +13684,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) only makes fnv1a32 private in dev-ports.ts, and the hashing behavior is the same. Nothing in the tray health, controls, companion or logging claims depends on it. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881): `service install` now points an installer-owned archive unit on macOS/Linux at the fixed launcher <install-root>/runtime/station-launcher.mjs (service-command.ts runsLauncher, service.ts installServiceLauncher). It also adds the update-home action and the service status update line. #2914 changes to channel-ports, android-build-manifest and tauri-context are refactors or export narrowing only. src-desktop did not change, so the tray still finds no command paths for an archive manifest and refuses Start/Stop. Corrected the claim that an archive service runs `bin/station.mjs` so it also names the fixed launcher. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -14262,7 +14275,7 @@
     {
       "path": "docs/guides/home-transfer-controller.md",
       "documentDigest": "bf96eb4dbcc2ad08e9b4f3e8182066307fb2eefadf66cff348c030306c9ae42c",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented pairing/binding probes, external storage custody, preparation/advance outcomes, bounded admission journal, capability/replay/grant revision control sessions, room-write ordering and receipt reconciliation. Traced mounted versus private-only callers and confirmed transfer/resume flags remain false; current prose remains accurate.",
@@ -14326,7 +14339,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "b52be129141784035fbb7998c02c8351c5d1bfd73fb9410ce5d264f8052b7531"
+          "digest": "962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -14526,7 +14539,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); claims unaffected.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -15881,7 +15895,7 @@
     {
       "path": "docs/guides/monitoring.md",
       "documentDigest": "5b225dd4842009417c702a0552af67974e38eaa1b9e8d726a3a7a3389e1c1595",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide reviewed: local versus OTLP/usage paths, pinned resource defaults, async startup, retention, historical shadow evidence, recording populations/attributes, tokens/costs, dashboard queries, spans, schema/history and Insights. All 28 prior rendered anchors preserved.",
@@ -15889,7 +15903,7 @@
       "sources": [
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/generate-metric-reference.mjs",
@@ -15965,7 +15979,8 @@
         "Reviewed source deltas: Tenant execution dimensions now validate closed vocabularies at runtime and use invalid for foreign values. Instrument declaration count remains309; regenerated declaration source hashes/line links, not emitted metric evidence.",
         "Integration source review through e0314c727: telemetry.ts inlined resolveOtelResourceAttributes and removed the createInstallationIdHash seam. The resource attributes are unchanged (service.installation.id from the persisted otel-installation-id hash, os.type), and the header now says import order is insufficient. pnpm-lock only dropped bearing/forage. Resource-attribute and async-startup prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-record.ts (outcome list made an as-const literal with comments (same members)); claims unaffected.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -16995,7 +17010,7 @@
     {
       "path": "docs/guides/private-runner-partition.md",
       "documentDigest": "3a71d00a2de396d6ec7ccf680c41e99d9e7afd1f07e0217bdef00f41042ce8b9",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Conditional operator plan for separating fleet listeners, with current routing context. Full59-line baseline read. Checked current hosted CI, persistent Linux container-smoke and Windows diagnostic/performance workflow labels, capacity step and actionlint routing policy.",
@@ -17055,7 +17070,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "b52be129141784035fbb7998c02c8351c5d1bfd73fb9410ce5d264f8052b7531"
+          "digest": "962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -17193,13 +17208,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
       "path": "docs/guides/product-law-authoring.md",
       "documentDigest": "e73cd5b9a92cfe8795d643d6c583b120b486366eea57f015ff412f35524336c6",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Normative authoring and interpretation of selected executable product laws. Full29-line baseline read. Traced manifest bounds, path dispositions, exact structured observation and timeout/infrastructure result classification; focused owner tests passed.",
@@ -17259,7 +17275,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "b52be129141784035fbb7998c02c8351c5d1bfd73fb9410ce5d264f8052b7531"
+          "digest": "962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -17398,13 +17414,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
       "path": "docs/guides/release-channel-ports.md",
       "documentDigest": "a318455a18fdb96350fa2d0b1af309d9bfdee2de5c029345440ebf97e92dfebb",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
@@ -17488,7 +17505,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
@@ -17705,7 +17722,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes fnv1a32 private in dev-ports.ts, with the same deterministic offset and scan callers. It deletes the test-only parseGitSource/extractPluginName from commands/helpers.ts. Neither change affects the worktree allocation or root derivation the guide describes. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and, when runtime/service-state.json exists and an archive service is active, only stages the version and hands off to the fixed service launcher (trial/rollback; refuses on pending or needs-operator update state); service.ts copies runtime/station-launcher.mjs at archive service install (non-win32); lifecycle-code-root.ts moves archive helpers to @kontourai/station-shared/prebuilt-archive (re-exported, no behavior change); channel-ports.mjs adds an optional outputRoot to sync/check; android-build-manifest.mjs and tauri-context.mjs only drop exports (#2914). Corrected the archive-service upgrade paragraph, which claimed the installer always stops the service, switches current and restarts it: it now says a running launcher service stages and hands off to a launcher trial, keeps the stop/switch/restart path otherwise, and notes that an unfinished or operator-blocked launcher update refuses the upgrade. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -17952,7 +17970,7 @@
     {
       "path": "docs/guides/repository-layout.md",
       "documentDigest": "9db07997f2440ee4cf5062fd805657beb7baffc40831f1f31625089695e7c021",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "policy",
       "state": "classified",
       "summary": "Repository navigation, ownership conventions and contributor routing. Full69-line baseline read. Current directories and links checked; root instructions and module-map routing retain their normative purpose. No stale text requiring edit found.",
@@ -18012,7 +18030,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "b52be129141784035fbb7998c02c8351c5d1bfd73fb9410ce5d264f8052b7531"
+          "digest": "962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -18150,13 +18168,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18200,7 +18219,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/mobile-css-ratchet.mjs",
@@ -18316,7 +18335,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Shared mobile [class*=__actions] rule unchanged and still matches .tool-call__actions; the new case runs above the breakpoint where that rule does not apply, consistent with the guide. No claim changed.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Shared mobile __actions rule unchanged; #2917 right-dock desktop case still consistent. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -19769,7 +19789,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "6b1815a15e332e6f0799348d7c2c7c2d7c29fee226f4fb91ca081590207ca08c",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19813,7 +19833,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/mobile-css-ratchet.mjs",
@@ -19945,7 +19965,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Guidance to verify disabled state in light and dark was followed (rendered and measured 4.33:1 light, 4.38:1 dark); uses existing tokens. No claim changed.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). The guide's new claim that --accent-primary/--text-on-accent read the action role holds, and the #2917 Allow Once button consumes exactly that pair (hover: --accent-hover-fill -> --accent-darker -> the action role), so channel and white-label action roles reach it. No prose change.",
         "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -20117,7 +20138,7 @@
     {
       "path": "docs/guides/work-board-security.md",
       "documentDigest": "ec519bd0a32aefd4172f8fe3d20068ccc480ae9236d16fe9797eba4570fc7cc2",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Trusted Work Board rendering, Home eligibility and owner-resolved reference storage boundaries. Full16-line baseline read. Checked builtin registry/Pane frame React error boundary, actual plugin-only Home eligibility and granted-Home recovery, closed store/reference shape, request-bound resolved route and owner projection tests.",
@@ -20177,7 +20198,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "b52be129141784035fbb7998c02c8351c5d1bfd73fb9410ce5d264f8052b7531"
+          "digest": "962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -20315,13 +20336,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
       "path": "docs/guides/workspace-packages.md",
       "documentDigest": "01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented AES envelope, Git snapshot/content/path/expansion limits, source rechecks, fresh destination and cleanup, read-only verification, and import-project durable intent/create/readback caller semantics. Current prose accurately distinguishes metadata verification from target filesystem and execution authority.",
@@ -20393,7 +20415,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "b52be129141784035fbb7998c02c8351c5d1bfd73fb9410ce5d264f8052b7531"
+          "digest": "962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -20536,7 +20558,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs; station-control-delegation.ts drifted on main via #2921 (request.opened titles are now bounded in code points and marked with an ellipsis via markedString); the document makes no claim about delegated request titles. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -20948,7 +20971,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -20992,7 +21015,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/mobile-css-ratchet.mjs",
@@ -21109,13 +21132,14 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Backend approval ownership only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21159,7 +21183,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/mobile-css-ratchet.mjs",
@@ -21279,7 +21303,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-button styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -21386,7 +21411,7 @@
     {
       "path": "docs/privacy-policy.md",
       "documentDigest": "fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "generated",
       "state": "source-reviewed",
       "summary": "Reviewed the declared inventory, generated artifacts and stated operational boundaries, including OTel, identity and browser push gaps. Seven existing classification tuples remain unchanged; the page explicitly describes an incomplete, unapproved working inventory.",
@@ -21394,7 +21419,7 @@
       "sources": [
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/services/__tests__/privacy-inventory.test.ts",
@@ -21437,7 +21462,8 @@
         "Reviewed integration deltas: src-server/services/__tests__/privacy-inventory.test.ts: Assertions now verify the declared-inventory wording and separate generation from publication; all 30 tests passed. src-server/services/privacy-inventory.ts: Narrowed generated linkage/tracking questions to inventory declarations and corrected generator direction; classification values unchanged. Final renderer suite: 30 passed.",
         "Formatter-only change; emitted JavaScript is byte-identical.",
         "Integration source review through e0314c727: telemetry.ts inlined and un-exported resolveOtelResourceAttributes and the injectable hash hook, keeping the same random installation hash and `os.type` attributes behind the same endpoint gate. The lockfile only dropped bearing/forage. The generated OTel and telemetry disclosures remain accurate. Source review is separate from executed test evidence.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -22848,7 +22874,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -22873,7 +22899,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "schemas/agent.schema.json",
@@ -23125,7 +23151,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); strands-tool-loader.ts now imports the shared tool-load-failure classifier instead of its private copy of the same redaction decision; mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -23963,7 +23990,7 @@
     {
       "path": "docs/reference/play-data-safety.md",
       "documentDigest": "834366555f8bc88a09ba1905af7d3688e83ab0606d7e362bb81ee142663893e4",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "generated",
       "state": "source-reviewed",
       "summary": "Reviewed the declared inventory, generated artifacts and stated operational boundaries, including OTel, identity and browser push gaps. Seven existing classification tuples remain unchanged; the page explicitly describes an incomplete, unapproved working inventory.",
@@ -23971,7 +23998,7 @@
       "sources": [
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/services/__tests__/privacy-inventory.test.ts",
@@ -24014,7 +24041,8 @@
         "Reviewed integration deltas: Reviewed the declared inventory, generated artifacts and stated operational boundaries, including OTel, identity and browser push gaps. Seven existing classification tuples remain unchanged; the page explicitly describes an incomplete, unapproved working inventory. src-server/services/__tests__/privacy-inventory.test.ts: Assertions now verify the declared-inventory wording and separate generation from publication; all 30 tests passed. src-server/services/privacy-inventory.ts: Narrowed generated linkage/tracking questions to inventory declarations and corrected generator direction; classification values unchanged. Final renderer suite: 30 passed.",
         "Formatter-only change; emitted JavaScript is byte-identical.",
         "Integration source review through e0314c727: telemetry.ts inlined the OTel resource attributes unchanged (random installation hash, os.type, endpoint-gated start), and pnpm-lock removed only bearing/forage. The otel-observability tuple and disclosure remain accurate. Source review is separate from executed test evidence.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -24140,7 +24168,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24597,7 +24625,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/knowledge-store/adapters/shared/file-transactions.ts",
@@ -25141,7 +25169,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -25326,7 +25355,7 @@
     },
     {
       "path": "docs/reference/shared.md",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review, including compatibility declarations, legacy JSON readers, integration copier admission/rollback, build externals/containment/preparation, host lazy namespace publication and actual CLI/install callers. Reused earlier MCP/notification review after inspecting the only source delta (two package export additions). Clarified unchecked JSON/path inputs, Agent parse failures, specific credential-key rejection, skipped nondirectories, and page-level shared-runtime readiness. API/config review supplies adjacent provider/status/Project producer boundaries. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25471,7 +25500,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/routes/agents/invoke-agent.ts",
@@ -25553,7 +25582,8 @@
         "Integration source review through 5731eba07: #2881 adds the ./prebuilt-archive and ./service-launcher-protocol .ts subpaths to the packages/shared export map. #2914 stops re-exporting isDistinctFrameOrigin from MCPToolUIFrame and un-exports mcpUiToolCallDecision. The doc's 'mostly .ts with a few .mjs' export-map description and the mcp-ui-csp claims still hold; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -25994,7 +26024,7 @@
     {
       "path": "docs/security/remote-access-threat-model.md",
       "documentDigest": "5545f52b980d2071732503351ddbd811e19d4c6e333c7e02b294db00a197a147",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented HTTP capability, proxy/Origin, scope, mutation budget, SSH host-key/probe, fleet, credential and recovery boundaries. Historical pairing probes remain explicitly historical. Corrected custom capability/query-token exceptions, unmapped-route refusal, retained loopback WS scope limits, and SSH handshake versus authenticated-session reachability.",
@@ -26022,7 +26052,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-desktop/src/lib.rs",
@@ -26227,7 +26257,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); claims unaffected.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks (strengthens the documented bounded limiting of repeated authentication failures, including for IPv4 peers on a dual-stack listener). Station-control MCP token and loopback WebSocket statements remain accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -27361,7 +27392,7 @@
     {
       "path": "examples/builder-delivery-viewer/README.md",
       "documentDigest": "9088109235e5da8959933a643ca29acd2c273e26ba3a36927acad5d9f59b1df5",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through actual GET registrations, bounded descriptor reads, schema/public validator/report derivation, browser query/render and exact Flow run join; host server-module permission and lifecycle plus registry installation entry traced. Corrected workspace delivery companion path, artifact-only byte limits, unsorted discovery cap and filename-only seal meaning. Cache/transport and raw trusted server-code boundaries retained.",
@@ -27397,7 +27428,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/routes/plugins/plugin-lifecycle-routes.ts",
@@ -27440,7 +27471,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: plugin-install-transaction.ts added the `excludeGitMetadata` staging option for proposed sources (#2840), and the lockfile dropped bearing/forage. The README's registry installation, permission and descriptor claims do not depend on either. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-public-server.test.ts (test-only edit); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); plugin-public-server.ts (unused disposePluginPublicServerModule deleted); claims unaffected.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (examples/builder-delivery-viewer/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (examples/builder-delivery-viewer/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -27791,7 +27823,7 @@
     {
       "path": "examples/fieldwork-review/README.md",
       "documentDigest": "10a3d19e9905edc792e68a545a59b73f3452db279d478d08489e89bf881387aa",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through launch/open/list/close/output routes, path and owned-storage checks, corruption preservation, lazy and short-lived published Fieldwork facades, browser frame and query/cleanup callers, and actual host acquire/quiesce/dispose/update/reload/shutdown wiring. Corrected browser-versus-owner data boundary, reviewed-output read/discard behavior, boolean error fallback, close-before-persist order, capacity checks and timers. No stronger global concurrency reservation or process sandbox claimed.",
@@ -27835,7 +27867,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/routes/plugins/plugin-lifecycle-routes.ts",
@@ -27878,7 +27910,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: the lockfile only removed the root bearing/forage importer entries, and the install transaction added proposal-scoped .git exclusion. The example's Plugins-page install, host permission review and route claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-public-server.test.ts (test-only edit); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); plugin-public-server.ts (unused disposePluginPublicServerModule deleted); claims unaffected.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (examples/fieldwork-review/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (examples/fieldwork-review/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -28095,7 +28128,7 @@
     {
       "path": "examples/mcp-ui-demo/README.md",
       "documentDigest": "edac8e8ab2aa5125990f11157af06392b96fb00b7e837be65c6feba746088f1a",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README and example-server claim review through stdio tool/resource registration, actual integration resolve/read routes and runtime mount, browser MCPToolUIFrame resolver/resource/bridge caller and shared CSP. Corrected web-only native refusal, default host enablement, script cwd prerequisite, credential requirement and require-versus-inherit approval behavior. Static demo sends no interactive messages; dedicated proxy versus opaque srcdoc boundary stated.",
@@ -28111,7 +28144,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/routes/agents/tools.ts",
@@ -28154,7 +28187,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential wiring in runtime-routes.ts. The integration resolve and read routes, the runtime mount and the README's instruction to include the Station's required credentials are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) MCPToolUIFrame.tsx un-exports mcpUiToolCallDecision and the isDistinctFrameOrigin re-export with unchanged require/inherit/read-only behavior; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: mcp-ui-resolver.test.ts folded near-duplicate cases (authoritative-empty catalog fallbacks, flat plus nested Survey keys) into existing tests; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -29029,7 +29063,7 @@
     {
       "path": "examples/survey-review-workbench/README.md",
       "documentDigest": "d8551d4b9cfca89a35f9827dffff6b9c80bcff5af8f02e45e733b07a8b8b7efa",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through actual server registrations and browser mount/persistence/projection callbacks, build/manifest and host trusted server admission. Corrected lazy dependency claim, optional event-count mismatch check versus replacement writes/concurrent save transaction, partial resolved-item projection and nonexistent-workspace fallback. Documented pending-save projection and component-state context-switch limits. Actual disposable route probe demonstrates omitted count can replace prior history and wrong count returns409.",
@@ -29061,7 +29095,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "src-server/routes/plugins/plugin-lifecycle-routes.ts",
@@ -29104,7 +29138,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: plugin-install-transaction.ts adds dependency/proposed-install staging options, which do not change the README's operator preview-then-consent install path, and pnpm-lock removed only bearing/forage; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-public-server.test.ts (test-only edit); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); plugin-public-server.ts (unused disposePluginPublicServerModule deleted); claims unaffected.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
@@ -29979,7 +30014,7 @@
     {
       "path": "packaging/node-pty-prebuilds/README.md",
       "documentDigest": "fa89e2fa1c7c2487af76d52b2be36878de9021dfe3c50831e51158da95820dfb",
-      "sourceRevision": "61eaff23a470cc869b48af0b08583ff49fc2f37e",
+      "sourceRevision": "b2ea458680bc78317beea311d38563e3b7a704c6",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current empty Linux prebuild channel, future admission and actual staging limits. Full baseline read; empty manifest/version and allowlist source-build paths, workflow/verifier, stageNodePtyPrebuild and pinned upstream install hook reviewed. Corrected false shipped-artifact and libc-fallback claims. Focused lifecycle tests passed; no actual Linux build or binary tested.",
@@ -29999,7 +30034,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "72b8fce85d6092e05182d1e569b81c2a3964518ca69cef45ff27c32371f58e4b"
+          "digest": "ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7"
         },
         {
           "path": "scripts/__tests__/dependency-lifecycle.test.ts",
@@ -30025,7 +30060,8 @@
         "Preserved the full ancillary correction and the independently reviewed #2813 follow-up link.",
         "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
         "Integration source review through e0314c727: pnpm-lock.yaml removed only the @kontourai/bearing and @kontourai/forage importer entries, leaving node-pty resolution unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml); the lifecycle allowlist only drops entries for packages the new lock no longer materializes (Playwright's nested fsevents 2.3.2 and the per-workspace esbuild 0.28.1 copies); dependencies:check and dependencies:ci pass. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml); the lifecycle allowlist only drops entries for packages the new lock no longer materializes (Playwright's nested fsevents 2.3.2 and the per-workspace esbuild 0.28.1 copies); dependencies:check and dependencies:ci pass. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
       ]
     },
     {
