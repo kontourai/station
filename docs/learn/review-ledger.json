@@ -2396,22 +2396,23 @@
       "kind": "historical",
       "state": "classified",
       "documentDigest": "87b0ed372ef7d96462c84e94492a525319dfda23e702a80bb8b83a9c88c3874c",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "summary": "Historical ACP chat proposal, explicitly routed to current ACP guide and adapter. Retained phases and status tables describe the original design.",
       "limits": "Historical measurements and external incidents were not rerun; classification does not certify current behavior.",
       "sources": [
         {
           "path": "docs/guides/acp.md",
-          "digest": "a902573fcf2c8caab6097af31941a73700df2906868bbbef1f2f13a97de5e02c"
+          "digest": "b1e885f7e52446115a4fc17560bcfe856b7cbb9f71496af6b2b133ff2ac48f0a"
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         }
       ],
       "checks": [
         "Read the full record and checked the current owner or local validation route.",
-        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts and stamps it on request.resolved. The document's historical banner, which says ACP execution is a per-thread process lifecycle in the ACP adapter, is unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts and stamps it on request.resolved. The document's historical banner, which says ACP execution is a per-thread process lifecycle in the ACP adapter, is unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Historical ACP proposal; checked its request_permission sketch against the acp-adapter.ts delta (toolKind in the request payload, prompt-end settlement). It is classified as historical and routes to docs/guides/acp.md, which now states both. No prose change."
       ]
     },
     {
@@ -2589,7 +2590,7 @@
     },
     {
       "path": "docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "historical",
       "state": "classified",
       "summary": "A top banner surfaces the existing 2026-08-26 supersession. Current FlowRunService.evaluate delegates to Flow evaluateRun; the retired Station probe, veto and switch remain historical rationale, while producerPin is a deprecated historical wire field.",
@@ -2606,7 +2607,7 @@
         },
         {
           "path": "packages/contracts/src/runtime-events.ts",
-          "digest": "9c918798c4c42c0548d938949cfa460ed7c4d5aacb2764cda365a95af23f55eb"
+          "digest": "b46b1b9c78c3ae6954f1c287d8213451703b2c07a4e2a3f086fc0e779e356c86"
         },
         {
           "path": "src-server/services/flow/__tests__/flow-run-service.test.ts",
@@ -2626,7 +2627,8 @@
         "Integration source review through e0314c727: package.json only removed the bearing/forage dependencies, and the Flow pin the historical rationale cites is unchanged. The supersession banner and the evaluateRun delegation still hold. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 added only an optional `revocation` {reason, deviceId, cause} to SessionApprovalModeSetEvent in runtime-events. It does not touch producerPin, Flow evaluation or the superseded Station-side probe, so the historical classification and supersession banner stand. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds ApprovalAcknowledgement, RequestResolvedEvent.acknowledgement and RequestDeliveryEvent to runtime-events. FlowGateVerdictEvent and its producerPin field are untouched. Prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "Checked against the runtime-events.ts delta (optional toolKind/EngineToolKind on tool.started/tool.completed). The ADR concerns the producer pin, a deprecated historical wire field; nothing it states touches tool events. No prose change."
       ]
     },
     {
@@ -2670,7 +2672,7 @@
     },
     {
       "path": "docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "design",
       "state": "classified",
       "summary": "A dated reading-status note separates the 2026-08-03 vendor survey from current support. The current ACP adapter installs the inbound refusal policy instead of fabricated empty success; original layer definitions, authority decision and vendor observations remain untouched.",
@@ -2683,7 +2685,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/services/acp/__tests__/acp-inbound-extension-policy.test.ts",
@@ -2702,7 +2704,8 @@
         "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
         "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
         "Integration source review through e0314c727: extension-notification-bindings.ts removed EXTENSION_NOTIFICATION_EVIDENCE_GAPS, EXTENSION_NOTIFICATION_PROMOTIONS and the reset seam. The `_kiro` v3 spelling stays unbound, with only a source comment. Corrected the rendering-table paragraph, which said the authority records an explicit gap entry. The dated survey and decisions are untouched. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata and a request.resolved acknowledgement stamp in acp-adapter.ts. The ADR's claims about extension-method binding (onExtMethod and friends) are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata and a request.resolved acknowledgement stamp in acp-adapter.ts. The ADR's claims about extension-method binding (onExtMethod and friends) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Checked against the acp-adapter.ts delta (request payload toolKind, prompt-end permission settlement). The ADR's inbound-extension refusal policy is unchanged by it. No prose change."
       ]
     },
     {
@@ -3889,7 +3892,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4293,7 +4296,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter-events.ts",
-          "digest": "f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427"
+          "digest": "81dff671713d9bd8cee6f2c9da3ae512651c8983bca4576a3df06d8ece8bbdd8"
         },
         {
           "path": "src-server/providers/adapters/station-agent-adapter.ts",
@@ -5637,7 +5640,8 @@
         "Integration source review through 5731eba07: #2881 adds a separate station.home-update-backup/v1 schema to station-home-archive.ts, with createStationHomeUpdateBackup/restoreStationHomeUpdateBackup. It omits external registry paths, records symlinks and uses 250,000-file/1 TiB caps. It also adds the service launcher env passthrough in lifecycle.ts and service status 'update' lines plus an internal update-home action in service.ts. #2914 drops the coordinator's line-count ratchets and keeps only the no-import-back check. The startup-readiness test refactor, the pairing-scope leaf and the UI export narrowing change no claims. Corrected the StationHomeArchive purpose to disclose the separate update-backup schema and scope the traversal and caps to home backup. Corrected 'Size/import ratchets' to an import-direction check. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; registry.ts only deleted the caller-less registerBrandingProvider (getBrandingProvider default unchanged); chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Checked the ACP adapter/mapper sections against the acp-adapter-events.ts delta (kind forwarded to the tool-update supervisor, which carries toolKind). No module-map claim describes the tool event field set or kind handling. No prose change."
       ]
     },
     {
@@ -5668,7 +5672,7 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical.",
@@ -5693,7 +5697,7 @@
         },
         {
           "path": "packages/shared/src/tool-request-preview.ts",
-          "digest": "9b0d50b2a12103f2e8cf95f97707b88af83ff72ce420dd8c6176eb3f514a2cc8"
+          "digest": "0924755953305dda6c6d7b3649c55becae94a061333ba023e9fe603ca4ff5212"
         },
         {
           "path": "pnpm-lock.yaml",
@@ -5709,7 +5713,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -5745,11 +5749,11 @@
         },
         {
           "path": "src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts",
-          "digest": "14539d3339e37bbe5b206fa83b4e91d77200114f05a6bba099c0b4b22e3e3127"
+          "digest": "7abee95bbcee2f0310f5412ec54a80b013aa1dfe71186f6a1feba3abe686022a"
         },
         {
           "path": "src-ui/src/hooks/orchestration/approvalHandlers.ts",
-          "digest": "484017a4b2e02c040795a36dc0d98a9637197fafbee3ff40062e4dc3999d320e"
+          "digest": "100c06fccf1766d38a00fa85d0d42459ad8e370202579174caf73f61ef19dd76"
         }
       ],
       "checks": [
@@ -5759,7 +5763,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: claude-adapter.ts dropped the unused stdio `mintStationControlCallerToken` fallback and its test, and package.json/pnpm-lock removed only @kontourai/bearing and @kontourai/forage (Agent SDK still 0.3.261). The explicit mcpServers/strictMcpConfig, PreToolUse and delivery claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata and stamps acknowledgement on request.resolved in the claude and acp adapters, and adds handleRequestDeliveryEvent plus the toast copy 'this request is no longer open.' in approvalHandlers.ts (tests updated). None of this touches the tool-request preview readers, the pre-tool seams or the Ask-mode permission path the document describes. Prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "Checked approval-surface claims against tool-request-preview.ts (nameless grant label now 'Allow for this session'), approvalHandlers.ts, and acp-adapter.ts. The doc says the standing-grant button names the tool when the payload supplies one, which still holds; ACP requestPermission coverage claims are unchanged. No prose change."
       ]
     },
     {
@@ -6292,7 +6297,7 @@
     {
       "path": "docs/design/ai-ui-bridge-expansion.md",
       "documentDigest": "345f2a8053c0620b5125b6d2c3c6ce1902f02648a40cb2359a251c17eb227c50",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "design",
       "state": "classified",
       "summary": "June design and recorded phased implementation; current form sender linked and overbroad harmlessness claim narrowed to the markup boundary.",
@@ -6308,7 +6313,7 @@
         },
         {
           "path": "src-ui/src/components/chat/ChatMessageList.tsx",
-          "digest": "a375f4aa8ad99e5e7312e08fd44d8c5021cf5daaa821adacee666ce0c40ee3b7"
+          "digest": "451f2cc8b3d308b29a6438b62068d84a461ff4e271f50f29d27952638b7832f2"
         },
         {
           "path": "src-ui/src/components/chat/UIBlockRenderer.tsx",
@@ -6331,7 +6336,8 @@
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Dated producer-seam investigation byte-identical; trust-model overclaim narrowed separately.",
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
-        "Integration source review through d72f79b08: #2904 changes useActiveChatSessionMessaging only on the full-access-refusal branch (idle rollback, restored draft, refusal card, explicit resend at the current mode). The current form sender link and the markup-boundary harmlessness claim are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 changes useActiveChatSessionMessaging only on the full-access-refusal branch (idle rollback, restored draft, refusal card, explicit resend at the current mode). The current form sender link and the markup-boundary harmlessness claim are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Checked against ChatMessageList.tsx's delta (the pending-approvals strip no longer excludes an open-turn request the projected transcript row answers). The document makes no claim about the strip. No prose change."
       ]
     },
     {
@@ -7237,7 +7243,7 @@
     {
       "path": "docs/design/collaborative-editor-pane.md",
       "documentDigest": "39b13443c5fd44c9c548a6563cb8840390f8df55533d03cd72637d812f06b06e",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Historical design for the deleted pure collaborative editor controller (#2900), marked not shipped. Only the server-owned editing capability remains current; the shipped Task path is ProjectTaskRoom.",
@@ -7253,7 +7259,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.tsx",
@@ -7271,7 +7277,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
         "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through e0314c727: batch 66 (#2900) deleted src-shared/collaborative-editor-pane.ts and its test, and this branch's e0314c727 already retitled the page 'not shipped'. Added an explicit statement that the body records the deleted controller's design and that only the server editing capability is current. Corrected the retained-capability sentence to the real `transformSelection` behavior (maps the selection into the projected text, `unavailable` on a stale revision) instead of controller `displayText` coordinates. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change."
       ]
     },
     {
@@ -8742,7 +8749,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8918,7 +8925,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/layouts/index.tsx",
@@ -9040,7 +9047,8 @@
         "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through 84d56b9a8: e1af43c2c adds a .chat-stream-status[data-chat-decision-delivery] column-layout rule to chat.css. The document's CSS claims (dock and maximized region ownership) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) unexports agentIdentityFromSession and AMBIENT_CHAT_DOCK_DOCUMENT_ID, removes createAmbientChatDockPaneDocument and its two tests. RegionPaneHost.test.tsx still pins the literal 'station:workspace-pane-host:v2:ambient:chat-dock' key and adoptLegacyChatDockDocument, and renderAmbientChatPane in ChatDock.tsx is unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The maximized-region dock-hiding rule is unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The maximized-region dock-hiding rule is unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change. (Its chevron references are region chrome, not tool rows.)"
       ]
     },
     {
@@ -9632,8 +9640,8 @@
     },
     {
       "path": "docs/design/session-tape-replay.md",
-      "documentDigest": "4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "documentDigest": "b3ae297d8ea31e225e2f59cf891db9390c80b44db043ab67023d6b0b0a6dd03d",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9649,7 +9657,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "a0e76460c4d7e4c103c225d077d0d55f72fb6addf5c3fcce1d571f72b103179d"
+          "digest": "e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b"
         },
         {
           "path": "src-ui/src/components/chat/ChatSettingsPanel.tsx",
@@ -9657,11 +9665,11 @@
         },
         {
           "path": "src-ui/src/contexts/active-chats-state.ts",
-          "digest": "31149a87a81d9820f8bdeabb64de4da57c922d10144152117c03d48e400a2f12"
+          "digest": "d088cf815e2353872371d5af3aaa9e3f1c6494b96cb633e065cd2489c0e74883"
         },
         {
           "path": "src-ui/src/hooks/orchestration/eventHandlers.ts",
-          "digest": "62b998f27a529bd30545b11de5b1cc0448a2b9f041070aeaba59bf25e61cb6bc"
+          "digest": "eca9a7366659e1c3d1ef6322bd63ea602a1508cfa01cfa896cde33cc45422d03"
         },
         {
           "path": "src-ui/src/hooks/orchestration/queueDrain.ts",
@@ -9717,7 +9725,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx",
@@ -9735,7 +9743,8 @@
         "Integration source review through d72f79b08: in active-chats-state.ts, #2904 only adds an optional fullAccessRefusal field to EphemeralMessage, rendered by FullAccessRefusalCard. Tape limits, replay registration and persistence exclusion, fold and effect fences, and fork identity are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added Codex approvalAcknowledgement and replyToApproval, an unacknowledgedDecisions ChatUIState field, and request.delivery dispatch in eventHandlers.ts. The replay coverage, redaction and steer-mechanism claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) makes createEphemeralMessageState take a required conversationId instead of falling back to chat.conversationId. Replay isolation (no conversationId copied from the source, not durable, effect no-ops) is unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence.",
+        "Updated the activity-phrase paragraph: the timed row now always reads 'Working for m:ss' (the turn clock) and the phase is named untimed or by the progress row, per StreamingMessage.tsx. Checked active-chats-state/eventHandlers deltas (toolKind field; request.resolved toast dismissal) against the tape claims, and the codex-adapter.ts change since the last review (#2921, comment-only) against the turn/steer claim, which still holds."
       ]
     },
     {
@@ -10036,7 +10045,7 @@
     {
       "path": "docs/design/station-peer-pairing.md",
       "documentDigest": "52cb07412cb45ae4d82fd9e47ba27bc6537ee76f746937e1dd858eb38415ea22",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "historical",
       "state": "classified",
       "summary": "Historical peer design and supersession log linked to actual credential/delegation/scope owners; original proposal body preserved.",
@@ -10052,7 +10061,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         }
       ],
       "checks": [
@@ -10063,7 +10072,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Reviewed landing deltas through 111744681: Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 adds PAIRING_SCOPE_DESCRIPTIONS (insertion at line 472) and FullAccessRevocationReport types (from line 1125) to contracts environment-security.ts. It changes no peer, delegation-preset or PairedDeviceKind semantics, and the lines the dated supersession table cites (174, 393, 414) have identical content before and after. That table's :393/:414 references to PairedDeviceKind were already offset before #2904 (702 at base, now 779); this is dated history and #2904 did not cause it. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c inserted decision-delivery code in station-control-delegation.ts at line 1196 and later. The doc's cited ranges (:87-93, :100, :335-356, :643-648, :716-760) and its target-resolution claims are unaffected; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c inserted decision-delivery code in station-control-delegation.ts at line 1196 and later. The doc's cited ranges (:87-93, :100, :335-356, :643-648, :716-760) and its target-resolution claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
@@ -10500,8 +10510,8 @@
     },
     {
       "path": "docs/guides/acp.md",
-      "documentDigest": "a902573fcf2c8caab6097af31941a73700df2906868bbbef1f2f13a97de5e02c",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "documentDigest": "b1e885f7e52446115a4fc17560bcfe856b7cbb9f71496af6b2b133ff2ac48f0a",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current ACP Agent binding, canonical execution seam, guarded cursor restoration, credentials/refusal behavior, extension notifications, and current probe outcomes.",
@@ -10509,11 +10519,11 @@
       "sources": [
         {
           "path": "src-server/providers/adapters/acp-adapter-events.ts",
-          "digest": "f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427"
+          "digest": "81dff671713d9bd8cee6f2c9da3ae512651c8983bca4576a3df06d8ece8bbdd8"
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -10536,13 +10546,14 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through e0314c727: extension-notification-bindings.ts deleted the unused EXTENSION_NOTIFICATION_PROMOTIONS and EVIDENCE_GAPS tables and the reset helper, and moved the unobserved _kiro gap into a comment. The bound tuples, including _kiro.dev/error/rate_limit with acp.turn-error-cause, are unchanged, and the guide never described the removed tables, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement 'none' to AcpAdapter metadata and stamps it on request.resolved. ACP emits no request.delivery. The guide's request.opened/request.resolved row, its pointer to runtime-events as the shape source, and the requestPermission to allow_once/reject_once flow are all still accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "Updated Tool Execution: ACP kind rides tool events as toolKind; nameless titles shown as written; request.opened is requestType 'approval' (was stated as 'permission', checked in acp-adapter.ts) with toolKind; decisions map to allow_once/allow_always/reject_once; prompt-end settlement of open permission requests; Station records its own grant only with a reported tool name."
       ]
     },
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "8d66f17c9ab72933cf26109e5b989a9d5c1669d0e64f89d77786d45ed79b3fe1",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10598,7 +10609,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -10865,7 +10876,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata to the acp, claude and codex adapters, adds Codex replyToApproval and serverRequest/resolved acknowledgement watching in codex-adapter-transport.ts, and adds lastDecision/earlierUnacknowledgedDecisions to delegation snapshots in station-control-delegation.ts. 7cd4892e5 routes Codex cancel and answer replies through replyToApproval and replaces the unknown-request error with 'This Codex approval request is not open.' The guide's Station-engine approval flow, autoApprove patterns and external-engine delivery limits are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); attention-projection.ts (comment only); claims unaffected.",
-        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change."
       ]
     },
     {
@@ -11777,7 +11789,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11785,7 +11797,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "087d3553a88292f793999565c0c82bfe483d72d3c6088c21913411aca0c0907b"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -11901,7 +11913,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -12157,7 +12169,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -12286,7 +12298,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/orchestration/orchestration.ts, src-server/runtime/mcp/mcp-manager.ts, covered by its notes above; this branch changed docs/learn/media.json, src-ui/src/index.css, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
-        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks. Scope, loopback terminal and Device statements remain accurate; no stdio caller-token claim is made. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks. Scope, loopback terminal and Device statements remain accurate; no stdio caller-token claim is made. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change. Also checked the index.css delta; no connections-page styling claim is affected."
       ]
     },
     {
@@ -12303,7 +12316,7 @@
     {
       "path": "docs/guides/delegation-attempt-claims.md",
       "documentDigest": "34c8d048c03a6f1c6baf4382ccd8f45e30bcec42e8f82a32b503e86223e4e07d",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Opt-in receiver-side portable delegation duplicate suppression and lookup. Full57-line baseline read. Followed actual route schema/lookup currentness, SDK lookup, forwarding capability check, receiver reservation/dedup path and store capacity/state definitions; route fixtures passed.",
@@ -12451,7 +12464,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -12500,7 +12513,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports. The guide's receiver claim/lookup claims do not depend on them; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
@@ -14617,7 +14631,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14625,7 +14639,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "087d3553a88292f793999565c0c82bfe483d72d3c6088c21913411aca0c0907b"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14733,7 +14747,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -14775,7 +14789,8 @@
         "Integration source review through e0314c727: neo4j-connection.ts dropped the unused queryNeo4jGraphView stub and connection-type constant but keeps registerNeo4jGraphViewConnection and Neo4jGraphViewConnectionConfig; DELETE /roots/:id now returns 404 'Knowledge root not found' before the conversation-root 403. The guide cites only the retained registration surface and makes no root-delete claim, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change."
       ]
     },
     {
@@ -15121,7 +15136,7 @@
     {
       "path": "docs/guides/machine-relationships.md",
       "documentDigest": "6b6c076e7fff46673e339e0a4188705c45a5ab10db2d8ed95593da00f6c2a1d9",
-      "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented direction/authority/persistence distinctions across paired Devices, server-owned SSH, remote visibility, fleet inference and account/Project sharing. Traced the shared-work and guest administration boundaries; archived issue references corrected. No behavioral prose correction was otherwise needed.",
@@ -15245,7 +15260,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -15317,7 +15332,8 @@
         "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain; native account continuation is additive and separately admitted; existing browser/provider, Device and Project claims retain their documented scope. Changed inputs reviewed: src-server/routes/system/application-session-routes.ts, src-server/runtime/bootstrap/runtime-http.ts, src-server/services/identity/application-session-service.ts, src-server/services/identity/deployment-authentication-service.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through d72f79b08: #2904 adds main's 'What a paired device may do, and full access' section, the config route's structured refusal, and the runtime-routes scope/revoke reset (fullAccessRevocation, resetFullAccess, device-revoked cause). Checked the section against resetFullAccessGrantedBy: Ask for the device's never, a Default that reaches full access, Auto on a host session it unconfined, and host starts it granted; re-confinement versus engine-restart; the listed exceptions with the 50-entry cap; and account sessions getting no grant. Also checked it against PAIRING_SCOPE_DESCRIPTIONS and the refusal module. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) returns 403 rather than 401 when an ordinary device credential is recognized but not admitted (e.g. /api/pairing device inventory), so the browser session is not revoked; prose accurate: the guide describes scoped, revocable device credentials and named refusals without claiming a status code or that an out-of-scope request ends the session. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c added lastDecision/earlierUnacknowledgedDecisions and request.delivery projection to station-control-delegation.ts. Remote target admission and authenticated forwarding are unchanged; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c added lastDecision/earlierUnacknowledgedDecisions and request.delivery projection to station-control-delegation.ts. Remote target admission and authenticated forwarding are unchanged; prose accurate. Source review is separate from executed test evidence.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
@@ -16916,7 +16932,7 @@
     {
       "path": "docs/guides/private-runner-partition.md",
       "documentDigest": "3a71d00a2de396d6ec7ccf680c41e99d9e7afd1f07e0217bdef00f41042ce8b9",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Conditional operator plan for separating fleet listeners, with current routing context. Full59-line baseline read. Checked current hosted CI, persistent Linux container-smoke and Windows diagnostic/performance workflow labels, capacity step and actionlint routing policy.",
@@ -17064,7 +17080,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -17113,13 +17129,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused re-exports of canonical descriptor predicates; the doc cites none of them; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
       "path": "docs/guides/product-law-authoring.md",
       "documentDigest": "e73cd5b9a92cfe8795d643d6c583b120b486366eea57f015ff412f35524336c6",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Normative authoring and interpretation of selected executable product laws. Full29-line baseline read. Traced manifest bounds, path dispositions, exact structured observation and timeout/infrastructure result classification; focused owner tests passed.",
@@ -17267,7 +17284,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -17317,7 +17334,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) trims unused re-exports from builtinWorkspacePaneRegistry. The guide makes no claim about those exports; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
@@ -17868,7 +17886,7 @@
     {
       "path": "docs/guides/repository-layout.md",
       "documentDigest": "9db07997f2440ee4cf5062fd805657beb7baffc40831f1f31625089695e7c021",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "policy",
       "state": "classified",
       "summary": "Repository navigation, ownership conventions and contributor routing. Full69-line baseline read. Current directories and links checked; root instructions and module-map routing retain their normative purpose. No stale text requiring edit found.",
@@ -18016,7 +18034,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -18065,13 +18083,14 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) only dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry.tsx. The file and its role are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18179,7 +18198,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -18225,13 +18244,14 @@
         "Integration source review through 42491ca6b: cf43e14d0 adds a 403 insufficient_scope branch in runtime-http.ts for recognized but unadmitted credentials. The guide's Dialog, layer and viewport claims do not touch HTTP authentication. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919) responsive-action-surfaces.txt's Dialog entry now also cites Dialog.chrome.geometry.test.tsx (the file exists). #2881 adds SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery, shared prebuilt-archive/service-launcher-protocol exports and a /api/system/core-update/service-update pairing leaf, none of which touch the guide's Dialog/inventory/ratchet claims; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. The visual-viewport publisher is still installed by main.tsx; dialog, focus and viewport contracts are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change. The new progress-row rule keeps text inside a narrow column, consistent with the guide's no-horizontal-overflow direction."
       ]
     },
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "897111efa688f89ef5dfa4fbedbbf3dddc9fa65b00bee53bcaacacb5b9b6b2b2",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18283,7 +18303,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -18525,7 +18545,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added approvalAcknowledgement metadata to the adapters and Codex acknowledgement watching, and added lastDecision/earlierUnacknowledgedDecisions plus request.delivery projection in station-control-delegation.ts. Nothing changed the respond_to_task_request or dispatch-authority rules the guide describes; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change."
       ]
     },
     {
@@ -18770,7 +18791,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18778,7 +18799,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "087d3553a88292f793999565c0c82bfe483d72d3c6088c21913411aca0c0907b"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -18922,11 +18943,11 @@
         },
         {
           "path": "src-ui/src/components/session-detail/AttachedSessionDetail.tsx",
-          "digest": "6b3b49f8f6404fcd87c738dac4ae70e49ebb1a86682cdb050d5c40641e4f66ce"
+          "digest": "16462c764f208999fd55987ce8bf3269aa91bb176b665012757205458cbe0efc"
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/lib/starter-work-operation-store.ts",
@@ -19012,7 +19033,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only recognizeCredential gate wiring in runtime-routes.ts. The Starter Work routes, readiness, dispatch fences, inspection and Scheduler owners are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata to the claude and codex adapters. 7cd4892e5 routes Codex approval replies and interrupt cancels through transport.replyToApproval and changes the unknown-request error copy. Neither touches how Claude or Codex continue an attached Session (independent children, Codex starting from the latest completed turn). Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Checked AttachedSessionDetail.tsx's delta (the attached transcript mapper now forwards toolKind) and the index.css delta; the guide makes no claim about tool-row classification or these styles. No prose change."
       ]
     },
     {
@@ -19661,7 +19683,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "95efeeef707ab2d72e422c1abc7ca33ad2a39e7b7c6b752fc513b61ca2547ce8",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19769,7 +19791,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -19831,7 +19853,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds a 403 insufficient_scope branch for recognized but unadmitted credentials in runtime-http.ts; prose accurate: the theme selection, UI exports and contrast claims don't touch HTTP auth. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds SDK service-update exports, the shared prebuilt-archive and service-launcher-protocol subpaths, and a pairing-scope leaf. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. None changes token, shared-package or station-dialog chrome guidance; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Updated the channel-override paragraph for the interaction roles and their fallbacks, noted the accent hex refusal, and added a White-label branding theme section (inline brand-slot properties on the document element, all-or-nothing validation, pre-render cached apply and BrandingThemeBridge replacement). branding-theme.ts, BrandingThemeBridge.tsx and branding-role-cascade.test.ts added as sources; branding-theme unit tests and tests/branding-theme-boot.spec.ts EXECUTED (10/10 runs). Source review is separate from executed test evidence.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change. No token or theme variable was added or renamed."
       ]
     },
     {
@@ -20003,7 +20026,7 @@
     {
       "path": "docs/guides/work-board-security.md",
       "documentDigest": "ec519bd0a32aefd4172f8fe3d20068ccc480ae9236d16fe9797eba4570fc7cc2",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Trusted Work Board rendering, Home eligibility and owner-resolved reference storage boundaries. Full16-line baseline read. Checked builtin registry/Pane frame React error boundary, actual plugin-only Home eligibility and granted-Home recovery, closed store/reference shape, request-bound resolved route and owner projection tests.",
@@ -20151,7 +20174,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -20200,13 +20223,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx removes unused canonical-descriptor re-exports only. It is still the built-in registry that selects the trusted Work Board renderer; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
       "path": "docs/guides/workspace-packages.md",
       "documentDigest": "01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c",
-      "sourceRevision": "892e14891bb23e9aeeee3af94ca3f4784da31536",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented AES envelope, Git snapshot/content/path/expansion limits, source rechecks, fresh destination and cleanup, read-only verification, and import-project durable intent/create/readback caller semantics. Current prose accurately distinguishes metadata verification from target filesystem and execution authority.",
@@ -20366,7 +20390,7 @@
         },
         {
           "path": "src-server/tools/station-control-delegation.ts",
-          "digest": "a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11"
+          "digest": "f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea"
         },
         {
           "path": "src-ui/src/views/HomeView.tsx",
@@ -20420,7 +20444,8 @@
         "Integration source review through 5731eba07: #2919 trims unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports from builtinWorkspacePaneRegistry. The guide does not reference those exports; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+        "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+        "Reviewed the station-control-delegation.ts change since this document's last review (#2921: request.opened titles in projectDelegatedTaskEvent are bounded by code points with a trailing ellipsis). Searched this document for delegated-event title bounds and request projection claims; it makes none. No prose change."
       ]
     },
     {
@@ -20574,7 +20599,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20582,7 +20607,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "087d3553a88292f793999565c0c82bfe483d72d3c6088c21913411aca0c0907b"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20702,7 +20727,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -20793,7 +20818,8 @@
         "Integration source review through d72f79b08: #2904's orchestration-service changes cover the full-access grantor, the grantor-current confinement check and the revocation reset. The Project/Task, Connections, request-inspection and Knowledge Library scenes and their captions are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). Media delta review: all eight captures are of the release web app with no channel class, where accent and focus values are unchanged, so each capture's index.css digest is refreshed without recapture. Prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change."
       ]
     },
     {
@@ -20825,7 +20851,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -20933,7 +20959,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -20980,13 +21006,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read to the /api/system read tier in pairing-route-scopes.ts, the SDK exports requestServiceUpdateProgress and useServiceUpdateProgressQuery, and the shared subpaths prebuilt-archive and service-launcher-protocol. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. The doc's claims still hold: one route-scope table that does not replace object-level checks, and explicit shared helper subpaths. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. No backend pattern depends on these. Classification unchanged. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): page edited only; claims corrected (branch edit): Scheduler Service no longer lists addProvider or legacy output; every manual run returns a receipt.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "1b78efc57356ebb65549f9d1488d01371bf47adfb7939f06229268082b5d5523",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21094,7 +21121,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21144,7 +21171,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401 in runtime-http.ts, so the browser keeps its device session; prose accurate: the query/context and ApiRequestScope patterns make no claim about which status drops the session. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d responsive-action-surfaces.txt adds the Dialog geometry test (#2919); SDK adds service-update progress exports and shared package.json adds prebuilt-archive/service-launcher-protocol subpaths plus a pairing read leaf (#2881); the doc's generic Dialog/ResponsiveDialogSurface and package-boundary guidance is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). accent-contrast.ts applyAccentColor now refuses a non-hex accent and clears the override instead. main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. The --k-* token guidance still holds. Classification unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change."
       ]
     },
     {
@@ -21445,7 +21473,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21453,7 +21481,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "087d3553a88292f793999565c0c82bfe483d72d3c6088c21913411aca0c0907b"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21497,7 +21525,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -21539,7 +21567,8 @@
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change."
       ]
     },
     {
@@ -21570,7 +21599,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -21639,7 +21668,7 @@
         },
         {
           "path": "packages/contracts/src/runtime-events.ts",
-          "digest": "9c918798c4c42c0548d938949cfa460ed7c4d5aacb2764cda365a95af23f55eb"
+          "digest": "b46b1b9c78c3ae6954f1c287d8213451703b2c07a4e2a3f086fc0e779e356c86"
         },
         {
           "path": "packages/contracts/src/runtime.ts",
@@ -21747,7 +21776,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/providers/adapters/bedrock-adapter.ts",
@@ -22279,7 +22308,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Added a theme paragraph under Get Branding Config: flat and per-mode shape, the route passes it through unvalidated, and the UI applies it only when every key is allowlisted, every value hex and every contrast check passes in both modes. Checked against src-server/routes/system/branding.ts and src-ui/src/lib/branding-theme.ts (added as a source). Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/chat/chat.ts, src-server/routes/orchestration/orchestration.ts, src-server/routes/system/install-provenance.ts, src-server/routes/system/system-update-routes.ts, covered by its notes above; this branch changed the document, src-ui/src/lib/branding-theme.ts (added), covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
-        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Checked against runtime-events.ts (optional toolKind on tool.started/tool.completed) and acp-adapter.ts. The documented tool event examples remain valid; the new field is optional and additive. No prose change."
       ]
     },
     {
@@ -22311,7 +22341,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22611,7 +22641,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/routes/evidence/flow-runs.ts",
@@ -22699,7 +22729,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage (distribution.ts) and the dev open-file MIME/path helpers (dev/http.ts) private but leaves their callers and behavior the same. It deletes the test-only parseGitSource/extractPluginName from commands/helpers.ts. Server-side plugin-source.ts still splits `#<branch>` and passes `--branch` to clone, so the documented `#<branch>` install syntax still works. The cloud, cloud-project-import, portability, surface-http and triage test changes only tighten assertions (EEXIST on new output paths, HTTP status text, export headings and loss entries, ledger degradedFields, remote-diagnostics rejection), and all of them match the documented behavior. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c auto-merged a new 'Recorded versus acknowledged decisions' subsection after the delegate examples. It fits the branch's delegate text (respond/status/events). It also matches source: the six delivery values in station-control-delegation.ts; CODEX_APPROVAL_ACK_WINDOW_MS = 30_000; the codes engine-decision-unacknowledged and engine-decision-not-sent; the CLI line formats in packages/cli delegate.ts; and acknowledgement 'none' in the acp and claude adapters. 7cd4892e5 refuses a decision on a closed Codex request ('not open'), which matches the closed-by-engine row. The approvals section's request.opened/request.resolved description still holds. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) main's own edit to the service section (fixed launcher at <install root>/runtime/station-launcher.mjs, 165s TimeoutStopSec, launcher-run self-update with trial/rollback/needs-operator, install.sh handoff, Check for server updates) auto-merged cleanly into the branch's text. It is not duplicated and does not contradict the branch's tier table (packaged service status|start|stop). Main left the `upgrade` section saying the installer always stops the service, switches current and restarts it; that is wrong for a running launcher-run service now that install.sh hands off. Corrected the upgrade section: the installer only stages and asks the service to switch, the launcher trials and keeps the previous version on failure, and the old stop/switch/restart applies otherwise. Source review is separate from executed test evidence.",
-        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change. 'station approvals respond' decisions are unchanged."
       ]
     },
     {
@@ -23204,7 +23235,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -23281,7 +23312,7 @@
         },
         {
           "path": "packages/contracts/src/runtime-events.ts",
-          "digest": "9c918798c4c42c0548d938949cfa460ed7c4d5aacb2764cda365a95af23f55eb"
+          "digest": "b46b1b9c78c3ae6954f1c287d8213451703b2c07a4e2a3f086fc0e779e356c86"
         },
         {
           "path": "packages/contracts/src/runtime.ts",
@@ -23313,7 +23344,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/providers/adapters/claude-sdk-turns.ts",
@@ -23443,7 +23474,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) makes muse-serve-session publish request.resolved (acknowledgement 'engine') when Station records a decision, and Muse's approval/resolved now publishes request.delivery acknowledged with engineStatus. It also adds the ApprovalAcknowledgement and RequestDeliveryEvent contracts and adds lastDecision and earlierUnacknowledgedDecisions to DelegatedTaskSnapshot and to the CLI status formatter. Corrected the Muse serve sentence that said approvals are 'resolved from Muse's own approval/resolved': a decision Station records now resolves on record and is acknowledged through request.delivery, and only requests Muse closes before Station decides still resolve from approval/resolved. The expiry, stall-watchdog and supervision/reason/transitionReason surface prose is still accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected.",
+        "Checked the runtime-events module row and tool-event claims against the additive EngineToolKind type and optional toolKind fields; the table describes runtime-events as event payloads, still accurate. No prose change."
       ]
     },
     {
@@ -23893,7 +23925,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -23901,7 +23933,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "087d3553a88292f793999565c0c82bfe483d72d3c6088c21913411aca0c0907b"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -23933,7 +23965,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -23981,7 +24013,8 @@
         "Integration source review through d72f79b08: #2904 makes TaskGraphService pass the dispatching request's clientOrigin to the start (for the receipt) alongside fullAccessGrant and ownerAttribution. The browser assertions (private control to real TaskDispatcher-seeded Session association, Agent edit, links, restart) and the seeded-versus-external distinction are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change."
       ]
     },
     {
@@ -24991,7 +25024,7 @@
     {
       "path": "docs/reference/session-api.md",
       "documentDigest": "9682fc55f0f8d89811a1c467cf86b9872abfdd37a3483734bd18a90df98c680e",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection.",
@@ -25003,7 +25036,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -25123,7 +25156,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added the recorded-vs-acknowledged respondToRequest paragraph (approvalAcknowledgement engine/in-process/none, request.delivery, closed-by-engine), added approvalAcknowledgement metadata and acknowledgement stamping to the Codex/Claude/ACP adapters, routed Codex replies through transport.replyToApproval, and moved the rpc-id test fakes into codex-adapter-wire-harness.ts. The auto-merged main paragraph sits coherently after the branch's #562 wire-ID text. The rpc-id suite still covers accept/decline, session grants, interrupt cancellation (#2316) and unsupported requests over a simulated FakeCodexProcess stream; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by attached-session-adoption.ts (comment only); attention-projection.ts (comment only); claims unaffected.",
-        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change. respondToRequest decisions and request.resolved publication for an answered request are unchanged."
       ]
     },
     {
@@ -25402,7 +25436,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25486,7 +25520,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/routes/agents/enriched-agents.ts",
@@ -25649,7 +25683,8 @@
         "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); session-agent-resolution.ts (never-read provider input removed); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); station-docs-content.ts (regenerated module-map scheduler paragraph); claims unaffected. 2026-09-28 test-audit follow-up: removed the sentence 'Other scheduler providers have their own capabilities.' because addProvider was deleted and only the built-in provider can exist; station-docs-content.ts regenerated with npm run docs:mcp:generate. Source review only; no new executed evidence.",
-        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). station-control still needs an instance credential over reviewed channels and remains subject to caller authority; the prose remains accurate. Source review only."
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). station-control still needs an instance credential over reviewed channels and remains subject to caller authority; the prose remains accurate. Source review only.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change."
       ]
     },
     {
@@ -26734,7 +26769,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26751,7 +26786,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "087d3553a88292f793999565c0c82bfe483d72d3c6088c21913411aca0c0907b"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -26863,7 +26898,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -26927,7 +26962,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes parseTsxVersion module-private in packages/cli/src/commands/lifecycle-doctor.ts without changing its behavior; prose accurate: the `./station doctor` guidance is unchanged. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2881 makes a same-channel installer rerun for a launcher-run archive service stage the version and hand off to the launcher, which trials it and rolls back on failure. It also adds the service launcher env passthrough in lifecycle.ts. #2914 makes isPortableDraftShortcut in ChatInputArea non-exported. 'Run the installer again in the same channel to update safely' remains true. Archive upgrade and service details are deferred to release-channel-ports.md, which is not in this group. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change."
       ]
     },
     {
@@ -27089,7 +27125,7 @@
     {
       "path": "docs/user/workspace-checkpoints.md",
       "documentDigest": "283e1c7e932c678bfc114407ffe72c9398b498020cb5a125426c5f7a4562a35a",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced queued capture, snapshot scope, settle-only chat visibility, preview truncation, caller/workspace/target checks, uncertain effects, and the separate CLI authentication/preview gaps.",
@@ -27141,7 +27177,7 @@
         },
         {
           "path": "src-ui/src/components/chat/MessageBubble.tsx",
-          "digest": "6b3cef36e6c640992af76fd1062f5210cd24542dd6f7c0c8c63450681efda47b"
+          "digest": "89c9c29c7defa00ac3aed3f0b8ac9815818a39a64eeb9b83897f77607eba556b"
         }
       ],
       "checks": [
@@ -27153,7 +27189,8 @@
         "Integration source review through d72f79b08: in cli.ts, #2904 only routes describeCliError through explainFullAccessRefusal first. runtime-routes and orchestration-service gained the full-access refusal, revocation and reset logic. None of these touch checkpoint capture, restore preview and refusal, or the `station checkpoints restore` authentication and preview gaps the page describes. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 adds recognizeCredential in runtime-routes.ts, which changes the status for a recognized but unadmitted credential from 401 to 403. The checkpoint capture, preview and CLI authentication-gap claims do not depend on that status. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "Checked MessageBubble.tsx's delta (no typing dots while a tool approval is pending). The guide makes no claim about the waiting indicator. No prose change."
       ]
     },
     {
@@ -27798,7 +27835,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -27806,7 +27843,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "83ad4cd1103b72b547efe2f7f1d7a6b525dec8d8bf4b96d1304807eae628eb8e"
+          "digest": "087d3553a88292f793999565c0c82bfe483d72d3c6088c21913411aca0c0907b"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -27886,7 +27923,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -27910,7 +27947,8 @@
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change."
       ]
     },
     {
@@ -28417,7 +28455,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28469,7 +28507,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "2c8818eccfb523370199be54b5e65eb67acfab638a86e2883966f6fafd9340ea"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -28711,7 +28749,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c and 7cd4892e5 change approval acknowledgement reporting in the acp, claude and codex adapters and the codex transport, and add decision-delivery fields to delegation snapshots. The README's claims (the auto-approve allowlist, approval still required for delegation, dispatch authority, no delegation JSON field) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "Reviewed against this branch's acp-adapter.ts delta: request.opened payload gains the ACP toolKind, and permission requests still open when session/prompt settles are published request.resolved cancelled before the turn terminal. Searched for requestPermission, request.opened payload, permission lifetime and grant claims; none here is contradicted. No prose change."
       ]
     },
     {
@@ -30204,7 +30243,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "60975182be929bf5402e2ea46200cde0139f8fd5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -30256,7 +30295,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "34aeaa17e8ef0a9d1bb2b30fb65ca955cef9408d5ee9514502660e390a6c2251"
         }
       ],
       "checks": [
@@ -30272,7 +30311,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
         "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through 5731eba07: 8b48e2b35 (#2914) removed two negative source-text assertions from scripts/__tests__/ios-channel-icons.test.ts. The TestFlight apply/verify ordering assertions remain, and the README's apply/verify description is unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The is-dev-build favicon-dev.png swap in index.css is unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The is-dev-build favicon-dev.png swap in index.css is unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Reviewed against this branch's src-ui/src/index.css delta: tool-call row chevron right-alignment, streaming-activity min-width, and new turn-activity-progress name/ellipsis rules, all confined to chat tool rows and the progress row. Searched this document for tool-row, chevron, progress-row, approval and timer claims; it makes none about these rules. No prose change."
       ]
     },
     {
