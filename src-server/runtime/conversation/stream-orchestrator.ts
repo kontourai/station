@@ -4,6 +4,10 @@
  */
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import {
+  modelProviderFailureMessage,
+  modelProviderHttpStatus,
+} from '../../providers/model-provider-failure.js';
 import { providerHttpErrorStatus } from '../../providers/registries/catalog-http.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { outwardTransportError } from '../../utils/outward-error.js';
@@ -246,46 +250,65 @@ export async function writeSSEDone(streamWriter: any): Promise<void> {
   await streamWriter.write('data: [DONE]\n\n');
 }
 
-/** The provider's HTTP status when it is a 4xx/5xx integer, else undefined. */
-function providerErrorStatusCode(error: unknown): number | undefined {
-  const status = providerHttpErrorStatus(error);
-  return status !== undefined &&
-    Number.isInteger(status) &&
-    status >= 400 &&
-    status <= 599
-    ? status
-    : undefined;
+/** Station's own abort error (`StreamPipeline`), whose text is a constant. */
+const STREAM_ABORTED_BY_CLIENT = 'Stream aborted by client';
+
+function isCredentialShapedError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message.includes('credential') ||
+      error.message.includes('accessKeyId') ||
+      error.message.includes('secretAccessKey'))
+  );
+}
+
+/**
+ * The status a `/chat` failure may carry to a client. The credential-shaped
+ * 401 keeps its pre-existing precedence; any other error reports the model
+ * provider's own status (ai-sdk's `APICallError.statusCode`, read
+ * structurally by `providerHttpErrorStatus`) when it is a 4xx/5xx integer.
+ */
+function outwardFailureStatus(error: unknown): number | undefined {
+  return isCredentialShapedError(error)
+    ? 401
+    : modelProviderHttpStatus(providerHttpErrorStatus(error));
+}
+
+/**
+ * The failure text a `/chat` turn may persist and serve (the `[CHAT_ERROR]`
+ * transcript marker, `chat-lifecycle.ts`). Never the thrown error's own
+ * message: a provider error's text is remote-controlled and has carried
+ * response bodies and secrets. It is the status sentence when a status is
+ * known, Station's own abort constant for an abort, else the fixed outward
+ * generic.
+ */
+export function outwardTurnFailureText(error: unknown): string {
+  const status = outwardFailureStatus(error);
+  if (status !== undefined) return modelProviderFailureMessage(status);
+  if (error instanceof Error && error.message === STREAM_ABORTED_BY_CLIENT) {
+    return STREAM_ABORTED_BY_CLIENT;
+  }
+  return outwardTransportError('sse');
 }
 
 /**
  * Write SSE error.
  *
  * The text is always the fixed outward generic; the provider's own message
- * never crosses. What may cross is the HTTP status the model provider
- * answered with (ai-sdk's `APICallError.statusCode`, read structurally by
- * `providerHttpErrorStatus`): a bare integer in the 4xx/5xx range carries no
- * provider-controlled text, and it is what lets the station-agent relay tell
- * the user WHY the turn failed ("rejected the credentials", "rate-limited")
- * instead of only that it did. Anything outside that range is dropped rather
- * than forwarded.
+ * never crosses. What may cross is the HTTP status (`outwardFailureStatus`):
+ * a bare integer carries no provider-controlled text, and it is what lets
+ * the station-agent relay tell the user WHY the turn failed ("rejected the
+ * credentials", "rate-limited") instead of only that it did.
  */
 export async function writeSSEError(
   streamWriter: any,
   error: unknown,
 ): Promise<void> {
-  const isCredentialError =
-    error instanceof Error &&
-    (error.message.includes('credential') ||
-      error.message.includes('accessKeyId') ||
-      error.message.includes('secretAccessKey'));
-  // The credential-shaped 401 keeps its pre-existing precedence; only an
-  // error that is not credential-shaped reports the provider's own status.
-  const statusCode = isCredentialError ? 401 : providerErrorStatusCode(error);
   await streamWriter.write(
     `data: ${JSON.stringify({
       type: 'error',
       errorText: outwardTransportError('sse'),
-      statusCode,
+      statusCode: outwardFailureStatus(error),
     })}\n\n`,
   );
 }

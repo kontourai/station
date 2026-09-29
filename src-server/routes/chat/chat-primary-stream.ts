@@ -673,7 +673,9 @@ export function streamPrimaryAgentChat({
         agentName: slug,
         error,
       });
-      turnFailureText = errorMessage(error);
+      // Persisted and served as the reload-safe failure marker
+      // (`chat-lifecycle.ts`), so never the provider's own text.
+      turnFailureText = StreamOrchestrator.outwardTurnFailureText(error);
       await StreamOrchestrator.writeSSEError(streamWriter, error);
       await StreamOrchestrator.writeSSEDone(streamWriter);
     } finally {
