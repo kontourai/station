@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"eaaf107f8794e2bd2fc0034575cd939b5f1edebd80529d0bf8ff37611af34fc9","revision":"c8f80c629fca13479b0010de84094ad0a13332c1"},
+  "document": {"digest":"3b8cee5f182db9964cb475677232d5b9c9d0b543b18a2e7a487761919326cdca","revision":"377c93eba2281f526dfe85304aea1511f72da7a3"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -100,7 +100,7 @@
 
     {"path":".github/workflows/portable-server-archives.yml","digest":"bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/run-changed-verification.mjs","digest":"2eb2991a8e071605b7b8f6a704b75b4668d06ef716d182f94af442d8a24afad1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
+    {"path":"scripts/run-changed-verification.mjs","digest":"24e1af297dc3857d60e751386c93697fdc77eeef59fbdc5f7efdc41a061bf862","revision":"3e1907f8c81b0b7c818c7c34f95d2c5ffa4ea008"},
 
     {"path":"scripts/__tests__/changed-verification.test.ts","digest":"9f3cb341f88aec79a92c18573d2c0f770ab8b01fac0a58f61250d8439f50adb1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
 
