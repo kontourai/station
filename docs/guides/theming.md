@@ -31,12 +31,13 @@ applies local adoption rules. `:root.is-dev-build` and `data-app-channel`
 selectors override the brand/contrast pair and the interaction roles
 (`--k-action`, `--k-action-contrast`, `--k-focus`), and select channel logo
 assets. These are existing Station channel overrides, not new shared product
-themes. `--accent-primary` and `--text-on-accent` read the action role with a
-brand fallback, and the focus-visible outline reads `--k-focus` with an
-`--accent-primary` fallback, so the same rules work whether or not the
-installed package defines the roles (1.12.0 does not).
+themes. `--accent-primary` and `--text-on-accent` read the action role, and
+the focus-visible outline reads `--k-focus`. The installed package defines
+both roles (equal to the shipped brand), so the `--k-brand` and
+`--accent-primary` fallbacks written beside them do not apply. A device accent
+therefore recolours buttons and links but not the focus ring.
 [branding-role-cascade.test.ts](../../src-ui/src/__tests__/branding-role-cascade.test.ts)
-measures those fallbacks and contrast-checks every channel value in a real
+measures the resolved roles and contrast-checks every channel value in a real
 browser.
 Do not copy the package's theme or primitive styles into a feature; propose a
 shared value upstream when it belongs to the public design system.
@@ -63,7 +64,9 @@ A branding provider's `getTheme()` answer is applied by
 `--k-brand`, `--k-brand-contrast`, `--k-action`, `--k-action-contrast` and
 `--k-focus` on the document element, for the current `data-theme` mode. It is
 all or nothing: an unknown key, a non-hex value or a failed contrast check in
-either mode keeps the defaults. `main.tsx` applies the last validated copy from
+either mode keeps the defaults. The check is `validateBrandOverride` from
+`@kontourai/ui/contrast`; Station adds the flat-key input shape and two
+stricter text-contrast rules for the action fill and the brand. `main.tsx` applies the last validated copy from
 localStorage before the first render, re-validating it, and
 [BrandingThemeBridge](../../src-ui/src/components/BrandingThemeBridge.tsx)
 replaces it once the branding query answers. A device accent still sets

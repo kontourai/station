@@ -76,7 +76,7 @@ describe('BrandingThemeBridge', () => {
     expect(localStorage.getItem(BRANDING_THEME_STORAGE_KEY)).toBeNull();
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        'rejected --k-action/--k-action-contrast (light)',
+        'rejected (contrast) light: --k-action-contrast #ffffff on --k-action #a7f3d0',
       ),
     );
   });

@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { contrastRatio, SHIPPED_THEMES } from '@kontourai/ui/contrast';
 import { chromium } from '@playwright/test';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
@@ -7,29 +8,22 @@ import {
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
 import {
-  checkModeOverrides,
-  hexContrast,
-  SHIPPED_MODE_TOKENS,
+  BRANDING_BASE_THEME,
+  resolveBrandingTheme,
 } from '../lib/branding-theme';
 
 /**
- * Station reads the interaction roles with a brand fallback
- * (`var(--k-action, var(--k-brand))`, `var(--k-focus, …)`), so the same
- * stylesheet renders identically on @kontourai/ui 1.12 (no roles) and follows
- * the roles once they exist. Only a real cascade can show which declaration
- * wins, so this measures computed values in Chromium against the real
- * index.css — with the roles absent, with them defined the way the 1.14
- * tokens define them, and under every release channel.
+ * Station paints its accent, accent text and focus ring from the interaction
+ * roles (`var(--k-action, …)`, `var(--k-focus, …)`), which the installed
+ * @kontourai/ui tokens define as literals beside the brand. Only a real
+ * cascade can show which declaration wins, so this measures computed values
+ * in Chromium against the real index.css (with the installed tokens inlined)
+ * for the release build, an inline override, and every release channel.
  */
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
-
-/** What @kontourai/ui 1.14 adds: literal roles equal to the shipped brand. */
-const VENDOR_ROLES_SHIM = `
-:root { --k-action: #5ce0c6; --k-action-contrast: #06080b; --k-focus: #5ce0c6; --k-focus-ring: var(--k-focus); }
-[data-theme="light"] { --k-action: #0e7c64; --k-action-contrast: #ffffff; --k-focus: #0e7c64; --k-focus-ring: var(--k-focus); }
-`;
+const SHIPPED = SHIPPED_THEMES[BRANDING_BASE_THEME];
 
 type Mode = 'dark' | 'light';
 type Channel = 'release' | 'dev' | 'beta' | 'nightly';
@@ -71,15 +65,12 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
   async function measure(
     mode: Mode,
     channel: Channel,
-    options: { vendorRoles?: boolean; inline?: Record<string, string> } = {},
+    options: { inline?: Record<string, string> } = {},
   ): Promise<Measured> {
     const page = await browser.newPage();
     try {
-      const shim = options.vendorRoles
-        ? `<style>${VENDOR_ROLES_SHIM}</style>`
-        : '';
       await page.setContent(
-        `<!doctype html><html data-theme="${mode}"><head>${shim}<style>${css}</style></head><body><button type="button" id="probe">probe</button></body></html>`,
+        `<!doctype html><html data-theme="${mode}"><head><style>${css}</style></head><body><button type="button" id="probe">probe</button></body></html>`,
       );
       await page.evaluate(
         ({ channel, inline }) => {
@@ -116,21 +107,26 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
   }
 
   test.each(['dark', 'light'] as const)(
-    'with no roles defined (ui 1.12), %s mode falls back to the shipped brand',
+    'the release build in %s mode paints the installed roles, which equal the shipped brand',
     async (mode) => {
       const m = await measure(mode, 'release');
-      expect(m.action).toBe('');
-      expect(toHex(m.accent)).toBe(SHIPPED_MODE_TOKENS[mode].brand);
-      expect(toHex(m.onAccent)).toBe(SHIPPED_MODE_TOKENS[mode].brandContrast);
-      expect(toHex(m.outline)).toBe(SHIPPED_MODE_TOKENS[mode].brand);
+      // The roles come from the installed tokens, not the brand fallback...
+      expect(toHex(m.action)).toBe(SHIPPED[mode]['--k-action']);
+      expect(toHex(m.accent)).toBe(toHex(m.action));
+      expect(toHex(m.onAccent)).toBe(SHIPPED[mode]['--k-action-contrast']);
+      expect(toHex(m.outline)).toBe(SHIPPED[mode]['--k-focus']);
+      // ...and render exactly what the brand fallback rendered before the
+      // roles existed, so the release build looks the same.
+      expect(toHex(m.accent)).toBe(SHIPPED[mode]['--k-brand']);
+      expect(toHex(m.onAccent)).toBe(SHIPPED[mode]['--k-brand-contrast']);
+      expect(toHex(m.outline)).toBe(SHIPPED[mode]['--k-brand']);
     },
   );
 
   test.each(['dark', 'light'] as const)(
-    'with the roles defined, %s mode reads them instead of the brand',
+    'an inline role override on the root wins in %s mode',
     async (mode) => {
       const m = await measure(mode, 'release', {
-        vendorRoles: true,
         inline: {
           '--k-action': '#123456',
           '--k-action-contrast': '#fedcba',
@@ -144,43 +140,44 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
   );
 
   test.each(['dark', 'light'] as const)(
-    'the shipped roles leave %s mode unchanged',
+    'a device accent in %s mode recolours the accent but not the focus ring',
     async (mode) => {
-      const before = await measure(mode, 'release');
-      const after = await measure(mode, 'release', { vendorRoles: true });
-      expect(toHex(after.accent)).toBe(toHex(before.accent));
-      expect(toHex(after.onAccent)).toBe(toHex(before.onAccent));
-      expect(toHex(after.outline)).toBe(toHex(before.outline));
+      // What the Appearance accent picker writes (lib/accent-contrast.ts).
+      const m = await measure(mode, 'release', {
+        inline: { '--accent-primary': '#d946ef' },
+      });
+      expect(toHex(m.accent)).toBe('#d946ef');
+      expect(toHex(m.outline)).toBe(SHIPPED[mode]['--k-focus']);
     },
   );
 
   const channels = (['dev', 'beta', 'nightly'] as const).flatMap((channel) =>
-    (['dark', 'light'] as const).flatMap((mode) =>
-      [false, true].map((vendorRoles) => [channel, mode, vendorRoles] as const),
-    ),
+    (['dark', 'light'] as const).map((mode) => [channel, mode] as const),
   );
 
   test.each(channels)(
-    'the %s channel in %s mode (vendor roles: %s) drives action and focus with readable values',
-    async (channel, mode, vendorRoles) => {
-      const m = await measure(mode, channel, { vendorRoles });
+    'the %s channel in %s mode drives action and focus with readable values',
+    async (channel, mode) => {
+      const m = await measure(mode, channel);
       const action = toHex(m.action);
       const actionContrast = toHex(m.actionContrast);
       const focus = toHex(m.focus);
       // The channel, not the release accent or the vendor default, paints
-      // buttons and focus — with or without the vendor roles present.
-      expect(action).not.toBe(SHIPPED_MODE_TOKENS[mode].brand);
+      // buttons and focus.
+      expect(action).not.toBe(SHIPPED[mode]['--k-action']);
       expect(toHex(m.accent)).toBe(action);
       expect(toHex(m.onAccent)).toBe(actionContrast);
       expect(toHex(m.outline)).toBe(focus);
       // The same rules a white-label theme must pass.
-      const check = checkModeOverrides(mode, {
-        '--k-action': action,
-        '--k-action-contrast': actionContrast,
-        '--k-focus': focus,
+      const check = resolveBrandingTheme({
+        [mode]: {
+          '--k-action': action,
+          '--k-action-contrast': actionContrast,
+          '--k-focus': focus,
+        },
       });
       expect(check.violations).toEqual([]);
-      expect(hexContrast(action, actionContrast)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(action, actionContrast)).toBeGreaterThanOrEqual(4.5);
     },
   );
 });

@@ -2,42 +2,47 @@
  * White-label theme overrides from the branding provider (`GET /api/branding`
  * `theme`), applied to the element that carries Station's theme scope.
  *
- * The contract is `@kontourai/ui`'s DESIGN.md "White-label overrides": values
- * are per mode, the action fill and its text are a pair, and a runtime that
- * applies a theme must reject a pair that fails the contrast thresholds. The
+ * The contract is `@kontourai/ui`'s DESIGN.md "White-label overrides", and
+ * the check is the package's own `validateBrandOverride`
+ * (`@kontourai/ui/contrast`): the allowlist, hex-only values, the action pair
+ * rule, every brand-slot contrast pair, and all-or-nothing acceptance. The
  * endpoint is a no-credential boot read supplied by a plugin, so everything
- * here is untrusted input: only the five brand-slot properties below are ever
- * written, only after their values parse as hex colours, and only when the
- * WHOLE theme passes — any rejection keeps the defaults, so an unreadable or
- * half-applied theme never lands.
+ * here is untrusted input: only what the validator accepted is applied, and
+ * any rejection keeps the defaults, so an unreadable or half-applied theme
+ * never lands.
  *
- * Accepted shape (JSON-serialisable, backward compatible with the original
- * flat `Record<string, string>`):
+ * What stays in Station, because the shared validator does not cover it:
  *
- *   { "--k-brand": "#…",                      // flat: expanded into both modes
- *     "dark":  { "--k-action": "#…", … },      // per mode: wins over flat
- *     "light": { "--k-action": "#…", … } }
+ * - The input shape. Station also accepts the original flat
+ *   `Record<string, string>` form; flat keys are expanded into both modes
+ *   (per-mode entries winning) before the shared validator sees them.
  *
- * `@kontourai/ui/contrast` (ui 1.16.0) ships the shared check for the
- * expanded `{ dark, light }` shape with the same all-or-nothing rule. Once
- * Station can take that release, its `validateBrandOverride` replaces the
- * validation inside `resolveBrandingTheme`; Station's stricter rule (the
- * action fill also reads as text on page and panel) stays as an extra check.
+ *     { "--k-brand": "#…",                      // flat: expanded into both modes
+ *       "dark":  { "--k-action": "#…", … },      // per mode: wins over flat
+ *       "light": { "--k-action": "#…", … } }
+ *
+ * - Two stricter contrast rules (see `STATION_SURFACE_TEXT_RULES`).
+ * - The apply path: mode tracking, the write-time re-check, and the cache.
  */
 
-import { contrastRatio } from './accent-contrast';
+import {
+  type AcceptedBrandOverride,
+  BRAND_SLOT_PROPERTIES,
+  type BrandOverrideViolation,
+  type BrandSlotProperty,
+  type ContrastMode,
+  contrastRatio,
+  isHexColor,
+  SHIPPED_THEMES,
+  type SurfaceProperty,
+  validateBrandOverride,
+} from '@kontourai/ui/contrast';
 
 /** The only properties a branding theme may set. Order is apply order. */
-export const BRANDING_THEME_PROPERTIES = [
-  '--k-brand',
-  '--k-brand-contrast',
-  '--k-action',
-  '--k-action-contrast',
-  '--k-focus',
-] as const;
+export const BRANDING_THEME_PROPERTIES = BRAND_SLOT_PROPERTIES;
 
-export type BrandingThemeProperty = (typeof BRANDING_THEME_PROPERTIES)[number];
-export type BrandingThemeMode = 'dark' | 'light';
+export type BrandingThemeProperty = BrandSlotProperty;
+export type BrandingThemeMode = ContrastMode;
 export type BrandingModeOverrides = Partial<
   Record<BrandingThemeProperty, string>
 >;
@@ -46,153 +51,72 @@ export type BrandingThemeOverrides = Partial<
 >;
 
 const MODES: readonly BrandingThemeMode[] = ['dark', 'light'];
-const ALLOWED = new Set<string>(BRANDING_THEME_PROPERTIES);
-
-/** `#rgb` or `#rrggbb` only: no alpha, keywords, functions or `var()`. */
-const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
-
-/** A validated, lower-cased hex colour, or `null`. */
-function parseHexColor(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  return HEX_COLOR.test(value) ? value.toLowerCase() : null;
-}
 
 /**
- * The shipped `@kontourai/ui` surfaces and brand slot per mode — what an
- * override is rated against, and what an unset half of a pair resolves to.
- * Pinned against the installed tokens file by `branding-theme.test.ts`.
- * Station applies no `.theme-*` class, so these are the effective defaults.
+ * The shipped theme overrides are rated against. Station applies no
+ * `.theme-*` class, so the effective defaults are the package's unthemed
+ * tokens (`branding-theme.test.ts` pins this against the installed CSS).
  */
-export const SHIPPED_MODE_TOKENS: Record<
-  BrandingThemeMode,
-  { bg: string; panel: string; brand: string; brandContrast: string }
-> = {
-  dark: {
-    bg: '#0a0e13',
-    panel: '#111824',
-    brand: '#5ce0c6',
-    brandContrast: '#06080b',
-  },
-  light: {
-    bg: '#f5f4ef',
-    panel: '#ffffff',
-    brand: '#0e7c64',
-    brandContrast: '#ffffff',
-  },
-};
-
-/** WCAG AA for text; non-text (focus indicator) contrast. */
-const TEXT_CONTRAST_MIN = 4.5;
-const NON_TEXT_CONTRAST_MIN = 3;
+export const BRANDING_BASE_THEME = 'default';
 
 /**
- * WCAG contrast ratio of two already-validated hex colours, through Station's
- * existing helper (`accent-contrast.ts`). `0` if either somehow is not hex, so
- * a malformed value can only fail a threshold, never pass one.
+ * Station paints `--accent-primary` (which reads the action role) as link and
+ * accent text on the page and the panel, and the channel badge in the sidebar
+ * uses the brand as text. The shared contract rates the action fill on the
+ * panel at the non-text threshold (3:1) and the brand on the page at 3:1, so
+ * Station additionally requires AA text contrast (4.5:1) for both on both
+ * surfaces. Only overridden properties are rated, like the shared validator.
  */
-export function hexContrast(a: string, b: string): number {
-  return contrastRatio(a, b) ?? 0;
+const STATION_SURFACE_TEXT_RULES: readonly {
+  property: BrandingThemeProperty;
+  surfaces: readonly SurfaceProperty[];
+  minimum: number;
+}[] = [
+  { property: '--k-action', surfaces: ['--k-bg', '--k-panel'], minimum: 4.5 },
+  { property: '--k-brand', surfaces: ['--k-bg', '--k-panel'], minimum: 4.5 },
+];
+
+/** A rule Station applies on top of the shared validator. */
+export interface StationSurfaceTextViolation {
+  kind: 'station-surface-text';
+  mode: BrandingThemeMode;
+  property: BrandingThemeProperty;
+  surface: SurfaceProperty;
+  ratio: number;
+  minimum: number;
+  message: string;
 }
 
-export interface BrandingThemeViolation {
-  mode: BrandingThemeMode | 'both';
-  /** The property or group that was dropped. */
-  subject: string;
-  reason: string;
-}
+export type BrandingThemeViolation =
+  | BrandOverrideViolation
+  | StationSurfaceTextViolation;
 
-interface ModeCheck {
-  accepted: BrandingModeOverrides;
-  violations: BrandingThemeViolation[];
-}
-
-/**
- * Rate one mode's overrides group by group. `accepted` lists the groups that
- * pass; `resolveBrandingTheme` applies nothing unless every group in every
- * mode passes. Groups:
- *
- * - action pair (`--k-action` + `--k-action-contrast`): both or neither; the
- *   pair meets AA text contrast. Station also paints `--accent-primary` (which
- *   reads the action role) as link and accent TEXT on the page and panel, so
- *   the fill must meet AA text contrast on both surfaces too — stricter than
- *   the shared contract, which rates the pair only.
- * - brand (`--k-brand`, optional `--k-brand-contrast`): brand used as text
- *   meets AA on the page and panel, and the brand/brand-contrast pair (either
- *   half defaulting to the shipped value) meets AA. Until Station takes the
- *   roles release, its action colour falls back to the brand, so this is also
- *   what keeps a brand-only theme's buttons legible.
- * - focus (`--k-focus`): non-text contrast on the page and the panel.
- */
-export function checkModeOverrides(
+function stationSurfaceTextViolations(
   mode: BrandingThemeMode,
-  values: BrandingModeOverrides,
-): ModeCheck {
-  const shipped = SHIPPED_MODE_TOKENS[mode];
-  const accepted: BrandingModeOverrides = {};
-  const violations: BrandingThemeViolation[] = [];
-  const reject = (subject: string, reason: string) =>
-    violations.push({ mode, subject, reason });
-  const onSurfaces = (color: string) =>
-    Math.min(hexContrast(color, shipped.bg), hexContrast(color, shipped.panel));
-
-  const action = values['--k-action'];
-  const actionContrast = values['--k-action-contrast'];
-  if (action || actionContrast) {
-    const pair = '--k-action/--k-action-contrast';
-    if (!action || !actionContrast) {
-      reject(pair, 'the action pair must be overridden together');
-    } else if (hexContrast(action, actionContrast) < TEXT_CONTRAST_MIN) {
-      reject(
-        pair,
-        `pair contrast ${hexContrast(action, actionContrast).toFixed(2)}:1 is below ${TEXT_CONTRAST_MIN}:1`,
-      );
-    } else if (onSurfaces(action) < TEXT_CONTRAST_MIN) {
-      reject(
-        pair,
-        `--k-action on the page/panel is ${onSurfaces(action).toFixed(2)}:1, below ${TEXT_CONTRAST_MIN}:1`,
-      );
-    } else {
-      accepted['--k-action'] = action;
-      accepted['--k-action-contrast'] = actionContrast;
+  values: Record<string, unknown>,
+): StationSurfaceTextViolation[] {
+  const shipped = SHIPPED_THEMES[BRANDING_BASE_THEME][mode];
+  const violations: StationSurfaceTextViolation[] = [];
+  for (const { property, surfaces, minimum } of STATION_SURFACE_TEXT_RULES) {
+    const value = values[property];
+    // A non-hex value is already the shared validator's violation.
+    if (!isHexColor(value)) continue;
+    for (const surface of surfaces) {
+      const ratio = contrastRatio(value, shipped[surface]);
+      if (ratio < minimum) {
+        violations.push({
+          kind: 'station-surface-text',
+          mode,
+          property,
+          surface,
+          ratio,
+          minimum,
+          message: `${mode}: ${property} ${value} as text on ${surface} ${shipped[surface]} = ${ratio.toFixed(2)}:1 (Station needs ${minimum}:1)`,
+        });
+      }
     }
   }
-
-  const brand = values['--k-brand'];
-  const brandContrast = values['--k-brand-contrast'];
-  if (brand || brandContrast) {
-    const group = '--k-brand/--k-brand-contrast';
-    const effectiveBrand = brand ?? shipped.brand;
-    const effectiveContrast = brandContrast ?? shipped.brandContrast;
-    const pairRatio = hexContrast(effectiveBrand, effectiveContrast);
-    if (onSurfaces(effectiveBrand) < TEXT_CONTRAST_MIN) {
-      reject(
-        group,
-        `--k-brand on the page/panel is ${onSurfaces(effectiveBrand).toFixed(2)}:1, below ${TEXT_CONTRAST_MIN}:1`,
-      );
-    } else if (pairRatio < TEXT_CONTRAST_MIN) {
-      reject(
-        group,
-        `brand pair contrast ${pairRatio.toFixed(2)}:1 is below ${TEXT_CONTRAST_MIN}:1`,
-      );
-    } else {
-      if (brand) accepted['--k-brand'] = brand;
-      if (brandContrast) accepted['--k-brand-contrast'] = brandContrast;
-    }
-  }
-
-  const focus = values['--k-focus'];
-  if (focus) {
-    if (onSurfaces(focus) < NON_TEXT_CONTRAST_MIN) {
-      reject(
-        '--k-focus',
-        `focus on the page/panel is ${onSurfaces(focus).toFixed(2)}:1, below ${NON_TEXT_CONTRAST_MIN}:1`,
-      );
-    } else {
-      accepted['--k-focus'] = focus;
-    }
-  }
-
-  return { accepted, violations };
+  return violations;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -202,47 +126,18 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-/** Keys are echoed into logs; keep an attacker-chosen key short. */
-function describeKey(key: string): string {
-  return JSON.stringify(key.length > 64 ? `${key.slice(0, 64)}…` : key);
-}
-
 /**
- * A prototype-free record, so a key such as `__proto__` is stored and then
- * rejected like any other unknown key instead of silently rewiring the object.
+ * Copy own enumerable keys into a prototype-free record, so a key such as
+ * `__proto__` (an own key after JSON.parse) is carried as data and then
+ * rejected by the validator instead of rewiring the object.
  */
-function bareRecord<T>(): Record<string, T> {
-  return Object.create(null) as Record<string, T>;
-}
-
-function readEntries(
+function copyInto(
+  into: Record<string, unknown>,
   source: Record<string, unknown>,
-  into: Record<string, string>,
-  scope: BrandingThemeMode | 'both',
-  violations: BrandingThemeViolation[],
 ): void {
-  // Own enumerable string keys only; JSON.parse makes `__proto__` one of them.
   for (const key of Object.keys(source)) {
-    const raw = source[key];
-    if (!ALLOWED.has(key)) {
-      violations.push({
-        mode: scope,
-        subject: describeKey(key),
-        reason: 'not an allowlisted branding property',
-      });
-      continue;
-    }
-    const color = parseHexColor(raw);
-    if (!color) {
-      violations.push({
-        mode: scope,
-        subject: key,
-        reason: 'value is not a #rgb or #rrggbb colour',
-      });
-      continue;
-    }
     Object.defineProperty(into, key, {
-      value: color,
+      value: source[key],
       enumerable: true,
       writable: true,
       configurable: true,
@@ -250,87 +145,66 @@ function readEntries(
   }
 }
 
-export interface ResolvedBrandingTheme {
-  overrides: BrandingThemeOverrides;
-  violations: BrandingThemeViolation[];
+/**
+ * Expand Station's input shape into the shared `{ dark?, light? }` shape: flat
+ * top-level keys go into both modes, per-mode entries win for their mode. A
+ * mode entry that is not an object is passed through unchanged, so the
+ * validator reports it. A mode with nothing in it is left out.
+ */
+function expandModes(input: Record<string, unknown>): Record<string, unknown> {
+  const flat: Record<string, unknown> = Object.create(null);
+  for (const key of Object.keys(input)) {
+    if (key === 'dark' || key === 'light') continue;
+    copyInto(flat, { [key]: input[key] });
+  }
+  const expanded: Record<string, unknown> = Object.create(null);
+  for (const mode of MODES) {
+    const specific = Object.hasOwn(input, mode) ? input[mode] : undefined;
+    if (specific !== undefined && !isPlainObject(specific)) {
+      expanded[mode] = specific;
+      continue;
+    }
+    const merged: Record<string, unknown> = Object.create(null);
+    copyInto(merged, flat);
+    if (specific) copyInto(merged, specific);
+    if (Object.keys(merged).length > 0) expanded[mode] = merged;
+  }
+  return expanded;
 }
 
-function toModeOverrides(
-  source: Record<string, string>,
-): BrandingModeOverrides {
-  const out: BrandingModeOverrides = {};
-  for (const property of BRANDING_THEME_PROPERTIES) {
-    const value = source[property];
-    if (value !== undefined) out[property] = value;
-  }
-  return out;
+export interface ResolvedBrandingTheme {
+  overrides: AcceptedBrandOverride;
+  violations: BrandingThemeViolation[];
 }
 
 /**
  * Parse an untrusted branding `theme` into validated per-mode overrides.
  *
- * ALL OR NOTHING, like `@kontourai/ui/contrast`'s `validateBrandOverride`
- * (ui 1.16.0): if anything in the theme is rejected — an unknown key, a value
- * that is not a hex colour, or any group failing its contrast rule in either
- * mode — nothing is applied and the defaults stay. A half-applied brand is a
- * design nobody reviewed. Every violation is still reported for the log.
- *
- * Flat top-level `--k-*` keys (the original `Record<string, string>` form)
- * are expanded into both modes BEFORE validation, per-mode entries winning.
- * The swap to the shared validator replaces this function's validation step
- * and hands it that expanded `{ dark, light }` shape; parsing, expansion and
- * the apply path stay here.
+ * ALL OR NOTHING: if the shared validator or a Station rule rejects anything
+ * — an unknown key, a value that is not a hex colour, an unpaired action, or
+ * a contrast failure in either mode — nothing is applied and the defaults
+ * stay. A half-applied brand is a design nobody reviewed. Every violation is
+ * still reported for the log. `overrides` is the validator's `accepted`, so
+ * what lands is exactly what was rated.
  */
 export function resolveBrandingTheme(input: unknown): ResolvedBrandingTheme {
-  const violations: BrandingThemeViolation[] = [];
   if (input === null || input === undefined)
-    return { overrides: {}, violations };
-  if (!isPlainObject(input)) {
-    violations.push({
-      mode: 'both',
-      subject: 'theme',
-      reason: 'theme must be an object',
-    });
-    return { overrides: {}, violations };
-  }
-
-  const flat = bareRecord<unknown>();
-  const perMode: Partial<Record<BrandingThemeMode, Record<string, unknown>>> =
-    {};
-  for (const key of Object.keys(input)) {
-    const value = input[key];
-    if (key === 'dark' || key === 'light') {
-      if (isPlainObject(value)) perMode[key] = value;
-      else
-        violations.push({
-          mode: key,
-          subject: key,
-          reason: 'a mode entry must be an object of properties',
-        });
-    } else {
-      Object.defineProperty(flat, key, {
-        value,
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
+    return { overrides: {}, violations: [] };
+  // A non-object theme goes to the validator as-is; it reports the shape.
+  const expanded = isPlainObject(input) ? expandModes(input) : input;
+  const { violations, accepted } = validateBrandOverride({
+    base: BRANDING_BASE_THEME,
+    overrides: expanded,
+  });
+  const all: BrandingThemeViolation[] = [...violations];
+  if (isPlainObject(expanded)) {
+    for (const mode of MODES) {
+      const values = expanded[mode];
+      if (isPlainObject(values))
+        all.push(...stationSurfaceTextViolations(mode, values));
     }
   }
-
-  const shared = bareRecord<string>();
-  readEntries(flat, shared, 'both', violations);
-
-  const expanded: BrandingThemeOverrides = {};
-  for (const mode of MODES) {
-    const specific = bareRecord<string>();
-    const source = perMode[mode];
-    if (source) readEntries(source, specific, mode, violations);
-    const merged = toModeOverrides({ ...shared, ...specific });
-    if (Object.keys(merged).length === 0) continue;
-    violations.push(...checkModeOverrides(mode, merged).violations);
-    expanded[mode] = merged;
-  }
-  return { overrides: violations.length === 0 ? expanded : {}, violations };
+  return { overrides: all.length === 0 ? accepted : {}, violations: all };
 }
 
 /** Enough to diagnose a theme without letting a hostile one flood the console. */
@@ -343,10 +217,9 @@ export function logBrandingThemeViolations(
   console.warn(
     '[branding-theme] theme rejected; keeping the default theme. Nothing from it was applied.',
   );
+  // Messages echo caller data (clipped to 64 characters); console only.
   for (const v of violations.slice(0, MAX_LOGGED_VIOLATIONS)) {
-    console.warn(
-      `[branding-theme] rejected ${v.subject} (${v.mode}): ${v.reason}`,
-    );
+    console.warn(`[branding-theme] rejected (${v.kind}) ${v.message}`);
   }
   if (violations.length > MAX_LOGGED_VIOLATIONS) {
     console.warn(
@@ -373,12 +246,18 @@ const rootState = new WeakMap<HTMLElement, RootState>();
  * mutated afterwards.
  */
 function snapshot(
-  overrides: BrandingThemeOverrides,
+  overrides: Readonly<BrandingThemeOverrides>,
 ): Readonly<BrandingThemeOverrides> {
   const copy: BrandingThemeOverrides = {};
   for (const mode of MODES) {
     const source = overrides[mode];
-    if (source) copy[mode] = Object.freeze(toModeOverrides({ ...source }));
+    if (!source) continue;
+    const values: BrandingModeOverrides = {};
+    for (const property of BRANDING_THEME_PROPERTIES) {
+      const value = source[property];
+      if (value !== undefined) values[property] = value;
+    }
+    copy[mode] = Object.freeze(values);
   }
   return Object.freeze(copy);
 }
@@ -391,8 +270,9 @@ function writeMode(
   for (const property of BRANDING_THEME_PROPERTIES) {
     // Re-checked at the write itself: nothing but an allowlisted property with
     // a hex value can reach setProperty, whatever produced `overrides`.
-    const color = parseHexColor(values[property]);
-    if (color) root.style.setProperty(property, color);
+    const value = values[property];
+    if (isHexColor(value))
+      root.style.setProperty(property, value.toLowerCase());
     else root.style.removeProperty(property);
   }
 }
@@ -410,7 +290,7 @@ function writeMode(
  */
 export function applyBrandingTheme(
   root: HTMLElement,
-  overrides: BrandingThemeOverrides | null,
+  overrides: Readonly<BrandingThemeOverrides> | null,
 ): void {
   const state = rootState.get(root);
   const empty = !overrides || MODES.every((mode) => !overrides[mode]);
@@ -447,7 +327,7 @@ export const BRANDING_THEME_STORAGE_KEY = 'station-branding-theme-v1';
 
 export function resolveCachedBrandingTheme(
   raw: string | null,
-): BrandingThemeOverrides | null {
+): AcceptedBrandOverride | null {
   if (!raw) return null;
   try {
     const { overrides } = resolveBrandingTheme(JSON.parse(raw));

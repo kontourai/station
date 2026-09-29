@@ -1440,7 +1440,8 @@ every key is one of `--k-brand`, `--k-brand-contrast`, `--k-action`,
 `--k-action-contrast` or `--k-focus`, every value is `#rgb`/`#rrggbb`, and
 every check from the "White-label overrides" section in
 [`@kontourai/ui`'s DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md#white-label-overrides)
-passes in both modes; otherwise it applies none of it and keeps the default.
+(the package's `validateBrandOverride`) and Station's stricter text checks
+pass in both modes; otherwise it applies none of it and keeps the default.
 The rules and a worked provider are in
 [examples/custom-branding](../../examples/custom-branding/README.md).
 

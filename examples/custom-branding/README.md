@@ -44,8 +44,10 @@ uses it. Installation and rendered branding were not exercised in this audit.
 `getTheme()` returns white-label overrides for the `@kontourai/ui` brand slot and
 interaction roles. The rules come from the "White-label overrides" section of
 [`@kontourai/ui`'s DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md#white-label-overrides);
-the [validation](../../src-ui/src/lib/branding-theme.ts) applies a theme that
-passes to buttons, accents and focus rings in both modes.
+the [validation](../../src-ui/src/lib/branding-theme.ts) runs the package's own
+`validateBrandOverride` (`@kontourai/ui/contrast`) plus two stricter Station
+rules, and applies a theme that passes to buttons, accents and focus rings in
+both modes.
 
 Shape:
 
@@ -61,8 +63,8 @@ What Station accepts:
 
 | Property | Role | Check (per mode, against that mode's page and panel) |
 | --- | --- | --- |
-| `--k-brand`, `--k-brand-contrast` | Identity accent and the text on a brand fill | brand ≥ 4.5:1 on page and panel; brand/contrast pair ≥ 4.5:1 (an unset half uses the shipped value) |
-| `--k-action`, `--k-action-contrast` | Primary action fill and its text | both or neither; pair ≥ 4.5:1; fill ≥ 4.5:1 on page and panel, because Station also uses it as accent text |
+| `--k-brand`, `--k-brand-contrast` | Identity accent and the text on a brand fill | brand ≥ 4.5:1 on page and panel (the shared rule asks 3:1 on the page; Station also uses the brand as text there); brand/contrast pair ≥ 4.5:1 (an unset half uses the shipped value) |
+| `--k-action`, `--k-action-contrast` | Primary action fill and its text | both or neither; pair ≥ 4.5:1; fill ≥ 4.5:1 on page and panel (the shared rule asks 3:1 on the panel; Station also uses the fill as accent text) |
 | `--k-focus` | Keyboard focus ring | ≥ 3:1 on page and panel |
 
 - Values must be `#rgb` or `#rrggbb`. Named colours, `rgb()`, `var()`, `url()`,
@@ -74,9 +76,9 @@ What Station accepts:
 - Flat keys are expanded into both modes before checking, so a flat value must
   pass in both. One value rarely does; prefer the `dark` / `light` objects.
 - A device accent chosen in **Settings → Appearance** still colours buttons and
-  links on that device over the theme's action colour. Focus rings follow
-  `--k-focus` when the theme (or a Dev, Beta or Nightly build) sets it, and
-  the device accent otherwise.
+  links on that device over the theme's action colour. Focus rings always
+  follow `--k-focus`: the theme's, a Dev, Beta or Nightly build's, or the
+  shipped one.
 
 ## Disable without uninstalling
 
