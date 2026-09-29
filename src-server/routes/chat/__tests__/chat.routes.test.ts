@@ -506,6 +506,12 @@ describe('Chat Routes', () => {
         'The model provider returned an error (HTTP 503).',
       ],
       [
+        'a statusless provider error naming credentials',
+        () => providerError(undefined, `invalid credential ${secret}`),
+        401,
+        'The model provider rejected the credentials.',
+      ],
+      [
         'a Station-authored error',
         async () => new Error('Prompt template is missing'),
         500,

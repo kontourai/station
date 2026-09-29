@@ -133,7 +133,11 @@ export function outwardModelProviderError(
       credentialsInferred: false,
     };
   }
-  return { text: MODEL_PROVIDER_REQUEST_FAILED, credentialsInferred: false };
+  const wording = error instanceof Error ? error.message : '';
+  return isCredentialShapedMessage(wording) ||
+    isCredentialShapedMessage(providerError.message)
+    ? { text: MODEL_PROVIDER_CREDENTIALS_REJECTED, credentialsInferred: true }
+    : { text: MODEL_PROVIDER_REQUEST_FAILED, credentialsInferred: false };
 }
 
 /** {@link outwardModelProviderError}'s text alone. */
