@@ -9699,7 +9699,7 @@
     {
       "path": "docs/design/session-tape-replay.md",
       "documentDigest": "4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "d543d150a60b701d6768f8cc15d805c4b9adfcb8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9806,7 +9806,8 @@
         "Merge review (origin/main into #2915/#2916): Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Its Codex claims are the steering mapping and replay fixtures; the approval reply and comment changes do not affect them, and #2915 only added the optional approvalSessionGrant part field. Prose accurate.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Mentions approval only as a replayed event/disabled action class; no approval-card layout or colour claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card styling claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. The design's tape, replay and DOM-observation claims do not depend on approval-card layout or on which session button renders; the #2917 e2e spec passes on the merged tree. Prose accurate."
       ]
     },
     {
@@ -11861,7 +11862,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "d543d150a60b701d6768f8cc15d805c4b9adfcb8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11869,7 +11870,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "8040ed3ab761e0b229018833f8462fcd63db1c6caf32bf7b65a585b52aa41e8e"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -12378,7 +12379,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Approval here is key/device approval flow; no tool-call card styling claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval here is key/device approval; no tool-call card claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. Its captures (connections tour and models) are not approval cards, and its approval mentions are signing-key approval. Prose accurate."
       ]
     },
     {
@@ -14714,7 +14716,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "d543d150a60b701d6768f8cc15d805c4b9adfcb8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14722,7 +14724,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "8040ed3ab761e0b229018833f8462fcd63db1c6caf32bf7b65a585b52aa41e8e"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14878,7 +14880,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. No tool-call, approval-card or button-state claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No tool-call card or button-state claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. Its Knowledge Library captures and claims involve no approval card. Prose accurate."
       ]
     },
     {
@@ -18887,7 +18890,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "d543d150a60b701d6768f8cc15d805c4b9adfcb8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18895,7 +18898,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "8040ed3ab761e0b229018833f8462fcd63db1c6caf32bf7b65a585b52aa41e8e"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -19137,7 +19140,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Approval here is the Notifications inspection flow, not the inline approval card; no styling claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval flow only; no inline approval-card styling claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. Its inspect-approval flow uses the request inspector (Approve once and Deny), whose capture was re-recorded unchanged in content; the approval card's session button is not part of it. Prose accurate."
       ]
     },
     {
@@ -20707,7 +20711,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "d543d150a60b701d6768f8cc15d805c4b9adfcb8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20715,7 +20719,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "8040ed3ab761e0b229018833f8462fcd63db1c6caf32bf7b65a585b52aa41e8e"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20933,7 +20937,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Approval scene is the Notifications request inspection, not the inline tool-call card; no claim touched.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval scene is Notifications inspection, not the inline card; no claim touched.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. The request-inspection scene's captures were re-recorded with both sides' notes; the scene inspects and closes without a decision, and the card CSS and session-button changes do not appear in it. Prose accurate."
       ]
     },
     {
@@ -21594,7 +21599,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "d543d150a60b701d6768f8cc15d805c4b9adfcb8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21602,7 +21607,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "8040ed3ab761e0b229018833f8462fcd63db1c6caf32bf7b65a585b52aa41e8e"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21694,7 +21699,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Disabled-connection wording only; no UI styling claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No UI styling claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. Its evidence cites the connections-models capture only, which neither change touches. Prose accurate."
       ]
     },
     {
@@ -24060,7 +24066,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "d543d150a60b701d6768f8cc15d805c4b9adfcb8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -24068,7 +24074,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "8040ed3ab761e0b229018833f8462fcd63db1c6caf32bf7b65a585b52aa41e8e"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -24154,7 +24160,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. No tool-call card or approval-button claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. Its evidence cites the shared-task-document capture only, which neither change touches. Prose accurate."
       ]
     },
     {
@@ -26922,7 +26929,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "d543d150a60b701d6768f8cc15d805c4b9adfcb8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26943,7 +26950,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "8040ed3ab761e0b229018833f8462fcd63db1c6caf32bf7b65a585b52aa41e8e"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -27122,7 +27129,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Approval section describes Notifications Inspect request / Approve once / Deny, not the inline card styling; no claim touched.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval buttons (Approve once/Deny) are a different surface; no claim touched.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. Approve once and Deny behave as before; the card's buttons now wrap at narrow width and the session button may be absent or relabelled, neither of which the guide describes. Prose accurate."
       ]
     },
     {
@@ -27997,7 +28005,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "d543d150a60b701d6768f8cc15d805c4b9adfcb8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -28005,7 +28013,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "8040ed3ab761e0b229018833f8462fcd63db1c6caf32bf7b65a585b52aa41e8e"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -28115,7 +28123,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. No tool-call card or approval-button claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. Its Knowledge Library captures involve no approval card. Prose accurate."
       ]
     },
     {
