@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import {
   OPERATIONAL_EVENT_SCHEMA_VERSION,
   type OperationalEventEnvelope,
-  type OperationalEventJson,
 } from '@kontourai/station-contracts/operational-event';
 import {
   PLUGIN_COMMAND_EFFECT_EVENT_SCHEMA,
@@ -83,6 +82,10 @@ const CAUSES: readonly PluginCommandWithdrawalCause[] = [
   'update',
   'grant-withdrawal',
 ];
+const isWithdrawalCause = (
+  value: unknown,
+): value is PluginCommandWithdrawalCause =>
+  CAUSES.some((cause) => cause === value);
 /** Client-chosen ids: opaque, bounded, and safe in logs and event payloads. */
 const CLIENT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/;
 const DOCUMENT_KEY = /^[A-Za-z0-9_-]{32,256}$/;
@@ -213,6 +216,12 @@ const isBoundedString = (value: unknown, max: number): value is string =>
 const OUTCOMES = new Set<string>(PLUGIN_COMMAND_EFFECT_OUTCOMES);
 const SETTLED_BY = new Set<string>(['document', 'operator', 'station']);
 
+const isOutcome = (value: unknown): value is PluginCommandEffectOutcome =>
+  typeof value === 'string' && OUTCOMES.has(value);
+
+const isSettledBy = (value: unknown): value is PluginCommandEffectSettledBy =>
+  typeof value === 'string' && SETTLED_BY.has(value);
+
 /** Canonical byte measure: exactly the document the store writes. */
 function ledgerBytes(ledger: PluginCommandEffectLedger): number {
   return Buffer.byteLength(serializeJsonDocument(ledger, JSON_INDENT, false));
@@ -276,27 +285,52 @@ function parseEffect(value: unknown): EffectRecord | null {
     !isBoundedString(value.installationGeneration, MAX_GENERATION) ||
     typeof value.requiresPluginServer !== 'boolean' ||
     !isBoundedString(value.commandId, MAX_COMMAND_ID) ||
-    !parsePluginCommandEffectTarget(value.target) ||
     typeof value.effectDigest !== 'string' ||
     !SHA256.test(value.effectDigest) ||
-    (value.state !== 'admitted' && !OUTCOMES.has(value.state as string)) ||
     !isTimestamp(value.admittedAt) ||
     !isNonNegativeInteger(value.conflicts)
   )
     return null;
-  const terminal = value.state !== 'admitted';
+  const target = parsePluginCommandEffectTarget(value.target);
+  if (!target) return null;
+  const state: PluginCommandEffectState | null =
+    value.state === 'admitted'
+      ? 'admitted'
+      : isOutcome(value.state)
+        ? value.state
+        : null;
+  if (!state) return null;
+  const { settledBy, settledAt, lateOutcome } = value;
+  const terminal = state !== 'admitted';
   if (
-    terminal !==
-      (value.settledBy !== undefined && value.settledAt !== undefined) ||
-    (value.settledBy !== undefined &&
-      !SETTLED_BY.has(value.settledBy as string)) ||
-    (value.settledAt !== undefined && !isTimestamp(value.settledAt)) ||
-    (value.lateOutcome !== undefined &&
-      (!OUTCOMES.has(value.lateOutcome as string) ||
-        value.settledBy !== 'operator'))
+    terminal !== (settledBy !== undefined && settledAt !== undefined) ||
+    (settledBy !== undefined && !isSettledBy(settledBy)) ||
+    (settledAt !== undefined && !isTimestamp(settledAt)) ||
+    (lateOutcome !== undefined &&
+      (!isOutcome(lateOutcome) || settledBy !== 'operator'))
   )
     return null;
-  return structuredClone(value) as unknown as EffectRecord;
+  // Rebuilt from the validated fields, so the record owns no caller object.
+  return {
+    effectId: value.effectId,
+    sequence: value.sequence,
+    documentId: value.documentId,
+    documentKeyDigest: value.documentKeyDigest,
+    requestId: value.requestId,
+    principalId: value.principalId,
+    pluginId: value.pluginId,
+    installationGeneration: value.installationGeneration,
+    requiresPluginServer: value.requiresPluginServer,
+    commandId: value.commandId,
+    target,
+    effectDigest: value.effectDigest,
+    state,
+    ...(isSettledBy(settledBy) ? { settledBy } : {}),
+    admittedAt: value.admittedAt,
+    ...(isTimestamp(settledAt) ? { settledAt } : {}),
+    conflicts: value.conflicts,
+    ...(isOutcome(lateOutcome) ? { lateOutcome } : {}),
+  };
 }
 
 function parseWithdrawal(value: unknown): WithdrawalRecord | null {
@@ -321,9 +355,7 @@ function parseWithdrawal(value: unknown): WithdrawalRecord | null {
     !Array.isArray(value.causes) ||
     value.causes.length === 0 ||
     new Set(value.causes).size !== value.causes.length ||
-    !value.causes.every((cause) =>
-      CAUSES.includes(cause as PluginCommandWithdrawalCause),
-    ) ||
+    !value.causes.every(isWithdrawalCause) ||
     !isTimestamp(value.createdAt) ||
     !Array.isArray(value.outstanding) ||
     value.outstanding.length >
@@ -331,6 +363,9 @@ function parseWithdrawal(value: unknown): WithdrawalRecord | null {
     !isNonNegativeInteger(value.settled)
   )
     return null;
+  const causes: PluginCommandWithdrawalCause[] =
+    value.causes.filter(isWithdrawalCause);
+  const outstanding: WithdrawalRecord['outstanding'] = [];
   for (const capture of value.outstanding) {
     if (
       !isRecord(capture) ||
@@ -339,19 +374,38 @@ function parseWithdrawal(value: unknown): WithdrawalRecord | null {
       !isTimestamp(capture.capturedAt)
     )
       return null;
+    outstanding.push({
+      effectId: capture.effectId,
+      capturedAt: capture.capturedAt,
+    });
   }
+  let resolution: WithdrawalRecord['resolution'];
   if (value.resolution !== undefined) {
-    const resolution = value.resolution;
+    const candidate = value.resolution;
     if (
-      !isRecord(resolution) ||
-      !hasExactFields(resolution, ['disposition', 'resolvedAt', 'abandoned']) ||
-      resolution.disposition !== 'accept-indeterminate' ||
-      !isTimestamp(resolution.resolvedAt) ||
-      !isNonNegativeInteger(resolution.abandoned)
+      !isRecord(candidate) ||
+      !hasExactFields(candidate, ['disposition', 'resolvedAt', 'abandoned']) ||
+      candidate.disposition !== 'accept-indeterminate' ||
+      !isTimestamp(candidate.resolvedAt) ||
+      !isNonNegativeInteger(candidate.abandoned)
     )
       return null;
+    resolution = {
+      disposition: candidate.disposition,
+      resolvedAt: candidate.resolvedAt,
+      abandoned: candidate.abandoned,
+    };
   }
-  return structuredClone(value) as unknown as WithdrawalRecord;
+  return {
+    withdrawalId: value.withdrawalId,
+    sequence: value.sequence,
+    pluginId: value.pluginId,
+    causes,
+    createdAt: value.createdAt,
+    outstanding,
+    settled: value.settled,
+    ...(resolution ? { resolution } : {}),
+  };
 }
 
 function parseTombstone(value: unknown): TombstoneRecord | null {
@@ -376,7 +430,14 @@ function parseTombstone(value: unknown): TombstoneRecord | null {
     !isTimestamp(value.createdAt)
   )
     return null;
-  return structuredClone(value) as unknown as TombstoneRecord;
+  return {
+    sequence: value.sequence,
+    documentId: value.documentId,
+    documentKeyDigest: value.documentKeyDigest,
+    requestId: value.requestId,
+    principalId: value.principalId,
+    createdAt: value.createdAt,
+  };
 }
 
 const isOpenWithdrawal = (withdrawal: WithdrawalRecord) =>
@@ -720,7 +781,9 @@ export function createPluginCommandEffectService(
     } = {},
   ): boolean => {
     if (!options.publishAudit) return true;
-    const data: PluginCommandEffectEventData = {
+    // Checked against the contract's payload shape, and inferred as a plain
+    // JSON object so it is an OperationalEventJson without a cast.
+    const data = {
       effectId: effect.effectId,
       principalId: effect.principalId,
       pluginId: effect.pluginId,
@@ -730,7 +793,7 @@ export function createPluginCommandEffectService(
       outcome,
       ...(extra.settledBy ? { settledBy: extra.settledBy } : {}),
       ...(extra.disposition ? { disposition: extra.disposition } : {}),
-    };
+    } satisfies PluginCommandEffectEventData;
     try {
       return options.publishAudit({
         schemaVersion: OPERATIONAL_EVENT_SCHEMA_VERSION,
@@ -751,8 +814,7 @@ export function createPluginCommandEffectService(
         scopes: [{ kind: 'plugin', pluginId: effect.pluginId }],
         payload: {
           schema: PLUGIN_COMMAND_EFFECT_EVENT_SCHEMA,
-          // The contract type names the one-way payload shape; JSON-safe by construction.
-          data: data as unknown as OperationalEventJson,
+          data,
         },
         privacy: 'private',
         delivery: 'durable',
