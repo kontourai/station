@@ -575,9 +575,7 @@ describe('POST /core-update on a launcher-run archive', () => {
 
   test('a redirect with no location is a failed check', async () => {
     const install = makeInstall();
-    fetchFn.mockImplementation(
-      async () => new Response(null, { status: 302 }),
-    );
+    fetchFn.mockImplementation(async () => new Response(null, { status: 302 }));
     expect(
       await json(await createApp(install).request('/core-update')),
     ).toMatchObject({ releaseCheck: 'unreachable', updateAvailable: false });
