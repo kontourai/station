@@ -149,7 +149,12 @@ Session instead of falling back to the Project directory. Its opaque
 instance and state keys never encode a path, and host geometry never contains
 file intent. The host restores it only when the builtin descriptor, renderer,
 provenance, bound Project/source context, and separately validated state all
-match the exact built-in contract.
+match the exact built-in contract. Source is coloured by the shared Shiki
+highlighter (the chat highlight worker) and rendered as text, never markup; the
+2,000-line render cap and any refusal to colour are stated in the pane. Its
+Changes view reads that one file against HEAD through the preview route's own
+path and Session rules (`file-preview/changes`), under the same repository
+config refusal as the coding diff, and refuses an oversized patch.
 _Avoid_: an editor, browser, native file handle, or renderer supplied by persistence
 
 **Readiness panel**:

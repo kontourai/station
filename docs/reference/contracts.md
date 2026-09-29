@@ -450,6 +450,14 @@ compatibility with adapters that do not implement in-app review.
 and indeterminate attempts. A forge review is not a Station gate verdict.
 `PullRequestMergeInput.expectedHeadSha` optionally constrains merge admission to
 the inspected revision; review-origin merges observe the resulting provider state.
+The snapshot's optional `checks` and `reviewComments` are observations too.
+`checks` lists the provider's CI for the observed head (GitHub's check runs and
+commit statuses, GitLab's head pipeline only when it ran on that head); an
+entry the reader cannot classify makes it `partial` rather than guessed.
+`reviewComments` carries inline comments with their diff side and line, `line`
+null once the forge no longer maps the comment onto the diff. Either field
+absent means the server did not observe it, and `unavailable` carries the
+reason; neither is an empty list standing in for "none".
 
 `PullRequestBranchMergeability` on `pull-request-provider` is a conflict
 indicator's read: one open pull request's ref, source branch and mergeability,
