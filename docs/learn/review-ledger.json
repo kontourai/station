@@ -5663,8 +5663,8 @@
     },
     {
       "path": "docs/conformance/station-runtime-conformance.md",
-      "documentDigest": "2aa80fa282a261b83f2b01aa9d135c187be076ab86b8dddbabdb32023ff6833e",
-      "sourceRevision": "e5efef30008198db7198fe9dac38f3ad632c6621",
+      "documentDigest": "e10a596e445fdd2be4d888baee7d4e3e32d696fbeffc525b3f78d7f878423a30",
+      "sourceRevision": "7a219fff99150142594758250b1392993575e2d4",
       "kind": "generated",
       "state": "classified",
       "summary": "Read the host-conformance matrix and corrected its source path at the generator.",
@@ -5672,7 +5672,7 @@
       "sources": [
         {
           "path": "docs/conformance/station-runtime-conformance.json",
-          "digest": "cbc50694ef250065ab80f9b05865d59cbeef8a15177e6d805b9818c7550794d2"
+          "digest": "0e490185dc517a73778f26db61735d8d0fe74f597ebca0ed1afc46c62c620bf3"
         },
         {
           "path": "scripts/generate-runtime-conformance.mjs",
@@ -5684,7 +5684,8 @@
         }
       ],
       "checks": [
-        "Integration source review through d1e0facc2: Capabilities became a private immutable constant with the same availability values. Existing prose remains accurate. Source review is separate from executed test evidence."
+        "Integration source review through d1e0facc2: Capabilities became a private immutable constant with the same availability values. Existing prose remains accurate. Source review is separate from executed test evidence.",
+        "Regenerated with npm run conduit:conformance:generate after the @strands-agents/sdk bump in #2599 (station-strands host version 1.15.0 to 1.18.0). The regeneration changed exactly one line in each generated file, the station-strands hostVersion; every capability, verdict and note in the table is unchanged. The generator's --check passes on the committed bytes."
       ]
     },
     {
@@ -7313,7 +7314,7 @@
     {
       "path": "docs/design/conduit-runtime-integration.md",
       "documentDigest": "92b017dfab71e1bd1ed9c41545c8e5aab4373b8093c9246f80667d544a9f32f0",
-      "sourceRevision": "bbe0b19ca169f92879678c447bdd3c8963bb9f66",
+      "sourceRevision": "7a219fff99150142594758250b1392993575e2d4",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete Station-engine hook projection against actual VoltAgent and Strands callers, before/after-tool and completion forwarding, public Conduit adapter, capability classification, lockfile identity and generated conformance report. Clarified what the host-bound label and portable probes establish.",
@@ -7321,7 +7322,7 @@
       "sources": [
         {
           "path": "docs/conformance/station-runtime-conformance.json",
-          "digest": "cbc50694ef250065ab80f9b05865d59cbeef8a15177e6d805b9818c7550794d2"
+          "digest": "0e490185dc517a73778f26db61735d8d0fe74f597ebca0ed1afc46c62c620bf3"
         },
         {
           "path": "package.json",
@@ -7367,7 +7368,8 @@
         "Integration source review through d1e0facc2: Tests now call the real adapter capability/projection surface. Capabilities became a private immutable constant with the same availability values. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: package.json and pnpm-lock.yaml only removed the root bearing/forage dependencies. Conduit 0.7.1 and the VoltAgent/Strands lockfile identities are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Cites station-runtime-conformance.json, whose only change is the station-strands hostVersion (1.15.0 to 1.18.0) from the #2599 dependency bump. Searched this page for 1.15.0, 1.18.0 and hostVersion and found none, and it states no capability or verdict that moved, so its statements still hold. Checked by search plus the generated diff, not a full re-read."
       ]
     },
     {
