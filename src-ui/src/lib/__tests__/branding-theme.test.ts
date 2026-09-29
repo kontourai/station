@@ -259,6 +259,25 @@ describe('resolveBrandingTheme', () => {
     });
   });
 
+  test('a brand with only an action contrast stays an unpaired action', () => {
+    // The author set the text colour for an action they did not supply. The
+    // brand must not be expanded into the action over it (which would also
+    // replace their contrast); the half pair is rejected as the package's
+    // unpaired-action.
+    const { overrides, violations } = resolveBrandingTheme({
+      light: { '--k-brand': '#1d4ed8', '--k-action-contrast': '#fefefe' },
+    });
+    expect(overrides).toEqual({});
+    // The package names the missing half of the pair.
+    expect(violations).toEqual([
+      expect.objectContaining({
+        kind: 'unpaired-action',
+        mode: 'light',
+        property: '--k-action',
+      }),
+    ]);
+  });
+
   test('a theme that sets its own action keeps it', () => {
     const { overrides, violations } = resolveBrandingTheme({
       light: {
