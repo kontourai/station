@@ -235,6 +235,16 @@ REASONED means I read it from the code or the platform documentation.
     the installer reuses), and install.ps1 runs the installed
     `current\runtime\node.exe` only for a root beneath the profile with no
     reparse point on the way. W2's ACL checks lift the restriction.
+  - Every root variable (`STATION_ROOT`, `STATION_INSTALL_ROOT`,
+    `STATION_HOME`) must be absolute (drive-qualified or UNC on Windows):
+    install.ps1 refuses a relative one before it looks for any Node.js,
+    because .NET and PowerShell resolve relative paths against different
+    directories, and the core refuses it too.
+  - Accepted gap in W1: the user profile is read from `USERPROFILE` on both
+    sides (as Node.js's `os.homedir()` does), so a caller who points
+    `USERPROFILE` elsewhere moves the trusted area with it. That is the
+    caller's own choice, not another user's, and the Windows smoke relies on
+    it to use a private profile.
   - Accepted gaps in W1: the download guard that refuses a redirect away
     from HTTPS has no test (a loopback HTTPS server needs a certificate for
     127.0.0.1); the zip reader does not fold Unicode case pairs beyond

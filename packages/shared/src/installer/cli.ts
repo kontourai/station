@@ -7,7 +7,11 @@
  */
 import { runInstaller } from './install.js';
 
-export { runInstaller, windowsInstallRootRefusal } from './install.js';
+export {
+  isAbsoluteRoot,
+  runInstaller,
+  windowsInstallRootRefusal,
+} from './install.js';
 export { verifyInstallManifest } from './manifest.js';
 
 if (typeof require !== 'undefined' && require.main === module) {

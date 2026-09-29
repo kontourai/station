@@ -9,7 +9,10 @@ import {
   DownloadTooLarge,
   downloadCapped,
 } from '../../packages/shared/src/installer/download.js';
-import { windowsInstallRootRefusal } from '../../packages/shared/src/installer/install.js';
+import {
+  isAbsoluteRoot,
+  windowsInstallRootRefusal,
+} from '../../packages/shared/src/installer/install.js';
 import {
   ManifestRefusal,
   verifyInstallManifest,
@@ -358,6 +361,23 @@ describe('installer Windows install-root rule (#2675 W1)', () => {
     expect(
       windowsInstallRootRefusal('/home/user2/.station', '/home/u'),
     ).not.toBeNull();
+  });
+});
+
+describe('installer absolute-root rule', () => {
+  it.each<[string, NodeJS.Platform, boolean]>([
+    ['C:\\Users\\u\\.station', 'win32', true],
+    ['C:/Users/u/.station', 'win32', true],
+    ['\\\\server\\share\\station', 'win32', true],
+    ['station', 'win32', false],
+    ['.\\station', 'win32', false],
+    ['C:station', 'win32', false],
+    ['\\station', 'win32', false],
+    ['/home/u/.station', 'linux', true],
+    ['station', 'linux', false],
+    ['./station', 'linux', false],
+  ])('%j on %s is absolute: %s', (value, platform, expected) => {
+    expect(isAbsoluteRoot(value, platform)).toBe(expected);
   });
 });
 

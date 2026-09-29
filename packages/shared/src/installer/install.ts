@@ -300,7 +300,35 @@ export function windowsInstallRootRefusal(
   return `on Windows, install.ps1 installs only beneath your user profile (${profile}) until it checks install-root permissions (#2675 slice W2); ${installRoot} is outside it`;
 }
 
+/**
+ * A root the installer accepts: absolute, and on Windows drive-qualified or
+ * UNC (`\\foo` and `C:foo` depend on the current drive or its directory). A
+ * relative root would resolve against whichever directory a caller's tool
+ * uses, which install.ps1 cannot keep consistent (#2675 W1 review).
+ */
+export function isAbsoluteRoot(
+  value: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (platform === 'win32')
+    return /^(?:[A-Za-z]:[\\/]|[\\/]{2}[^\\/])/.test(value);
+  return value.startsWith('/');
+}
+
+function assertAbsoluteRoots(env: InstallerEnv): void {
+  for (const name of [
+    'STATION_ROOT',
+    'STATION_INSTALL_ROOT',
+    'STATION_HOME',
+  ] as const) {
+    const value = (env[name] ?? '').trim();
+    if (value !== '' && !isAbsoluteRoot(value))
+      fail(`${name} must be an absolute path: ${env[name]}`);
+  }
+}
+
 function resolvePaths(env: InstallerEnv, channel: string, ring: string): Paths {
+  assertAbsoluteRoots(env);
   const stationRoot = canonicalize(
     (env.STATION_ROOT ?? '').trim() || join(homedir(), '.station'),
   );

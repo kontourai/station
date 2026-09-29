@@ -429,6 +429,16 @@ describe('install.ps1 installer core: stage-only (#2675 W1)', () => {
       message:
         'Station install failed: STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL is a test-only override and requires STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1',
     },
+    ...(['STATION_ROOT', 'STATION_INSTALL_ROOT', 'STATION_HOME'] as const).map(
+      (name) => ({
+        name: `a relative ${name}`,
+        run: (f: Fixture) =>
+          stage(f, signed(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12')), {
+            [name]: 'relative-root',
+          }),
+        message: `Station install failed: ${name} must be an absolute path: relative-root`,
+      }),
+    ),
     {
       name: 'a full install, which W1 does not implement yet',
       run: (f) =>

@@ -217,11 +217,11 @@ function environment(stationRoot, manifestUrl) {
   };
 }
 
-function runAsync(program, args, env) {
+function runAsync(program, args, env, cwd = undefined) {
   // The server answers in this process, so the child must not block it:
   // spawn and wait on its exit rather than spawnSync.
   return new Promise((done) => {
-    const child = spawn(program, args, { env, windowsHide: true });
+    const child = spawn(program, args, { env, windowsHide: true, cwd });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => {
@@ -420,6 +420,48 @@ try {
       `install.ps1 took the caller's argument under ${shell}`,
     );
   }
+
+  // A relative root, after Set-Location to a directory outside the profile
+  // that holds a planted current\runtime\node.exe, while the process
+  // directory is the profile: .NET would resolve the root inside the profile
+  // and PowerShell outside it. install.ps1 must refuse the root before it
+  // looks for any Node.js.
+  const elsewhere = join(work, 'elsewhere');
+  const plantedInstall = join(elsewhere, 'rel-root', 'installs', first.runtime);
+  mkdirSync(plantedInstall, { recursive: true });
+  symlinkSync(
+    join(installRoot, 'versions', first.version),
+    join(plantedInstall, 'current'),
+    'junction',
+  );
+  const relative = await runAsync(
+    windowsPowerShell,
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      `Set-Location -LiteralPath '${elsewhere.replaceAll("'", "''")}'; & '${installScript.replaceAll("'", "''")}' install; exit $LASTEXITCODE`,
+    ],
+    environment('rel-root', publish('relative', first)),
+    profile,
+  );
+  check(
+    relative.status === 1,
+    `a relative root: expected exit 1, got ${relative.status}`,
+  );
+  check(
+    relative.stderr.includes(
+      'Station install failed: STATION_ROOT must be an absolute path: rel-root',
+    ),
+    'a relative root: expected the absolute-path refusal',
+  );
+  check(
+    !relative.stdout.includes('Using the Node.js of the installed Station') &&
+      !relative.stdout.includes('Downloading Node.js'),
+    'a relative root: a Node.js was looked for before the refusal',
+  );
 
   // 5. Refusals on this host; each uses a fresh root and stages nothing.
   const tampered = Buffer.from(readFileSync(first.path));
