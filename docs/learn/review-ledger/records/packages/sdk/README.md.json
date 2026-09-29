@@ -18,9 +18,9 @@
 
     {"path":"packages/sdk/package.json","digest":"efcbeb1cf58acd8b9cab21a98044292b901b5fca14667336b77619454e36a761","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"f1e89d78c84ad0c285f88847ebd239b7ed688fb443de94e428652a8d796c837d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/client/task-tool-results.ts","digest":"d1088e84b08ca124ef6624a47fbdcc312858fe19fe2de3dc6a947eaf3871a23d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/sdk/src/client/task-tool-results.ts","digest":"94e178a403f76b07711e040fe524f202e9646fd6386563e422f3b340d78ee7de","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/sdk/src/components/Button.tsx","digest":"04dddb6942c46db2822d0fb7e2e42088190140fe33fe2c824fe441f51c8a9758","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

@@ -20,7 +20,7 @@
 
     {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"74f114c17b97532029176c2c2d6cf9279f9620193297f2ba7a74dae62a262c80","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"c53f7ddcd9f98e70c6a3ad0085fa0cbc2d4e2cb7e7ac0885c80f6a8728248e41","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/services/plugins/__tests__/registry-trust-policy.test.ts","digest":"c39ee84969bbf59215050bec068c4b032b6c94db71443ec9774eb48a3b6a05f4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

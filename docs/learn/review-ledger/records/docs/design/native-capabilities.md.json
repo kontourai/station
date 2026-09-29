@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
 
-  "document": {"digest":"3a02d05bd97995747fe2b0fca97a3917b11909cc0baa2f8a7695df920a8a2e90","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+  "document": {"digest":"98c83399ec14d6d59fb414ceeb805d33e3af952853fcdc0e1bfdb377c4c4f451","revision":"29421a64d5ab7e0b1ca095a8b5e0afe665e19539"},
 
   "sources": [
     {"path":"scripts/native-platform-boundary.mjs","digest":"683fa02581626bf5dfdd57e45be7224aa4df112aaa341646233f0ef9254eb883","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
@@ -52,7 +52,11 @@
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"c702b8c3079399f04156eef2a27fee77e36930042ed8d2d7ebf18d65c0869318","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/nativeApplicationSignalingBridge.ts","digest":"1d795d9736c057647572a7f02a1a916355e072cbe072c1234c5ed433d3b7c00c","revision":"29421a64d5ab7e0b1ca095a8b5e0afe665e19539"},
+
+    {"path":"src-ui/src/platform/native/nativeRelaySignalingBridge.ts","digest":"e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914","revision":"29421a64d5ab7e0b1ca095a8b5e0afe665e19539"}
   ],
 
   "checks": [

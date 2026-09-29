@@ -684,6 +684,7 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
 export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
+  'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
   // Scans src-server, packages/shared/src and packages/cli/src for Station
   // home-root literals the store registry must list (#2675 D1).

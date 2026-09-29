@@ -9,14 +9,16 @@
 
   "limits": "No full delegation/read-scope/security audit, real mutual pairing ceremony, SSH remote or target-execution proof.",
 
-  "document": {"digest":"52cb07412cb45ae4d82fd9e47ba27bc6537ee76f746937e1dd858eb38415ea22","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+  "document": {"digest":"c2844918dc78fd9924dd1fd1f9dfe649ef85d4ad1e6d7d89af148d17b84d239e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
   "sources": [
     {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/services/peers/peer-credential-store.ts","digest":"fef64d7f8506eb00af29437bc63afff2bf0322989f66df0c57dcd741e24fec1b","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-server/services/peers/peer-credential-store.ts","digest":"08c2e2a1069e62cdc8196dffe4ed7a9c0dfc709047431d775e70c3c30e2378c3","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"}
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"}
   ],
 
   "checks": [

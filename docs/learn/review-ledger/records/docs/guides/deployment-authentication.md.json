@@ -28,9 +28,9 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"dccdd54de750e9b1be7d24a3229c8f2808603ad20d54f5741877b88a167cd83e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"8a0628efcd689a804f3c8cdf607c4c0758b0d6ee32de864c08995915d26cd5ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"88ffa5c4838158efb5abfcf83b25f635fdd5ac153dd08f016c8e64efbdeabc2f","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"b1d2d767bfcb40263c2fa6316832a4b2c0b1a1f4cb07504f519aec83300d6f46","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/services/identity/application-session-service.ts","digest":"cc70339848fe5e20624f090135360d8f7794b9b7897c387fb3705afe47eed8db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

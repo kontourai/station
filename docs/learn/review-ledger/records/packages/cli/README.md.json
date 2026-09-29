@@ -26,7 +26,7 @@
 
     {"path":"packages/cli/src/commands/core.ts","digest":"0e18d32b586b3453b16f57669f84c0460a474889d71ebbd1c188774e12fe325b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/environment.ts","digest":"04c64d45b9fbe4a43b35611e86011b1bca94a36c4c6692f51a9c2d3790f72658","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/cli/src/commands/model-options.ts","digest":"e68be321336c9a6cccdd2e6fb30ce12921e8007106ec94e548f81218ba17120a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

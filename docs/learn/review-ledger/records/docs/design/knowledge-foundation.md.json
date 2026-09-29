@@ -20,7 +20,7 @@
 
     {"path":"packages/contracts/src/knowledge-store.ts","digest":"681a068bbd122d766068a39934873ff9bdf071033753317a380af8023a4335b3","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3cce37501a5cb2b8233624c5a831b9dbeed2fdecbfe9f24bb5716413ed060ac4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/knowledge-index/migrate-pre-index-knowledge.ts","digest":"f00bf506fff7fb1ef1ec2c846e50e3e81b451e24b415184b274b18f93a08ca51","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

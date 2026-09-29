@@ -12,7 +12,7 @@
   "document": {"digest":"2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"3739f46c85f8c1cf64e0ff9fbadbb7f79b041969167391d2d6f0892ce965e462","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"docs/learn/media.json","digest":"e05758675615bfd4d8b3655e80a9acde124bb8e969a756eb555c2d6d19d11b4d","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"docs/learn/media/inspect-request.png","digest":"389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -24,7 +24,7 @@
 
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"packages/sdk/src/starter-work.ts","digest":"12e01d91a629d6ddc06e9d70807feceff670837f7b406b295ff4b069b512c429","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"packages/sdk/src/starter-work.ts","digest":"65bca96961b952f47978387676e0ec2d4b9131d38a4be72617b8d0f7983aafda","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -36,7 +36,7 @@
 
     {"path":"src-server/routes/starter-work.ts","digest":"8e05baa625f020f66702b7b8504b2484da1d1ae49bd267de73ff84c6cda93d7d","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"8a0628efcd689a804f3c8cdf607c4c0758b0d6ee32de864c08995915d26cd5ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"ba6372d4e5bd961ae6c61d779eeb21dff966f1efc7c73fc2e69bb786fd535b50","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 

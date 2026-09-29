@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"packages/cli/src/commands/environment.ts","digest":"04c64d45b9fbe4a43b35611e86011b1bca94a36c4c6692f51a9c2d3790f72658","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/connect/package.json","digest":"cadd7f15866baaa9dcd17829fa6c622137e5ead7ee4b4f5b9a6723ae9d6f5cdd","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -68,13 +68,13 @@
 
     {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"dd3e65c985985b6ab47ce2d69700f04d603f9fe4e619357d38908a9ea827b967","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/routes/operations/voice.ts","digest":"492cdfda970de501b2659522e76897f2e0c268e5018fcc47f43aaf9593538b48","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"dccdd54de750e9b1be7d24a3229c8f2808603ad20d54f5741877b88a167cd83e","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"8a0628efcd689a804f3c8cdf607c4c0758b0d6ee32de864c08995915d26cd5ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"63a925322b10744eed1b8061ddaa5c6e4cd59dd6c2f5a1d0530f9fdf8d9b005d","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 

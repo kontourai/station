@@ -12,9 +12,9 @@
   "document": {"digest":"713a080bec7e77d77db623d83a52874bb698556e6ddc28bb75eda69b0e864d5b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
   "sources": [
-    {"path":".dockerignore","digest":"ed530db5077644149da9a9124e49f2b3010aa84023444ad93edbad32d5dec71d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":".dockerignore","digest":"cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"Dockerfile","digest":"21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -32,7 +32,7 @@
 
     {"path":"ops/dogfood/io.kontourai.station-dogfood.plist.template","digest":"d74edf9283a35c4abf32c10f28870128faa98570bf8136938ad04c3b28165602","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/cli/src/commands/environment.ts","digest":"04c64d45b9fbe4a43b35611e86011b1bca94a36c4c6692f51a9c2d3790f72658","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -50,7 +50,7 @@
 
     {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"scripts/__tests__/container-release.test.ts","digest":"c002a45df6f19bba02b30abb40ecb77965fd2e7f022f436403d6014f8d699ed0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"scripts/__tests__/container-release.test.ts","digest":"6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"scripts/__tests__/gcp-bootstrap.test.ts","digest":"8fe171502e96c4c50c29cda4201f147b3ebefd709a5a197e8bd0da717642a7d0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -74,11 +74,11 @@
 
     {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"c53f7ddcd9f98e70c6a3ad0085fa0cbc2d4e2cb7e7ac0885c80f6a8728248e41","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"8a0628efcd689a804f3c8cdf607c4c0758b0d6ee32de864c08995915d26cd5ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/services/orchestration/__tests__/home-reference-recovery.test.ts","digest":"fb52355a2508fffa30621e7fd7a131f809fb4c4eeebf9b59bc0fe8a95435dbaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

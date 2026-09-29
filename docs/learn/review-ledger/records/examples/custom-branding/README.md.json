@@ -16,7 +16,7 @@
 
     {"path":"examples/custom-branding/providers/branding.js","digest":"ecb6f912d0f16a799db6deba4e36af5715771b076ec50bb9b326476ae6b6da47","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"packages/sdk/src/query-domains/systemRuntimeRequests.ts","digest":"ff546b626752e81e54c5c6a6f571144ea0a283c7e073439e38361bb227ee79c5","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"packages/sdk/src/query-domains/systemRuntimeRequests.ts","digest":"162ec5e3b295d947cfcc37b8a942a86c294f855bb9b43ab072db01129477e7a4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

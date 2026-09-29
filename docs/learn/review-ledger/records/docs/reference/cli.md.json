@@ -54,7 +54,7 @@
 
     {"path":"packages/cli/src/commands/core.ts","digest":"0e18d32b586b3453b16f57669f84c0460a474889d71ebbd1c188774e12fe325b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/environment.ts","digest":"04c64d45b9fbe4a43b35611e86011b1bca94a36c4c6692f51a9c2d3790f72658","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/cli/src/commands/export.ts","digest":"e6ab16b5a85f113c559318a2616e04f7ee1cf9936aa82607909c2ad1be9d5736","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -110,13 +110,13 @@
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/src/client/cloud-move.ts","digest":"14f8572e29de010a25a513be4bfcf1fca1297e683b090b93f76a75cc215fb420","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/sdk/src/client/cloud-move.ts","digest":"f7404988ec3cb8cd76a14b1126cbc27d87952901fa1218cd6670fa5745d054b0","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"dd3e65c985985b6ab47ce2d69700f04d603f9fe4e619357d38908a9ea827b967","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/sdk/src/client/reviews.ts","digest":"8100a4534fcd3c3ca1a848a799e3928ff2fba3f39609cfe3660eea7014fc141d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/src/client/runs.ts","digest":"b4e663bcb0ab78a1c3244bbe58c6f4c7cffbeff84bc2b89a6bb26036ad0e67ac","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/sdk/src/client/runs.ts","digest":"ef0428d474c4785754f509f1ce70544391eb42f3bdc79fbf2d39f0571ed22a5a","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/shared/src/__tests__/cloud-move.test.ts","digest":"8e6a7ce1c84b2fd2638a615d4c9297125103b1a9d680f82839af706fe093b588","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -178,13 +178,13 @@
 
     {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"f75f4e446e71e75f37283f4d46f96004be4a5d676bc858e9c8c48aeca63a5bab","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts","digest":"3453edb56fc5ee8bbe55bb383e30d60fd2137a10f0144a4a92a416e4e6ff21cb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts","digest":"0d2fe916d5a7818714950c763ab11ee67d325b0779b55c8221c377a0a1239801","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"a2160bd1f0daadb976b4507922214c8134d44f31932e79ef054e90433c237dce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"bd0c0c061874d5900ccbcf8332f4a4efa94299c82631873ebd7a5a66187382f8","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/services/execution-target/__tests__/execution-target-resolver.test.ts","digest":"2be66a9c634498f7b4e20e4a05b47f7b3893e56608b03d41c40838527e5985a6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

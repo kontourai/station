@@ -26,9 +26,9 @@
 
     {"path":"examples/meeting-notes/src/roots.ts","digest":"ff249d4ededbc13b8126aa7068fbc679f875be1d3bf5d6d4cf6d20450162db31","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"f1e89d78c84ad0c285f88847ebd239b7ed688fb443de94e428652a8d796c837d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3cce37501a5cb2b8233624c5a831b9dbeed2fdecbfe9f24bb5716413ed060ac4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/sdk/src/components/KnowledgeRecall.css","digest":"c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

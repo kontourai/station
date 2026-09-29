@@ -86,7 +86,7 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"5a6d4e6e672a1b8187efda2833395e1efd571a65ccc5c01ae673800f4fd043e4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"8a0628efcd689a804f3c8cdf607c4c0758b0d6ee32de864c08995915d26cd5ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/services/connections/pion-application-adapter.ts","digest":"656c2d512795679c80b3193b64dd4d5f41da4e24d95bf4dda935fa70761e88c6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -136,7 +136,7 @@
 
     {"path":"src-ui/src/platform/native/__tests__/nativeDiagnosticEchoBridge.test.ts","digest":"b9221a5713062938261b59f2a01562faec920fc5c287d8abc5e3369ae89d20d0","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/platform/native/nativeDiagnosticEchoBridge.ts","digest":"aa8bd65c8291ebcb012abfc48d05e0ba924ac3cce52f62bd7730fa0182d9c774","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-ui/src/platform/native/nativeDiagnosticEchoBridge.ts","digest":"1707339c3fe03e51ae2ce88a6f2133528ed20af0a987887bad204c1bbb8ba535","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"9531a840fb63ea89dc0333ec52949977a76ec04950a9dcf5541623ff68f7c5e4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -180,7 +180,9 @@
 
     {"path":"package.json#/scripts/test:mutation:smoke","digest":"c4400854fe7e13d8dc8d69af73aef1313a2bbdc3d5a959120934bd001c4daa32","revision":"86a943268c5517bfe0dce14638adc784e29c84fc"},
 
-    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"}
+    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
+
+    {"path":"src-ui/src/platform/native/nativeRelaySignalingBridge.ts","digest":"e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"}
   ],
 
   "checks": [

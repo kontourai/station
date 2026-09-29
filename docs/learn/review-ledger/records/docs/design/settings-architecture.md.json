@@ -24,7 +24,7 @@
 
     {"path":"packages/sdk/src/__tests__/update-app-config.test.ts","digest":"ae86370e904beb0524e62d3699ab19a94cae239a504f718cc00fcc4ae39eb9db","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"packages/sdk/src/app-config.ts","digest":"5d9aaf8db98d943601e4faa56d3c984a2f2d4c0d13b643a129bdb416b9c21b5d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"packages/sdk/src/app-config.ts","digest":"f6210399f52444c8b414ce40fdfba0e29a20091b0068a97e21af53088db12c48","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/domain/settings-effective.ts","digest":"714c3bdff3915fb95a03c791dc2f3d764fe65b6f0e1218658285375b39fa8f50","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 

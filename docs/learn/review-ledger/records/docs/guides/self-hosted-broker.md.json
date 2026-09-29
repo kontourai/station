@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"aa31ec9e0516c69ff3475d1f014a4b5e350ab20cf9326745a5a8a330e549f791","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+  "document": {"digest":"4e8da08fcfcf0f9dc703fc93569237ceccb062e1cf5a51456a61a59ca2e77157","revision":"29421a64d5ab7e0b1ca095a8b5e0afe665e19539"},
 
   "sources": [
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"340a746de265ada1eb052d6cee95b5d5459826a3e3bf904faac19f79d5a9332b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
@@ -92,7 +92,7 @@
 
     {"path":"src-ui/src/platform/native/__tests__/nativeDiagnosticEchoBridge.test.ts","digest":"b9221a5713062938261b59f2a01562faec920fc5c287d8abc5e3369ae89d20d0","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/platform/native/nativeDiagnosticEchoBridge.ts","digest":"aa8bd65c8291ebcb012abfc48d05e0ba924ac3cce52f62bd7730fa0182d9c774","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-ui/src/platform/native/nativeDiagnosticEchoBridge.ts","digest":"1707339c3fe03e51ae2ce88a6f2133528ed20af0a987887bad204c1bbb8ba535","revision":"29421a64d5ab7e0b1ca095a8b5e0afe665e19539"},
 
     {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts","digest":"f10ac7b4278a67648f946bc05c717da27f9fa59fced4576e1d0df41944657e49","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -112,7 +112,11 @@
 
     {"path":"src-server/services/connections/virtual-application.ts","digest":"b9e2446298cad53ee4a9923d317b0f5d060a1097d56c2c705caee12a12fbe8da","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime-native.test.ts","digest":"6784c9f57b329a5094f402f66f0bcd11ca06907cdbefe8987e4ce2e3d627df2d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime-native.test.ts","digest":"6784c9f57b329a5094f402f66f0bcd11ca06907cdbefe8987e4ce2e3d627df2d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/nativeApplicationSignalingBridge.ts","digest":"1d795d9736c057647572a7f02a1a916355e072cbe072c1234c5ed433d3b7c00c","revision":"29421a64d5ab7e0b1ca095a8b5e0afe665e19539"},
+
+    {"path":"src-ui/src/platform/native/nativeRelaySignalingBridge.ts","digest":"e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914","revision":"29421a64d5ab7e0b1ca095a8b5e0afe665e19539"}
   ],
 
   "checks": [

@@ -14,7 +14,7 @@
   "sources": [
     {"path":".github/workflows/container-smoke.yml","digest":"8f0d7908fbf4cf305a5fd10ae17bb174b45344f584f8d38fe0be3f422e260ced","revision":"98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80"},
 
-    {"path":"Dockerfile","digest":"21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4","revision":"98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80"},
+    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"6a0d3e154170e88514a9ad71e1b7af587073aeb4"},
 
     {"path":"scripts/container-smoke.sh","digest":"31c9b8355ff35b0a954415a5d11a2813a8f6c1c922c7cffeff11161302218234","revision":"98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80"}
   ],

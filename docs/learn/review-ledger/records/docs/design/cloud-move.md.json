@@ -18,7 +18,7 @@
 
     {"path":"packages/sdk/src/__tests__/cloud-move.test.ts","digest":"288b8852a35038ad42f5407ff2936612314e5aad0465140c7d3f186c9da01ba3","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
-    {"path":"packages/sdk/src/client/cloud-move.ts","digest":"14f8572e29de010a25a513be4bfcf1fca1297e683b090b93f76a75cc215fb420","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    {"path":"packages/sdk/src/client/cloud-move.ts","digest":"f7404988ec3cb8cd76a14b1126cbc27d87952901fa1218cd6670fa5745d054b0","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/shared/src/__tests__/cloud-move.test.ts","digest":"8e6a7ce1c84b2fd2638a615d4c9297125103b1a9d680f82839af706fe093b588","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 

@@ -20,7 +20,7 @@
 
     {"path":"packages/cli/src/commands/build.ts","digest":"fe59b0aec5413bc16de44073be4669a2345d1a2c3ab0519f50b4dea615ce5b55","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
 
-    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"f1e89d78c84ad0c285f88847ebd239b7ed688fb443de94e428652a8d796c837d","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
 
