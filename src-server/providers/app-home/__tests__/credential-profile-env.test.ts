@@ -104,6 +104,36 @@ describe('credential profile env resolver (#2966)', () => {
     ).toBe(false);
   });
 
+  test('a normalized profile carrying the value-free marker fails closed with its names', async () => {
+    const homeDir = await tempHome();
+    const warn = vi.fn();
+    const resolve = createCredentialProfileAppHomeEnvResolver({
+      engine: 'codex',
+      homeDir,
+      warn,
+      loadConnectionSettings: async () => ({
+        credentialRecovery: {
+          profiles: [
+            { ref: 'proxy', envInvalid: { names: ['OPENAI_API_KEY'] } },
+          ],
+        },
+      }),
+    });
+
+    const failure = await resolve('proxy').then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(CredentialProfileEnvUnavailableError);
+    expect(
+      (failure as CredentialProfileEnvUnavailableError).invalidVariableNames,
+    ).toEqual(['OPENAI_API_KEY']);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('OPENAI_API_KEY');
+    expect(
+      existsSync(credentialProfileAppHomeDir('codex', 'proxy', homeDir)),
+    ).toBe(false);
+  });
+
   test('without a selected profile, a lookup failure still degrades to the global config', async () => {
     const warn = vi.fn();
     const resolve = createCredentialProfileAppHomeEnvResolver({
@@ -123,6 +153,10 @@ describe('credential profile env resolver (#2966)', () => {
     const invalid = { env: { ANTHROPIC_AUTH_TOKEN: 'x' } };
     expect(credentialProfileRoutingFingerprint(invalid)).toBeUndefined();
     expect(credentialProfilesRouteAlike(invalid, invalid)).toBe(false);
+    const marked = { envInvalid: { names: [] } };
+    expect(credentialProfileRoutingFingerprint(marked)).toBeUndefined();
+    expect(credentialProfilesRouteAlike(marked, marked)).toBe(false);
+    expect(credentialProfilesRouteAlike(marked, {})).toBe(false);
     expect(credentialProfilesRouteAlike({}, undefined)).toBe(true);
   });
 

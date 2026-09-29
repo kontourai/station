@@ -32,7 +32,7 @@ import {
   credentialProfileStorageId,
   ensureCredentialProfileAppHome,
   normalizeCredentialProfileRegistry,
-  persistedCredentialProfileEnv,
+  persistedCredentialProfile,
 } from './credential-profile-registry.js';
 
 /**
@@ -57,20 +57,19 @@ export class CredentialProfileEnvUnavailableError extends Error {
 }
 
 /**
- * The selected profile's validated overlay. The registry keeps an invalid
- * saved overlay verbatim, so it is still visible here and fails closed
+ * The selected profile's validated overlay. Normalization turns an invalid
+ * saved overlay (persisted marker or a raw hand edit alike) into the
+ * value-free `envInvalid` marker; a marked profile fails closed here
  * instead of silently un-routing the session.
  */
 export function credentialProfileOverlayEnv(
   credentialRecovery: unknown,
   ref: string,
 ): Record<string, string> {
-  const validation = validateCredentialProfileEnv(
-    persistedCredentialProfileEnv(credentialRecovery, ref),
-  );
-  if (!validation.ok)
-    throw new CredentialProfileEnvUnavailableError(validation.names);
-  return validation.env;
+  const profile = persistedCredentialProfile(credentialRecovery, ref);
+  if (profile?.envInvalid)
+    throw new CredentialProfileEnvUnavailableError(profile.envInvalid.names);
+  return { ...profile?.env };
 }
 
 /**
@@ -78,11 +77,14 @@ export function credentialProfileOverlayEnv(
  * literal env entries. Automatic recovery only switches between profiles
  * with equal fingerprints, so an exhausted account is never replaced by one
  * that talks to a different endpoint. `undefined` for an invalid saved
- * overlay: it matches nothing, not even another invalid overlay.
+ * overlay (an `envInvalid` marker or an env that fails validation): it
+ * matches nothing, not even another invalid overlay.
  */
 export function credentialProfileRoutingFingerprint(
-  profile: { env?: unknown } | undefined,
+  profile: { env?: unknown; envInvalid?: unknown } | undefined,
 ): string | undefined {
+  if (profile?.envInvalid !== undefined && profile.envInvalid !== null)
+    return undefined;
   const validation = validateCredentialProfileEnv(profile?.env);
   if (!validation.ok) return undefined;
   const entries = Object.entries(validation.env).sort(([a], [b]) =>
@@ -93,8 +95,8 @@ export function credentialProfileRoutingFingerprint(
 
 /** True only when both profiles have valid overlays with equal routing. */
 export function credentialProfilesRouteAlike(
-  left: { env?: unknown } | undefined,
-  right: { env?: unknown } | undefined,
+  left: { env?: unknown; envInvalid?: unknown } | undefined,
+  right: { env?: unknown; envInvalid?: unknown } | undefined,
 ): boolean {
   const fingerprint = credentialProfileRoutingFingerprint(left);
   return (

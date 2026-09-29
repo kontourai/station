@@ -30,6 +30,7 @@ import {
 } from '../../domain/settings-registry-server.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
+import { projectPublicCredentialProfiles } from '../../providers/app-home/credential-profile-registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { mayGrantFullAccess } from '../../security/coding-authority.js';
 import {
@@ -62,7 +63,12 @@ import {
   configurationMutationStatus,
 } from './configuration-activation.js';
 
-/** Legacy-file projection only. New application authority is private SQLite. */
+/**
+ * Legacy-file projection only. New application authority is private SQLite.
+ * Credential profiles go through the registry's own projection (#2966): an
+ * invalid env overlay, possibly a pasted secret in a hand-edited app.json,
+ * is returned only as its value-free `envInvalid` marker.
+ */
 function projectPublicAppConfig(config: Record<string, any>) {
   if (!config.agentConnections) return config;
   return {
@@ -77,6 +83,9 @@ function projectPublicAppConfig(config: Record<string, any>) {
             applicationReceipts: _receipts,
             ...safe
           } = recovery;
+          if (safe.profiles !== undefined) {
+            safe.profiles = projectPublicCredentialProfiles(safe.profiles);
+          }
           return [id, { ...settings, credentialRecovery: safe }];
         },
       ),

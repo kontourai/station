@@ -3647,7 +3647,7 @@ describe('ConnectionService', () => {
       ).toContainEqual({ ref: 'profile-a', env: routed });
     });
 
-    test('an unrelated registry write keeps an invalid saved overlay, which the projection flags by name', async () => {
+    test('an unrelated registry write persists an invalid saved overlay only as its value-free marker, which the projection flags by name', async () => {
       const tampered = {
         ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
         ANTHROPIC_API_KEY: 'sk-live-canary',
@@ -3668,9 +3668,13 @@ describe('ConnectionService', () => {
         label: 'Relabelled',
       });
 
-      expect(
-        getAppConfig().agentConnections.codex.credentialRecovery.profiles,
-      ).toContainEqual({ ref: 'canary-profile-ref', env: tampered });
+      const persisted =
+        getAppConfig().agentConnections.codex.credentialRecovery;
+      expect(persisted.profiles).toContainEqual({
+        ref: 'canary-profile-ref',
+        envInvalid: { names: ['ANTHROPIC_API_KEY'] },
+      });
+      expect(JSON.stringify(getAppConfig())).not.toContain('sk-live-canary');
       expect(
         projected.profiles.find(
           (profile) => profile.ref === 'canary-profile-ref',

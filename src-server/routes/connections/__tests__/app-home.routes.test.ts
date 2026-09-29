@@ -784,6 +784,43 @@ describe('App home profile routes (#896)', () => {
       expect(service.setCredentialProfileEnv).not.toHaveBeenCalled();
     });
 
+    test('admits a full-cap overlay of unescaped ASCII values, up to the name budget the bound leaves', async () => {
+      // 64 values x 32,768 code units, the per-overlay caps.
+      const value = `http://127.0.0.1:8318/${'a'.repeat(32 * 1024 - 22)}`;
+      expect(value).toHaveLength(32 * 1024);
+      const overlay = (nameLength: (index: number) => number) =>
+        Object.fromEntries(
+          Array.from({ length: 64 }, (_, index) => {
+            const prefix = `PROXY_OPT_${String(index).padStart(2, '0')}_`;
+            return [
+              `${prefix}${'N'.repeat(nameLength(index) - prefix.length)}`,
+              value,
+            ];
+          }),
+        );
+      const bodyBytes = (env: Record<string, string>) =>
+        Buffer.byteLength(JSON.stringify({ env }));
+
+      const realistic = overlay(() => 24);
+      const { app, service } = envFixture();
+      expect((await put(app, { env: realistic })).status).toBe(200);
+      expect(service.setCredentialProfileEnv).toHaveBeenCalledTimes(1);
+
+      // Names totalling 65,143 bytes (64 KiB minus 393 bytes of JSON syntax)
+      // land exactly on the bound; one more byte is refused.
+      const edge = overlay((index) =>
+        index === 0 ? 65_143 - 63 * 1018 : 1018,
+      );
+      expect(bodyBytes(edge)).toBe(CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES);
+      expect(CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES).toBe(2_162_688);
+      expect((await put(app, { env: edge })).status).toBe(200);
+      const over = overlay((index) =>
+        index === 0 ? 65_144 - 63 * 1018 : 1018,
+      );
+      expect((await put(app, { env: over })).status).toBe(413);
+      expect(service.setCredentialProfileEnv).toHaveBeenCalledTimes(2);
+    });
+
     test('404s for an unknown profile and 400s for a hostile ref or missing env', async () => {
       const { app, service } = envFixture();
 

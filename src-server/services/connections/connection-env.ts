@@ -143,8 +143,12 @@ const CREDENTIAL_SHAPED_ENV_NAME_PATTERNS: readonly RegExp[] = [
 ];
 
 const CREDENTIAL_SHAPED_ENV_VALUE_PATTERNS: readonly RegExp[] = [
-  // scheme://user[:password]@host — credentials embedded in a URL.
-  /[a-z][a-z0-9+.-]*:\/\/[^/?#\s@]+@/i,
+  // scheme://user[:password]@host — credentials embedded in a URL. The
+  // scheme run is bounded: an unbounded `[a-z0-9+.-]*` rescans the rest of
+  // the value from every start position, which is quadratic (tens of
+  // seconds for a full-cap overlay of letters). Unanchored, a longer scheme
+  // still matches on its last 32 characters.
+  /[a-z][a-z0-9+.-]{0,31}:\/\/[^/?#\s@]+@/i,
   // An HTTP authorization header or an API-key header, anywhere in the value.
   /\b(proxy-)?authorization\s*:/i,
   /\b(x-)?api[-_]?key\s*:/i,
@@ -252,6 +256,39 @@ export function validateCredentialProfileEnv(
   return violations.length > 0
     ? { ok: false, violations, names }
     : { ok: true, env };
+}
+
+/**
+ * Longest variable name an invalid-overlay marker records. A well-formed
+ * but very long "name" is more likely pasted text than a variable, so it is
+ * dropped from the marker rather than echoed.
+ */
+const CREDENTIAL_PROFILE_ENV_INVALID_NAME_MAX_LENGTH = 128;
+
+/**
+ * The name list of a credential profile's value-free invalid-overlay marker
+ * (`envInvalid.names`), from validation output or an untrusted persisted
+ * marker: well-formed, bounded, de-duplicated names only, at most
+ * {@link CONNECTION_ENV_MAX_ENTRIES}. Anything else is dropped, never echoed.
+ */
+export function sanitizeCredentialProfileEnvInvalidNames(
+  value: unknown,
+): string[] {
+  if (!Array.isArray(value)) return [];
+  const names: string[] = [];
+  for (const name of value) {
+    if (
+      typeof name !== 'string' ||
+      name.length > CREDENTIAL_PROFILE_ENV_INVALID_NAME_MAX_LENGTH ||
+      !CONNECTION_ENV_NAME_PATTERN.test(name) ||
+      names.includes(name)
+    ) {
+      continue;
+    }
+    names.push(name);
+    if (names.length >= CONNECTION_ENV_MAX_ENTRIES) break;
+  }
+  return names;
 }
 
 /**

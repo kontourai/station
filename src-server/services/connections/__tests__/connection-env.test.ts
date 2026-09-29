@@ -8,6 +8,7 @@ import {
   sanitizeConnectionConfigHome,
   sanitizeConnectionEnvMap,
   sanitizeCredentialProfileEnv,
+  sanitizeCredentialProfileEnvInvalidNames,
   validateCredentialProfileEnv,
 } from '../connection-env.js';
 
@@ -273,6 +274,20 @@ describe('validateCredentialProfileEnv (#2966)', () => {
     ).toBe(true);
   });
 
+  test('validates a full-cap overlay of letter runs in linear time, and still finds userinfo behind a long scheme', () => {
+    // 64 values x 32,768 letters: a quadratic URL-userinfo scan took tens of
+    // seconds here and would time this test out.
+    const letters = 'a'.repeat(32 * 1024);
+    const overlay = Object.fromEntries(
+      Array.from({ length: 64 }, (_, index) => [`OPT_${index}`, letters]),
+    );
+    expect(validateCredentialProfileEnv(overlay).ok).toBe(true);
+    const longScheme = `${'x'.repeat(100)}://user:pw@host.example.internal`;
+    expect(
+      validateCredentialProfileEnv({ UPSTREAM: longScheme }),
+    ).toMatchObject({ ok: false, names: ['UPSTREAM'] });
+  });
+
   test('refuses the 65th entry rather than truncating to 64', () => {
     const entries = (count: number) =>
       Object.fromEntries(
@@ -280,5 +295,28 @@ describe('validateCredentialProfileEnv (#2966)', () => {
       );
     expect(validateCredentialProfileEnv(entries(64)).ok).toBe(true);
     expect(validateCredentialProfileEnv(entries(65)).ok).toBe(false);
+  });
+});
+
+describe('sanitizeCredentialProfileEnvInvalidNames (#2966)', () => {
+  test('keeps bounded, well-formed, de-duplicated names and caps the list at 64', () => {
+    expect(
+      sanitizeCredentialProfileEnvInvalidNames([
+        'ANTHROPIC_API_KEY',
+        'sk-live canary',
+        'B'.repeat(129),
+        'C'.repeat(128),
+        7,
+        'ANTHROPIC_API_KEY',
+      ]),
+    ).toEqual(['ANTHROPIC_API_KEY', 'C'.repeat(128)]);
+    expect(
+      sanitizeCredentialProfileEnvInvalidNames(
+        Array.from({ length: 100 }, (_, index) => `V${index}`),
+      ),
+    ).toHaveLength(64);
+    expect(
+      sanitizeCredentialProfileEnvInvalidNames('ANTHROPIC_API_KEY'),
+    ).toEqual([]);
   });
 });

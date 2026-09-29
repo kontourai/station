@@ -8,8 +8,9 @@ import {
   deleteCredentialProfile,
   ensureCredentialProfileAppHome,
   normalizeCredentialProfileRegistry,
-  persistedCredentialProfileEnv,
+  persistedCredentialProfile,
   projectCredentialProfileRegistry,
+  projectPublicCredentialProfiles,
   setCredentialProfileEnrollment,
   setCredentialProfileEnv,
   setCredentialRecoveryAutomaticPolicy,
@@ -135,39 +136,113 @@ describe('credential profile registry', () => {
       ).toEqual([{ ref: 'proxy', label: 'Proxy', env: routed }]);
     });
 
-    test('an invalid saved overlay is kept verbatim, survives unrelated writes, and is flagged by name in the projection', () => {
-      const tampered = { ...routed, ANTHROPIC_AUTH_TOKEN: 'canary-secret' };
+    test('an invalid saved overlay is persisted as a value-free marker that survives unrelated writes until a valid overlay replaces it', () => {
+      const canary = 'sk-live-canary';
+      const tampered = { ...routed, ANTHROPIC_AUTH_TOKEN: canary };
       const saved = {
         profiles: [{ ref: 'a' }, { ref: 'b', label: 'B', env: tampered }],
         group: { profileRefs: ['a', 'b'], enrolledProfileRefs: [] },
       };
-      // An unrelated write (relabel a) goes through the same normalization
-      // that every registry mutation persists.
+      const marked = {
+        ref: 'b',
+        label: 'B',
+        envInvalid: { names: ['ANTHROPIC_AUTH_TOKEN'] },
+      };
+      // Reading a hand-edited registry already drops the values.
+      const normalized = normalizeCredentialProfileRegistry(saved);
+      expect(normalized.profiles[1]).toEqual(marked);
+      expect(JSON.stringify(normalized)).not.toContain(canary);
+      // An unrelated write (relabel a) persists what normalization produced:
+      // the marker survives, the values do not.
       const written = JSON.parse(
         JSON.stringify(
           upsertCredentialProfile(saved, { ref: 'a', label: 'A' }).state,
         ),
       );
-      expect(written.profiles[1]).toEqual({
-        ref: 'b',
-        label: 'B',
-        env: tampered,
-      });
-      expect(persistedCredentialProfileEnv(written, 'b')).toEqual(tampered);
+      expect(JSON.stringify(written)).not.toContain(canary);
+      expect(written.profiles[1]).toEqual(marked);
+      // ...and a second unrelated write keeps the persisted marker.
+      const rewritten = JSON.parse(
+        JSON.stringify(
+          setCredentialRecoveryAutomaticPolicy(written, true).state,
+        ),
+      );
+      expect(rewritten.profiles[1]).toEqual(marked);
+      expect(
+        upsertCredentialProfile(rewritten, { ref: 'b', label: 'B2' }).state
+          .profiles[1],
+      ).toEqual({ ...marked, label: 'B2' });
+      expect(persistedCredentialProfile(rewritten, 'b')).toEqual(marked);
       const projected = projectCredentialProfileRegistry(
-        written,
+        rewritten,
         'restart_resume',
       );
-      expect(projected.profiles[1]).toEqual({
-        ref: 'b',
-        label: 'B',
-        envInvalid: { names: ['ANTHROPIC_AUTH_TOKEN'] },
-      });
-      expect(JSON.stringify(projected)).not.toContain('canary-secret');
-      // Replacing the overlay is the repair path.
+      expect(projected.profiles[1]).toEqual(marked);
+      // Replacing the overlay with a valid one is the repair path and clears
+      // the marker.
       expect(
-        setCredentialProfileEnv(written, 'b', routed).state.profiles[1],
+        setCredentialProfileEnv(rewritten, 'b', routed).state.profiles[1],
       ).toEqual({ ref: 'b', label: 'B', env: routed });
+      expect(
+        setCredentialProfileEnv(rewritten, 'b', {}).state.profiles[1],
+      ).toEqual({ ref: 'b', label: 'B' });
+    });
+
+    test('a persisted marker wins over an env beside it and never echoes malformed or unbounded names', () => {
+      const state = normalizeCredentialProfileRegistry({
+        profiles: [
+          {
+            ref: 'hand-fixed',
+            env: routed,
+            envInvalid: { names: ['ANTHROPIC_AUTH_TOKEN'] },
+          },
+          {
+            ref: 'hostile-names',
+            envInvalid: {
+              names: [
+                'OK_NAME',
+                'sk-live-canary with spaces',
+                'A'.repeat(129),
+                7,
+                'OK_NAME',
+              ],
+            },
+          },
+          { ref: 'bare-marker', envInvalid: true },
+          { ref: 'empty-marker', env: routed, envInvalid: {} },
+          { ref: 'bad-name', env: { 'sk-live-canary=': 'x' } },
+          {
+            ref: 'many',
+            env: Object.fromEntries(
+              Array.from({ length: 100 }, (_, i) => [`V${i}_TOKEN`, 'x']),
+            ),
+          },
+        ],
+      });
+      expect(state.profiles.slice(0, 5)).toEqual([
+        { ref: 'hand-fixed', envInvalid: { names: ['ANTHROPIC_AUTH_TOKEN'] } },
+        { ref: 'hostile-names', envInvalid: { names: ['OK_NAME'] } },
+        { ref: 'bare-marker', envInvalid: { names: [] } },
+        { ref: 'empty-marker', envInvalid: { names: [] } },
+        { ref: 'bad-name', envInvalid: { names: [] } },
+      ]);
+      expect(state.profiles[5]?.envInvalid?.names).toHaveLength(64);
+      expect(state.profiles[5]?.env).toBeUndefined();
+      expect(JSON.stringify(state)).not.toContain('sk-live-canary');
+    });
+
+    test('the public profile projection of a raw registry never carries invalid values', () => {
+      expect(
+        projectPublicCredentialProfiles([
+          { ref: 'ok', env: routed },
+          { ref: 'bad', env: { ANTHROPIC_API_KEY: 'sk-live-canary' } },
+          { ref: '../escape', env: routed },
+        ]),
+      ).toEqual([
+        { ref: 'ok', env: routed },
+        { ref: 'bad', envInvalid: { names: ['ANTHROPIC_API_KEY'] } },
+      ]);
+      expect(projectPublicCredentialProfiles('garbage')).toEqual([]);
     });
 
     test('a label-only upsert preserves an existing overlay', () => {

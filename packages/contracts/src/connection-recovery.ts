@@ -73,24 +73,34 @@ export interface CredentialProfile {
 }
 
 /**
- * A profile as persisted in `CredentialProfileRegistryState`. `env` is a
- * valid overlay map, or — when a saved overlay breaks the env rules (for
- * example after a hand edit) — that saved value kept verbatim so unrelated
- * writes cannot erase it; sessions under such a profile fail closed.
+ * Value-free marker for a saved env overlay that breaks the env rules (for
+ * example after a hand edit that pasted a key). Lists the offending
+ * variable NAMES only, never values; malformed names are not echoed.
  */
-export type CredentialProfileRecord = Omit<CredentialProfile, 'env'> & {
-  env?: unknown;
-};
+export interface CredentialProfileEnvInvalid {
+  names: string[];
+}
+
+/**
+ * A profile as persisted in `CredentialProfileRegistryState`. `env`, when
+ * present, is a valid overlay. When a saved overlay breaks the env rules,
+ * normalization drops its values and persists `envInvalid` instead (and no
+ * `env`), so the pasted text is not retained while unrelated writes keep
+ * the profile refused rather than silently un-routed. Sessions under a
+ * profile carrying `envInvalid` fail closed until its overlay is replaced.
+ */
+export interface CredentialProfileRecord extends CredentialProfile {
+  envInvalid?: CredentialProfileEnvInvalid;
+}
 
 /** Management projection of a profile. */
 export interface CredentialProfileProjection extends CredentialProfile {
   /**
-   * Present when the saved overlay breaks the env rules (for example after a
-   * hand edit). Sessions under this profile fail closed until the overlay is
-   * replaced; `env` is then omitted. Lists offending variable NAMES only,
-   * never values.
+   * Present when the saved overlay breaks the env rules (see
+   * `CredentialProfileRecord`). Sessions under this profile fail closed
+   * until the overlay is replaced; `env` is then omitted.
    */
-  envInvalid?: { names: string[] };
+  envInvalid?: CredentialProfileEnvInvalid;
 }
 
 /** Explicit membership required before a profile can be automatically selected. */
