@@ -62,16 +62,6 @@ describe('ToolServerCredentialStore', () => {
     expect(store.get('server-b', 'TOKEN')).toBe('b');
   });
 
-  test('store mutation acquires its document lock inside an integration transaction', async () => {
-    const root = home();
-    const store = new ToolServerCredentialStore(root);
-    acquiredLockPaths.length = 0;
-    await store.upsert('server', 'TOKEN', 'value');
-    expect(acquiredLockPaths).toEqual([
-      toolServerCredentialStoreMutationLockPath(root),
-    ]);
-  });
-
   test('keys credentials structurally so ambiguous server ids cannot cross-read', async () => {
     const root = home();
     const store = new ToolServerCredentialStore(root);

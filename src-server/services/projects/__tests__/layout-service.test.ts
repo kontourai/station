@@ -1,32 +1,42 @@
-import { describe, expect, test, vi } from 'vitest';
-
-const { LayoutService } = await import('../layout-service.js');
-
-function createMockConfigLoader() {
-  return {
-    listAgentWorkflows: vi.fn().mockResolvedValue([]),
-    readWorkflow: vi.fn().mockResolvedValue('// code'),
-    createWorkflow: vi.fn().mockResolvedValue(undefined),
-    updateWorkflow: vi.fn().mockResolvedValue(undefined),
-    deleteWorkflow: vi.fn().mockResolvedValue(undefined),
-  };
-}
+import { beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
+import { LayoutService } from '../layout-service.js';
 
 describe('LayoutService', () => {
-  test('workflow CRUD delegates', async () => {
-    const loader = createMockConfigLoader();
-    const svc = new LayoutService(loader as any, {});
-    await svc.listAgentWorkflows('agent1');
-    expect(loader.listAgentWorkflows).toHaveBeenCalledWith('agent1');
-    await svc.getWorkflow('agent1', 'wf1');
-    expect(loader.readWorkflow).toHaveBeenCalledWith('agent1', 'wf1');
-    await svc.createWorkflow('agent1', 'wf.ts', '// code');
-    expect(loader.createWorkflow).toHaveBeenCalledWith(
-      'agent1',
-      'wf.ts',
-      '// code',
+  const makeTempDir = trackTempDirs();
+  let home: string;
+
+  beforeEach(() => {
+    home = makeTempDir('station-layout-service-');
+  });
+
+  // The workflow routes reach the per-Agent workflow store only through this
+  // service, and their own tests mock it. So this round trip, over a real
+  // ConfigLoader on disk, is what proves each verb reaches the store with its
+  // (agent, workflow) arguments in the order the store reads them.
+  test('workflow create, list, read, update and delete round-trip through the Agent store', async () => {
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    const { slug } = await loader.createAgent({
+      name: 'Workflow Agent',
+      prompt: 'Test',
+    });
+    const service = new LayoutService(loader, {});
+
+    await service.createWorkflow(slug, 'nightly-sweep.ts', 'export default 1;');
+    expect(
+      (await service.listAgentWorkflows(slug)).map((workflow) => workflow.id),
+    ).toEqual(['nightly-sweep.ts']);
+    await expect(service.getWorkflow(slug, 'nightly-sweep.ts')).resolves.toBe(
+      'export default 1;',
     );
-    await svc.deleteWorkflow('agent1', 'wf1');
-    expect(loader.deleteWorkflow).toHaveBeenCalledWith('agent1', 'wf1');
+
+    await service.updateWorkflow(slug, 'nightly-sweep.ts', 'export default 2;');
+    await expect(service.getWorkflow(slug, 'nightly-sweep.ts')).resolves.toBe(
+      'export default 2;',
+    );
+
+    await service.deleteWorkflow(slug, 'nightly-sweep.ts');
+    await expect(service.listAgentWorkflows(slug)).resolves.toEqual([]);
   });
 });

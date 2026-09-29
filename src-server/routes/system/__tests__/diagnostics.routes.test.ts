@@ -115,7 +115,7 @@ function createApp(directory: string) {
       });
     }
     // Same write the auth boundary performs; diagnostics reads the bound
-    // flag, not a second isLocalRuntimeCaller call.
+    // flag (isBoundRuntimeLocalOperator), not a second evaluation.
     bindRuntimeLocalOperator(c.req.raw);
     return next();
   });

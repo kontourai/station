@@ -10,7 +10,7 @@
       "scenario": "Create durable work",
       "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "reviewedRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -22,7 +22,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
         },
         {
           "path": "src-ui/src/views/ProjectPage.css",
@@ -45,6 +45,11 @@
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
         "docs/user/getting-started.md"
+      ],
+      "reviewNotes": [
+        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Viewed the capture: Project page with tasks and knowledge; no tool-call row or approval card is shown, so the changed selectors do not appear in it.",
+        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed."
       ]
     },
     {
@@ -56,7 +61,7 @@
       "scenario": "Save a shared revision",
       "evidence": "Running isolated Station; the document and revision were persisted. No external Agent or provider. The small editor and clipped heading are the current UI.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "reviewedRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
       "sources": [
         {
           "path": "src-server/services/orchestration/project-task-room-runtime.ts",
@@ -72,7 +77,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -103,6 +108,11 @@
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
         "docs/reference/project-task-room-collaboration-acceptance.md"
+      ],
+      "reviewNotes": [
+        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: Task workspace document and conversation panes; no tool-call row or inline approval card appears.",
+        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed."
       ]
     },
     {
@@ -114,7 +124,7 @@
       "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "reviewedRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
       "sources": [
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
@@ -134,7 +144,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -169,6 +179,11 @@
         "docs/guides/connections.md",
         "docs/learn/walkthroughs.md",
         "docs/reference/agent-smoke-confidence.md"
+      ],
+      "reviewNotes": [
+        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: Connections > Models; no tool-call row or inline approval card appears.",
+        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed."
       ]
     },
     {
@@ -180,7 +195,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "reviewedRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -188,7 +203,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -208,7 +223,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -231,6 +246,11 @@
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
         "docs/user/getting-started.md"
+      ],
+      "reviewNotes": [
+        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: Notifications Inspect request dialog (Deny / Approve once). That dialog is not ToolCallDisplay and uses none of the changed selectors.",
+        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed."
       ]
     },
     {
@@ -242,7 +262,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "reviewedRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -250,7 +270,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -270,7 +290,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -292,6 +312,11 @@
       "documents": [
         "docs/user/getting-started.md",
         "docs/guides/starter-work.md"
+      ],
+      "reviewNotes": [
+        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Sampled frames every 3s with ffmpeg: Notifications list and Inspect request dialog only; no ToolCallDisplay row or .tool-call__approve-btn appears.",
+        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed."
       ]
     },
     {
@@ -303,7 +328,7 @@
       "scenario": "Connections \u2192 Models and Engines",
       "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "reviewedRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -315,7 +340,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -348,6 +373,11 @@
       ],
       "documents": [
         "docs/guides/connections.md"
+      ],
+      "reviewNotes": [
+        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Sampled frames every 3s with ffmpeg: Connections Models/Engines pages only; no tool-call row or approval card appears.",
+        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed."
       ]
     },
     {
@@ -359,7 +389,7 @@
       "scenario": "Knowledge Library \u2192 selected repository record",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "reviewedRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -419,7 +449,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -429,6 +459,11 @@
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"
+      ],
+      "reviewNotes": [
+        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: Knowledge Library; no tool-call row or approval card appears.",
+        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed."
       ]
     },
     {
@@ -440,7 +475,7 @@
       "scenario": "Knowledge Library \u2192 narrow layout",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "reviewedRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -500,7 +535,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
+          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -510,6 +545,11 @@
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"
+      ],
+      "reviewNotes": [
+        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: narrow Knowledge Library; no tool-call row or approval card appears.",
+        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed."
       ]
     }
   ]

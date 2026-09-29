@@ -36,7 +36,11 @@ import {
   PAGE_CONTENT_NOTICE,
   renderAccessibilitySnapshot,
 } from '../browser-automation.js';
-import type { BrowserHost, CdpTransport } from '../browser-host.js';
+import {
+  type BrowserHost,
+  type CdpTransport,
+  createLocalBrowserHostResolver,
+} from '../browser-host.js';
 import { BrowserLiveSurfaces } from '../browser-live-surfaces.js';
 import { BrowserProjectSettingsStore } from '../browser-project-settings.js';
 import {
@@ -238,7 +242,7 @@ async function harness(
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
     stationHome,
-    createHost: () => fake.host,
+    hostResolver: createLocalBrowserHostResolver(() => fake.host),
     newId: () =>
       `bs_00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
   });

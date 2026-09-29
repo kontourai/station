@@ -6,7 +6,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import type { BrowserHost, CdpTransport } from '../browser-host.js';
+import {
+  type BrowserHost,
+  type CdpTransport,
+  createLocalBrowserHostResolver,
+} from '../browser-host.js';
 import {
   BROWSER_SESSION_HISTORY_LIMIT,
   BROWSER_SESSION_PAGE_NOISE_LIMIT,
@@ -75,7 +79,7 @@ function harness(
   const registry = new BrowserSessionRegistry({
     stationHome,
     ...(isStationAddress ? { isStationAddress } : {}),
-    createHost: () => fake.host,
+    hostResolver: createLocalBrowserHostResolver(() => fake.host),
     newId: () => 'bs_00000000-0000-4000-8000-000000000001',
   });
   // Every synchronous store write goes through this one private method.

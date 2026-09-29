@@ -39,6 +39,8 @@ export interface SchedulerExecutionDeps {
    * idempotence falls back to the in-process fast path alone.
    */
   announcementOutbox?: SchedulerAnnouncementOutbox;
+  /** The owning scheduler's in-process announcement fast path. */
+  announcedRunIds: Set<string>;
   /** Optional (archive#1897 logging slice 3): the caller's job-run-scoped
    * `logger.child()` (`BuiltinScheduler.executeJob`) — absent when the
    * scheduler was constructed without a logger (e.g. `new
@@ -121,6 +123,7 @@ export async function executeSchedulerJobAttempt({
   notificationService,
   broadcast,
   announcementOutbox,
+  announcedRunIds,
   logger,
   timeoutMs = JOB_TIMEOUT,
   signal,
@@ -254,6 +257,7 @@ export async function executeSchedulerJobAttempt({
         broadcast,
         notificationService,
         outbox: announcementOutbox,
+        announcedRunIds,
       });
       observe(() =>
         logger?.warn('Scheduler job failed', {
@@ -380,6 +384,7 @@ export async function executeSchedulerJobAttempt({
       broadcast,
       notificationService,
       outbox: announcementOutbox,
+      announcedRunIds,
     });
     observe(() =>
       logger?.warn('Scheduler job failed', {
@@ -417,6 +422,7 @@ export async function announceSchedulerJobFailure({
   broadcast,
   notificationService,
   outbox,
+  announcedRunIds,
 }: {
   /** Job NAME, as it appears on the Schedule page. */
   job: string;
@@ -432,6 +438,12 @@ export async function announceSchedulerJobFailure({
    * because without it "already announced" is only true for this process.
    */
   outbox?: SchedulerAnnouncementOutbox;
+  /**
+   * Run ids this scheduler already announced: a fast path in front of the
+   * outbox, owned by the scheduler instance so it lives exactly as long as
+   * the process state it summarizes.
+   */
+  announcedRunIds: Set<string>;
 }): Promise<void> {
   // At most once per run, no matter how many callers discover the same
   // failure. A retained not-invoked capability is the case that makes this
@@ -452,7 +464,7 @@ export async function announceSchedulerJobFailure({
     kind: 'unknown',
   };
   if (claim.kind === 'already-announced') {
-    rememberAnnouncedRunId(id);
+    rememberAnnouncedRunId(announcedRunIds, id);
     return;
   }
   // Someone else holds this run's lease right now. Deliberately NOT
@@ -460,7 +472,7 @@ export async function announceSchedulerJobFailure({
   // this process may legitimately announce the run later.
   if (claim.kind === 'leased-elsewhere') return;
   const token = claim.kind === 'claimed' ? claim.token : undefined;
-  rememberAnnouncedRunId(id);
+  rememberAnnouncedRunId(announcedRunIds, id);
   observe(() =>
     broadcast({
       event: 'job.failed',
@@ -483,7 +495,7 @@ export async function announceSchedulerJobFailure({
     // the other Station) can retry immediately instead of waiting out a lease,
     // and forget it in-process so the fast path keeps meaning "announced".
     if (token !== undefined) outbox?.releaseAnnouncement(id, token);
-    forgetAnnouncedRunId(id);
+    announcedRunIds.delete(id);
     return;
   }
   // Stamped only after the notification write resolved, deliberately. A crash
@@ -558,32 +570,24 @@ function persistFailureNotification({
 }
 
 /**
- * Run ids already announced by this process. Bounded: run ids are
- * `<uuid>-<attempt>`, so only a recent one can still attract a second
- * announcement, and a scheduler process outlives any number of runs. A
- * restart clears it, which is correct — after a restart the durable outbox
- * above is what answers, and the runs it still shows as owed are exactly the
- * ones nobody has been told about yet.
+ * Bounded: run ids are `<uuid>-<attempt>`, so only a recent one can still
+ * attract a second announcement, and a scheduler outlives any number of runs.
+ * A restart starts a fresh set, which is correct: after a restart the durable
+ * outbox above is what answers, and the runs it still shows as owed are
+ * exactly the ones nobody has been told about yet.
  */
-const announcedRunIds = new Set<string>();
 const ANNOUNCED_RUN_ID_LIMIT = 1024;
 
-function rememberAnnouncedRunId(id: string): void {
+function rememberAnnouncedRunId(
+  announcedRunIds: Set<string>,
+  id: string,
+): void {
   announcedRunIds.add(id);
   while (announcedRunIds.size > ANNOUNCED_RUN_ID_LIMIT) {
     const oldest = announcedRunIds.values().next();
     if (oldest.done) break;
     announcedRunIds.delete(oldest.value);
   }
-}
-
-function forgetAnnouncedRunId(id: string): void {
-  announcedRunIds.delete(id);
-}
-
-/** Test-only: run ids are unique in production, reused across test cases. */
-export function resetAnnouncedSchedulerFailuresForTests(): void {
-  announcedRunIds.clear();
 }
 
 class SchedulerIndeterminateInvocationError extends Error {

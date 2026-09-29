@@ -20,6 +20,10 @@ captures request authority and supplies execution-action slots; Surface owns
 answer presentation semantics. No plugin installation or new permission grant
 is implied by importing the package.
 
+Style with the `@kontourai/ui` `--k-*` tokens under its
+[DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md) rules; don't
+hard-code colors, spacing, radii or font sizes.
+
 ## Whole Task composition
 
 `@kontourai/station-basis-pane/task-basis-collection-view` exposes the pure

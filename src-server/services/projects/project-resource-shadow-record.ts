@@ -572,15 +572,25 @@ export const SLICE_3C_POPULATIONS: readonly ShadowPopulation[] = [
 export const SHADOW_TRIPWIRE_OUTCOME = 'conflated-unbound';
 
 /**
- * Outcomes that are not a disagreement. Mirrors
- * `project-resource-shadow.ts`'s `NON_DIVERGENT_OUTCOMES` and is pinned
- * against it by test — two copies of this set that can drift is exactly the
- * shape that makes a divergence record read empty.
+ * Outcomes that are not a disagreement: the ONE list, read by this record's
+ * reader and by `project-resource-shadow.ts`'s logging decision. Two copies
+ * that could drift is exactly the shape that makes a divergence record read
+ * empty. Plain literals keep this module a leaf; the observer checks every
+ * member is a `CwdShadowOutcome` at compile time.
  */
-export const NON_DIVERGENT_RECORD_OUTCOMES: readonly string[] = [
+export const NON_DIVERGENT_RECORD_OUTCOMES = [
   'agree',
+  // Same directory, weaker claim — and the baseline seam's claim was never
+  // stronger. Counted (slice 3c reads them for population coverage), not
+  // logged. Kept distinct so a `drifted` sample cannot stand in for the `stale`
+  // leg the gate asks for.
   'agree-unverified',
   'agree-drifted',
+  // Both sides failed closed on an unknown project. That is the seam working,
+  // and it happens for any stale chat; logging it would bury real findings.
   'both-failed-closed',
+  // Defensive only: the disabled branch returns before the logging block, so
+  // this membership is unreachable today. Kept so a later restructure of that
+  // branch cannot start logging a kill switch as a divergence.
   'disabled',
-];
+] as const;

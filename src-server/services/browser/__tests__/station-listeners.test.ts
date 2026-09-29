@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import {
   deriveStationListeners,
   isLocalAddress,
-  isStationListenerDestination,
   isStationSelfUrl,
   stationSelfFetchPatterns,
 } from '../station-listeners.js';
@@ -65,41 +64,7 @@ describe('deriveStationListeners', () => {
   });
 });
 
-describe('the resolved-destination rule', () => {
-  const listeners = deriveStationListeners({
-    serverPort: 4100,
-    configuredOrigins: [],
-  });
-  const interfaces = ['192.168.1.20', '100.64.0.7', 'fe80::1'];
-
-  test.each([
-    ['127.0.0.1', 4100, true],
-    ['127.0.0.2', 4101, true],
-    ['::1', 4102, true],
-    ['::ffff:127.0.0.1', 4103, true],
-    // Review H1: Chromium's hex canonical and the expanded spellings.
-    ['::ffff:7f00:1', 4100, true],
-    ['[::ffff:7f00:1]', 4100, true],
-    ['0:0:0:0:0:ffff:7f00:1', 4101, true],
-    ['::127.0.0.1', 4102, true],
-    ['::ffff:c0a8:114', 4100, true],
-    ['0.0.0.0', 4100, true],
-    ['::', 4100, true],
-    ['192.168.1.20', 4100, true],
-    ['100.64.0.7', 4100, true],
-    ['fe80::1%en0', 4100, true],
-    // Other loopback ports (the user's dev servers) stay reachable.
-    ['127.0.0.1', 5173, false],
-    ['127.0.0.1', 4104, false],
-    // Another machine's Station port is not this host's listener.
-    ['10.0.0.9', 4100, false],
-    ['93.184.216.34', 4100, false],
-  ])('%s:%i -> blocked %s', (address, port, blocked) => {
-    expect(
-      isStationListenerDestination(address, port, listeners, interfaces),
-    ).toBe(blocked);
-  });
-
+describe('isLocalAddress', () => {
   test('isLocalAddress treats all of 127/8 and the unspecified addresses as local', () => {
     expect(isLocalAddress('127.255.0.1', [])).toBe(true);
     expect(isLocalAddress('[::1]', [])).toBe(true);

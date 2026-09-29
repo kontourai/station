@@ -2135,8 +2135,7 @@ Current receipts distinguish `completed`, `failed`, `refused`, `deferred`, and
 Completed runs return 200. Deferred and indeterminate runs return 409 with their
 respective codes; failed/refused outcomes return 422. An indeterminate result
 means work may have started: inspect its run rather than automatically replaying
-the request. A legacy provider's plain output result does not manufacture a run
-receipt.
+the request.
 
 ### Enable Job
 

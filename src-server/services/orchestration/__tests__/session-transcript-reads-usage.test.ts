@@ -4,10 +4,7 @@ import {
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test } from 'vitest';
-import {
-  SessionTranscriptReads,
-  USAGE_COVERAGE_EVIDENCE_CAP,
-} from '../session-transcript-reads.js';
+import { SessionTranscriptReads } from '../session-transcript-reads.js';
 
 const authority = sessionReadAuthorityFromRequest(
   'usage-reader',
@@ -58,31 +55,43 @@ function reads(coverageEvents: any[]) {
 }
 
 describe('SessionTranscriptReads usage coverage (station#4135)', () => {
+  // The evidence cap is 1,000 observations: the literals below pin it, so a
+  // silent change to the cap (or an off-by-one at it) turns one case red.
+  function coverageFor(count: number) {
+    const coverageEvents = Array.from({ length: count }, (_, index) =>
+      event({
+        id: `reported-${index}`,
+        provider: 'claude',
+        method: 'token-usage.updated',
+        turnId: `turn-${index}`,
+        createdAt: '2026-08-07T23:00:00.000Z',
+      }),
+    );
+    return reads(coverageEvents).listUsageReceipts(authority, 'local', request)
+      .coverage;
+  }
+
   test('treats the 1001st coverage observation as an evidence-cap sentinel, never complete usage', () => {
-    const coverageEvents = Array.from(
-      { length: USAGE_COVERAGE_EVIDENCE_CAP + 1 },
-      (_, index) =>
-        event({
-          id: `reported-${index}`,
-          provider: 'claude',
-          method: 'token-usage.updated',
-          turnId: `turn-${index}`,
-          createdAt: '2026-08-07T23:00:00.000Z',
-        }),
-    );
-    const result = reads(coverageEvents).listUsageReceipts(
-      authority,
-      'local',
-      request,
-    );
-    expect(result.coverage).toMatchObject({
+    const coverage = coverageFor(1_001);
+    expect(coverage).toMatchObject({
       state: 'partial',
       reason: expect.stringContaining('coverage evidence cap reached'),
     });
-    expect(result.coverage.providers?.[0]).toMatchObject({
+    expect(coverage.providers?.[0]).toMatchObject({
       state: 'partial',
       reason: expect.stringContaining('coverage evidence cap reached'),
     });
+  });
+
+  test('exactly 1000 coverage observations are within the evidence cap', () => {
+    const coverage = coverageFor(1_000);
+    expect(coverage.reason ?? '').not.toContain(
+      'coverage evidence cap reached',
+    );
+    expect(coverage.providers?.[0]?.reason ?? '').not.toContain(
+      'coverage evidence cap reached',
+    );
+    expect(coverage.providers?.[0]?.provider).toBe('claude');
   });
 
   test('keeps fresh and stale provider clocks distinct and makes their source partial', () => {

@@ -12,7 +12,6 @@ import {
   deliveryKey,
   FOCUS_LEASE_MS,
   type FocusEntry,
-  isWithinQuietHours,
   type PlanInput,
   type PlanStep,
   plan,
@@ -420,29 +419,29 @@ describe('plan() — rule 4, quiet hours', () => {
     ).toBe('send:nothing-focused');
   });
 
-  test('windows wrap midnight and are read in the Station time zone', () => {
-    const overnight = { start: '22:00', end: '07:00', allowAttention: false };
-    expect(
-      isWithinQuietHours(overnight, Date.UTC(2026, 0, 1, 23, 30), 'UTC'),
-    ).toBe(true);
-    expect(
-      isWithinQuietHours(overnight, Date.UTC(2026, 0, 1, 6, 59), 'UTC'),
-    ).toBe(true);
-    expect(
-      isWithinQuietHours(overnight, Date.UTC(2026, 0, 1, 7, 0), 'UTC'),
-    ).toBe(false);
-    expect(
-      isWithinQuietHours(overnight, Date.UTC(2026, 0, 1, 12, 0), 'UTC'),
-    ).toBe(false);
+  test.each<[string, string, number, string]>([
+    ['23:30 UTC', 'skip:quiet-hours', Date.UTC(2026, 0, 1, 23, 30), 'UTC'],
+    ['06:59 UTC', 'skip:quiet-hours', Date.UTC(2026, 0, 1, 6, 59), 'UTC'],
+    ['07:00 UTC', 'send:nothing-focused', Date.UTC(2026, 0, 1, 7, 0), 'UTC'],
+    ['12:00 UTC', 'send:nothing-focused', Date.UTC(2026, 0, 1, 12, 0), 'UTC'],
     // 12:00 UTC is 23:00 in Sydney (AEDT, January).
-    expect(
-      isWithinQuietHours(
-        overnight,
-        Date.UTC(2026, 0, 1, 12, 0),
-        'Australia/Sydney',
-      ),
-    ).toBe(true);
-  });
+    [
+      '12:00 UTC in Sydney',
+      'skip:quiet-hours',
+      Date.UTC(2026, 0, 1, 12, 0),
+      'Australia/Sydney',
+    ],
+  ])(
+    'a 22:00–07:00 window wraps midnight in the Station time zone: %s → %s',
+    (_label, expected, now, timeZone) => {
+      const overnight = prefs({
+        quietHours: { start: '22:00', end: '07:00', allowAttention: false },
+      });
+      expect(
+        decision(plan(input({ prefs: overnight, now, timeZone })), PHONE),
+      ).toBe(expected);
+    },
+  );
 });
 
 describe('plan() — rule 5, per-surface minUrgency', () => {

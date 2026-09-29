@@ -4,12 +4,12 @@ import { promisify } from 'node:util';
 import type { LiveSurfaceStreamParams } from '@kontourai/station-contracts/live-surface';
 import type { MobileDeviceSummary } from '@kontourai/station-contracts/mobile-device';
 import { afterAll, describe, expect, test } from 'vitest';
+import { jpegSize } from '../../live-surface/jpeg-size.js';
 import {
   dispatchHumanInput,
   LiveSurfaceRegistry,
 } from '../../live-surface/registry.js';
 import { LocalMobileDeviceHost } from '../../mobile-device/mobile-device-host.js';
-import { jpegSize } from '../device-frame-codecs.js';
 import {
   createDeviceHostActions,
   locateExecutable,
