@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ComposerAttachmentStrip } from '../components/chat/ComposerAttachmentStrip';
+import { hydrateActiveChats } from '../contexts/active-chats-state';
 import { ActiveChatsStore } from '../contexts/active-chats-store';
 import { useComposerAttachments } from '../hooks/useComposerAttachments';
 
@@ -230,5 +231,9 @@ describe('restoring persisted chats from an older or corrupt payload', () => {
       }),
     });
     expect(store.getSnapshot()).toEqual({});
+    // The store's own catch would hide a throw; the restore itself must not.
+    for (const payload of [{ sessionId: 'x' }, 'text', 7, null]) {
+      expect(hydrateActiveChats(payload)).toEqual({});
+    }
   });
 });

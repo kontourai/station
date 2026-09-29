@@ -829,9 +829,10 @@ export function useSendMessage(
           // A start the server could not confirm either way may have
           // created the session (Codex then refuses a resend: "thread …
           // already has an active writer"), so it gets no blind Retry.
-          // A deterministic refusal (`retryable: false`) gets no Retry: the
-          // same send is refused again. An attachment refusal instead offers
-          // the one composer change that makes the text sendable.
+          // An attachment refusal gets no Retry — the same send is refused
+          // again — but the one composer change that makes the text sendable.
+          // (Other `retryable: false` classes, e.g. an engine sign-in, keep
+          // Retry here: after signing in on the host, it is the next step.)
           action:
             err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE && !dispatchClaim
               ? {
@@ -841,8 +842,7 @@ export function useSendMessage(
               : terminalSession ||
                   foregroundIndeterminate ||
                   dispatchClaim ||
-                  err.code === SESSION_START_INDETERMINATE_CODE ||
-                  (translated as ChatErrorTranslation).retryable === false
+                  err.code === SESSION_START_INDETERMINATE_CODE
                 ? undefined
                 : {
                     label: 'Retry',
