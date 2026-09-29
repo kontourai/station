@@ -224,9 +224,9 @@
   min-width: 0;
 }
 
-/* On a wide pane the secondary controls sit inline in the bar. */
+/* On a wide pane the secondary controls are the bar's second row. */
 .browser-pane__secondary {
-  display: contents;
+  flex: 1 1 100%;
 }
 
 .browser-pane__more {
@@ -249,7 +249,14 @@
 
 @container browser-pane (max-width: 559px) {
   .browser-pane__more {
+    align-items: center;
     display: inline-flex;
+    justify-content: center;
+  }
+
+  /* Keep Go on the address row at phone widths. */
+  .browser-pane__address {
+    flex-basis: 6rem;
   }
 
   .browser-pane__secondary {
@@ -289,9 +296,15 @@
   font-size: 0.75rem;
   list-style: none;
   margin: 0;
-  max-height: 16rem;
+  max-height: 12rem;
   overflow: auto;
   padding: 0;
+}
+
+/* With the console open, the live view gives up the drawer's height rather
+   than being pushed below the fold. */
+.browser-pane:has(.browser-pane__console) .live-surface__canvas {
+  max-height: calc(100dvh - 12rem - 16rem);
 }
 
 .browser-pane__console-entry {
@@ -392,4 +405,10 @@
   display: inline-flex;
   justify-content: center;
   text-decoration: none;
+}
+
+/* The prompt's answer field shares the address field's look, not its row
+   flex (in the dialog's column that basis would be a height). */
+.browser-pane__page-dialog .browser-pane__address {
+  flex: 0 0 auto;
 }
