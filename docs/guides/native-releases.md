@@ -575,8 +575,11 @@ manifest itself, so it carries no release.yml attestation; the inventory
 revalidation verifies it against the pinned release key and the attested
 payload instead. Behind `STATION_PORTABLE_RELEASE_PUBLISH`, publish signs
 the manifest and attaches it before publication. The separate `host-pointer`
-job then moves the `portable-<ring>` pointer, so a host-pointer failure never
-skips the deploy ledger or release availability. It re-verifies the public
+job then moves the `portable-<ring>` pointer. It runs once publish reports
+the release public, even if the deploy ledger later fails, and its own
+failure never skips the ledger or release availability. It takes the signed
+manifest from the public versioned release and verifies it with the pinned
+key before any pointer write. It re-verifies the public
 versioned assets and replaces only a strictly older pointer, restoring it if
 the re-verification fails. It only re-verifies when the pointer already
 serves this run's bytes, and it leaves the pointer alone for an older tag,

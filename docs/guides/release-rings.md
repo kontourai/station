@@ -102,10 +102,14 @@ on, the publish job:
 4. attaches `station-portable-<ring>-manifest.json` to the versioned release,
    which the existing publish step then makes public.
 
-A separate `host-pointer` job then moves the pointer, so its failure never
-skips the deploy ledger or release availability, and re-running the failed
-job retries only the pointer. It re-downloads the versioned archives and
-manifest and compares them with the payload, and plans the pointer again:
+A separate `host-pointer` job then moves the pointer. It runs once publish
+reports the release public, even if a later publish step such as the deploy
+ledger failed, and its own failure never skips the ledger or release
+availability. Re-running the failed job retries only the pointer. It holds no
+secret: it downloads the signed manifest and its payload from the public
+versioned release and verifies them with the pinned key table before any
+pointer write. It then re-downloads the versioned archives and manifest
+anonymously, compares them with the payload, and plans the pointer again:
 
 - **Newer version:** it saves the served manifest, replaces it, and
   re-verifies it with the pinned key. If the upload or the re-verification
@@ -114,8 +118,10 @@ manifest and compares them with the payload, and plans the pointer again:
 - **Same version, same bytes:** the pointer already moved (a rerun), so it
   only re-verifies.
 - **Older tag:** for example a desktop break-glass rollback, it leaves the
-  host pointer where it is with a notice. The host pointer never moves
-  backwards.
+  host pointer where it is with a warning in the run summary. The host
+  pointer never moves backwards. If a mis-tagged, too-high version was
+  published to a pointer, no workflow moves it back: recovering is an owner
+  action on the pointer release.
 
 A tag built before this workflow change carries no host archives or payload,
 so its draft fails revalidation and cannot be published with it. No such tag

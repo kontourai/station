@@ -895,6 +895,10 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     'Replace the rolling host-stream manifest (last) and re-verify it';
   const UNCHANGED =
     'Re-verify the unchanged rolling host-stream manifest with the pinned key';
+  const FETCH =
+    'Fetch the signed host-stream manifest and payload from the versioned release';
+  const VERIFY_FETCHED =
+    'Verify the fetched host-stream manifest with the pinned key table';
 
   it('gates every signing and host publication step on the literal owner variable', () => {
     const gated = steps.filter((step) => step.if?.includes(GATE_VARIABLE));
@@ -904,11 +908,15 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       "Require the owner's rolling host-stream pointer release",
       PLAN,
       'Attach the signed host-stream manifest to the versioned release',
-      'Hand the signed host-stream manifest to the pointer job',
     ]);
     for (const step of gated) expect(step.if, step.name).toBe(GATE);
-    // The pointer job as a whole is gated on the same literal.
-    expect(pointerJob.if).toBe(GATE);
+    // The pointer job carries the same literal as a top-level conjunct.
+    expect(conjuncts(pointerJob.if ?? '')).toEqual([
+      'always()',
+      `vars.${GATE_VARIABLE} == 'enabled'`,
+      "needs.resolve.result == 'success'",
+      "needs.publish.outputs.released == 'true'",
+    ]);
     expect(pointerJob.needs).toEqual(['resolve', 'publish']);
     const effects = [...steps, ...pointerSteps].filter(isHostEffect);
     expect(effects.map((step) => step.name)).toEqual([
@@ -948,6 +956,70 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     expect(JSON.stringify(release)).not.toContain(SIGNING_SECRET);
   });
 
+  /** Evaluates host-pointer's `if:` for a scenario; only its own shapes. */
+  function pointerJobRuns(scenario: {
+    gate: string;
+    resolve: string;
+    released: string;
+  }) {
+    return conjuncts(pointerJob.if ?? '').every((part) => {
+      if (part === 'always()') return true;
+      const known: Record<string, string> = {
+        [`vars.${GATE_VARIABLE}`]: scenario.gate,
+        'needs.resolve.result': scenario.resolve,
+        'needs.publish.outputs.released': scenario.released,
+      };
+      const match = part.match(/^(\S+) == '([^']*)'$/);
+      if (!match || !(match[1] in known))
+        throw new Error(`unrecognised conjunct: ${part}`);
+      return known[match[1]] === match[2];
+    });
+  }
+
+  it('runs the pointer job once the release is public, even if a later publish step failed', () => {
+    const enabled = { gate: 'enabled', resolve: 'success', released: 'true' };
+    // publish's result is not an input: a ledger failure after publication
+    // (publish = failure, released = true) still moves the host pointer.
+    expect(pointerJobRuns(enabled)).toBe(true);
+    for (const scenario of [
+      { ...enabled, gate: '' },
+      { ...enabled, gate: 'true' },
+      { ...enabled, resolve: 'failure' },
+      // publish failed or was skipped before the release became public.
+      { ...enabled, released: '' },
+    ])
+      expect(pointerJobRuns(scenario), JSON.stringify(scenario)).toBe(false);
+    // `released` is written only by its own step, after the release is
+    // public and the desktop pointer verified, and before the ledger.
+    expect((job as { outputs?: Record<string, string> }).outputs).toEqual({
+      released: expr('steps.released.outputs.released'),
+    });
+    const released = index(steps, 'Record that the release is public');
+    expect(steps[released]).toMatchObject({
+      id: 'released',
+      run: `echo 'released=true' >> "$GITHUB_OUTPUT"`,
+    });
+    expect(steps[released].if).toBeUndefined();
+    for (const [position, step] of steps.entries())
+      if (position !== released)
+        expect(step.run ?? '', step.name).not.toContain('released=');
+    expect(released).toBeGreaterThan(
+      index(
+        steps,
+        'Publish release and compensate to draft until feed verifies',
+      ),
+    );
+    expect(released).toBe(
+      index(steps, 'Publish and verify the rolling desktop updater channel') +
+        1,
+    );
+    for (const ledger of [
+      'Mint the ledger push token',
+      'Record the stable release in the deploy ledger',
+    ])
+      expect(index(steps, ledger)).toBeGreaterThan(released);
+  });
+
   it('never lets a host-pointer failure skip the ledger or release availability', () => {
     // Only the pointer job writes the rolling pointer, after publish.
     for (const step of steps)
@@ -971,11 +1043,17 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       "Require the owner's rolling host-stream pointer release",
       PLAN,
       'Attach the signed host-stream manifest to the versioned release',
-      'Hand the signed host-stream manifest to the pointer job',
       'Publish release and compensate to draft until feed verifies',
     ].map((name) => index(steps, name));
     expect(order).toEqual([...order].sort((a, b) => a - b));
+    // No artifact hand-over: the job reads the public versioned release.
+    expect(JSON.stringify(pointerJob)).not.toMatch(/-artifact@/);
+    for (const step of steps)
+      if (step.uses?.startsWith('actions/upload-artifact@'))
+        expect(JSON.stringify(step), step.name).not.toContain('host-manifest');
     const pointerOrder = [
+      FETCH,
+      VERIFY_FETCHED,
       'Re-download the versioned host-stream assets and compare them with the manifest',
       PLAN,
       REPLACE,
@@ -993,7 +1071,7 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       expr("steps.host_pointer.outputs.action == 'unchanged'"),
     );
     // Re-verification is pinned-key only.
-    for (const name of [REPLACE, UNCHANGED])
+    for (const name of [VERIFY_FETCHED, REPLACE, UNCHANGED])
       expect(pointerSteps[index(pointerSteps, name)].run).not.toMatch(
         /--keys|--public-key/,
       );
@@ -1132,23 +1210,31 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     const ASSET = 'station-portable-stable-manifest.json';
 
     /**
-     * The pointer job's workspace: the handed-over signed manifest and
-     * payload, a fake `gh` whose releases are directories, and the rolling
-     * pointer served (as a file the scripts read) from that fake.
+     * The pointer job's workspace: a fake `gh` whose releases are
+     * directories, the public versioned release (signed manifest and payload)
+     * and the rolling pointer (served as a file the scripts read). The job's
+     * own fetch step is run first unless `fetch` is false.
      */
     function pointerWorkspace(
       candidate: string,
       served: string | null,
-      options: { corruptUpload?: boolean } = {},
+      options: {
+        corruptUpload?: boolean;
+        failUpload?: boolean;
+        fetch?: boolean;
+      } = {},
     ) {
       const keys = keyring('stable');
       const base = workspace('stable', candidate);
-      const hand = join(base.env.RUNNER_TEMP, 'host-manifest');
-      mkdirSync(hand);
       const signed = keys.sign(base.payload);
-      writeFileSync(join(hand, ASSET), readFileSync(signed));
-      writeFileSync(join(hand, 'payload.json'), readFileSync(base.payload));
       const releases = freshDir('releases');
+      const versioned = join(releases, `v${candidate}`);
+      mkdirSync(versioned);
+      writeFileSync(join(versioned, ASSET), readFileSync(signed));
+      writeFileSync(
+        join(versioned, 'station-server-manifest-payload.json'),
+        readFileSync(base.payload),
+      );
       const rolling = join(releases, 'portable-stable');
       mkdirSync(rolling);
       if (served === 'same')
@@ -1170,12 +1256,15 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
           'case "$sub" in',
           '  view) ls "$dir" ;;',
           '  download)',
-          '    while [ $# -gt 0 ]; do case "$1" in --dir) out=$2; shift ;; --pattern) pattern=$2; shift ;; esac; shift; done',
-          '    cp "$dir/$pattern" "$out/$pattern" ;;',
+          '    patterns=""',
+          '    while [ $# -gt 0 ]; do case "$1" in --dir) out=$2; shift ;; --pattern) patterns="$patterns $2"; shift ;; esac; shift; done',
+          '    for pattern in $patterns; do cp "$dir/$pattern" "$out/$pattern" || exit 1; done ;;',
           '  upload)',
           '    for arg in "$@"; do case "$arg" in --*|"$GITHUB_REPOSITORY") ;; *) file=$arg ;; esac; done',
           '    name=$(basename "$file")',
-          '    if [ -n "$FAKE_GH_CORRUPT_FIRST_UPLOAD" ] && [ ! -e "$FAKE_RELEASES/.corrupted" ]; then',
+          '    if [ -n "$FAKE_GH_FAIL_FIRST_UPLOAD" ] && [ ! -e "$FAKE_RELEASES/.failed" ]; then',
+          '      touch "$FAKE_RELEASES/.failed"; echo "HTTP 502" >&2; exit 1',
+          '    elif [ -n "$FAKE_GH_CORRUPT_FIRST_UPLOAD" ] && [ ! -e "$FAKE_RELEASES/.corrupted" ]; then',
           '      printf "{}" > "$dir/$name"; touch "$FAKE_RELEASES/.corrupted"',
           '    else cp "$file" "$dir/$name"; fi ;;',
           '  delete-asset) rm -f "$dir/$1" ;;',
@@ -1186,13 +1275,17 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       );
       chmodSync(join(bin, 'gh'), 0o755);
       const output = join(base.env.RUNNER_TEMP, 'github-output');
+      const summary = join(base.env.RUNNER_TEMP, 'step-summary');
       writeFileSync(output, '');
-      return {
+      writeFileSync(summary, '');
+      const ws = {
         cwd: base.cwd,
         signed,
+        versioned,
         rollingFile: join(rolling, ASSET),
         releases,
         output,
+        summary,
         env: {
           ...base.env,
           PATH: `${bin}:${nodeShim()}:${process.env.PATH ?? ''}`,
@@ -1202,13 +1295,23 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
           ...(options.corruptUpload
             ? { FAKE_GH_CORRUPT_FIRST_UPLOAD: '1' }
             : {}),
+          ...(options.failUpload ? { FAKE_GH_FAIL_FIRST_UPLOAD: '1' } : {}),
           GITHUB_OUTPUT: output,
+          GITHUB_STEP_SUMMARY: summary,
           ROLLING_TAG: 'portable-stable',
           MANIFEST_ASSET: ASSET,
           ROLLING_MANIFEST_URL: join(rolling, ASSET),
           ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP: 'false',
         } as Record<string, string>,
       };
+      if (options.fetch !== false) {
+        const fetched = runStep(
+          pointerSteps[index(pointerSteps, FETCH)].run ?? '',
+          ws,
+        );
+        expect(fetched.status, fetched.stderr).toBe(0);
+      }
+      return ws;
     }
 
     const stepRun = (name: string) =>
@@ -1227,7 +1330,7 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       expect(publishPlan.status, publishPlan.stderr).toBe(0);
     });
 
-    it('leaves the pointer alone for an older tag (a desktop rollback) with a notice', () => {
+    it('leaves the pointer alone for an older tag (a desktop rollback) with a warning', () => {
       const ws = pointerWorkspace('1.2.2', '1.2.3');
       const before = readFileSync(ws.rollingFile);
       for (const run of [stepRun(PLAN), steps[index(steps, PLAN)].run ?? '']) {
@@ -1236,8 +1339,12 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
         expect(plan.status, plan.stderr).toBe(0);
         expect(readFileSync(ws.output, 'utf8')).toBe('action=skip-older\n');
         expect(plan.stdout).toContain(
-          '::notice::v1.2.2 is older than the rolling stable host-stream manifest; the host pointer never moves backwards',
+          '::warning::v1.2.2 is older than the rolling stable host-stream manifest; the host pointer never moves backwards',
         );
+        expect(readFileSync(ws.summary, 'utf8')).toContain(
+          'v1.2.2 is older than the rolling stable host-stream manifest',
+        );
+        writeFileSync(ws.summary, '');
       }
       expect(readFileSync(ws.rollingFile)).toEqual(before);
     });
@@ -1295,6 +1402,69 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       expect(readFileSync(join(ws.releases, '.log'), 'utf8')).toContain(
         `delete-asset portable-stable ${ASSET}`,
       );
+    });
+
+    it('says there is nothing to remove when a bootstrap upload failed before the asset existed', () => {
+      const ws = pointerWorkspace('1.2.3', null, { failUpload: true });
+      const replaced = runStep(stepRun(REPLACE), {
+        cwd: ws.cwd,
+        env: { ...ws.env, ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP: 'true' },
+      });
+      expect(replaced.status).not.toBe(0);
+      expect(replaced.stderr).toContain('nothing to remove');
+      expect(replaced.stderr).not.toContain('could not remove');
+      expect(readFileSync(join(ws.releases, '.log'), 'utf8')).not.toContain(
+        'delete-asset',
+      );
+    });
+
+    it('verifies the fetched manifest against the exact versioned payload before any pointer write', () => {
+      const ws = pointerWorkspace('1.2.4', '1.2.3');
+      const verify = runStep(stepRun(VERIFY_FETCHED), ws);
+      expect(verify.status, verify.stderr).toBe(0);
+      expect(verify.stdout).toContain('verified 1.2.4');
+      // A substituted payload on the versioned release is refused.
+      const tampered = pointerWorkspace('1.2.4', '1.2.3', { fetch: false });
+      const payloadPath = join(
+        tampered.versioned,
+        'station-server-manifest-payload.json',
+      );
+      const payload = JSON.parse(readFileSync(payloadPath, 'utf8'));
+      payload.publishedAt = '2026-09-30T00:00:00.000Z';
+      writeFileSync(payloadPath, JSON.stringify(payload));
+      expect(runStep(stepRun(FETCH), tampered).status).toBe(0);
+      const refused = runStep(stepRun(VERIFY_FETCHED), tampered);
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toContain('is not the payload this run signed');
+      // A manifest signed by any other key is refused.
+      const forged = pointerWorkspace('1.2.4', '1.2.3', { fetch: false });
+      writeFileSync(
+        join(forged.versioned, ASSET),
+        readFileSync(
+          keyring('stable').sign(
+            join(forged.versioned, 'station-server-manifest-payload.json'),
+          ),
+        ),
+      );
+      runStep(stepRun(FETCH), forged);
+      const unsigned = runStep(stepRun(VERIFY_FETCHED), forged);
+      expect(unsigned.status).toBe(1);
+      expect(unsigned.stderr).toContain('manifest signature did not verify');
+      for (const workspace of [tampered, forged])
+        expect(
+          readFileSync(join(workspace.releases, '.log'), 'utf8'),
+        ).not.toMatch(/^upload /m);
+    });
+
+    it('records the release as public in the step output the pointer job keys on', () => {
+      const output = join(freshDir('released'), 'github-output');
+      writeFileSync(output, '');
+      const result = runStep(
+        steps[index(steps, 'Record that the release is public')].run ?? '',
+        { cwd: repoRoot, env: { GITHUB_OUTPUT: output } },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(output, 'utf8')).toBe('released=true\n');
     });
   });
 });
