@@ -50,7 +50,7 @@ import { createProjectMembershipRuntime } from '../../../services/projects/proje
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import {
-  __resetStationControlStdioCallerCredentialForTests,
+  __resetStationControlStdioEntryForTests,
   api,
   STATION_CONTROL_CALLER_TOKEN_HEADER,
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
@@ -116,7 +116,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
 
   afterEach(async () => {
     __resetStationControlMcpTokensForTests();
-    __resetStationControlStdioCallerCredentialForTests();
+    __resetStationControlStdioEntryForTests();
     delete process.env.STATION_API_BASE;
     for (const close of closers.splice(0)) await close();
   });

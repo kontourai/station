@@ -119,18 +119,16 @@ export function isBuiltinStationControl(
  * integration definition, while arbitrary third-party MCP servers must not
  * receive it.
  *
- * Station #90 lane D: `callerToken` is the per-session caller credential for a
- * child that serves exactly one session. It is attached only here, only to
- * the built-in, and never inherited from `env` — a pooled child (Station's
- * own engine shares one per tenant) must not pick up a session identity
- * from the parent's environment.
+ * A stdio child never carries a per-session caller credential (it is a
+ * pooled, caller-less child), and no child inherits one: a stale
+ * `STATION_CONTROL_CALLER_TOKEN` in the parent environment is stripped
+ * along with the internal token and tenant.
  */
 export function withStationControlRuntimeEnv(
   toolId: string,
   toolDef: ToolDef,
   env: Record<string, string> | undefined,
   tenantExecutionContext?: TenantExecutionContext,
-  callerToken?: string,
 ): Record<string, string> | undefined {
   const runtimeEnv = env ? { ...env } : undefined;
   if (runtimeEnv) {
@@ -148,7 +146,6 @@ export function withStationControlRuntimeEnv(
     ...(tenantExecutionContext
       ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
       : {}),
-    ...(callerToken ? { [STATION_CONTROL_CALLER_TOKEN_ENV]: callerToken } : {}),
   };
 }
 

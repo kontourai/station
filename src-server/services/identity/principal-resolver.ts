@@ -15,7 +15,7 @@
  * on the `authorityMode` label alone. The mode string is caller-supplied
  * context, not proof; treating it as proof was the defect. The fact this
  * resolver requires is {@link OperatorAuthorityFact} — EITHER the mint-time
- * `locality: 'home-possession'` stamp `isLocalRuntimeCaller` reads
+ * `locality: 'home-possession'` stamp `bindRuntimeLocalOperator` reads
  * (`src-server/security/runtime-request-security.ts`), OR (station#4529,
  * added alongside #4537's paired-device journey coverage) a VERIFIED
  * operator credential (`authority === 'operator-credential'`) regardless of
@@ -119,7 +119,8 @@ export class PrincipalUnresolvedError extends Error {
  * - `locality: 'home-possession'` — `CredentialLocality`, the exact type
  *   `src-server/security/runtime-request-security.ts` already uses on
  *   `RuntimeAuthenticatedRequestPrincipal.locality` and reads via
- *   `isLocalRuntimeCaller`. Unchanged since station#4075.
+ *   `bindRuntimeLocalOperator` (bound flag: `isBoundRuntimeLocalOperator`).
+ *   Unchanged since station#4075.
  * - `verifiedOperatorCredential: true` — station#4529/#4537: a caller whose
  *   credential was VERIFIED as the operator secret itself
  *   (`authority === 'operator-credential'`, `runtime-http.ts`'s auth
@@ -164,7 +165,7 @@ export class PrincipalUnresolvedError extends Error {
  *
  * Neither fact is re-derived here: a caller of `resolvePrincipal` is
  * expected to have already computed whichever one applies the same way the
- * corresponding predicate does (`isLocalRuntimeCaller` for the first,
+ * corresponding predicate does (`bindRuntimeLocalOperator` for the first,
  * `resolveCredentialAuthority` for the second) — this resolver only ever
  * reads the fields.
  *
