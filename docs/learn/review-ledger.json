@@ -1449,7 +1449,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1483,7 +1483,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/session-lifecycle.ts",
@@ -1505,7 +1505,8 @@
         "Integration source review through e0314c727: module-map.md and the extension-ecosystem/workspace-surfaces contexts removed the deleted CollaborativeEditorPane controller and PluginForegroundRuns entries in favor of ProjectTaskRoom. The five context links and relationship statements do not name either; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. Reviewed the context map's responsibility areas and relationships; it names no image-support, composer or refusal-code behavior. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. Reviewed the context map's responsibility areas and relationships; it names no image-support, composer or refusal-code behavior. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -1513,7 +1514,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1547,7 +1548,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/session-lifecycle.ts",
@@ -1569,7 +1570,8 @@
         "Integration source review through e0314c727: module-map replaced the CollaborativeEditorPane entry with ProjectTaskRoom and removed PluginForegroundRuns, and the two child CONTEXT files follow suit. The root CONTEXT names neither module and routes only to the child contexts and guides, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. Reviewed the domain vocabulary; its only 'attach' wording is Flow run attachment, and it makes no image-support or composer claim. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. Reviewed the domain vocabulary; its only 'attach' wording is Flow run attachment, and it makes no image-support or composer claim. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -1586,7 +1588,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1638,7 +1640,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "src-server/services/orchestration/flow-policy-sidecar.ts",
@@ -1680,7 +1682,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. Grepped and read the entry point for image/attachment/engine-capability claims; its 'image' mentions are the container image. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. Grepped and read the entry point for image/attachment/engine-capability claims; its 'image' mentions are the container image. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -2399,13 +2402,13 @@
       "kind": "historical",
       "state": "classified",
       "documentDigest": "87b0ed372ef7d96462c84e94492a525319dfda23e702a80bb8b83a9c88c3874c",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "summary": "Historical ACP chat proposal, explicitly routed to current ACP guide and adapter. Retained phases and status tables describe the original design.",
       "limits": "Historical measurements and external incidents were not rerun; classification does not certify current behavior.",
       "sources": [
         {
           "path": "docs/guides/acp.md",
-          "digest": "cca7b47dfa449a8e2913ec98ff6569ef0811664b11ebade13973eeeea7e787bb"
+          "digest": "82993f72a0cd60d9ab6fe06f633aaeb0b641b172f0c6d63e3b4cc8a331b2d59f"
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
@@ -2415,7 +2418,8 @@
       "checks": [
         "Read the full record and checked the current owner or local validation route.",
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts and stamps it on request.resolved. The document's historical banner, which says ACP execution is a per-thread process lifecycle in the ACP adapter, is unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started. Historical proposal (banner routes current behavior to the ACP guide and adapter); its attachment/model-picker lines describe the original panel extraction plan, not current refusal or steer behavior. No edit; current behavior is documented in docs/guides/acp.md."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started. Historical proposal (banner routes current behavior to the ACP guide and adapter); its attachment/model-picker lines describe the original panel extraction plan, not current refusal or steer behavior. No edit; current behavior is documented in docs/guides/acp.md.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -2547,7 +2551,7 @@
     },
     {
       "path": "docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "historical",
       "state": "classified",
       "summary": "A top status note points to ADR0014 and distinguishes the superseded flag/rollback mechanism from the retained orchestration/private-adapter/no-migration decisions. Current interactive route composition supplies the foreground orchestration seam.",
@@ -2560,7 +2564,7 @@
         },
         {
           "path": "docs/reference/session-api.md",
-          "digest": "f31260a0f203b303ebc62467dddfcbc675a8f97b3babefd5e62107dd49e43477"
+          "digest": "cebbaf540fd1e33e62643d7ffd301c42a51a968437d6a5913693538851a48a37"
         },
         {
           "path": "packages/cli/src/commands/session-client.ts",
@@ -2576,7 +2580,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
-          "digest": "343029b2e6cdf9083a99d119c0f1a3befe79a26771fb6d3bfb7ea89e3035fef1"
+          "digest": "53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2"
         }
       ],
       "checks": [
@@ -2589,7 +2593,8 @@
         "Integration source review through d72f79b08: in useActiveChatSessionMessaging, #2904 only changes how a full-access refusal is handled: idle state, restored draft, structured refusal card and an explicit resend without full access. The status note pointing to ADR 0014, and its split between the superseded flag mechanism and the retained orchestration decisions, are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added the recorded-vs-acknowledged section to session-api.md. The ADR's claim that approvals ride request.opened/request.resolved still holds (request.resolved is still published on every engine); prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. The ADR only cites the hook as the UI send path through orchestration; the routing decision it records is unchanged. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. The ADR only cites the hook as the UI send path through orchestration; the routing decision it records is unchanged. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -3899,7 +3904,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -5395,7 +5400,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
-          "digest": "343029b2e6cdf9083a99d119c0f1a3befe79a26771fb6d3bfb7ea89e3035fef1"
+          "digest": "53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2"
         },
         {
           "path": "src-ui/src/hooks/useOutboundQueueFlush.ts",
@@ -5648,7 +5653,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; registry.ts only deleted the caller-less registerBrandingProvider (getBrandingProvider default unchanged); chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; turnHandlers.ts only copies steerInterruptedRun onto the live steer row; useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. Module sections name these as the orchestration service, turn fold and foreground/replay transport Adapter; their responsibilities, interfaces and ownership are unchanged. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; turnHandlers.ts only copies steerInterruptedRun onto the live steer row; useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. Module sections name these as the orchestration service, turn fold and foreground/replay transport Adapter; their responsibilities, interfaces and ownership are unchanged. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -5679,7 +5685,7 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical.",
@@ -5692,7 +5698,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/shared/src/__tests__/tool-request-preview.test.ts",
@@ -5771,7 +5777,8 @@
         "Integration source review through e0314c727: claude-adapter.ts dropped the unused stdio `mintStationControlCallerToken` fallback and its test, and package.json/pnpm-lock removed only @kontourai/bearing and @kontourai/forage (Agent SDK still 0.3.261). The explicit mcpServers/strictMcpConfig, PreToolUse and delivery claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata and stamps acknowledgement on request.resolved in the claude and acp adapters, and adds handleRequestDeliveryEvent plus the toast copy 'this request is no longer open.' in approvalHandlers.ts (tests updated). None of this touches the tool-request preview readers, the pre-tool seams or the Ask-mode permission path the document describes. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started. The document covers tool-policy delivery (beforeToolCall, PreToolUse, ACP requestPermission); neither image support nor the steer flag touches that. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started. The document covers tool-policy delivery (beforeToolCall, PreToolUse, ACP requestPermission); neither image support nor the steer flag touches that. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -5942,7 +5949,7 @@
     {
       "path": "docs/contexts/extension-ecosystem/CONTEXT.md",
       "documentDigest": "d4d785878952c344a498b0db6b9341f784b4bb290a4256bd6aea24bcecab0322",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full vocabulary, contribution/state/permission/activation distinctions, real installation and provider/frame routes, retained mechanism boundary, knowledge namespace vs record-adapter limit.",
@@ -5950,7 +5957,7 @@
       "sources": [
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/plugin.ts",
@@ -6010,7 +6017,8 @@
         "Integration source review through d1e0facc2: Unused install/remove helpers removed; documented lifecycle types remain. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: plugin-foreground-runs.ts was deleted on main, and the document's retained-mechanism sentence now names only PluginCompositionModule. plugin-composition.ts gained a 'not yet composed; #1362' comment, which matches the fixture-callers-only statement. The prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) stopped exporting isDistinctFrameOrigin and mcpUiToolCallDecision from MCPToolUIFrame.tsx without changing behavior. The distinct-origin proxy and sandbox claims still hold. Prose accurate. Source review is separate from executed test evidence.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. The context's capability vocabulary concerns contributions/permissions, not composer image support. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. The context's capability vocabulary concerns contributions/permissions, not composer image support. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -6279,7 +6287,7 @@
     {
       "path": "docs/design/agent-engine-unification.md",
       "documentDigest": "ecc9aa076720d9e69500c50a1c4bcc098cd9853aac1b72c79ef704c01b031072",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "design",
       "state": "classified",
       "summary": "Original unification decisions, historical capability snapshots, and later implementation amendments.",
@@ -6291,7 +6299,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "src-server/services/orchestration/session-agent-resolution.ts",
@@ -6303,13 +6311,14 @@
         "Original document bytes preserved exactly after removing the added reading-status banner.",
         "Verified renamed Codex spawn owner preserves full process environment and selected app-home override semantics.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by session-agent-resolution.ts (never-read provider input removed); claims unaffected.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. Read the matrix table and the declared-vs-observed basis section (4.1b): the runtime_observation basis is unchanged and the new caveat is an additional composer output, not a new cell. The 'caveat' hits are the unrelated toggle-boundary resume caveat. Claims unaffected. Pre-existing, not from this change: its ACP model paragraph says Station rejects any requested ACP model, while api.md documents a verified fresh-start override."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. Read the matrix table and the declared-vs-observed basis section (4.1b): the runtime_observation basis is unchanged and the new caveat is an additional composer output, not a new cell. The 'caveat' hits are the unrelated toggle-boundary resume caveat. Claims unaffected. Pre-existing, not from this change: its ACP model paragraph says Station rejects any requested ACP model, while api.md documents a verified fresh-start override.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
       "path": "docs/design/ai-ui-bridge-expansion.md",
       "documentDigest": "345f2a8053c0620b5125b6d2c3c6ce1902f02648a40cb2359a251c17eb227c50",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "design",
       "state": "classified",
       "summary": "June design and recorded phased implementation; current form sender linked and overbroad harmlessness claim narrowed to the markup boundary.",
@@ -6333,7 +6342,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
-          "digest": "343029b2e6cdf9083a99d119c0f1a3befe79a26771fb6d3bfb7ea89e3035fef1"
+          "digest": "53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2"
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessions.ts",
@@ -6349,7 +6358,8 @@
         "Dated producer-seam investigation byte-identical; trust-model overclaim narrowed separately.",
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 changes useActiveChatSessionMessaging only on the full-access-refusal branch (idle rollback, restored draft, refusal card, explicit resend at the current mode). The current form sender link and the markup-boundary harmlessness claim are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. The design cites the hook only as the form sender; form submission is unchanged. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. The design cites the hook only as the form sender; form submission is unchanged. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -7058,8 +7068,8 @@
     },
     {
       "path": "docs/design/chat-composer.md",
-      "documentDigest": "efd7c4f6aa8f068fd268b5e121bc6e6f2471a5a546f15dd0861472fc161c0cb8",
-      "sourceRevision": "55222be9905441b0e18c8154ee74f549c5002aef",
+      "documentDigest": "3e9f27666cb5e0ba41a076c3b3899a1183736c90bc4b1348464b1398780018a2",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "policy",
       "state": "classified",
       "summary": "Composer interaction and navigability policy with dated audit evidence and corrected current public HTTP entry points.",
@@ -7079,7 +7089,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
-          "digest": "343029b2e6cdf9083a99d119c0f1a3befe79a26771fb6d3bfb7ea89e3035fef1"
+          "digest": "53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2"
         },
         {
           "path": "src-ui/src/lib/foregroundMessageDispatch.ts",
@@ -7087,19 +7097,19 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "src-ui/src/hooks/useChatInput.ts",
-          "digest": "11bd3a2be3e1aa1d9800f072b023e23e20ae06f82b330a4a88b5fb4223d90af1"
+          "digest": "31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c"
         },
         {
           "path": "src-ui/src/hooks/useComposerAttachments.ts",
-          "digest": "229a385f2f689bc66a7d076158f2e0703058f09f5888c39a5f4f865c9e76a6b7"
+          "digest": "4124d9261daadde6fc6870b21d40d355638438de8a92c6beffc1008fa1aa80bd"
         },
         {
           "path": "src-ui/src/components/chat/ComposerAttachmentStrip.tsx",
-          "digest": "016a6a1f090afa2b26ba6cb33c848c0a915dda9c46606f948202d709f6c6f74d"
+          "digest": "af3982c6f536d99d162a55ed27018c5169181d1c322874abe6e270399cb9b5a8"
         },
         {
           "path": "src-ui/src/components/chat/FileAttachmentInput.tsx",
@@ -7123,7 +7133,8 @@
         "Integration source review through d72f79b08: #2904 adds the refusal-details contract, parser and sanitizer to contracts orchestration.ts. In useActiveChatSessionMessaging, a full-access refusal now returns the chat to idle with the draft restored, a FullAccessRefusalCard, and an explicit 'Send without full access' action. The policy's public HTTP entry points, composer layout and navigation claims do not describe the refusal path and remain correct. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal; useChatInput now opens the ACP model picker on a conversation that never ran a turn; useComposerAttachments blocks Send on refused images and emits the caveat note. Prose changed: added a 3.1 bullet on ACP model selection (closed after a turn, open in the dock for a Draft or first-send-failure conversation, successor session on next send per conversation-lineage needsModelRestart) and a 3.2 Attachments section (pre-send image refusal on chips and Send, paperclip explains on tap, unconfirmed-support note, chip statuses, validation below the draft, Remove attachments instead of Retry, banner defers on a never-run session). Checked against useChatInput.ts, useComposerAttachments.ts, ComposerAttachmentStrip.tsx, FileAttachmentInput.tsx, sessionFailure.ts, ChatDockBody.tsx and chatErrorTranslation.ts.",
-        "Re-checked 3.2 Attachments after chatErrorTranslation.ts changed the attachment_input_unsupported hint from 'accepts images' to 'accepts them' (the refusal also covers non-image files). The doc names the Remove attachments action and the no-Retry rule, not the hint wording, so its claims still hold."
+        "Re-checked 3.2 Attachments after chatErrorTranslation.ts changed the attachment_input_unsupported hint from 'accepts images' to 'accepts them' (the refusal also covers non-image files). The doc names the Remove attachments action and the no-Retry rule, not the hint wording, so its claims still hold.",
+        "Updated 3.1 (session list re-read after a send that did not take; a turn in flight keeps Model closed) and 3.2 (caveat scoped to multi-provider catalogs, Upload limit reached without Retry, chips wrap two per row on phones, attachment messages and Remove attachments above the draft, only the draft shrinks). Checked against useChatInput, useComposerAttachments, ComposerAttachmentStrip, ChatInputArea and chat.css."
       ]
     },
     {
@@ -8658,7 +8669,7 @@
     {
       "path": "docs/design/offline-outbound-queue.md",
       "documentDigest": "f8f6a1469892804fdb6c546d5c1554601734f2eaff93883e4adb3deee049e106",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "policy",
       "state": "classified",
       "summary": "Queue admission/exclusion policy with implementation notes and a bounded log-level exception.",
@@ -8678,7 +8689,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
-          "digest": "343029b2e6cdf9083a99d119c0f1a3befe79a26771fb6d3bfb7ea89e3035fef1"
+          "digest": "53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2"
         },
         {
           "path": "src-ui/src/lib/outboundQueue.ts",
@@ -8690,7 +8701,8 @@
         "Original document bytes preserved exactly after removing the added reading-status banner.",
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 swaps the config route's full-access 403 body for fullAccessRefusal(); the log-level route is untouched. The send caller in useActiveChatSessionMessaging now treats a full-access refusal of a non-queued send as idle, restores the draft and offers an explicit 'Send without full access' action. A queued-dispatch refusal gets canned copy. The policy still holds: chat turns only are queued, configuration is excluded, log-level is the one bounded revisioned exception, and approvals are never queued. Prose accurate. Source review is separate from executed test evidence.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. Queue admission/exclusion policy and the send caller's replay decision are unchanged: the new branch only changes the error action and never re-enqueues. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. Queue admission/exclusion policy and the send caller's replay decision are unchanged: the new branch only changes the error action and never re-enqueues. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -8796,7 +8808,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "2f68e41b36baef9ffa5ec14acb762685795d9213",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8808,7 +8820,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/workspace-composition.ts",
@@ -8860,7 +8872,7 @@
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDock.tsx",
-          "digest": "93c0cf5db517c81faa22365e94a8bd2aef3a6e0e5733609952d007992dea98a3"
+          "digest": "2d63e7beb88ffd715811a385ce541ca9f9613c22ccb0797afffcee57625e8a4c"
         },
         {
           "path": "src-ui/src/components/chat-dock/DockShell.tsx",
@@ -8880,7 +8892,7 @@
         },
         {
           "path": "src-ui/src/components/chat/chat.css",
-          "digest": "f8421559260dc8cb1b73bbc8d8c32b74187f39a70e96a84bc971f825e0180b7f"
+          "digest": "760476fab73cf0809628317838513182822f332917364e536dd8878bdc45c15c"
         },
         {
           "path": "src-ui/src/components/dialog-history.ts",
@@ -9096,7 +9108,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) unexports agentIdentityFromSession and AMBIENT_CHAT_DOCK_DOCUMENT_ID, removes createAmbientChatDockPaneDocument and its two tests. RegionPaneHost.test.tsx still pins the literal 'station:workspace-pane-host:v2:ambient:chat-dock' key and adoptLegacyChatDockDocument, and renderAmbientChatPane in ChatDock.tsx is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The maximized-region dock-hiding rule is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; ChatDock.tsx only passes imageCaveat and conversationAwaitingFirstTurn to the composer; chat.css only restyles attachment chips, the steer note and composer validation text. Placement's claims about the dock shell, regions and pane hosting are unaffected; it makes no composer or attachment-styling claim. Claims unaffected.",
-        "Re-checked after chat.css changed: the composer draft now keeps its JS-sized height (flex 0 1 auto), yields before the controls row on a short dock, and the attachment strip does not shrink. placement.md makes no claims about composer internals, chip layout or textarea sizing (grep for textarea/composer/attachment: no matches), so its placement claims are unaffected."
+        "Re-checked after chat.css changed: the composer draft now keeps its JS-sized height (flex 0 1 auto), yields before the controls row on a short dock, and the attachment strip does not shrink. placement.md makes no claims about composer internals, chip layout or textarea sizing (grep for textarea/composer/attachment: no matches), so its placement claims are unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -9689,8 +9702,8 @@
     },
     {
       "path": "docs/design/session-tape-replay.md",
-      "documentDigest": "733eb5ac7f5c9f91d12f772af3ce822ad4cd5b57d0d542b74fcedab950924056",
-      "sourceRevision": "2f68e41b36baef9ffa5ec14acb762685795d9213",
+      "documentDigest": "87ac109f06cde681893f91242a4daaef98e91c1ab30b135462d082912f740309",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9698,7 +9711,7 @@
       "sources": [
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "src-server/providers/adapters/acp-steer.ts",
@@ -9714,7 +9727,7 @@
         },
         {
           "path": "src-ui/src/contexts/active-chats-state.ts",
-          "digest": "ac26efc5dbad6a1e61117ab5f22b0f675c321a7757ff420380228af021e11aff"
+          "digest": "f0ff7960fa41877c8524917c4bb7a22879b6de843d38d6137e9c70db3eca03a9"
         },
         {
           "path": "src-ui/src/hooks/orchestration/eventHandlers.ts",
@@ -9782,7 +9795,7 @@
         },
         {
           "path": "packages/shared/src/runtime-event-projection.ts",
-          "digest": "91b8bb05c38fe2980542ad8bddf77919aa4678b0b7a8cb3b0e2d26cd2b178ddd"
+          "digest": "905e953afa6c84d25ea28fdbc2e4630170b68d221d815e48620e8efc1b83acf1"
         }
       ],
       "checks": [
@@ -9798,7 +9811,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) makes createEphemeralMessageState take a required conversationId instead of falling back to chat.conversationId. Replay isolation (no conversationId copied from the source, not durable, effect no-ops) is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence.",
         "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; the event-log projection now emits pre-steer assistant output as its own row; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; codex-adapter.ts (#2921, landed on main) only rewords the session-grant comment. Prose changed in Queue vs steer: the projection splits the open turn at a steer with provenance/answer eligibility on the final row, and the Any other ACP fallback also cancels the running tool and marks its turn.started with steerInterruptedRun (steer row note). Live fold claim (streamingMessage not reset) re-checked against turnHandlers.ts.",
-        "Re-checked after active-chats-state.ts changed hydrateActiveChats to read every nested persisted field through shape guards (persisted-chat-shape.ts). The doc's claims concern the replay tape and projection (steer split recorded earlier), not sessionStorage restore; the persisted fields it relies on are still restored when well-formed, so its claims hold."
+        "Re-checked after active-chats-state.ts changed hydrateActiveChats to read every nested persisted field through shape guards (persisted-chat-shape.ts). The doc's claims concern the replay tape and projection (steer split recorded earlier), not sessionStorage restore; the persisted fields it relies on are still restored when well-formed, so its claims hold.",
+        "Added that a steered turn's later start-less or late events land on the post-steer row (runtime-event-projection.ts no longer registers the pre-steer segment as the turn's row). Rest of Queue vs steer re-read; accurate."
       ]
     },
     {
@@ -10278,7 +10292,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10302,7 +10316,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/engine-display.ts",
@@ -10559,13 +10573,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports layout constants and helpers; behavior and the glossary's terms are unchanged and the glossary cites none of the removed exports; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. Glossary's engine-capability-matrix pointer and model-picker distinction stay accurate; no term defines composer image support. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged. Glossary's engine-capability-matrix pointer and model-picker distinction stay accurate; no term defines composer image support. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
       "path": "docs/guides/acp.md",
-      "documentDigest": "cca7b47dfa449a8e2913ec98ff6569ef0811664b11ebade13973eeeea7e787bb",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "documentDigest": "82993f72a0cd60d9ab6fe06f633aaeb0b641b172f0c6d63e3b4cc8a331b2d59f",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current ACP Agent binding, canonical execution seam, guarded cursor restoration, credentials/refusal behavior, extension notifications, and current probe outcomes.",
@@ -10593,7 +10608,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/provider.ts",
@@ -10605,7 +10620,7 @@
         },
         {
           "path": "src-ui/src/components/chat-dock/useChatDockViewModel.ts",
-          "digest": "dc2dd15cecc2e16148eeaf13c309866f1e01076a91ac0d2b5c22104a97a55054"
+          "digest": "513e17e928c13ac718ed5b87d391e612fd221f3b90ecd7ae879eed018dc4b600"
         }
       ],
       "checks": [
@@ -10617,13 +10632,14 @@
         "Integration source review through e0314c727: extension-notification-bindings.ts deleted the unused EXTENSION_NOTIFICATION_PROMOTIONS and EVIDENCE_GAPS tables and the reset helper, and moved the unobserved _kiro gap into a comment. The bound tuples, including _kiro.dev/error/rate_limit with acp.turn-error-cause, are unchanged, and the guide never described the removed tables, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement 'none' to AcpAdapter metadata and stamps it on request.resolved. ACP emits no request.delivery. The guide's request.opened/request.resolved row, its pointer to runtime-events as the shape source, and the requestPermission to allow_once/reject_once flow are all still accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started. Prose changed: added how the dock and ACP panel read the handshake promptImage answer from the engine inventory, attach-time refusal and caveat, pre-send Send block, the send-time attachment_input_unsupported refusal (non-retryable, Remove attachments, inventory re-read), and the steer paragraph (native Kiro/Grok methods vs cancel+re-prompt with steerInterruptedRun). Checked against acp-adapter.ts steerTurn/sendTurn, useChatDockViewModel.ts, ACPChatPanel.tsx and resolveComposerImageSupport."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started. Prose changed: added how the dock and ACP panel read the handshake promptImage answer from the engine inventory, attach-time refusal and caveat, pre-send Send block, the send-time attachment_input_unsupported refusal (non-retryable, Remove attachments, inventory re-read), and the steer paragraph (native Kiro/Grok methods vs cancel+re-prompt with steerInterruptedRun). Checked against acp-adapter.ts steerTurn/sendTurn, useChatDockViewModel.ts, ACPChatPanel.tsx and resolveComposerImageSupport.",
+        "Updated the image-support paragraph: the model caveat applies only when the engine's catalog spans several model providers (modelSupportVaries). Re-read the steer paragraph against runtime-event-projection.ts; still accurate."
       ]
     },
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "8d66f17c9ab72933cf26109e5b989a9d5c1669d0e64f89d77786d45ed79b3fe1",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10647,7 +10663,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/managed-model-binding.ts",
@@ -10947,7 +10963,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); attention-projection.ts (comment only); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError. Agent configuration, engine/model binding and approval claims do not describe image support, attachment refusals or steering. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError. Agent configuration, engine/model binding and approval claims do not describe image support, attachment refusals or steering. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -11798,7 +11815,7 @@
     {
       "path": "docs/guides/commands.md",
       "documentDigest": "83622cba5c9fb980797a0b5d57fea1fcf25eb41ab5c72cbefee14d8c3814155e",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide rewritten and independently reviewed against chat dispatch: source precedence, ACP passthrough, catalog gating, authored versus skill argument rules, expansion, persistence/editor scope and non-recursive sending.",
@@ -11826,7 +11843,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
-          "digest": "343029b2e6cdf9083a99d119c0f1a3befe79a26771fb6d3bfb7ea89e3035fef1"
+          "digest": "53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2"
         },
         {
           "path": "src-ui/src/hooks/useSlashCommandHandler.ts",
@@ -11854,13 +11871,14 @@
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 changes useActiveChatSessionMessaging only for a full-access refusal (idle rollback with the draft restored, a structured card, an explicit resend without full access). Slash-command source precedence, ACP passthrough, catalog gating, argument, expansion and non-recursive send claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); claims unaffected.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. The guide cites the chat sender for command expansion; expansion and non-recursive sending are unchanged. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. The guide cites the chat sender for command expansion; expansion and non-recursive sending are unchanged. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11924,7 +11942,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/managed-model-binding.ts",
@@ -12370,7 +12388,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/orchestration/orchestration.ts, src-server/runtime/mcp/mcp-manager.ts, covered by its notes above; this branch changed docs/learn/media.json, src-ui/src/index.css, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks. Scope, loopback terminal and Device statements remain accurate; no stdio caller-token claim is made. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError. Its 'images' claim (a catalog check does not prove image features) and model picker description remain accurate; the ACP picker change applies only to never-run conversations and is documented in chat-composer.md. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError. Its 'images' claim (a catalog check does not prove image features) and model picker description remain accurate; the ACP picker change applies only to never-run conversations and is documented in chat-composer.md. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -18317,7 +18336,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "897111efa688f89ef5dfa4fbedbbf3dddc9fa65b00bee53bcaacacb5b9b6b2b2",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18341,7 +18360,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/managed-model-binding.ts",
@@ -18612,7 +18631,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError. Tool definitions, delegation and request handling are unaffected; 'steering the workspace' is config tooling. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError. Tool definitions, delegation and request handling are unaffected; 'steering the workspace' is config tooling. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -21660,7 +21680,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -21697,7 +21717,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/environment-security.ts",
@@ -22281,7 +22301,7 @@
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDock.tsx",
-          "digest": "93c0cf5db517c81faa22365e94a8bd2aef3a6e0e5733609952d007992dea98a3"
+          "digest": "2d63e7beb88ffd715811a385ce541ca9f9613c22ccb0797afffcee57625e8a4c"
         },
         {
           "path": "src-ui/src/components/chat-dock/retry-attachments.ts",
@@ -22370,7 +22390,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/chat/chat.ts, src-server/routes/orchestration/orchestration.ts, src-server/routes/system/install-provenance.ts, src-server/routes/system/system-update-routes.ts, covered by its notes above; this branch changed the document, src-ui/src/lib/branding-theme.ts (added), covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; provider.ts only adds ATTACHMENT_INPUT_UNSUPPORTED_CODE; runtime-events.ts only adds the optional TurnStartedEvent.steerInterruptedRun flag; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; ChatDock.tsx passes composer props only. Attachments and model-capability sections and the ACP fresh-start override paragraph remain accurate; the chat routes' error body already forwards an error's code, and the new code is documented in session-api.md, which owns chat refusal behavior. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; provider.ts only adds ATTACHMENT_INPUT_UNSUPPORTED_CODE; runtime-events.ts only adds the optional TurnStartedEvent.steerInterruptedRun flag; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; ChatDock.tsx passes composer props only. Attachments and model-capability sections and the ACP fresh-start override paragraph remain accurate; the chat routes' error body already forwards an error's code, and the new code is documented in session-api.md, which owns chat refusal behavior. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -22402,7 +22423,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22602,7 +22623,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/sdk/src/client/cloud-move.ts",
@@ -22791,12 +22812,13 @@
         "Integration source review through 84d56b9a8: e1af43c2c auto-merged a new 'Recorded versus acknowledged decisions' subsection after the delegate examples. It fits the branch's delegate text (respond/status/events). It also matches source: the six delivery values in station-control-delegation.ts; CODEX_APPROVAL_ACK_WINDOW_MS = 30_000; the codes engine-decision-unacknowledged and engine-decision-not-sent; the CLI line formats in packages/cli delegate.ts; and acknowledgement 'none' in the acp and claude adapters. 7cd4892e5 refuses a decision on a closed Codex request ('not open'), which matches the closed-by-engine row. The approvals section's request.opened/request.resolved description still holds. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) main's own edit to the service section (fixed launcher at <install root>/runtime/station-launcher.mjs, 165s TimeoutStopSec, launcher-run self-update with trial/rollback/needs-operator, install.sh handoff, Check for server updates) auto-merged cleanly into the branch's text. It is not duplicated and does not contradict the branch's tier table (packaged service status|start|stop). Main left the `upgrade` section saying the installer always stops the service, switches current and restarts it; that is wrong for a running launcher-run service now that install.sh hands off. Corrected the upgrade section: the installer only stages and asks the service to switch, the launcher trials and keeps the previous version on failure, and the old stop/switch/restart applies otherwise. Source review is separate from executed test evidence.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started. CLI claims ('image' = container image, 'attach' = tasks/flow/projects commands) do not cover composer image support or steering. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started. CLI claims ('image' = container image, 'attach' = tasks/flow/projects commands) do not cover composer image support or steering. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23041,11 +23063,11 @@
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDock.tsx",
-          "digest": "93c0cf5db517c81faa22365e94a8bd2aef3a6e0e5733609952d007992dea98a3"
+          "digest": "2d63e7beb88ffd715811a385ce541ca9f9613c22ccb0797afffcee57625e8a4c"
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-          "digest": "8474c22fd4729c7056661855b158ddfe9d84449ec4e6526d3744bbad6638c828"
+          "digest": "c6545e078e95a20acd07cd996a5e52bbc91a40d9d72c2ac8a305e290222e5ef7"
         },
         {
           "path": "src-ui/src/components/chat-dock/retry-attachments.ts",
@@ -23073,7 +23095,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); strands-tool-loader.ts now imports the shared tool-load-failure classifier instead of its private copy of the same redaction decision; mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; ChatDock.tsx/ChatDockBody.tsx change composer props and the first-send-failure banner note. Chat attachments storage/retention/retry and the reclaimed-blob resend refusal are unchanged; the page makes no banner-note claim. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; ChatDock.tsx/ChatDockBody.tsx change composer props and the first-send-failure banner note. Chat attachments storage/retention/retry and the reclaimed-blob resend refusal are unchanged; the page makes no banner-note claim. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -24086,7 +24109,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "2f68e41b36baef9ffa5ec14acb762685795d9213",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24927,11 +24950,11 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
-          "digest": "343029b2e6cdf9083a99d119c0f1a3befe79a26771fb6d3bfb7ea89e3035fef1"
+          "digest": "53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2"
         },
         {
           "path": "src-ui/src/hooks/useChatInput.ts",
-          "digest": "11bd3a2be3e1aa1d9800f072b023e23e20ae06f82b330a4a88b5fb4223d90af1"
+          "digest": "31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c"
         },
         {
           "path": "src-ui/src/hooks/useConnectedServerUpdateContext.ts",
@@ -25087,13 +25110,14 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): provider.ts only adds ATTACHMENT_INPUT_UNSUPPORTED_CODE; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal; useChatInput.ts adds conversationAwaitingFirstTurn and attachment notice/unavailable-reason outputs. useSendMessage is documented as a send that can queue or refuse, which stays true; the SDK reference documents no useChatInput option list or error-action labels. Claims unaffected.",
-        "Re-checked after chat-drafts-store.ts now filters portable-draft attachment elements and dropped/unreadable name lists by shape on read. The draft statements at ~3388/3516/3542 (draft text kept across agent change, local draft retained after indeterminate response) are unchanged in behavior for well-formed stored drafts."
+        "Re-checked after chat-drafts-store.ts now filters portable-draft attachment elements and dropped/unreadable name lists by shape on read. The draft statements at ~3388/3516/3542 (draft text kept across agent change, local draft retained after indeterminate response) are unchanged in behavior for well-formed stored drafts.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
       "path": "docs/reference/session-api.md",
-      "documentDigest": "f31260a0f203b303ebc62467dddfcbc675a8f97b3babefd5e62107dd49e43477",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "documentDigest": "cebbaf540fd1e33e62643d7ffd301c42a51a968437d6a5913693538851a48a37",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection.",
@@ -25201,7 +25225,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
-          "digest": "343029b2e6cdf9083a99d119c0f1a3befe79a26771fb6d3bfb7ea89e3035fef1"
+          "digest": "53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2"
         },
         {
           "path": "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx",
@@ -25230,7 +25254,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by attached-session-adoption.ts (comment only); attention-projection.ts (comment only); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. Prose changed: continuation section now states a send whose attachments the engine cannot take is refused pre-effect with code attachment_input_unsupported and is not a retry candidate (checked errorCode forwarding in orchestration.ts chat routes), and the steerTurn bullet notes the ACP cancel+re-prompt steer carries steerInterruptedRun."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. Prose changed: continuation section now states a send whose attachments the engine cannot take is refused pre-effect with code attachment_input_unsupported and is not a retry candidate (checked errorCode forwarding in orchestration.ts chat routes), and the steerTurn bullet notes the ACP cancel+re-prompt steer carries steerInterruptedRun.",
+        "Re-read the attachment refusal paragraph now scoped to ACP (Codex/Muse throw plain errors) and the steerTurn bullet; both match acp-adapter.ts, codex-adapter.ts and muse-adapter.ts."
       ]
     },
     {
@@ -25510,7 +25535,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25530,7 +25555,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/fleet-contribution.ts",
@@ -25758,7 +25783,8 @@
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); session-agent-resolution.ts (never-read provider input removed); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); station-docs-content.ts (regenerated module-map scheduler paragraph); claims unaffected. 2026-09-28 test-audit follow-up: removed the sentence 'Other scheduler providers have their own capabilities.' because addProvider was deleted and only the built-in provider can exist; station-docs-content.ts regenerated with npm run docs:mcp:generate. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). station-control still needs an instance credential over reviewed channels and remains subject to caller authority; the prose remains accurate. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError. Manual topics on engine delivery and authority make no image-support, attachment refusal or steer claim. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError. Manual topics on engine delivery and authority make no image-support, attachment refusal or steer claim. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -26844,7 +26870,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26921,7 +26947,7 @@
         },
         {
           "path": "src-ui/src/components/chat/ChatInputArea.tsx",
-          "digest": "96580391d1ea58a734a5b1cc2a7fdddc27c135463b7c78765a5c8b63287c8e9e"
+          "digest": "3a5f87c31adf4ccf46e7e9bf03731498289340856bdeab16730ad1ddd6f02d45"
         },
         {
           "path": "src-ui/src/components/chat/FileMentionAutocomplete.tsx",
@@ -26969,7 +26995,7 @@
         },
         {
           "path": "src-ui/src/hooks/useChatInput.ts",
-          "digest": "11bd3a2be3e1aa1d9800f072b023e23e20ae06f82b330a4a88b5fb4223d90af1"
+          "digest": "31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c"
         },
         {
           "path": "src-ui/src/index.css",
@@ -27038,7 +27064,8 @@
         "Integration source review through 5731eba07: #2881 makes a same-channel installer rerun for a launcher-run archive service stage the version and hand off to the launcher, which trials it and rolls back on failure. It also adds the service launcher env passthrough in lifecycle.ts. #2914 makes isPortableDraftShortcut in ChatInputArea non-exported. 'Run the installer again in the same channel to update safely' remains true. Archive upgrade and service details are deferred to release-channel-ports.md, which is not in this group. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. docs/learn/media.json changed only the index.css source digest of its eight captures, which show the release web app where these values are unchanged; captions, scenarios and capture files are unchanged. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); media.json (inspect-request capture source digests refreshed for orchestration-service.ts comment/argument edits; capture bytes unchanged); claims unaffected.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; ChatInputArea.tsx adds the attachment notice, tappable paperclip reason and blocked-Send styling; useChatInput.ts opens the ACP picker on never-run conversations. The guide's New Chat selection and file/conversation mention chip claims are unchanged; it makes no image-attachment or ACP model-switch claim. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError; ChatInputArea.tsx adds the attachment notice, tappable paperclip reason and blocked-Send styling; useChatInput.ts opens the ACP picker on never-run conversations. The guide's New Chat selection and file/conversation mention chip claims are unchanged; it makes no image-attachment or ACP model-switch claim. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -28530,7 +28557,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -28554,7 +28581,7 @@
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
-          "digest": "9c2cc715b2651e67e3f825598ee12b8adcd6f9ea5de6827480cf59af38b51bbd"
+          "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1"
         },
         {
           "path": "packages/contracts/src/managed-model-binding.ts",
@@ -28825,7 +28852,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError. Example agent configuration and delegation claims are unaffected. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): engine-capability-matrix.ts only adds ComposerImageSupport.caveat (attach-time note when an ACP runtime_observation engine has not reported image support, or reports yes while per-model support is unknown); attachable/refusal results unchanged; acp-adapter.ts only changes the class of its two pre-effect attachment refusals to AttachmentInputUnsupportedError (code attachment_input_unsupported) and adds steerInterruptedRun: true to the cancel+re-prompt steer's turn.started; orchestration-service.ts only adds AttachmentInputUnsupportedError to the codes forwarded (non-retryable) through OrchestrationCommandDispatchError. Example agent configuration and delegation claims are unaffected. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
@@ -29590,7 +29618,7 @@
     },
     {
       "path": "packages/sdk/README.md",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements. Follow-up: Directory-source paragraph traced through install helper and actual target-source resolver. Final wording explicitly names automatic source categories and refuses explicit/saved localhost targets.",
@@ -29687,7 +29715,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
-          "digest": "343029b2e6cdf9083a99d119c0f1a3befe79a26771fb6d3bfb7ea89e3035fef1"
+          "digest": "53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2"
         },
         {
           "path": "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx",
@@ -29711,7 +29739,8 @@
         "Integration source review through abfc7a889: #2864's install.ts now also carries the preview's optional gitMetadata into the install consent. Corrected the list of fields the install command carries so it includes any gitMetadata: \"excluded\". Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery root exports. The README defers the detailed API to docs/reference/sdk.md and makes no exhaustive export claim; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. README's chat/Dock signatures are unchanged; useSendMessage's parameters did not change. Claims unaffected."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal. README's chat/Dock signatures are unchanged; useSendMessage's parameters did not change. Claims unaffected.",
+        "Keyword sweep (caveat, image support, imageInput, attachment_input, retry, orchestration-sessions, model picker, staging, composer, steer) then read each hit against this fix round: modelSupportVaries input and scoped model caveat (engine-capability-matrix.ts), orchestration-sessions re-read after a send that did not take and Retry withheld only for attachment_input_unsupported (useActiveChatSessionMessaging.ts), conversationAwaitsFirstTurn in useChatInput, staging-capacity handling, composer layout/validation-line action, steer ownership in runtime-event-projection.ts. No claim in this document describes the changed behavior (its retry/staging mentions concern other subsystems), so it remains accurate."
       ]
     },
     {
