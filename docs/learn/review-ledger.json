@@ -5675,7 +5675,7 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "0ee5ffd0fae3f874f8fbf203980d8053a44d71b5",
+      "sourceRevision": "468ac52965f25084741600700cfec97fec98b64b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical. Follow-up (#2915/#2916): added the session-grant scope section (tool, edit-mode with its mode sync, read-folder/folder, none), traced from the shared toolRequestSessionGrant through the Claude adapter's canUseTool/respondToRequest and the toast, inline card and inbox card.",
@@ -5712,7 +5712,7 @@
         },
         {
           "path": "src-server/providers/__tests__/claude-adapter.test.ts",
-          "digest": "d27d9ce1cba003e6dd839d2052402bacdd503feb6108285e52dc2e64d7717c67"
+          "digest": "9ef8485da12a59995f378b362f1466a733381ed31c52143b8823095112c0de42"
         },
         {
           "path": "src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts",
@@ -5724,7 +5724,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter-events.ts",
-          "digest": "f15231026a19a49859e47bb725dc5c8784be7ab63fd28078c8d95a266ac636f7"
+          "digest": "956a6ed21b6b46acd220825c3691ecb7422643a16a4f3e72300565072642a5e1"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
@@ -5791,7 +5791,8 @@
         "#2933: updated the Claude autoApprove paragraph. canUseTool now allows an autoApprove match only where toolRequestIsPlainCall holds (tool or edit-mode grant); the staged evaluator's isGranted allow carries toolGrant and preToolPolicyHookOutput returns no permissionDecision for it, since Claude Code 2.1.261's post-hook-allow check (jv in the bundled CLI) re-checks deny/ask rules, safety checks and requiresUserInteraction but not the working-directory check. ACP: a toolGrant allow or pattern match never answers switch_mode/ExitPlanMode. Session-grant section unchanged and still accurate.",
         "#2933 round 2: added the ACP plan-exit session answer (one-call accept, allow-once option, no approvedTools grant; payload toolKind hides the session option for switch_mode) and the denyApprovals fail-fast deny in Claude canUseTool and ACP requestPermission via the evaluator's exported delegatedApprovalDenial. Traced respondToRequest, requestPermission and canUseTool.",
         "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Re-read the ACP plan-exit and delegated-child paragraph against the reworded comments; it still says a request either adapter would otherwise open is denied at once, which matches. No prose change.",
-        "#2932 part 1: added the always-prompt section (SandboxNetworkAccess with no session grant and a host title; dangerouslyDisableSandbox input; exact reasons dangerouslyDisableSandbox, requiresUserInteraction and the MCP org ceiling; the suppressAlwaysAllowRule/defaultToNo/requiresUserInteraction flags read when a later SDK forwards them), traced from toolRequestEscalates/toolRequestSessionGrant through canUseTool's autoApprove and grant checks and the request.opened payload the surfaces read. Stated the uncovered Bash safety checks and signal-less ask rules. Verified against the bundled CLI 2.1.261 that session-destination updates are not persisted and mapClaudeDecisionToPermissionResult rewrites every destination to session."
+        "#2932 part 1: added the always-prompt section (SandboxNetworkAccess with no session grant and a host title; dangerouslyDisableSandbox input; exact reasons dangerouslyDisableSandbox, requiresUserInteraction and the MCP org ceiling; the suppressAlwaysAllowRule/defaultToNo/requiresUserInteraction flags read when a later SDK forwards them), traced from toolRequestEscalates/toolRequestSessionGrant through canUseTool's autoApprove and grant checks and the request.opened payload the surfaces read. Stated the uncovered Bash safety checks and signal-less ask rules. Verified against the bundled CLI 2.1.261 that session-destination updates are not persisted and mapClaudeDecisionToPermissionResult rewrites every destination to session.",
+        "#2932 part 1 follow-up: the sandbox network tool name became module-private and the adapter test's escalation table gained explicit types; no behavior the page states changed."
       ]
     },
     {
