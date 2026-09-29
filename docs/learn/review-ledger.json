@@ -7762,7 +7762,7 @@
     {
       "path": "docs/design/inference-fleet.md",
       "documentDigest": "01a56a31c8549da9335caf67355dec6c35d928cd5c73e6bfd564f802d5a84d9e",
-      "sourceRevision": "7c0e2be463c2c2c6a78f0e344cff1c22294fc12c",
+      "sourceRevision": "6706492630ef22ad21711876149d8acd5f3ce6c5",
       "kind": "design",
       "state": "classified",
       "summary": "Full chronological fleet record classified; current serving/admission/Dispatch/receipt owners linked, buffered behavior and nonlocal consumer refusal inspected, obsolete loopback bypass and blanket privacy claim corrected, dependency inventory explicitly historical.",
@@ -7803,6 +7803,10 @@
         {
           "path": "src-server/services/inference/fleet-inference-service.ts",
           "digest": "c8e7e04752800198ffc520d4f351d54491c6b10c6a35ac7a029741fd2962c4cb"
+        },
+        {
+          "path": "src-server/services/remote-stations/remote-station-forwarder.ts",
+          "digest": "d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6"
         }
       ],
       "checks": [
@@ -7815,7 +7819,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) pairing-route-scopes.ts adds one inherited /api/system leaf, GET /api/system/core-update/service-update, near line 3084. The doc's /api/connections leaf-override claims and cited line anchors (:94, :143, :518) come before the insertion and are unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Corrected §2.1: a peer target's bearer now comes from the remote forwarder (remote-station-forwarder.ts), not a station-control-delegation.ts line range, and a tool never holds it. The fleet claims about pairing scope routes are unaffected by dropping the caller/delegation scope entry."
+        "Corrected §2.1: a peer target's bearer now comes from the remote forwarder (remote-station-forwarder.ts), not a station-control-delegation.ts line range, and a tool never holds it. The fleet claims about pairing scope routes are unaffected by dropping the caller/delegation scope entry.",
+        "Restored src-server/services/remote-stations/remote-station-forwarder.ts as a recorded source: it was cited by this branch's review before the merge with main and was dropped when main's ledger file was taken. No prose changed; the earlier review of this page's forwarding claims stands."
       ]
     },
     {
@@ -10081,7 +10086,7 @@
     {
       "path": "docs/design/station-peer-pairing.md",
       "documentDigest": "c2844918dc78fd9924dd1fd1f9dfe649ef85d4ad1e6d7d89af148d17b84d239e",
-      "sourceRevision": "7c0e2be463c2c2c6a78f0e344cff1c22294fc12c",
+      "sourceRevision": "6706492630ef22ad21711876149d8acd5f3ce6c5",
       "kind": "historical",
       "state": "classified",
       "summary": "Historical peer design and supersession log linked to actual credential/delegation/scope owners; original proposal body preserved.",
@@ -10098,6 +10103,10 @@
         {
           "path": "src-server/tools/station-control-delegation.ts",
           "digest": "eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751"
+        },
+        {
+          "path": "src-server/services/remote-stations/remote-station-forwarder.ts",
+          "digest": "d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6"
         }
       ],
       "checks": [
@@ -10109,7 +10118,8 @@
         "Reviewed landing deltas through 111744681: Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 adds PAIRING_SCOPE_DESCRIPTIONS (insertion at line 472) and FullAccessRevocationReport types (from line 1125) to contracts environment-security.ts. It changes no peer, delegation-preset or PairedDeviceKind semantics, and the lines the dated supersession table cites (174, 393, 414) have identical content before and after. That table's :393/:414 references to PairedDeviceKind were already offset before #2904 (702 at base, now 779); this is dated history and #2904 did not cause it. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c inserted decision-delivery code in station-control-delegation.ts at line 1196 and later. The doc's cited ranges (:87-93, :100, :335-356, :643-648, :716-760) and its target-resolution claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
-        "Rechecked the C2b resolution note in §11 against the forwarder, the deleted credential leaf and the policy table; the §1 current-state text stays marked historical. Holds."
+        "Rechecked the C2b resolution note in §11 against the forwarder, the deleted credential leaf and the policy table; the §1 current-state text stays marked historical. Holds.",
+        "Restored src-server/services/remote-stations/remote-station-forwarder.ts as a recorded source: it was cited by this branch's review before the merge with main and was dropped when main's ledger file was taken. No prose changed; the earlier review of this page's forwarding claims stands."
       ]
     },
     {
@@ -15196,7 +15206,7 @@
     {
       "path": "docs/guides/machine-relationships.md",
       "documentDigest": "69873a4bf7c123c8bb46b4a0014745b8725334684e864ae804226275accf966d",
-      "sourceRevision": "7c0e2be463c2c2c6a78f0e344cff1c22294fc12c",
+      "sourceRevision": "6706492630ef22ad21711876149d8acd5f3ce6c5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented direction/authority/persistence distinctions across paired Devices, server-owned SSH, remote visibility, fleet inference and account/Project sharing. Traced the shared-work and guest administration boundaries; archived issue references corrected. No behavioral prose correction was otherwise needed.",
@@ -15369,6 +15379,10 @@
         {
           "path": "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx",
           "digest": "afa116512df03572fe9b957466d284eac07497a659547f4d18c34b811706807f"
+        },
+        {
+          "path": "src-server/services/remote-stations/remote-station-forwarder.ts",
+          "digest": "d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6"
         }
       ],
       "checks": [
@@ -15393,7 +15407,8 @@
         "Integration source review through d72f79b08: #2904 adds main's 'What a paired device may do, and full access' section, the config route's structured refusal, and the runtime-routes scope/revoke reset (fullAccessRevocation, resetFullAccess, device-revoked cause). Checked the section against resetFullAccessGrantedBy: Ask for the device's never, a Default that reaches full access, Auto on a host session it unconfined, and host starts it granted; re-confinement versus engine-restart; the listed exceptions with the 50-entry cap; and account sessions getting no grant. Also checked it against PAIRING_SCOPE_DESCRIPTIONS and the refusal module. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) returns 403 rather than 401 when an ordinary device credential is recognized but not admitted (e.g. /api/pairing device inventory), so the browser session is not revoked; prose accurate: the guide describes scoped, revocable device credentials and named refusals without claiming a status code or that an out-of-scope request ends the session. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added lastDecision/earlierUnacknowledgedDecisions and request.delivery projection to station-control-delegation.ts. Remote target admission and authenticated forwarding are unchanged; prose accurate. Source review is separate from executed test evidence.",
-        "Corrected the See-also for the delegation caller: a tool names the saved Environment to this Station's route, which forwards through the remote forwarder with the bearer attached in-process and a per-request bound."
+        "Corrected the See-also for the delegation caller: a tool names the saved Environment to this Station's route, which forwards through the remote forwarder with the bearer attached in-process and a per-request bound.",
+        "Restored src-server/services/remote-stations/remote-station-forwarder.ts as a recorded source: it was cited by this branch's review before the merge with main and was dropped when main's ledger file was taken. No prose changed; the earlier review of this page's forwarding claims stands."
       ]
     },
     {
@@ -23676,7 +23691,7 @@
     },
     {
       "path": "docs/reference/env-vars.md",
-      "sourceRevision": "7c0e2be463c2c2c6a78f0e344cff1c22294fc12c",
+      "sourceRevision": "6706492630ef22ad21711876149d8acd5f3ce6c5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed every current table and setup claim against configuration resolvers and their runtime/CLI/frontend callers. Corrected root/home derivation, development instance paths, control-client base/port precedence, exact browser origin admission, hosted registry file requirements, AWS region precedence, inert DEBUG_STREAMING behavior, production Vite override, OTLP versus disclosed product usage telemetry, and incomplete IAM example. Added operator scope and feature-specific navigation instead of claiming an exhaustive environment inventory. Corrected matching .env.example comments without changing values.",
@@ -23790,6 +23805,10 @@
         {
           "path": "src-ui/src/main.tsx",
           "digest": "ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86"
+        },
+        {
+          "path": "src-server/services/remote-stations/remote-station-forwarder.ts",
+          "digest": "d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6"
         }
       ],
       "checks": [
@@ -23807,7 +23826,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. VITE_API_BASE resolution is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). STATION_API_BASE/STATION_PORT resolution in station-control-shared.ts is unchanged; STATION_CONTROL_CALLER_TOKEN was never documented here and is not a supported variable. Prose remains accurate. Source review only.",
-        "Added STATION_REMOTE_REQUEST_TIMEOUT_MS (default 30000, 1..600000, validated at startup, headers and body, not SSH connect). The other server rows do not depend on the forwarder wiring C2b added to runtime-routes and station-runtime."
+        "Added STATION_REMOTE_REQUEST_TIMEOUT_MS (default 30000, 1..600000, validated at startup, headers and body, not SSH connect). The other server rows do not depend on the forwarder wiring C2b added to runtime-routes and station-runtime.",
+        "Restored src-server/services/remote-stations/remote-station-forwarder.ts as a recorded source: it was cited by this branch's review before the merge with main and was dropped when main's ledger file was taken. No prose changed; the earlier review of this page's forwarding claims stands."
       ]
     },
     {
