@@ -1584,7 +1584,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "6a0d3e154170e88514a9ad71e1b7af587073aeb4",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1616,7 +1616,7 @@
         },
         {
           "path": "docs/reference/cli.md",
-          "digest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca"
+          "digest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951"
         },
         {
           "path": "install.sh",
@@ -1628,7 +1628,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/cli/src/distribution.ts",
@@ -1656,7 +1656,7 @@
         },
         {
           "path": "docs/guides/release-channel-ports.md",
-          "digest": "a318455a18fdb96350fa2d0b1af309d9bfdee2de5c029345440ebf97e92dfebb"
+          "digest": "3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d"
         }
       ],
       "checks": [
@@ -1678,7 +1678,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed."
+        "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -1695,7 +1696,7 @@
     {
       "path": "deploy/gcp-dev/README.md",
       "documentDigest": "b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Single-owner GCP development recipe with a retained historical qualification record. Full 170-line baseline read. Bootstrap guard/swap helper, container enrollment boundary and GCP preview source checked; official GCP documentation checked read-only. The 2026-09-05 drill remains historical evidence, not fresh cloud qualification.",
@@ -1747,7 +1748,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/cli/src/commands/service-windows.ts",
@@ -1873,13 +1874,14 @@
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The README's separate terminal/voice listener and station-control delivery statements do not depend on the removed path, so the prose remains accurate. Source review only.",
         "Re-read the single-operator GCP recipe against the .dockerignore and Dockerfile edits. Its container claims are about the runtime image, the boot/data disk, IAP/OS Login and the E2 machine reference, not the build context or COPY list, so no prose change is needed. The Dockerfile edit adds docs/ to the discarded build stage only; the runtime stage at line 63 onward pulls no docs path, so the image it deploys is unchanged. | Re-read the GCP single-operator recipe against the follow-up .dockerignore/Dockerfile change. The build stage now also copies biome.json, .gitignore and config/; the runtime stage still copies /app/config from build, so the runtime image now carries all of config/'s public JSON (previously two files) and still no docs/, biome.json or .gitignore (checked with docker run ls /app). The recipe's claims concern image enrollment by digest or archive, UID/GID 1000, disk, IAP/OS Login and measured sizing on an older revision; none enumerate image contents, so no prose change is needed. | Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern).",
-        "Re-read 'Private GCP development environment' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Private GCP development environment' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
       "path": "deploy/public-ingress/README.md",
       "documentDigest": "713a080bec7e77d77db623d83a52874bb698556e6ddc28bb75eda69b0e864d5b",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Optional Caddy Compose ingress template and its protocol qualification fixture. Full 128-line baseline read. Compose/Caddy files and the synthetic smoke upstream traced; actual Compose model validated read-only. No Caddy/Station startup, public CA issuance, DNS change or smoke execution.",
@@ -1931,7 +1933,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/cli/src/commands/service-windows.ts",
@@ -2057,7 +2059,8 @@
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The profile's ingress, CA and rate-limit statements are unaffected, so the prose remains accurate. Source review only.",
         "Re-read the optional Caddy Compose ingress template against the .dockerignore and Dockerfile edits. It documents the ingress protocol, its qualification fixture and Caddyfile directives, and makes no claim about the build context, the COPY list or image contents, so no prose change is needed. The Dockerfile edit stays inside the discarded build stage. | Re-read the Caddy ingress template against the follow-up .dockerignore/Dockerfile change (build stage adds biome.json, .gitignore and config/; runtime gains the rest of config/'s public JSON). The template requires a reviewed digest-pinned Station image and documents only the ingress protocol, fixture and Caddyfile, with no claim about build context or image contents, so no prose change is needed. | Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern).",
-        "Re-read 'Public HTTPS for a single-owner Station' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Public HTTPS for a single-owner Station' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -3719,7 +3722,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -3771,7 +3774,7 @@
         },
         {
           "path": "docs/reference/cli.md",
-          "digest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca"
+          "digest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951"
         },
         {
           "path": "docs/reference/config.md",
@@ -3897,13 +3900,14 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); orchestration-decomposition-map.md (branch prose edit (T7 wiring-test note)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "Re-read 'Abstraction review' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Abstraction review' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -3935,7 +3939,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/cli/src/commands/service.ts",
@@ -5652,7 +5656,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; registry.ts only deleted the caller-less registerBrandingProvider (getBrandingProvider default unchanged); chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Rechecked StationControlDispatchScope (scope decided before contacting another Station, which C2b's route refusals reinforce) and the SDK/http module rows; no claim names the removed caller-delegation route or the tool-side peer path. After merging main 91472e665, re-read main's edit here (the scheduler paragraph drops addProvider and the legacy-provider receipt wording); it names no station-control forwarding, caller-delegation or SDK body-read behaviour, so the above still holds."
+        "Rechecked StationControlDispatchScope (scope decided before contacting another Station, which C2b's route refusals reinforce) and the SDK/http module rows; no claim names the removed caller-delegation route or the tool-side peer path. After merging main 91472e665, re-read main's edit here (the scheduler paragraph drops addProvider and the legacy-provider receipt wording); it names no station-control forwarding, caller-delegation or SDK body-read behaviour, so the above still holds.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -7102,7 +7107,7 @@
     {
       "path": "docs/design/cli-product.md",
       "documentDigest": "863524dc50fe1177cacdd1e2e414b380828d0d5a08d2339fe404c67bc143a04f",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "historical",
       "state": "classified",
       "summary": "Retained original publication proposal and measurements with explicit current package, native dependency, managed-installer and CLI-reference routing.",
@@ -7126,7 +7131,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         }
       ],
       "checks": [
@@ -7135,13 +7140,14 @@
         "Reviewed source changes: Read the full installer delta. Generated ring constants add signed-manifest-only nightly and explicit coexistence checks; stable/beta authenticated release flow remains. Builds now run in the final release directory before marking completion. Generic README/source CLI explanations remain accurate; platform-array manifest incompatibility is separately documented.",
         "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
         "Integration source review through e0314c727: #2867 changed install.sh and lifecycle.ts so an archive service from the same install root no longer blocks packaged upgrade. The historical record's current-routing preamble (installer-owned archives upgrade through the recorded installer and manifest URL, with details routed to the CLI reference) remains accurate, and the original proposal content stays historical. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds install.sh stage-only mode and hand-off to the launcher service. lifecycle.ts now passes the launcher context only to the supervised server. The claim that installer-owned archives run station upgrade through their recorded installer and manifest URL is still accurate. The anchor `commands/lifecycle.ts:2690` no longer pointed at the upgrade code: it was already wrong before this merge, and #2881 shifted the file again (upgrade() is now at line 5343). Corrected it to name `upgrade()` in commands/lifecycle.ts. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds install.sh stage-only mode and hand-off to the launcher service. lifecycle.ts now passes the launcher context only to the supervised server. The claim that installer-owned archives run station upgrade through their recorded installer and manifest URL is still accurate. The anchor `commands/lifecycle.ts:2690` no longer pointed at the upgrade code: it was already wrong before this merge, and #2881 shifted the file again (upgrade() is now at line 5343). Corrected it to name `upgrade()` in commands/lifecycle.ts. Source review is separate from executed test evidence.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
       "path": "docs/design/cli-triage.md",
       "documentDigest": "b064c8f2e26b8250bf675fac1277b9674b87ce0483d62bed32072950b536887d",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed every command-design claim against CLI dispatch, source-doctor injection, authenticated diagnostics selection, artifact redaction and actual child-launch implementation. Corrected model-service sharing and terminal-output limits.",
@@ -7149,7 +7155,7 @@
       "sources": [
         {
           "path": "docs/reference/cli.md",
-          "digest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca"
+          "digest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951"
         },
         {
           "path": "packages/cli/src/__tests__/triage.test.ts",
@@ -7188,7 +7194,8 @@
         "Integration source review through d72f79b08: #2904 changes cli.ts only in `describeCliError`, which now tries `explainFullAccessRefusal` before `explainRequestFailure`. docs/reference/cli.md gains the access devices/scope/scopes reference. None of this touches triage dispatch, source-doctor injection, authenticated diagnostics selection, artifact redaction or child-launch flags. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 changes only packages/cli/src/__tests__/triage.test.ts. The invalid-remote-diagnostics rejection now runs unconditionally instead of only when this machine observed remote as unavailable. No triage product behavior changed. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the delegate decision-delivery subsection to docs/reference/cli.md, and the auto-merged cli.md is coherent. The triage design (bundle collection, agent launch flags, artifact policy) does not touch delegation decisions. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) changed only the service and upgrade sections of docs/reference/cli.md (fixed launcher, supervised update, Check for server updates). The triage command's reference text and this design's claims are untouched. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) changed only the service and upgrade sections of docs/reference/cli.md (fixed launcher, supervised update, Check for server updates). The triage command's reference text and this design's claims are untouched. Prose accurate. Source review is separate from executed test evidence.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -7829,7 +7836,7 @@
     {
       "path": "docs/design/instance-registry.md",
       "documentDigest": "6478fdadd409526952d53a3ca9604ea0c9741a0411025c2faed3fdf02d5242bf",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed schema/read/publish/lock and production producer/consumer claim review. Distinguished minimal optional metadata validation, adoption/protected-type ordering, atomic rename versus writer locking and post-rename failure, Windows ACL/fsync limits and exact two-child test scope. Corrected Desktop service ownership reporting without automatic attachment; retained separate CLI state and conservative liveness boundaries.",
@@ -7837,7 +7844,7 @@
       "sources": [
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/cli/src/commands/service.ts",
@@ -7888,7 +7895,8 @@
         "Landing review through d0d9d33f7: Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through e0314c727: service install now records kind (source or archive) and installRoot and runs an archive through current. Upgrade exempts a service from the same install root, and lib.rs dropped notification_watch. Registry producers and consumers, claimInstanceEntry ownership, archive state roots and 'upgrade through its recorded installer' are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds the fixed launcher install, update-home and update status; service liveness publishing moves to service-liveness.ts with a hand-off to the launcher pid during an update; lifecycle.ts forwards STATION_SERVICE_LAUNCHER; the doc's claims (service install producer, installer-owned archives upgrade through the recorded installer, loose archives need manual replacement) still hold; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds the fixed launcher install, update-home and update status; service liveness publishing moves to service-liveness.ts with a hand-off to the launcher pid during an update; lifecycle.ts forwards STATION_SERVICE_LAUNCHER; the doc's claims (service install producer, installer-owned archives upgrade through the recorded installer, loose archives need manual replacement) still hold; prose accurate. Source review is separate from executed test evidence.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -12925,7 +12933,7 @@
     {
       "path": "docs/guides/deployment.md",
       "documentDigest": "1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Operating paths for checkout/container deployments, hosted foundations, and the legacy macOS dogfood supervisor. Full 920-line baseline and parent working bytes read. Source checks cover Docker, CLI/proxy/auth, home archive/schema/migration, hosted preflight, channel homes, supervisor staging/timing/health and cleanup. Detailed installer rollback, tenant carriers and lifecycle journal failure matrices were not fully re-executed; runtime qualification is partial. Follow-up: Changed pre-provisioning paragraphs checked against real schema-gate/lifecycle/server/migration ordering. Windows issue-link addition preserves the already disclosed staging limitation.",
@@ -12985,7 +12993,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/cli/src/commands/service-windows.ts",
@@ -13117,7 +13125,8 @@
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The hosted tenant carrier claim (token-bound Codex HTTP/SSE session, exact built-in child environment, trusted async context) remains accurate. Source review only.",
         "Re-read the deployment guide's container and image claims against the .dockerignore and Dockerfile edits. The guide documents runtime deployment, the hosted preflight, the installer rollback and channel homes; it does not enumerate the build-context allowlist, the COPY list, or image contents, so no prose change is needed. The Dockerfile edit is confined to the build stage (line 46, before the runtime stage at line 63) and the .dockerignore edit only widens what is sent to the docker daemon, not what lands in the image. | Re-read the local source build paragraph and command block against the follow-up .dockerignore/Dockerfile change. The claim that the Docker context excludes .git, credentials, nested node_modules and dist still holds: .gitignore is admitted as a Biome input but no pattern re-admits .git (container-release.test.ts now rejects !.git, !.git/, !.git/**, !.git* per line; fault-injected), and node scripts/check-container-build-context.mjs passed. The documented docker build with explicit provenance build-args was executed on this tree and succeeded (it failed on the prior head), and scripts/container-smoke.sh passed on arm64 Docker Desktop. The runtime image now also carries the rest of config/'s public JSON; the guide's image-content claims (Git, OpenSSH client, certificate trust, terminal support, UID/GID 1000) are unchanged, so no prose change is needed. | Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern).",
-        "Re-read 'Deployment Guide' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Deployment Guide' against C2b: environment.ts changes only a comment naming the forwarder; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -14562,7 +14571,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14602,7 +14611,7 @@
         },
         {
           "path": "docs/reference/cli.md",
-          "digest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca"
+          "digest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951"
         },
         {
           "path": "docs/reference/contracts.md",
@@ -14656,7 +14665,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed docs/guides/documentation.md, covered by its notes above; this branch changed docs/guides/plugins.md, docs/reference/api.md, docs/reference/sdk.md, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by api.md (legacy-provider receipt sentence removed); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Re-read 'Integrating Station into your company or project' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Integrating Station into your company or project' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -16007,7 +16017,7 @@
     {
       "path": "docs/guides/native-releases.md",
       "documentDigest": "f83643fc0d8ed58bd9daa879a86f8b0ea09c4f4d67597226de8b268f15038b8c",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed detailed cohort admission/fence/ledger/partial-provider protocols, mobile and desktop compensation boundaries, macOS notarization overlap, Windows installer/payload proof limits and portable host-target staging. Actual AppImage entrypoint callers checked against Cargo.lock-verified tauri-utils resource resolution; source/config mismatch documented without claiming an executed Linux failure. Frozen Windows/shared-runtime-pruning changes traced through callers.",
@@ -16099,7 +16109,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/shared/src/process-identity.mjs",
@@ -16355,13 +16365,14 @@
         "Integration source review through e0314c727: install.sh gained #2867 archive-service switching (stop, switch current, restart, identity rollback) and recorded install ports; install-macos.zsh now calls the signing-identity helper's designated-requirement transition check; the dead createExclusiveDirectory and DMG_CREATION_COMMAND_TIMEOUT_MS exports were dropped; lifecycle.ts upgrade no longer blocks on an archive service of its own install root; lib.rs removed the dormant notification watch; package.json dropped bearing/forage. None of these touch the guide's cohort, notarization-overlap, AppImage resource-path or portable-archive claims, and the guide sends upgrade and service behavior to release-channel-ports.md, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and a launcher handoff. When a running launcher-run service owns the install, install.sh stages versions/<v>, writes runtime/update-request.json and waits for the launcher instead of promoting current. portable-server-archive.mjs now ships bin/station-launcher.mjs. #2914 only drops the dead validateUpdateConfig alias, adds a `--` to install-macos.zsh print calls, and reshapes feed/cohort/build-only tests. Corrected the unconditional 'then promotes the active link' with one sentence: under a running launcher-run service the installer only stages and the launcher trials the switch. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta."
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
       "path": "docs/guides/native-shell-verification.md",
       "documentDigest": "d7e005e24651c4609ce268807590dfaa26c7f22f7c70f1b7cd84c3e3b8df4b25",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
@@ -16381,7 +16392,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/cli/src/commands/service.ts",
@@ -16539,13 +16550,14 @@
         "Integration source review through d72f79b08: in cli.ts, #2904 only imports explainFullAccessRefusal and tries it first in describeCliError. Startup epoch, supervisor, log retention, shell-lane selector and doctor dispatch wiring are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 makes parseTsxVersion in packages/cli/src/commands/lifecycle-doctor.ts private. Its behavior is unchanged, and the guide's doctor dispatch claims do not name it. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2919/#2914) startup-readiness-static.test.ts still pins the single main-window reveal authority and now pins maybe_reveal waiting for identity and renderer mount. rendererLiveness.test.tsx adds per-desktop-platform mount-commit cases. #2881 adds an `update` field to service status and the launcher env to lifecycle start. 'station service status --json checks a durable installed service, not a Desktop-owned sidecar' still holds; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Startup epoch, supervisor and ApiBaseProvider wiring are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Startup epoch, supervisor and ApiBaseProvider wiring are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
       "path": "docs/guides/nightly.md",
       "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
@@ -16633,7 +16645,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/shared/src/process-identity.mjs",
@@ -16834,7 +16846,8 @@
         "Integration source review through e0314c727: the inputs changed in four ways. install.sh gained archive-service stop/switch/restart and recorded ports (#2867). The build-only exclusive output directory moved from a JS helper into the zsh installer's `mkdir` refusal, which still exits with 'already exists'. The designated-requirement check moved into the macos-signing-identity CLI. The notification watch, DMG_CREATION timeout alias and bearing/forage deps were removed. The guide's install, build-only, notarization and archive claims are still accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds install.sh STATION_INSTALL_STAGE_ONLY and hand-off to a running launcher service, and copies bin/station-launcher.mjs in portable-server-archive.mjs. lifecycle.ts now passes STATION_SERVICE_LAUNCHER only to the supervised server. 'Check for server updates' (GET /api/system/core-update) now checks an archive's signed public manifest and can apply the update through the fixed launcher. 8b48e2b35 (#2914) only adds `--` to print calls in install-macos.zsh and changes tests. The 'Server source check' bullet said the route only compares source and build stamps and never shows an update as available, which is now wrong for archives. Corrected it: added the archive exception (verified manifest, running and newest versions, apply only when the launcher runs the server, otherwise station upgrade or reinstall) with a link to the cli.md#service section. The install, build-only and rollback prose is still accurate. The route source (src-server/routes/system/archive-update.ts) is not a recorded input; the ledger owner may add it. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta."
+        "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -17438,8 +17451,8 @@
     },
     {
       "path": "docs/guides/release-channel-ports.md",
-      "documentDigest": "a318455a18fdb96350fa2d0b1af309d9bfdee2de5c029345440ebf97e92dfebb",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "documentDigest": "3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
@@ -17707,7 +17720,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         }
       ],
       "checks": [
@@ -17739,7 +17752,8 @@
         "Integration source review through e0314c727: #2867 (slice C) changed service handling. `station service install` from an archive's active version now runs `<install root>/current` and records `kind: \"archive\"` and `installRoot`. The installer stops that service, switches `current`, restarts it, and rolls back if the identity check fails; any other service still blocks upgrade (lifecycle.ts `archiveInstallRoot`, install.sh). Installs also record their ports and reuse them on upgrade. Corrected the stale \"under an installed service, upgrade refuses\" and \"services still run the source-release layout until slice C\" claims, added the archive-service upgrade, inactive-version and port rules and the uninstall refusal, and noted port reuse. Cargo.toml/lib.rs (notification-watch removal, rustls comment) and bearing/forage removal do not affect the channel identity matrix. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes fnv1a32 private in dev-ports.ts, with the same deterministic offset and scan callers. It deletes the test-only parseGitSource/extractPluginName from commands/helpers.ts. Neither change affects the worktree allocation or root derivation the guide describes. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and, when runtime/service-state.json exists and an archive service is active, only stages the version and hands off to the fixed service launcher (trial/rollback; refuses on pending or needs-operator update state); service.ts copies runtime/station-launcher.mjs at archive service install (non-win32); lifecycle-code-root.ts moves archive helpers to @kontourai/station-shared/prebuilt-archive (re-exported, no behavior change); channel-ports.mjs adds an optional outputRoot to sync/check; android-build-manifest.mjs and tauri-context.mjs only drop exports (#2914). Corrected the archive-service upgrade paragraph, which claimed the installer always stops the service, switches current and restarts it: it now says a running launcher service stages and hands off to a launcher trial, keeps the stop/switch/restart path otherwise, and notes that an unfinished or operator-blocked launcher update refuses the upgrade. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -21747,7 +21761,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -21760,7 +21774,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/cli/src/commands/surfaces.ts",
@@ -22457,7 +22471,8 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/chat/chat.ts, src-server/routes/orchestration/orchestration.ts, src-server/routes/system/install-provenance.ts, src-server/routes/system/system-update-routes.ts, covered by its notes above; this branch changed the document, src-ui/src/lib/branding-theme.ts (added), covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Rechecked the continuation-caller paragraph (it still rebuilds the target from the binding and forwards the model choice, now via this Station's route for a saved Environment) and the pairing-scope and deadline statements; none lists the removed credential or caller-delegation routes. After merging main 91472e665, re-read main's edits (the /api/branding theme override surface, and dropping the legacy scheduler provider sentence); neither touches the continuation-caller, pairing-scope or deadline statements checked above."
+        "Rechecked the continuation-caller paragraph (it still rebuilds the target from the binding and forwards the model choice, now via this Station's route for a saved Environment) and the pairing-scope and deadline statements; none lists the removed credential or caller-delegation routes. After merging main 91472e665, re-read main's edits (the /api/branding theme override surface, and dropping the legacy scheduler provider sentence); neither touches the continuation-caller, pairing-scope or deadline statements checked above.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -22488,8 +22503,8 @@
     },
     {
       "path": "docs/reference/cli.md",
-      "documentDigest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "documentDigest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22609,7 +22624,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/cli/src/commands/model-options.ts",
@@ -22878,7 +22893,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c auto-merged a new 'Recorded versus acknowledged decisions' subsection after the delegate examples. It fits the branch's delegate text (respond/status/events). It also matches source: the six delivery values in station-control-delegation.ts; CODEX_APPROVAL_ACK_WINDOW_MS = 30_000; the codes engine-decision-unacknowledged and engine-decision-not-sent; the CLI line formats in packages/cli delegate.ts; and acknowledgement 'none' in the acp and claude adapters. 7cd4892e5 refuses a decision on a closed Codex request ('not open'), which matches the closed-by-engine row. The approvals section's request.opened/request.resolved description still holds. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) main's own edit to the service section (fixed launcher at <install root>/runtime/station-launcher.mjs, 165s TimeoutStopSec, launcher-run self-update with trial/rollback/needs-operator, install.sh handoff, Check for server updates) auto-merged cleanly into the branch's text. It is not duplicated and does not contradict the branch's tier table (packaged service status|start|stop). Main left the `upgrade` section saying the installer always stops the service, switches current and restarts it; that is wrong for a running launcher-run service now that install.sh hands off. Corrected the upgrade section: the installer only stages and asks the service to switch, the launcher trials and keeps the previous version on failure, and the old stop/switch/restart applies otherwise. Source review is separate from executed test evidence.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers."
+        "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -23730,7 +23746,7 @@
     },
     {
       "path": "docs/reference/env-vars.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed every current table and setup claim against configuration resolvers and their runtime/CLI/frontend callers. Corrected root/home derivation, development instance paths, control-client base/port precedence, exact browser origin admission, hosted registry file requirements, AWS region precedence, inert DEBUG_STREAMING behavior, production Vite override, OTLP versus disclosed product usage telemetry, and incomplete IAM example. Added operator scope and feature-specific navigation instead of claiming an exhaustive environment inventory. Corrected matching .env.example comments without changing values.",
@@ -23743,7 +23759,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/contracts/src/tenancy.ts",
@@ -23865,7 +23881,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. VITE_API_BASE resolution is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). STATION_API_BASE/STATION_PORT resolution in station-control-shared.ts is unchanged; STATION_CONTROL_CALLER_TOKEN was never documented here and is not a supported variable. Prose remains accurate. Source review only.",
-        "Added STATION_REMOTE_REQUEST_TIMEOUT_MS (default 30000, 1..600000, validated at startup, headers and body, not SSH connect). The other server rows do not depend on the forwarder wiring C2b added to runtime-routes and station-runtime. | Restored src-server/services/remote-stations/remote-station-forwarder.ts as a recorded source: it was cited by this branch's review before the merge with main and was dropped when main's ledger file was taken. No prose changed; the earlier review of this page's forwarding claims stands."
+        "Added STATION_REMOTE_REQUEST_TIMEOUT_MS (default 30000, 1..600000, validated at startup, headers and body, not SSH connect). The other server rows do not depend on the forwarder wiring C2b added to runtime-routes and station-runtime. | Restored src-server/services/remote-stations/remote-station-forwarder.ts as a recorded source: it was cited by this branch's review before the merge with main and was dropped when main's ledger file was taken. No prose changed; the earlier review of this page's forwarding claims stands.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -26036,7 +26053,7 @@
     {
       "path": "docs/security/remote-access-threat-model.md",
       "documentDigest": "5545f52b980d2071732503351ddbd811e19d4c6e333c7e02b294db00a197a147",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented HTTP capability, proxy/Origin, scope, mutation budget, SSH host-key/probe, fleet, credential and recovery boundaries. Historical pairing probes remain explicitly historical. Corrected custom capability/query-token exceptions, unmapped-route refusal, retained loopback WS scope limits, and SSH handshake versus authenticated-session reachability.",
@@ -26048,7 +26065,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "packages/contracts/src/environment-security.ts",
@@ -26269,7 +26286,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by terminal-ws-server.ts (unreachable duplicate query-credential check deleted (connection handler still rejects first)); claims unaffected.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks (strengthens the documented bounded limiting of repeated authentication failures, including for IPv4 peers on a dual-stack listener). Station-control MCP token and loopback WebSocket statements remain accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "Rechecked the SSH delegation row (paired outbound bearer attached to the tunnel request) and the cross-station reads section (remote session reader supplied the peer store by runtime composition): both still hold with the bearer now attached by the forwarder in-process; no deleted route is listed."
+        "Rechecked the SSH delegation row (paired outbound bearer attached to the tunnel request) and the cross-station reads section (remote session reader supplied the peer store by runtime composition): both still hold with the bearer now attached by the forwarder in-process; no deleted route is listed.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -26939,7 +26957,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26984,7 +27002,7 @@
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
-          "digest": "bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277"
+          "digest": "d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5"
         },
         {
           "path": "src-server/knowledge-store/knowledge-source-observation-policy.ts",
@@ -27108,7 +27126,7 @@
         },
         {
           "path": "docs/guides/release-channel-ports.md",
-          "digest": "a318455a18fdb96350fa2d0b1af309d9bfdee2de5c029345440ebf97e92dfebb"
+          "digest": "3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d"
         }
       ],
       "checks": [
@@ -27139,7 +27157,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
         "Own edit: only the archive-install guide's link target changed, from the repo-relative ../guides/release-channel-ports.md to the absolute repository blob URL for the same file and the same #prebuilt-archives-and-source-releases anchor, so the published Start Here page no longer links to an ungenerated target. The surrounding claims (STATION_INSTALL_PUBLIC_MANIFEST_URL, the signed platform-v2 prebuilt archive, bundled Node.js, and the published-manifest requirement) are untouched. Verified docs:links:check re-resolves the blob URL as a local link and validates the anchor in 423 Markdown files.",
-        "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the getting-started captures and steps are unchanged, so the page holds."
+        "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the getting-started captures and steps are unchanged, so the page holds.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -29378,7 +29397,7 @@
     {
       "path": "packages/cli/README.md",
       "documentDigest": "844966cbd66882d8e5ea0cf80fc00caed4f10183e6600ec8f77fcd3d9b268cc5",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete package README against distribution/CLI reference and actual setup, target selection and triage callers. Corrected hosted availability implication, model-service sharing, terminal-output redaction limits and Operate stream authentication.",
@@ -29386,7 +29405,7 @@
       "sources": [
         {
           "path": "docs/reference/cli.md",
-          "digest": "1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca"
+          "digest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951"
         },
         {
           "path": "packages/cli/bundle-externals.mjs",
@@ -29468,7 +29487,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 makes contributorCommandMessage in packages/cli/src/distribution.ts private. Its behavior is unchanged, and the README's claims that contributor commands are checkout-only and about distribution do not name it. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added the 'Recorded versus acknowledged decisions' section to cli.md. The README's links to cli.md and its claims about timeouts, streams and published-CLI boundaries are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) extended the service and upgrade sections of docs/reference/cli.md (fixed launcher, stage-and-handoff upgrade, client-started update). The merged reference is coherent. The README's claims still hold: packaged service status|start|stop, and a prebuilt archive's own lifecycle CLI installing a service and running upgrade. Prose accurate. Source review is separate from executed test evidence.",
-        "Re-read '@kontourai/station-cli' against C2b: environment.ts changes only a comment naming the forwarder. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read '@kontourai/station-cli' against C2b: environment.ts changes only a comment naming the forwarder. The document makes no claim about those behaviours, so its statements still hold.",
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
