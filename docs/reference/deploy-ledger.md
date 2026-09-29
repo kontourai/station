@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-29T23:54:39Z | nightly-android | 0.1.11-nightly.2463.3 | `fa78d02` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36637714147) |
 | 2026-09-29T23:19:11Z | nightly-npm | 0.6.0-nightly.2463.36637714147 | `fa78d02` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36637714147) |
 | 2026-09-29T13:27:53Z | nightly-desktop | 0.1.11-nightly.2463.2 | `0690c93` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36569268737) |
 | 2026-09-29T13:27:50Z | nightly-android | 0.1.11-nightly.2463.2 | `0690c93` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36569268737) |
@@ -197,6 +198,36 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-29T23:54:39Z · nightly-android · 0.1.11-nightly.2463.3
+
+- Ship SHA: `fa78d02a509c2a30a4347130f54de67cd6f30ba1`
+- Artifact built at: `2026-09-29T22:20:22.559Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36637714147)
+
+### Changelog
+
+Commits since `0690c93` ([full sha](https://github.com/kontourai/station/commit/0690c93997c7abf1c0e410be6166e5f615cefd4b)):
+
+**Features**
+
+- [#2920](https://github.com/kontourai/station/pull/2920) feat(station-control): one remote-Station forwarding seam, bounded and peer-text-free (#2377 C2b)
+
+**Fixes**
+
+- [#2599](https://github.com/kontourai/station/pull/2599) fix(deps): land the runtime/UI and GitHub Actions bumps with the changes their guards need
+- [#2975](https://github.com/kontourai/station/pull/2975) fix(update): follow the https redirects GitHub serves the release manifest through
+- [#2954](https://github.com/kontourai/station/pull/2954) fix(cli): keep recorded ports when station upgrade re-runs install.sh
+
+**Docs**
+
+- [#2973](https://github.com/kontourai/station/pull/2973) docs(adr): ADR 0020 distribution — two trains, channels as pointers, installer-first (#2958)
+- [#2968](https://github.com/kontourai/station/pull/2968) docs(adr): record packaged-build evidence for ADR 0015 NOT_VERIFIED items (#2957)
+
+**Other**
+
+- [#2955](https://github.com/kontourai/station/pull/2955) chore(veritas): record a repository-relative target_root in the init plan
 
 ## 2026-09-29T23:19:11Z · nightly-npm · 0.6.0-nightly.2463.36637714147
 
