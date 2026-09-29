@@ -87,7 +87,7 @@ export const LIVE_LANE_LABELS: Record<LiveLaneId, string> = {
   idle: 'Idle',
 };
 
-export function liveLaneFor(label: HomeWorkItem['lifecycleLabel']): LiveLaneId {
+function liveLaneFor(label: HomeWorkItem['lifecycleLabel']): LiveLaneId {
   if (label === 'Needs attention') return 'needsYou';
   if (label === 'Running') return 'running';
   return 'idle';
@@ -185,7 +185,7 @@ interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
   terminalSince: ReadonlyMap<string, number>;
 }
 
-export interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
+interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
   /** Live lanes — see `liveLaneFor`. Always present, possibly empty. */
   needsYou: T[];
   running: T[];
