@@ -60,8 +60,10 @@ function isChatErrorMarkerMessage(message: UIMessage): boolean {
 }
 
 /** Filters `[CHAT_ERROR]` marker messages out of a message list. */
-export function excludeChatErrorMarkers(messages: UIMessage[]): UIMessage[] {
-  return messages.filter((message) => !isChatErrorMarkerMessage(message));
+export function excludeChatErrorMarkers<T>(messages: T[]): T[] {
+  return messages.filter(
+    (message) => !isChatErrorMarkerMessage(message as unknown as UIMessage),
+  );
 }
 
 /**
