@@ -2345,12 +2345,15 @@ describe('archive installs with a Station user service (#2675 slice C)', {
     prefix: string,
     manifest: Record<string, unknown> = {},
     unit: Record<string, unknown> | null = { active: true, sha: FIRST_SHA },
+    installEnv: Record<string, string> = {},
   ) {
     const harness = archiveHarness(tempDir(prefix));
     const first = buildPrebuiltArchive(harness.root, '1.2.3');
     const installed = runArchiveInstaller(
       harness,
       archiveManifest(harness, first),
+      [],
+      installEnv,
     );
     expect(installed.status, installed.stderr).toBe(0);
     const installRoot = realpathSync(harness.installRoot);
@@ -2515,6 +2518,154 @@ describe('archive installs with a Station user service (#2675 slice C)', {
     );
     expect(readlinkSync(join(installRoot, 'current'))).toBe(firstVersion);
     expect(cliCalls(harness)).toEqual([]);
+  });
+
+  /**
+   * The real `station upgrade` (#2675 D), not install.sh alone: the CLI's
+   * source bootstrap writes the channel's default ports into
+   * STATION_SERVER_PORT/STATION_UI_PORT of every CLI process, and the
+   * packaged upgrade re-runs the active version's install.sh from there.
+   * Driven through scripts/station-cli.ts so that bootstrap runs, from the
+   * active version directory as the installed launcher runs it.
+   */
+  function stationUpgrade(
+    harness: ArchiveHarness,
+    cwd: string,
+    env: Record<string, string> = {},
+  ) {
+    const next = buildPrebuiltArchive(harness.root, '1.2.4', {
+      sha: NEXT_SHA,
+    });
+    const manifest = archiveManifest(harness, next, {
+      payload: { sourceSha: NEXT_SHA },
+    });
+    const {
+      STATION_CHANNEL: _channel,
+      STATION_SERVER_PORT: _serverPort,
+      STATION_PORT: _port,
+      STATION_UI_PORT: _uiPort,
+      STATION_CONSENT_PORT: _consentPort,
+      STATION_INSTANCE_ID: _instance,
+      STATION_INSTALL_SERVER_PORT: _installServerPort,
+      STATION_INSTALL_UI_PORT: _installUiPort,
+      ...inherited
+    } = process.env;
+    return spawnSync(
+      process.execPath,
+      [
+        join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+        join(repoRoot, 'scripts', 'station-cli.ts'),
+        'upgrade',
+      ],
+      {
+        cwd,
+        encoding: 'utf8',
+        timeout: 2 * INSTALLER_RUN_TIMEOUT_MS,
+        windowsHide: true,
+        env: {
+          ...inherited,
+          PATH: harness.guardedPath,
+          HOME: harness.home,
+          GH_TOKEN: '',
+          GITHUB_TOKEN: '',
+          // What the installed launcher exports on every command.
+          STATION_CHANNEL: 'stable',
+          STATION_ROOT: harness.stationRoot,
+          STATION_HOME: harness.stationHome,
+          STATION_INSTALL_ROOT: harness.installRoot,
+          STATION_BIN_DIR: harness.binDir,
+          STATION_VERSION: '',
+          STATION_INSTALL_ALLOW_ROLLBACK: '',
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifest).href,
+          STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: pathToFileURL(
+            harness.publicKeyPath,
+          ).href,
+          STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
+          STATION_FIXTURE_CLI_LOG: harness.cliLog,
+          ...env,
+        },
+      },
+    );
+  }
+
+  const customPorts = {
+    STATION_INSTALL_SERVER_PORT: '43141',
+    STATION_INSTALL_UI_PORT: '43000',
+  };
+
+  it('station upgrade keeps a service on the recorded custom ports, not the bootstrap defaults', () => {
+    const { harness, installRoot, firstVersion, nextVersion, home, unit } =
+      installedWithService(
+        'station-cli-upgrade-ports-',
+        { serverPort: 43141, uiPort: 43000 },
+        undefined,
+        customPorts,
+      );
+    const statePath = join(installRoot, '.station-release-state.json');
+    expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject({
+      schemaVersion: 4,
+      serverPort: 43141,
+      uiPort: 43000,
+    });
+    const result = stationUpgrade(harness, firstVersion);
+    expect(result.stderr).not.toContain('not the requested');
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(nextVersion);
+    expect(cliCalls(harness).at(-2)).toBe(
+      `${nextVersion}|${service('start', home)}`,
+    );
+    expect(unit()).toEqual({ active: true, sha: NEXT_SHA });
+    expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject({
+      serverPort: 43141,
+      uiPort: 43000,
+    });
+  });
+
+  it('station upgrade of an install with no service starts the new version on the recorded custom ports', () => {
+    const harness = archiveHarness(tempDir('station-cli-upgrade-no-service-'));
+    const first = buildPrebuiltArchive(harness.root, '1.2.3');
+    const installed = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, first),
+      [],
+      customPorts,
+    );
+    expect(installed.status, installed.stderr).toBe(0);
+    const installRoot = realpathSync(harness.installRoot);
+    const firstVersion = join(installRoot, 'versions', '1.2.3');
+    const nextVersion = join(installRoot, 'versions', '1.2.4');
+    const statePath = join(installRoot, '.station-release-state.json');
+    rmSync(harness.cliLog, { force: true });
+
+    const result = stationUpgrade(harness, firstVersion);
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(nextVersion);
+    const home = realpathSync(harness.stationHome);
+    expect(cliCalls(harness).at(-1)).toBe(
+      `${nextVersion}|start --base=${home} --port=43141 --ui-port=43000`,
+    );
+    expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject({
+      serverPort: 43141,
+      uiPort: 43000,
+    });
+    expect(result.stdout).toContain('Open http://localhost:43000');
+  });
+
+  it("station upgrade still hands the installer the caller's own install port", () => {
+    const { harness, installRoot, firstVersion } = installedWithService(
+      'station-cli-upgrade-port-change-',
+      { serverPort: 43141, uiPort: 43000 },
+      undefined,
+      customPorts,
+    );
+    const result = stationUpgrade(harness, firstVersion, {
+      STATION_INSTALL_SERVER_PORT: '19141',
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      'Station service stable serves server port 43141, not the requested 19141; reinstall it with the intended ports',
+    );
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(firstVersion);
   });
 
   it('compares only the port that was named explicitly', () => {

@@ -42,6 +42,7 @@ import {
   type ReceiverExecutionAdmission,
   ReceiverExecutionRefusal,
 } from '../../../services/projects/project-contribution-service.js';
+import { createRemoteStationForwarder } from '../../../services/remote-stations/remote-station-forwarder.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 const logger = { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() };
@@ -82,6 +83,41 @@ function admissionStub(
     },
     recheck,
   };
+}
+
+/**
+ * #2377 C2b: the route reaches the peer through the runtime's forwarder, built
+ * here from the real factory over a stub peer store (no SSH profile names the
+ * Environment, so the peer credential is the hop).
+ */
+function peerForwarder(
+  environmentId: string,
+  apiBase: string,
+  credential: string,
+  label: string,
+  onRead?: () => void,
+) {
+  return createRemoteStationForwarder({
+    ssh: {
+      list: () => [],
+      connect: async () => {
+        throw new Error('no ssh');
+      },
+    } as never,
+    peers: {
+      get: (id: string) => {
+        if (id !== environmentId) return undefined;
+        onRead?.();
+        return {
+          environmentId,
+          apiBase,
+          scope: 'peer',
+          credential,
+          label,
+        } as never;
+      },
+    } as never,
+  });
 }
 
 describe('POST /delegations — portable execution admission (#484 phase A)', () => {
@@ -848,24 +884,6 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           reply: () => ({ environmentId: 'env-self', capabilities: {} }),
         },
         {
-          match: (url) => url.includes('/api/environments/ssh'),
-          reply: () => ({ success: true, data: [] }),
-        },
-        {
-          match: (url) =>
-            url.includes(`/api/environments/peers/${PEER_ENV}/credential`),
-          reply: () => ({
-            success: true,
-            data: {
-              environmentId: PEER_ENV,
-              apiBase: PEER_API,
-              scope: 'peer',
-              credential: 'peer-cred-1',
-              label: 'peer',
-            },
-          }),
-        },
-        {
           match: (url) =>
             url.startsWith(PEER_API) && url.endsWith('/.well-known/station/v1'),
           reply: () => peerHandshake(),
@@ -936,7 +954,11 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       const { delegateTask } = await import(
         '../../../tools/station-control-delegation.js'
       );
-      return delegateTask(input, service);
+      return delegateTask(
+        input,
+        service,
+        peerForwarder(PEER_ENV, PEER_API, 'peer-cred-1', 'peer'),
+      );
     }
 
     function postDelegations(app: any, target: unknown) {
@@ -1226,24 +1248,6 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           reply: () => ({ environmentId: 'env-self', capabilities: {} }),
         },
         {
-          match: (url) => url.includes('/api/environments/ssh'),
-          reply: () => ({ success: true, data: [] }),
-        },
-        {
-          match: (url) =>
-            url.includes(`/api/environments/peers/${PEER_ENV_FG}/credential`),
-          reply: () => ({
-            success: true,
-            data: {
-              environmentId: PEER_ENV_FG,
-              apiBase: PEER_API_FG,
-              scope: 'peer',
-              credential: 'peer-cred-fg',
-              label: 'peer-fg',
-            },
-          }),
-        },
-        {
           match: (url) =>
             url.startsWith(PEER_API_FG) &&
             url.endsWith('/.well-known/station/v1'),
@@ -1290,7 +1294,17 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
             const { executeExecutionTargetMessage } = await import(
               '../../../tools/station-control-delegation.js'
             );
-            return executeExecutionTargetMessage(input, undefined);
+            return executeExecutionTargetMessage(
+              input,
+              undefined,
+              undefined,
+              peerForwarder(
+                PEER_ENV_FG,
+                PEER_API_FG,
+                'peer-cred-fg',
+                'peer-fg',
+              ),
+            );
           },
           isRequestPrincipalCurrent: () => true,
         }),
@@ -1592,25 +1606,6 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           ) {
             return ok({ environmentId: 'env-self', capabilities: {} });
           }
-          if (
-            !url.startsWith(PEER_API) &&
-            url.includes('/api/environments/ssh')
-          ) {
-            return ok({ success: true, data: [] });
-          }
-          if (url.includes(`/api/environments/peers/${PEER_ENV}/credential`)) {
-            if (revokeOnCredentialRead) current = false;
-            return ok({
-              success: true,
-              data: {
-                environmentId: PEER_ENV,
-                apiBase: PEER_API,
-                scope: 'peer',
-                credential: 'peer-cred-1',
-                label: 'peer',
-              },
-            });
-          }
           if (url.startsWith(PEER_API)) {
             try {
               peerPosts.push({
@@ -1641,18 +1636,30 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
         unwrapFetch = undefined;
       });
 
+      // The revocation-during-resolution cases revoke on the forwarder's
+      // credential read: the same point in the hop the tool's old HTTP
+      // credential fetch occupied.
+      const followUpForwarder = () =>
+        peerForwarder(PEER_ENV, PEER_API, 'peer-cred-1', 'peer', () => {
+          if (revokeOnCredentialRead) current = false;
+        });
+
       async function realContinue(input: any): Promise<unknown> {
         const { continueDelegatedTask } = await import(
           '../../../tools/station-control-delegation.js'
         );
-        return continueDelegatedTask(input, undefined);
+        return continueDelegatedTask(input, undefined, followUpForwarder());
       }
 
       async function realRespond(input: any): Promise<unknown> {
         const { respondToDelegatedTaskRequest } = await import(
           '../../../tools/station-control-delegation.js'
         );
-        return respondToDelegatedTaskRequest(input, undefined);
+        return respondToDelegatedTaskRequest(
+          input,
+          undefined,
+          followUpForwarder(),
+        );
       }
 
       function followUpApp(options: {
@@ -1872,14 +1879,19 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
             },
           };
           const result = await delegationToolResult(() =>
-            executeExecutionTargetMessage({
-              target: {
-                environment: { kind: 'saved', id: PEER_ENV as never },
-                agent: 'writer' as never,
-              },
-              message: 'hi',
-              userId: 'user-1',
-            } as never),
+            executeExecutionTargetMessage(
+              {
+                target: {
+                  environment: { kind: 'saved', id: PEER_ENV as never },
+                  agent: 'writer' as never,
+                },
+                message: 'hi',
+                userId: 'user-1',
+              } as never,
+              undefined,
+              undefined,
+              followUpForwarder(),
+            ),
           );
           expect(
             fetchCalls.some(
@@ -1934,6 +1946,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
                     userId: 'user-1',
                   },
                   undefined,
+                  followUpForwarder(),
                 );
               }),
               delegationToolResult(async () => {
@@ -1943,6 +1956,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
                 return listDelegatedTasks(
                   { environmentId: PEER_ENV, userId: 'user-1' },
                   undefined,
+                  followUpForwarder(),
                 );
               }),
               delegationToolResult(async () => {
@@ -1956,6 +1970,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
                     userId: 'user-1',
                   },
                   undefined,
+                  followUpForwarder(),
                 );
               }),
             ]);
