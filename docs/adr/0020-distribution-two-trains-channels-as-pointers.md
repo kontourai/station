@@ -198,7 +198,8 @@ verifier, [`release-manifest.mjs`](../../packages/shared/src/release-manifest.mj
 under a SHA-pinned Node that it bootstraps as `install.sh` does, or under the
 Node inside an archive it has already verified. It never verifies with a Node
 found on the user's PATH: `install.sh`'s preference for an existing Node checks
-only its major version, which is not an integrity check. `install.sh`'s inline copy, bound to the same golden
+only its major version, which is not an integrity check. `install.sh`'s inline
+copy, bound to the same golden
 vectors, stays the only other implementation, and no third one is added. The
 fetched archive carries its own Node, so the sidecar stops depending on a
 system Node.
@@ -251,9 +252,10 @@ stable apps already in the field accept.
 pointer is an ordinary upgrade. Moving to a slower pointer holds the current
 version until the slower pointer reaches or passes it, which is Chrome's
 rule. Under D1's ring-tagged versions, a slower pointer reaches the current
-version only when its `X.Y.Z` core is strictly greater. A nightly carries the
-core of the release it precedes, so equal cores can hide newer code, and the
-switch holds while cores are equal. Promotion replaces this rule with a
+version only when its `X.Y.Z` core is strictly greater. A nightly's core is the
+package version, which may still be the last release's, so equal cores can
+hide newer code, and the switch holds while cores are equal. Promotion
+replaces this rule with a
 single ordering (engineering addition).
 
 The schema downgrade refusal remains the rejection path and is never
@@ -309,7 +311,8 @@ one record per axis, each with one writer (engineering addition):
   selects the client updater endpoint at runtime rather than at build time
   (#2962).
 
-No other surface keeps a copy, apart from the baked ring until promotion. A channel switch still moves between install
+No other surface keeps a copy, apart from the baked ring until promotion. A
+channel switch still moves between install
 roots keyed by channel until promotion.
 
 ## Alternatives considered
