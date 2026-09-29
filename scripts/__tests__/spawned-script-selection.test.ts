@@ -20,6 +20,7 @@ import {
 import { selectChangedVerification } from '../run-changed-verification.mjs';
 import {
   buildTestImpactManifest,
+  SPAWNED_SCRIPT_FANOUT_LIMIT,
   spawnedScriptEdges,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
@@ -134,6 +135,68 @@ describe('derived spawned-script edges', () => {
       sourceSpawns(SPAWN_IMPORT.replace('spawnSync', 'x')),
       'import alone',
     ).toBe(false);
+  });
+});
+
+describe('fan-out budget (#2922 review)', () => {
+  /** `count` suites that all spawn the same script. */
+  const spawners = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      test: `scripts/__tests__/spawner-${String(index).padStart(2, '0')}.test.ts`,
+      scripts: ['scripts/fixture-tool.mjs'],
+    }));
+
+  it("runs a shared module's spawning suites inline up to the limit and defers them to test-full above it", () => {
+    const root = tree(SCRIPT_GRAPH);
+    for (const [count, inline] of [
+      [SPAWNED_SCRIPT_FANOUT_LIMIT, true],
+      [SPAWNED_SCRIPT_FANOUT_LIMIT + 1, false],
+    ] as const) {
+      const edges = spawnedScriptEdges({ root, entries: spawners(count) });
+      expect(
+        validateTestImpactManifest([...TEST_IMPACT_MANIFEST, ...edges]),
+      ).toEqual([]);
+      const selection = selectChangedVerification(
+        ['scripts/lib/fixture-leaf.mjs'],
+        [...TEST_IMPACT_MANIFEST, ...edges] as never,
+      );
+      const spawnerTests = selection.tests.filter((test) =>
+        test.path.includes('spawner-'),
+      );
+      const lanes = selection.lanes.map((lane) => lane.id);
+      if (inline) {
+        expect(spawnerTests).toHaveLength(count);
+        expect(lanes).not.toContain('test-full');
+      } else {
+        // Coverage is kept, not dropped: the whole lane runs them.
+        expect(spawnerTests).toEqual([]);
+        expect(lanes).toContain('test-full');
+      }
+    }
+  });
+
+  it('keeps a one-line edit of the shared entry shim off the inline path on the real tree', () => {
+    const built = buildTestImpactManifest({ root: ROOT });
+    const selection = selectChangedVerification(
+      ['scripts/lib/module-entry.mjs'],
+      built as never,
+    );
+    expect(selection.tests.length).toBeLessThanOrEqual(
+      SPAWNED_SCRIPT_FANOUT_LIMIT,
+    );
+    expect(selection.lanes.map((lane) => lane.id)).toContain('test-full');
+  });
+
+  it('refuses a deferred lane on an ordinary edge', () => {
+    expect(
+      validateTestImpactManifest([
+        {
+          pattern: 'x.mjs',
+          tests: ['a.test.ts'],
+          deferredLanes: ['test-full'],
+        },
+      ] as never),
+    ).toContain('only a supplemental impact edge may defer to a lane: x.mjs');
   });
 });
 

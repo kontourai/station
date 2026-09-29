@@ -1860,6 +1860,19 @@ const SPAWNED_SCRIPT_DEPENDENCY_REASON =
 const spawnedScriptEdgeCache = new Map();
 
 /**
+ * Above this many spawning tests, a derived edge defers its tests to the
+ * `test-full` lane instead of running them inline (#2922 review). A shared
+ * entry shim such as `scripts/lib/module-entry.mjs` is imported by most
+ * spawned scripts: a one-line edit selected 75 files and took `test:changed`
+ * past ci:fast's 900 s budget (#2621). The deferral keeps the coverage (the
+ * merge queue's full regression runs them) without the inline cost.
+ */
+export const SPAWNED_SCRIPT_FANOUT_LIMIT = 16;
+const SPAWNED_SCRIPT_DEFERRAL_REASON =
+  `more than ${SPAWNED_SCRIPT_FANOUT_LIMIT} tests spawn scripts that import ` +
+  'this file, so they run in test-full rather than inline (#2922)';
+
+/**
  * Impact edges derived from the tests that run `scripts/*.mjs` as a child
  * process (`scripts/lib/spawned-script-scan.mjs`).
  *
@@ -1896,6 +1909,15 @@ export function spawnedScriptEdges({ root = process.cwd(), entries } = {}) {
         (test) => !VITEST_INELIGIBLE_TEST.test(test),
       );
       if (!schedulable.length) return [];
+      if (schedulable.length > SPAWNED_SCRIPT_FANOUT_LIMIT)
+        return [
+          Object.freeze({
+            pattern: path,
+            supplemental: true,
+            deferredLanes: Object.freeze(['test-full']),
+            reason: SPAWNED_SCRIPT_DEFERRAL_REASON,
+          }),
+        ];
       return [
         Object.freeze({
           pattern: path,
@@ -1949,6 +1971,7 @@ export function isEscalationPath(path) {
  *   lanes?: readonly string[],
  *   related?: boolean,
  *   supplemental?: boolean,
+ *   deferredLanes?: readonly string[],
  *   whenAll?: readonly string[],
  *   except?: readonly string[],
  *   reason?: string,
@@ -1964,9 +1987,18 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
   for (const edge of manifest) {
     if (
       !edge?.pattern ||
-      (!edge.related && !edge.tests?.length && !edge.lanes?.length)
+      (!edge.related &&
+        !edge.tests?.length &&
+        !edge.lanes?.length &&
+        !edge.deferredLanes?.length)
     )
       errors.push(`invalid impact edge: ${JSON.stringify(edge)}`);
+    // `deferredLanes` is how a supplemental edge adds a lane: it only adds,
+    // like the supplemental tests, and never touches the boundary decisions.
+    if (edge?.deferredLanes?.length && !edge.supplemental)
+      errors.push(
+        `only a supplemental impact edge may defer to a lane: ${edge.pattern}`,
+      );
     // A supplemental edge is excluded from the boundary, escalation, and
     // related decisions, so `lanes` or `related` on one would be silently
     // ignored — and a reader would believe the lane was scheduled.

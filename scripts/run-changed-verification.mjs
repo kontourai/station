@@ -567,9 +567,12 @@ export function selectChangedVerification(
     // Added before every branch below: a supplemental test is additive even
     // where the path escalates, and naming it in the receipt is the point.
     for (const edge of edges)
-      if (edge.supplemental)
+      if (edge.supplemental) {
         for (const test of edge.tests ?? [])
           addReason(tests, test, `${edge.reason}: ${path}`);
+        for (const lane of edge.deferredLanes ?? [])
+          addReason(lanes, lane, `${edge.reason}: ${path}`);
+      }
     const hasExplicitBoundary =
       isChangedTest ||
       boundaryEdges.some((edge) => edge.tests?.length || edge.lanes?.length);

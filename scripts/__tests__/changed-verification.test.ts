@@ -3139,7 +3139,9 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
       run: slow.run,
       changedPathsFn: () => ({
         mergeBase: 'base-sha',
-        paths: ['scripts/lib/module-entry.mjs'],
+        // Below the spawned-script fan-out limit, so the diff runs inline
+        // rather than deferring to test-full (#2922 review).
+        paths: ['scripts/lib/learning-markdown.mjs'],
       }),
       collectProvenance: provenance,
       writeReceipt: vi.fn(),
@@ -3157,7 +3159,9 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
       run: unbudgeted.run,
       changedPathsFn: () => ({
         mergeBase: 'base-sha',
-        paths: ['scripts/lib/module-entry.mjs'],
+        // Below the spawned-script fan-out limit, so the diff runs inline
+        // rather than deferring to test-full (#2922 review).
+        paths: ['scripts/lib/learning-markdown.mjs'],
       }),
       collectProvenance: provenance,
       writeReceipt: vi.fn(),
@@ -3178,7 +3182,9 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
       }),
       changedPathsFn: () => ({
         mergeBase: 'HEAD',
-        paths: ['scripts/lib/module-entry.mjs'],
+        // Below the spawned-script fan-out limit, so the diff runs inline
+        // rather than deferring to test-full (#2922 review).
+        paths: ['scripts/lib/learning-markdown.mjs'],
       }),
       discoveryDeadlineAt: deadline,
     });
@@ -3235,7 +3241,9 @@ describe('an exhausted budget and the selector children (#2855 review)', () => {
       run,
       changedPathsFn: () => ({
         mergeBase: 'base-sha',
-        paths: ['scripts/lib/module-entry.mjs'],
+        // Below the spawned-script fan-out limit, so the diff runs inline
+        // rather than deferring to test-full (#2922 review).
+        paths: ['scripts/lib/learning-markdown.mjs'],
       }),
       collectProvenance: provenance,
       writeReceipt,
