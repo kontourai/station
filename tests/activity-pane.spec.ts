@@ -378,7 +378,10 @@ test.describe('Activity surface at 390x844', () => {
   }) => {
     await page.goto('/?surface=activity');
     const slot = chatDockShell(page);
-    const back = slot.getByRole('button', { name: 'Back to Chat', exact: true });
+    const back = slot.getByRole('button', {
+      name: 'Back to Chat',
+      exact: true,
+    });
     await expect(back).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(slot).toHaveClass(/chat-dock--bottom/);

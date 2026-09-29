@@ -203,22 +203,25 @@ describe('ProjectSidebarNav', () => {
     ['hidden', false, null],
     ['docked', true, null],
     ['the page', false, 'activity'],
-  ] as const)('pressing the row while Activity is %s opens its page', (_label, docked, main) => {
-    regionState.activityVisible = docked;
-    regionState.mainOccupant = main;
-    render(
-      <ProjectSidebarNav
-        collapsed={false}
-        isMobile={false}
-        navigate={vi.fn()}
-        activePath="/registry"
-      />,
-    );
+  ] as const)(
+    'pressing the row while Activity is %s opens its page',
+    (_label, docked, main) => {
+      regionState.activityVisible = docked;
+      regionState.mainOccupant = main;
+      render(
+        <ProjectSidebarNav
+          collapsed={false}
+          isMobile={false}
+          navigate={vi.fn()}
+          activePath="/registry"
+        />,
+      );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
-    expect(regionState.showSurfacePage).toHaveBeenCalledWith('activity');
-    expect(regionState.toggleSurface).not.toHaveBeenCalled();
-  });
+      fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+      expect(regionState.showSurfacePage).toHaveBeenCalledWith('activity');
+      expect(regionState.toggleSurface).not.toHaveBeenCalled();
+    },
+  );
 
   // archive#2652: a stable anchor per management group so the first-run tour
   // can point at a real nav affordance, derived from the registry's semantic
