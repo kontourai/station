@@ -1584,7 +1584,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "595972e1acffc55ebd797125feec57f416bca902",
+      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1592,7 +1592,7 @@
       "sources": [
         {
           "path": "Dockerfile",
-          "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4"
+          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
         },
         {
           "path": "docker-compose.yml",
@@ -1677,9 +1677,7 @@
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds a 'Recorded versus acknowledged decisions' subsection to docs/reference/cli.md under station delegate. The auto-merged cli.md reads coherently with the branch text. The README still correctly points to the CLI reference for target and credential setup. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite.",
-        "Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
       ]
     },
     {
@@ -1696,7 +1694,7 @@
     {
       "path": "deploy/gcp-dev/README.md",
       "documentDigest": "b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0",
-      "sourceRevision": "3a126d186e415ad99c1d392830114464842dd973",
+      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Single-owner GCP development recipe with a retained historical qualification record. Full 170-line baseline read. Bootstrap guard/swap helper, container enrollment boundary and GCP preview source checked; official GCP documentation checked read-only. The 2026-09-05 drill remains historical evidence, not fresh cloud qualification.",
@@ -1704,11 +1702,11 @@
       "sources": [
         {
           "path": ".dockerignore",
-          "digest": "cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04"
+          "digest": "ed530db5077644149da9a9124e49f2b3010aa84023444ad93edbad32d5dec71d"
         },
         {
           "path": "Dockerfile",
-          "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4"
+          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
         },
         {
           "path": "deploy/gcp-dev/bootstrap.sh",
@@ -1780,7 +1778,7 @@
         },
         {
           "path": "scripts/__tests__/container-release.test.ts",
-          "digest": "6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524"
+          "digest": "c002a45df6f19bba02b30abb40ecb77965fd2e7f022f436403d6014f8d699ed0"
         },
         {
           "path": "scripts/__tests__/gcp-bootstrap.test.ts",
@@ -1872,16 +1870,13 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) un-exports contributorCommandMessage (distribution.ts) and cf43e14d0 (#2731) adds the recognizeCredential hook in runtime-routes.ts for a 403 on unadmitted credentials; prose accurate: the recipe makes no claim about either the export or the refusal status. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) passes STATION_SERVICE_LAUNCHER through lifecycle.ts start, adds the service-update status line to service.ts, and adds update backup/restore to station-home-archive.ts. 8b48e2b35 (#2914) drops listeningPidsByPort from station-dogfood-health and a redundant assertion from container-release.test. None of this touches the container/VM recipe, the offline-backup guidance or the verification checklist; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The README's separate terminal/voice listener and station-control delivery statements do not depend on the removed path, so the prose remains accurate. Source review only.",
-        "Re-read the single-operator GCP recipe against the .dockerignore and Dockerfile edits. Its container claims are about the runtime image, the boot/data disk, IAP/OS Login and the E2 machine reference, not the build context or COPY list, so no prose change is needed. The Dockerfile edit adds docs/ to the discarded build stage only; the runtime stage at line 63 onward pulls no docs path, so the image it deploys is unchanged.",
-        "Re-read the GCP single-operator recipe against the follow-up .dockerignore/Dockerfile change. The build stage now also copies biome.json, .gitignore and config/; the runtime stage still copies /app/config from build, so the runtime image now carries all of config/'s public JSON (previously two files) and still no docs/, biome.json or .gitignore (checked with docker run ls /app). The recipe's claims concern image enrollment by digest or archive, UID/GID 1000, disk, IAP/OS Login and measured sizing on an older revision; none enumerate image contents, so no prose change is needed.",
-        "Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern)."
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The README's separate terminal/voice listener and station-control delivery statements do not depend on the removed path, so the prose remains accurate. Source review only."
       ]
     },
     {
       "path": "deploy/public-ingress/README.md",
       "documentDigest": "713a080bec7e77d77db623d83a52874bb698556e6ddc28bb75eda69b0e864d5b",
-      "sourceRevision": "3a126d186e415ad99c1d392830114464842dd973",
+      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Optional Caddy Compose ingress template and its protocol qualification fixture. Full 128-line baseline read. Compose/Caddy files and the synthetic smoke upstream traced; actual Compose model validated read-only. No Caddy/Station startup, public CA issuance, DNS change or smoke execution.",
@@ -1889,11 +1884,11 @@
       "sources": [
         {
           "path": ".dockerignore",
-          "digest": "cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04"
+          "digest": "ed530db5077644149da9a9124e49f2b3010aa84023444ad93edbad32d5dec71d"
         },
         {
           "path": "Dockerfile",
-          "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4"
+          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
         },
         {
           "path": "deploy/gcp-dev/bootstrap.sh",
@@ -1965,7 +1960,7 @@
         },
         {
           "path": "scripts/__tests__/container-release.test.ts",
-          "digest": "6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524"
+          "digest": "c002a45df6f19bba02b30abb40ecb77965fd2e7f022f436403d6014f8d699ed0"
         },
         {
           "path": "scripts/__tests__/gcp-bootstrap.test.ts",
@@ -2057,10 +2052,7 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) stops exporting contributorCommandMessage from packages/cli/src/distribution.ts, with no behavior change. cf43e14d0 (#2731) adds the recognizeCredential wiring in runtime-routes. The README makes claims only about the Caddy/Compose template, protocol qualification and passing through Station's own authorization and cookies, and neither change touches those. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the launcher's context env scrub in lifecycle.ts, the launcher install, `service update-home` and update status in service.ts, and a separate update-backup schema (station.home-update-backup/v1) in station-home-archive.ts. 8b48e2b35 (#2914) removed a redundant assertion in container-release.test.ts and the unused listeningPidsByPort export from station-dogfood-health.mjs. The README's Compose, volume and backup/rollback guidance does not depend on any of these. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The profile's ingress, CA and rate-limit statements are unaffected, so the prose remains accurate. Source review only.",
-        "Re-read the optional Caddy Compose ingress template against the .dockerignore and Dockerfile edits. It documents the ingress protocol, its qualification fixture and Caddyfile directives, and makes no claim about the build context, the COPY list or image contents, so no prose change is needed. The Dockerfile edit stays inside the discarded build stage.",
-        "Re-read the Caddy ingress template against the follow-up .dockerignore/Dockerfile change (build stage adds biome.json, .gitignore and config/; runtime gains the rest of config/'s public JSON). The template requires a reviewed digest-pinned Station image and documents only the ingress protocol, fixture and Caddyfile, with no claim about build context or image contents, so no prose change is needed.",
-        "Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern)."
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The profile's ingress, CA and rate-limit statements are unaffected, so the prose remains accurate. Source review only."
       ]
     },
     {
@@ -7246,7 +7238,7 @@
     {
       "path": "docs/design/collaborative-editor-pane.md",
       "documentDigest": "39b13443c5fd44c9c548a6563cb8840390f8df55533d03cd72637d812f06b06e",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Historical design for the deleted pure collaborative editor controller (#2900), marked not shipped. Only the server-owned editing capability remains current; the shipped Task path is ProjectTaskRoom.",
@@ -7262,7 +7254,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.tsx",
@@ -7283,7 +7275,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Grepped for tool-call, approval, button-state and contrast claims: none; the document describes no styling this change touches.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Re-grepped: no tool-call, approval-button or disabled-button styling claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
       ]
     },
     {
@@ -8756,7 +8749,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8932,7 +8925,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/layouts/index.tsx",
@@ -9057,7 +9050,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The maximized-region dock-hiding rule is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Its disabled-row claims are about pane chooser/coding rows (aria-disabled reasons), not the approval card; no tool-call or approval-button styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Its disabled claims concern pane chooser rows and its dockSlotPlacement right/left dock claims are unchanged by this CSS; no approval-button claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
       ]
     },
     {
@@ -9436,7 +9430,7 @@
     },
     {
       "path": "docs/design/private-cloud-environment.md",
-      "sourceRevision": "595972e1acffc55ebd797125feec57f416bca902",
+      "sourceRevision": "98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80",
       "kind": "design",
       "state": "classified",
       "summary": "Working single-operator VM deployment design already identifies unvalidated provisioning and restore drills; no prose edit needed. Located runtime image and actual container smoke owners without treating them as executed cloud evidence.",
@@ -9449,7 +9443,7 @@
         },
         {
           "path": "Dockerfile",
-          "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4"
+          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
         },
         {
           "path": "scripts/container-smoke.sh",
@@ -9460,9 +9454,7 @@
         "Full document read: 114 original lines; all original body bytes preserved.",
         "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
         "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
-        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition.",
-        "Re-read the working single-operator VM deployment design against the Dockerfile edit. Its backup and restore claims concern VM filesystem and SQLite-consistency, not the container build context or image contents, so no prose change is needed. The runtime image is byte-identical: docs/ is copied only into the build stage, which is discarded.",
-        "Re-read the single-VM deployment design against the follow-up Dockerfile change. Its claims concern execution boundaries, storage and backup/restore, and it names the container smoke as an owner without treating it as executed cloud evidence; the Dockerfile change only adds build inputs (biome.json, .gitignore, config/) and makes the runtime image carry all of config/'s public JSON. No claim depends on image contents, so no prose change is needed. scripts/container-smoke.sh passed locally on this tree (arm64 Docker Desktop), which is not cloud evidence."
+        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
       ]
     },
     {
@@ -9652,7 +9644,7 @@
     {
       "path": "docs/design/session-tape-replay.md",
       "documentDigest": "4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9736,7 +9728,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx",
@@ -9757,7 +9749,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). No claim here depends on accent, action or focus tokens. Prose accurate. Source review is separate from executed test evidence.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Mentions approval only as a replayed event/disabled action class; no approval-card layout or colour claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card styling claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The one other changed source is codex-adapter.ts, whose #2921 change since this record is a comment on the tool-level session grant; the page makes no claim about Codex session grants."
       ]
     },
     {
@@ -11805,7 +11798,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11813,7 +11806,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -12185,7 +12178,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -12318,7 +12311,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Approval here is key/device approval flow; no tool-call card styling claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval here is key/device approval; no tool-call card claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
       ]
     },
     {
@@ -12867,7 +12861,7 @@
     {
       "path": "docs/guides/deployment.md",
       "documentDigest": "1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2",
-      "sourceRevision": "3a126d186e415ad99c1d392830114464842dd973",
+      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Operating paths for checkout/container deployments, hosted foundations, and the legacy macOS dogfood supervisor. Full 920-line baseline and parent working bytes read. Source checks cover Docker, CLI/proxy/auth, home archive/schema/migration, hosted preflight, channel homes, supervisor staging/timing/health and cleanup. Detailed installer rollback, tenant carriers and lifecycle journal failure matrices were not fully re-executed; runtime qualification is partial. Follow-up: Changed pre-provisioning paragraphs checked against real schema-gate/lifecycle/server/migration ordering. Windows issue-link addition preserves the already disclosed staging limitation.",
@@ -12875,11 +12869,11 @@
       "sources": [
         {
           "path": ".dockerignore",
-          "digest": "cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04"
+          "digest": "ed530db5077644149da9a9124e49f2b3010aa84023444ad93edbad32d5dec71d"
         },
         {
           "path": "Dockerfile",
-          "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4"
+          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
         },
         {
           "path": "deploy/gcp-dev/bootstrap.sh",
@@ -12959,7 +12953,7 @@
         },
         {
           "path": "scripts/__tests__/container-release.test.ts",
-          "digest": "6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524"
+          "digest": "c002a45df6f19bba02b30abb40ecb77965fd2e7f022f436403d6014f8d699ed0"
         },
         {
           "path": "scripts/__tests__/gcp-bootstrap.test.ts",
@@ -13057,10 +13051,7 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) deletes the unused parseGitSource/extractPluginName from packages/cli/src/commands/helpers.ts and un-exports contributorCommandMessage in distribution.ts; cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401; prose accurate: the guide does not describe those helpers or the 401/403 split, the distribution-boundary link still holds, and the unauthenticated `authentication_required` curl check is unchanged. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds createStationHomeUpdateBackup/restoreStationHomeUpdateBackup to station-home-archive.ts, moves packaged-release parsing from lifecycle-code-root.ts to shared prebuilt-archive, adds a hidden service update-home action, service status `update` output and the launcher install. #2914 removes the listeningPidsByPort alias and one tautological container-release assertion. home backup/restore, published-CLI service status|start|stop control, and install needing a checkout or prebuilt archive are unchanged; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The hosted tenant carrier claim (token-bound Codex HTTP/SSE session, exact built-in child environment, trusted async context) remains accurate. Source review only.",
-        "Re-read the deployment guide's container and image claims against the .dockerignore and Dockerfile edits. The guide documents runtime deployment, the hosted preflight, the installer rollback and channel homes; it does not enumerate the build-context allowlist, the COPY list, or image contents, so no prose change is needed. The Dockerfile edit is confined to the build stage (line 46, before the runtime stage at line 63) and the .dockerignore edit only widens what is sent to the docker daemon, not what lands in the image.",
-        "Re-read the local source build paragraph and command block against the follow-up .dockerignore/Dockerfile change. The claim that the Docker context excludes .git, credentials, nested node_modules and dist still holds: .gitignore is admitted as a Biome input but no pattern re-admits .git (container-release.test.ts now rejects !.git, !.git/, !.git/**, !.git* per line; fault-injected), and node scripts/check-container-build-context.mjs passed. The documented docker build with explicit provenance build-args was executed on this tree and succeeded (it failed on the prior head), and scripts/container-smoke.sh passed on arm64 Docker Desktop. The runtime image now also carries the rest of config/'s public JSON; the guide's image-content claims (Git, OpenSSH client, certificate trust, terminal support, UID/GID 1000) are unchanged, so no prose change is needed.",
-        "Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern)."
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The hosted tenant carrier claim (token-bound Codex HTTP/SSE session, exact built-in child environment, trusted async context) remains accurate. Source review only."
       ]
     },
     {
@@ -14653,7 +14644,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14661,7 +14652,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14769,7 +14760,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -14815,7 +14806,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. No tool-call, approval-card or button-state claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No tool-call card or button-state claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
       ]
     },
     {
@@ -18111,7 +18103,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18219,7 +18211,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -18269,7 +18261,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. The shared mobile [class*=__actions] wrap/44px rule it describes still matches .tool-call__actions (the class name is unchanged; the base rule now also wraps). The #2917 Playwright journey asserts no horizontal page overflow at 360px; it does not re-assert the 44px floor. No claim changed.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Shared mobile [class*=__actions] rule unchanged and still matches .tool-call__actions; the new case runs above the breakpoint where that rule does not apply, consistent with the guide. No claim changed.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Shared mobile __actions rule unchanged; #2917 right-dock desktop case still consistent. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Shared mobile __actions rule unchanged; #2917 right-dock desktop case still consistent. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
       ]
     },
     {
@@ -18814,7 +18807,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18822,7 +18815,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -18970,7 +18963,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/lib/starter-work-operation-store.ts",
@@ -19060,7 +19053,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Approval here is the Notifications inspection flow, not the inline approval card; no styling claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval flow only; no inline approval-card styling claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
       ]
     },
     {
@@ -19708,8 +19702,8 @@
     },
     {
       "path": "docs/guides/theming.md",
-      "documentDigest": "95efeeef707ab2d72e422c1abc7ca33ad2a39e7b7c6b752fc513b61ca2547ce8",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "documentDigest": "6b1815a15e332e6f0799348d7c2c7c2d7c29fee226f4fb91ca081590207ca08c",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19817,7 +19811,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -19861,7 +19855,7 @@
         },
         {
           "path": "src-ui/src/__tests__/branding-role-cascade.test.ts",
-          "digest": "443eaf3c460897497a1b26dd493d676e87cb631f537d688420241b69728ab551"
+          "digest": "c5697e13e4385a5345f161abc890996275b6cb096f9b07835a4587803563fc38"
         }
       ],
       "checks": [
@@ -19883,7 +19877,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Its guidance (verify changed surface in light/dark incl. disabled state) was followed: rendered and measured the card in both themes; the change uses existing --accent-primary/--text-on-accent/--accent-hover-fill/--error-dark/--bg-tertiary/--text-secondary tokens. No claim changed.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Guidance to verify disabled state in light and dark was followed (rendered and measured 4.33:1 light, 4.38:1 dark); uses existing tokens. No claim changed.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). The guide's new claim that --accent-primary/--text-on-accent read the action role holds, and the #2917 Allow Once button consumes exactly that pair (hover: --accent-hover-fill -> --accent-darker -> the action role), so channel and white-label action roles reach it. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). The guide's new claim that --accent-primary/--text-on-accent read the action role holds, and the #2917 Allow Once button consumes exactly that pair (hover: --accent-hover-fill -> --accent-darker -> the action role), so channel and white-label action roles reach it. No prose change.",
+        "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium."
       ]
     },
     {
@@ -20541,7 +20536,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "6957212df287b51011420a3f6f46a696a701c5e48fd92e277f82800ff6cc21ac",
-      "sourceRevision": "998b7be07c2298ead61e8cffa39dab7583d8b6f3",
+      "sourceRevision": "88464e1e39103095a2ecf1642a4ecd0a199d234a",
       "summary": "Reviewed navigation, immutable source snapshots, lazy loading, diagram controls, capture admission, review freshness, impact/catch-up and shared MCP inputs against their actual implementation.",
       "limits": "Local contributor reader. No public Pages deployment, remote physical device, or semantic certification follows from a structural check. Media playback has a separate browser check.",
       "sources": [
@@ -20555,7 +20550,7 @@
         },
         {
           "path": "scripts/__tests__/learning-atlas.browser.test.ts",
-          "digest": "fc5fde7dcd68bccfa3cff2069f2efca59acfa73040214ec7a22d78188cdbff5b"
+          "digest": "5b91e1d4645debe4adf3c1ab4467eb53b70c1cf4c151c108b8e80e53a7a9f85f"
         },
         {
           "path": "scripts/build-learning-guide.mjs",
@@ -20620,13 +20615,15 @@
         "Reviewed the freshness and capture paragraphs against the shared policy (build-learning-guide check mode now resolves it; stale entries outside the change print as advisory) and the capture refresh path in record-documentation-review.mjs (reviewedRevision, source digests, reviewNotes; refuses changed image bytes). learning-media.mjs gained captureInputs, the requireFresh predicate and reviewNotes validation. Executed learning-media.test.ts and documentation-freshness.test.ts.",
         "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
         "Reviewed the fix-round delta: the check reports untracked capture and review sources as stale (advisory in the queue, blocking when the change deletes them), the builder skips snapshots for them, and the record command digests reviews over the media.json it writes and lists manifest dependents. The freshness and capture paragraphs remain accurate. Executed learning-media.test.ts.",
-        "Reviewed: documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The freshness and capture paragraphs remain accurate."
+        "Reviewed: documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The freshness and capture paragraphs remain accurate.",
+        "Source review through 285b42cae: learning-atlas.browser.test.ts now derives the expected review-status label from the module map's recorded state instead of assuming it is fresh; the README's browser-check list and its 'Review out of date' description remain accurate. Source review is separate from executed test evidence.",
+        "Source review through 88464e1e3: the atlas browser test's state-derived status map gained an explicit index type for tsc; behaviour and the README's browser-check claims are unchanged. Source review is separate from executed test evidence."
       ]
     },
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20634,7 +20631,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20754,7 +20751,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -20849,7 +20846,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Approval scene is the Notifications request inspection, not the inline tool-call card; no claim touched.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval scene is Notifications inspection, not the inline card; no claim touched.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. The #2843 hover-contrast note concerns the release selection style, which this change does not touch."
       ]
     },
     {
@@ -20881,7 +20879,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -20989,7 +20987,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21040,13 +21038,14 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Backend approval ownership only; no UI styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Backend approval ownership only.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21154,7 +21153,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21208,7 +21207,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. No tool-call card or button-state styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-button styling claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
       ]
     },
     {
@@ -21510,7 +21510,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21518,7 +21518,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21562,7 +21562,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -21608,7 +21608,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Disabled-connection wording only; no UI styling claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No UI styling claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
       ]
     },
     {
@@ -23963,7 +23964,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -23971,7 +23972,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -24003,7 +24004,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -24055,7 +24056,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. No tool-call card or approval-button claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
       ]
     },
     {
@@ -26812,12 +26814,12 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "a92936be2cbe0cf2f74cbf003e78f15931d072be",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
       "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
-      "documentDigest": "267eb15eb3c8a487f4fa8f4eb2f3f38e04337b08821be5ea1a4d34ea9541cfc1",
+      "documentDigest": "20d9606f51e401e9af84ae88925327dd6a692bdd4cdd58c317e0d46f7f21c68e",
       "sources": [
         {
           "path": ".nvmrc",
@@ -26829,7 +26831,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -26941,7 +26943,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -27010,7 +27012,7 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval buttons (Approve once/Deny) are a different surface; no claim touched.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "Own edit: only the archive-install guide's link target changed, from the repo-relative ../guides/release-channel-ports.md to the absolute repository blob URL for the same file and the same #prebuilt-archives-and-source-releases anchor, so the published Start Here page no longer links to an ungenerated target. The surrounding claims (STATION_INSTALL_PUBLIC_MANIFEST_URL, the signed platform-v2 prebuilt archive, bundled Node.js, and the published-manifest requirement) are untouched. Verified docs:links:check re-resolves the blob URL as a local link and validates the anchor in 423 Markdown files."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours."
       ]
     },
     {
@@ -27882,7 +27884,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -27890,7 +27892,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "7d1c45cfdad0f768f8d79458d9c18960852a012a30bfa2c9321d4f44231c3ddc"
+          "digest": "b589d3fc5e13a658cf15cb53a586a53d02f57ad3507cd7b43e35acc5b10c582b"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -27970,7 +27972,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -27998,7 +28000,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. No tool-call card or approval-button claim.",
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed."
       ]
     },
     {
@@ -30299,7 +30302,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "2b22c2609a75d0f40b77472fe918de3c34094b69",
+      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -30351,7 +30354,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "206ebac088b50557c253c4d9358e834309f538301dd96b4513f3cab7484b146d"
+          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
         }
       ],
       "checks": [
@@ -30370,7 +30373,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): index.css adds --k-action/--k-action-contrast/--k-focus to the Dev, Beta and Nightly channel blocks, reads --accent-primary, --text-on-accent and --accent-darker from the action role with a --k-brand fallback, and points the focus-visible outline at --k-focus with an --accent-primary fallback. With the installed @kontourai/ui 1.12.0, which defines no roles, release values are unchanged (branding-role-cascade.test.ts 18/18 EXECUTED in a real browser). The is-dev-build favicon-dev.png swap in index.css is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Icon/favicon generation only; no claim touched by approval-card CSS.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Icon generation only.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change."
+        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The raster channel icons and the favicon-dev swap under is-dev-build are unchanged; the CSS brand stays an amber/indigo/violet shade per channel."
       ]
     },
     {
