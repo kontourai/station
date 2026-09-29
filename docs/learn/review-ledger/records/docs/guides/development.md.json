@@ -38,7 +38,7 @@
 
     {"path":".veritas/repo-standards/default.repo-standards.json","digest":"739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46","revision":"0d0a38055b9253d9c0d40f5d4315b929cb41c3f7"},
 
-    {"path":"docs/guides/documentation.md","digest":"2aa944283e4ea545dddd7a3e156f0b6960c84bad47131639e9509acb2d72697a","revision":"294167795ff5e2a3e374d80411e081275d9adef9"},
+    {"path":"docs/guides/documentation.md","digest":"31aa6267f3278cf66c4583de1890ca592b72c938638e6d489621ca9c98c1d246","revision":"49fbaef78e2df915b67dc8dbcd79452b797e67e5"},
 
     {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
