@@ -836,8 +836,11 @@ describe('native release workflow topology', () => {
       resolve: ['scripts/lib/native-release-config.mjs'],
       publish: [
         'scripts/deploy-ledger.mjs',
+        // #2959: the host-stream manifest signer and its publication checks.
+        'scripts/ecosystem-manifest.mjs',
         'scripts/lib/deploy-ledger-commit.mjs',
         'scripts/lib/tauri-updater-manifest.mjs',
+        'scripts/portable-release-publication.mjs',
         'scripts/publish-mobile-feed-transaction.sh',
         'scripts/release-artifacts.mjs',
         'scripts/release-sbom-predicates.mjs',

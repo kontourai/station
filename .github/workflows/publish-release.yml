@@ -142,6 +142,7 @@ jobs:
       RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
       RELEASE_CREATED_AT: ${{ needs.resolve.outputs.created_at }}
       RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+      RELEASE_RING: ${{ needs.resolve.outputs.channel }}
       DESKTOP_UPDATER_TAG: ${{ needs.resolve.outputs.desktop_updater_tag }}
       GITHUB_REPOSITORY: ${{ github.repository }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
@@ -205,7 +206,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           identity="^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release\\.yml@refs/tags/${RELEASE_TAG}$"
+          host_manifest=$(node release-policy/scripts/portable-release-publication.mjs manifest-asset --ring "$RELEASE_RING")
           for asset in release-assets/*; do
+            # The signed host-stream manifest is attached by this workflow, not
+            # release.yml; the revalidation above verified it against the
+            # pinned release key and the attested payload it signs.
+            if [ "$(basename "$asset")" = "$host_manifest" ]; then continue; fi
             gh attestation verify "$asset" \
               --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
@@ -215,6 +221,93 @@ jobs:
               --cert-oidc-issuer https://token.actions.githubusercontent.com \
               --deny-self-hosted-runners
           done
+      # #2959: the host-stream manifest. Everything before the owner's gate is
+      # a dry run that signs nothing and uploads nothing. Each gated step's
+      # `if:` is the same literal: vars.STATION_PORTABLE_RELEASE_PUBLISH ==
+      # 'enabled'. With the gate on, a missing signing secret fails the job
+      # before the release is published. The rolling pointer is replaced last,
+      # after the versioned assets are public and re-verified and after the
+      # not-regressing check. scripts/__tests__/portable-release-publish-workflow.test.ts
+      # pins the gate, the secret scope and the order.
+      - id: host_plan
+        name: Plan the host-stream manifest publication
+        env:
+          PUBLISH_GATE: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH }}
+        run: |
+          set -euo pipefail
+          payload=release-assets/station-server-manifest-payload.json
+          node release-policy/scripts/portable-release-publication.mjs locations --ring "$RELEASE_RING" --repository "$GITHUB_REPOSITORY" --version "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          node release-policy/scripts/portable-release-publication.mjs check-payload --ring "$RELEASE_RING" --payload "$payload" --version "$RELEASE_VERSION" --source-sha "$RELEASE_SHA" --repository "$GITHUB_REPOSITORY"
+          node release-policy/scripts/portable-release-publication.mjs check-archives --payload "$payload" --archives release-assets > /dev/null
+          if [ "$PUBLISH_GATE" = enabled ]; then
+            echo "Host-stream publication gate is enabled: the $RELEASE_RING manifest is signed with the release key and its rolling pointer is replaced." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Host-stream dry run: nothing is signed with the release key and nothing is uploaded." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Dry-run sign the host-stream manifest with a throwaway key
+        run: |
+          set -euo pipefail
+          payload=release-assets/station-server-manifest-payload.json
+          dry_run="$RUNNER_TEMP/host-dry-run"
+          node release-policy/scripts/portable-release-publication.mjs dry-run-keys --ring "$RELEASE_RING" --out-dir "$dry_run"
+          node release-policy/scripts/ecosystem-manifest.mjs create --payload "$payload" --key-id station-portable-release-dry-run --private-key "$dry_run/dry-run-private-key.pem" --allow-unpinned-key --output "$dry_run/manifest.json"
+          rm -f "$dry_run/dry-run-private-key.pem"
+          node release-policy/scripts/portable-release-publication.mjs verify --ring "$RELEASE_RING" --manifest "$dry_run/manifest.json" --keys "$dry_run/dry-run-keys.json" --expected-payload "$payload"
+          # The throwaway envelope must never pass the pinned keys.
+          if node release-policy/scripts/ecosystem-manifest.mjs verify --manifest "$dry_run/manifest.json" > /dev/null 2>&1; then
+            echo '::error::the dry-run host manifest verified against the pinned key table' >&2
+            exit 1
+          fi
+      - name: Sign the host-stream manifest with the pinned release key
+        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        env:
+          SIGNING_KEY: ${{ secrets.STATION_PORTABLE_RELEASE_MANIFEST_SIGNING_KEY }}
+          MANIFEST_ASSET: ${{ steps.host_plan.outputs.manifest_asset }}
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_KEY" || { echo '::error::STATION_PORTABLE_RELEASE_PUBLISH is enabled, but STATION_PORTABLE_RELEASE_MANIFEST_SIGNING_KEY is not available in the native-release-publish environment. Add the secret, or unset the variable to publish without the host-stream manifest.' >&2; exit 1; }
+          umask 077
+          key="$RUNNER_TEMP/release-signing-key.pem"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$SIGNING_KEY" > "$key"
+          mkdir -p "$RUNNER_TEMP/host-manifest"
+          node release-policy/scripts/ecosystem-manifest.mjs create --payload release-assets/station-server-manifest-payload.json --key-id station-portable-release-2026-09 --private-key "$key" --output "$RUNNER_TEMP/host-manifest/$MANIFEST_ASSET"
+      - name: Verify the signed host-stream manifest with the pinned key table
+        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        env:
+          MANIFEST_ASSET: ${{ steps.host_plan.outputs.manifest_asset }}
+        run: node release-policy/scripts/portable-release-publication.mjs verify --ring "$RELEASE_RING" --manifest "$RUNNER_TEMP/host-manifest/$MANIFEST_ASSET" --expected-payload release-assets/station-server-manifest-payload.json
+      - name: Require the owner's rolling host-stream pointer release
+        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLLING_TAG: ${{ steps.host_plan.outputs.rolling_tag }}
+        run: |
+          set -euo pipefail
+          state=$(gh release view "$ROLLING_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft') || { echo "::error::the rolling pointer release $ROLLING_TAG does not exist; the owner creates it (published, not a draft) before the first host-stream publish" >&2; exit 1; }
+          test "$state" = false || { echo "::error::the rolling pointer release $ROLLING_TAG is a draft; installers cannot download from it" >&2; exit 1; }
+      - name: Refuse to publish over a newer or equal rolling host-stream manifest
+        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        env:
+          ROLLING_MANIFEST_URL: ${{ steps.host_plan.outputs.rolling_manifest_url }}
+        run: node release-policy/scripts/portable-release-publication.mjs not-regressing --ring "$RELEASE_RING" --candidate-version "$RELEASE_VERSION" --current "$ROLLING_MANIFEST_URL"
+      - name: Attach the signed host-stream manifest to the versioned release
+        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_ASSET: ${{ steps.host_plan.outputs.manifest_asset }}
+        run: |
+          set -euo pipefail
+          # A rerun finds the manifest an earlier attempt attached (the
+          # revalidation above verified it). Ed25519 signing is deterministic,
+          # so the same payload and key give the same bytes; anything else is
+          # refused rather than replaced.
+          if [ -e "release-assets/$MANIFEST_ASSET" ]; then
+            cmp "release-assets/$MANIFEST_ASSET" "$RUNNER_TEMP/host-manifest/$MANIFEST_ASSET" || { echo "::error::$RELEASE_TAG already carries a different $MANIFEST_ASSET; inspect it before re-running" >&2; exit 1; }
+          else
+            gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" "$RUNNER_TEMP/host-manifest/$MANIFEST_ASSET"
+          fi
+
       - name: Assemble and validate the rolling desktop updater channel
         env:
           GH_TOKEN: ${{ github.token }}
@@ -385,6 +478,36 @@ jobs:
           trap - ERR
           gh release edit "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" \
             --notes "Rolling desktop updater channel. Latest: ${RELEASE_VERSION} at ${RELEASE_SHA}, published $(date -u +%Y-%m-%dT%H:%M:%SZ)."
+
+      # #2959: the rolling host-stream pointer, replaced last. The versioned
+      # release is public by now (published above, or already public for a
+      # pointer repair); its archives and manifest are re-downloaded and
+      # compared before the pointer moves.
+      - name: Re-download the versioned host-stream assets and compare them with the manifest
+        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        env:
+          VERSIONED_MANIFEST_URL: ${{ steps.host_plan.outputs.versioned_manifest_url }}
+        run: |
+          set -euo pipefail
+          node release-policy/scripts/portable-release-publication.mjs verify-assets --payload release-assets/station-server-manifest-payload.json
+          node release-policy/scripts/portable-release-publication.mjs verify --ring "$RELEASE_RING" --manifest "$VERSIONED_MANIFEST_URL" --expected-payload release-assets/station-server-manifest-payload.json
+      - name: Refuse to replace a newer or equal rolling host-stream manifest
+        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        env:
+          ROLLING_MANIFEST_URL: ${{ steps.host_plan.outputs.rolling_manifest_url }}
+        run: node release-policy/scripts/portable-release-publication.mjs not-regressing --ring "$RELEASE_RING" --candidate-version "$RELEASE_VERSION" --current "$ROLLING_MANIFEST_URL"
+      - name: Replace the rolling host-stream manifest (last)
+        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLLING_TAG: ${{ steps.host_plan.outputs.rolling_tag }}
+          MANIFEST_ASSET: ${{ steps.host_plan.outputs.manifest_asset }}
+        run: gh release upload "$ROLLING_TAG" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/host-manifest/$MANIFEST_ASSET"
+      - name: Re-fetch and re-verify the rolling host-stream manifest with the pinned key
+        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        env:
+          ROLLING_MANIFEST_URL: ${{ steps.host_plan.outputs.rolling_manifest_url }}
+        run: node release-policy/scripts/portable-release-publication.mjs verify --ring "$RELEASE_RING" --manifest "$ROLLING_MANIFEST_URL" --expected-payload release-assets/station-server-manifest-payload.json
 
       # Deploy ledger (station#4572). Deliberately HERE, not in release.yml:
       # release.yml assembles a DRAFT; this job is the moment a stable
