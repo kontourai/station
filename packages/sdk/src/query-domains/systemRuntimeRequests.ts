@@ -417,7 +417,9 @@ export async function fetchBranding(
     `${apiBase}/api/branding`,
     ...signalInit(signal),
   );
-  const result = (await response.json().catch(() => undefined)) as
+  const result = (await response
+    .json()
+    .catch(unlessDeadline(() => undefined))) as
     | {
         success: boolean;
         data?: {
