@@ -88,6 +88,9 @@ export interface MessageBubbleSession {
   isThinking?: boolean;
   /** `activeSession.pendingApprovals.length`; the row renders only the count. */
   pendingApprovalCount?: number;
+  /** The host's status pill presents activity and approvals; see
+   * `ChatMessageList.statusShownElsewhere`. */
+  activityShownElsewhere?: boolean;
 }
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
@@ -737,6 +740,7 @@ function MessageBubbleComponent({
                 "Awaiting tool approval" told two stories at once. */}
             {activeSession.isThinking &&
               textContent &&
+              !activeSession.activityShownElsewhere &&
               (activeSession.pendingApprovalCount ?? 0) === 0 && (
                 <div className="message__thinking">
                   <span className="loading-dots">
@@ -746,7 +750,8 @@ function MessageBubbleComponent({
                   </span>
                 </div>
               )}
-            {activeSession.pendingApprovalCount !== undefined &&
+            {!activeSession.activityShownElsewhere &&
+              activeSession.pendingApprovalCount !== undefined &&
               activeSession.pendingApprovalCount > 0 && (
                 <div className="message__pending-approval">
                   <span>

@@ -21,6 +21,10 @@ import { isTurnStreamLive } from '../../utils/execution';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { AgentIcon } from '../icons/AgentIcon';
 import { LoadingDots } from '../LoadingDots';
+import {
+  REVEAL_APPROVAL_EVENT,
+  type RevealApprovalDetail,
+} from '../status/approvalReveal';
 import { ChatEmptyState } from './ChatEmptyState';
 import {
   CHAT_READER_RESTORE_EVENT,
@@ -67,6 +71,12 @@ interface ChatMessageListProps {
   hasOlderMessages?: boolean;
   historyLoading?: boolean;
   suppressActivity?: boolean;
+  /**
+   * The host presents turn activity and pending approvals in its own status
+   * surface (the chat pane's floating pill): rows do not repeat the typing
+   * dots or the "Awaiting tool approval" line.
+   */
+  statusShownElsewhere?: boolean;
   /**
    * #2309: the host already presents the watchdog's silence for this turn
    * with an action attached (the dock's stall notice, which offers Stop), so
@@ -158,6 +168,7 @@ function ChatMessageListComponent({
   hasOlderMessages,
   historyLoading,
   suppressActivity,
+  statusShownElsewhere,
   progressSilenceShownElsewhere,
   onLoadOlder,
   onOpenBackgroundTasks,
@@ -333,6 +344,8 @@ function ChatMessageListComponent({
     previousTranscriptRows.current = projected;
     return projected;
   }, [activeSession.id, messages]);
+  const transcriptRowsRef = useRef(transcriptRows);
+  transcriptRowsRef.current = transcriptRows;
 
   const [transcriptRevealHash, setTranscriptRevealHash] = useState(
     () => window.location.hash,
@@ -342,6 +355,37 @@ function ChatMessageListComponent({
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+  // The status pill (or the approval queue) asks for a pending approval's
+  // card. A long transcript virtualizes its rows, so the card's row may not
+  // be mounted: find the row that carries the request and let the
+  // virtualizer bring it in; the requester then focuses the card.
+  const [approvalRevealRowId, setApprovalRevealRowId] = useState<string>();
+  useEffect(() => {
+    const onReveal = (event: Event) => {
+      const detail = (event as CustomEvent<RevealApprovalDetail>).detail;
+      if (!detail?.requestId) return;
+      const row = transcriptRowsRef.current.find((candidate) =>
+        (candidate.message.contentParts ?? []).some(
+          (part) =>
+            part.approvalId === detail.requestId &&
+            (detail.threadId === undefined ||
+              part.approvalThreadId === detail.threadId),
+        ),
+      );
+      if (!row) return;
+      isUserScrolledUpRef.current = true;
+      setIsUserScrolledUp(true);
+      setApprovalRevealRowId(row.id);
+    };
+    window.addEventListener(REVEAL_APPROVAL_EVENT, onReveal);
+    return () => window.removeEventListener(REVEAL_APPROVAL_EVENT, onReveal);
+  }, []);
+  useEffect(() => {
+    if (!approvalRevealRowId) return;
+    // One reveal per request: clear it so the next tap can ask again.
+    const timer = setTimeout(() => setApprovalRevealRowId(undefined), 500);
+    return () => clearTimeout(timer);
+  }, [approvalRevealRowId]);
   const requestedMessageRowId = (() => {
     const encoded = transcriptRevealHash.match(/^#station-message=(.+)$/)?.[1];
     if (!encoded) return undefined;
@@ -630,6 +674,7 @@ function ChatMessageListComponent({
       messageCount: messages.length,
       isThinking: activeSession.isThinking,
       pendingApprovalCount: activeSession.pendingApprovals?.length,
+      activityShownElsewhere: statusShownElsewhere,
     }),
     [
       activeSession.id,
@@ -639,6 +684,7 @@ function ChatMessageListComponent({
       activeSession.conversationId,
       activeSession.isThinking,
       activeSession.pendingApprovals?.length,
+      statusShownElsewhere,
       messages.length,
     ],
   );
@@ -828,6 +874,7 @@ function ChatMessageListComponent({
                   anchorVersion={scrollAnchorVersion}
                   revealRowId={
                     requestedMessageRowId ??
+                    approvalRevealRowId ??
                     currentReaderRestoreRequest?.anchor?.key
                   }
                   restoreAnchor={currentReaderRestoreRequest?.anchor}

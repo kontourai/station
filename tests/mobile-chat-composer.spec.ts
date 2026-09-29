@@ -2314,7 +2314,11 @@ for (const viewport of [
         return hit === button || button.contains(hit);
       }),
     ).toBe(true);
-    const reconnectStatus = page.locator('.chat-stream-status');
+    // The outage is the pane's floating status pill: it floats over the
+    // transcript, clear of the composer, and moves nothing in the layout.
+    const reconnectStatus = page.locator(
+      '[data-chat-status-pill="reconnecting"]',
+    );
     await expect(reconnectStatus).toContainText('Reconnecting live updates');
     const reconnectBox = await reconnectStatus.boundingBox();
     const composerBox = await page.locator('.chat-input').boundingBox();
@@ -2322,6 +2326,9 @@ for (const viewport of [
     expect(composerBox).not.toBeNull();
     expect(reconnectBox!.y + reconnectBox!.height).toBeLessThanOrEqual(
       composerBox!.y,
+    );
+    expect(reconnectBox!.x + reconnectBox!.width).toBeLessThanOrEqual(
+      viewport.width,
     );
     if (viewport.width === 320) {
       const readyEmptyState = page.locator(

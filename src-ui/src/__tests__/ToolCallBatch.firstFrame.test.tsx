@@ -14,6 +14,7 @@ import { MessageContent } from '../components/chat/message-bubble/MessageContent
 import { StreamingMessageView } from '../components/chat/StreamingMessage';
 import { preloadToolCallBatch } from '../components/chat/ToolCallBatchBoundary';
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
+import type { ChatContentPart } from '../contexts/active-chats-state';
 
 const call = (id: string, command: string) => ({
   type: 'tool-invocation',
@@ -55,7 +56,7 @@ describe('tool-call batches in their first frame', () => {
   });
 
   test('the streaming shell collapses a run the moment its second call arrives', () => {
-    const renderToolCall = (part: never, index: number) => (
+    const renderToolCall = (part: ChatContentPart, index: number) => (
       <ToolCallDisplay key={index} toolCall={part} />
     );
     const props = {
@@ -70,7 +71,7 @@ describe('tool-call batches in their first frame', () => {
     const view = render(
       <StreamingMessageView
         {...props}
-        contentParts={[call('a', 'git status')] as never}
+        contentParts={[call('a', 'git status')] as ChatContentPart[]}
         contentRevision={1}
       />,
     );
@@ -81,7 +82,9 @@ describe('tool-call batches in their first frame', () => {
     view.rerender(
       <StreamingMessageView
         {...props}
-        contentParts={[call('a', 'git status'), call('b', 'git log')] as never}
+        contentParts={
+          [call('a', 'git status'), call('b', 'git log')] as ChatContentPart[]
+        }
         contentRevision={2}
       />,
     );

@@ -36,6 +36,7 @@ import {
   snoozeKeyFor,
   writeSnooze,
 } from './mobile-activity-groups';
+import { useHeldLifecycles } from './useHeldLifecycles';
 
 const FOCUSABLE =
   'button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex="-1"])';
@@ -142,9 +143,11 @@ export function MobileTaskSwitcher({
     if (open) setSnoozed(readSnoozes(now ?? Date.now()));
   }, [now, open]);
 
+  // Status churn must not move rows between groups (see useHeldLifecycles).
+  const heldTasks = useHeldLifecycles(collectionTasks);
   const groups = useMemo(
-    () => groupMobileActivity(collectionTasks, now ?? Date.now(), snoozed),
-    [collectionTasks, now, snoozed],
+    () => groupMobileActivity(heldTasks, now ?? Date.now(), snoozed),
+    [heldTasks, now, snoozed],
   );
   const visibleGroups = useMemo(
     () => groups.filter((group) => group.items.length > 0),

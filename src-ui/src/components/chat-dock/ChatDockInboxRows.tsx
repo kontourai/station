@@ -433,7 +433,10 @@ export function InboxRow({
           {item.controlMode !== 'read-only-attached' &&
           hasLifecycleChip(item.lifecycleLabel) ? (
             <>
-              <LifecycleStatusChip lifecycle={item.lifecycleLabel} />
+              <LifecycleStatusChip
+                lifecycle={item.lifecycleLabel}
+                live={isCurrent}
+              />
               {/* Chip AND recency, not either/or: a `Failed`/`Completed` row
                   used to lose its time entirely, so "how long has it sat
                   like this?" was unanswerable from the inbox while Home's

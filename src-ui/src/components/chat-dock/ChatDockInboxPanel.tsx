@@ -24,6 +24,7 @@ import {
   snoozeKeyFor,
   writeSnooze,
 } from './mobile-activity-groups';
+import { useHeldLifecycles } from './useHeldLifecycles';
 
 export interface ChatDockInboxPanelProps {
   items: HomeWorkItem[];
@@ -115,9 +116,11 @@ function ChatDockInboxPanelImpl({
     () => new Set(openChatSessionIds),
     [openChatSessionIds],
   );
+  // Status churn must not move rows between groups (see useHeldLifecycles).
+  const heldItems = useHeldLifecycles(items);
   const groups = useMemo(
-    () => groupMobileActivity(items, now, snoozed),
-    [items, now, snoozed],
+    () => groupMobileActivity(heldItems, now, snoozed),
+    [heldItems, now, snoozed],
   );
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {

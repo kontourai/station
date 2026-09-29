@@ -44,3 +44,40 @@
   color: var(--text-muted);
   box-shadow: inset 0 0 0 1px var(--border-primary);
 }
+
+/* The shared live-status glyph at chip size. */
+.lifecycle-chip .live-status-glyph {
+  width: 14px;
+  height: 14px;
+}
+.lifecycle-chip .live-status-glyph__ring {
+  width: 10px;
+  height: 10px;
+}
+.lifecycle-chip .live-status-glyph__orbit {
+  width: 14px;
+  height: 14px;
+}
+.lifecycle-chip .live-status-glyph__orbit::before {
+  top: 0;
+  left: calc(50% - 2px);
+  width: 4px;
+  height: 4px;
+}
+
+/* A state that changed under the user's eyes morphs in (transform/opacity
+   only; no layout moves — the chip's box is the same size in and out). */
+.lifecycle-chip[data-lifecycle-morph='true'] {
+  animation: lifecycle-chip-morph 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes lifecycle-chip-morph {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
