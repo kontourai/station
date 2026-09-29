@@ -4,6 +4,7 @@
  */
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import { providerHttpErrorStatus } from '../../providers/registries/catalog-http.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { outwardTransportError } from '../../utils/outward-error.js';
 import { parseToolName } from '../../utils/tool-name-normalizer.js';
@@ -246,7 +247,16 @@ export async function writeSSEDone(streamWriter: any): Promise<void> {
 }
 
 /**
- * Write SSE error
+ * Write SSE error.
+ *
+ * The text is always the fixed outward generic; the provider's own message
+ * never crosses. What may cross is the HTTP status the model provider
+ * answered with (ai-sdk's `APICallError.statusCode`, read structurally by
+ * `providerHttpErrorStatus`): a bare integer in the 4xx/5xx range carries no
+ * provider-controlled text, and it is what lets the station-agent relay tell
+ * the user WHY the turn failed ("rejected the credentials", "rate-limited")
+ * instead of only that it did. Anything outside that range is dropped rather
+ * than forwarded.
  */
 export async function writeSSEError(
   streamWriter: any,
@@ -257,11 +267,21 @@ export async function writeSSEError(
     (error.message.includes('credential') ||
       error.message.includes('accessKeyId') ||
       error.message.includes('secretAccessKey'));
+  const providerStatus = providerHttpErrorStatus(error);
+  const statusCode =
+    providerStatus !== undefined &&
+    Number.isInteger(providerStatus) &&
+    providerStatus >= 400 &&
+    providerStatus <= 599
+      ? providerStatus
+      : isCredentialError
+        ? 401
+        : undefined;
   await streamWriter.write(
     `data: ${JSON.stringify({
       type: 'error',
       errorText: outwardTransportError('sse'),
-      statusCode: isCredentialError ? 401 : undefined,
+      statusCode,
     })}\n\n`,
   );
 }

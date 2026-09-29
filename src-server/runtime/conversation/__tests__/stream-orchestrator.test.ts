@@ -178,6 +178,51 @@ describe('writeSSEError', () => {
     expect(writes[0]).not.toContain('token=secret');
     expect(writes[0]).not.toContain('/Users/operator');
   });
+
+  test('forwards the provider HTTP status as a bare number and nothing the provider said', async () => {
+    const { APICallError } = await import('@ai-sdk/provider');
+    const writes: string[] = [];
+    const streamWriter = {
+      write: vi.fn(async (value: string) => writes.push(value)),
+    };
+
+    await writeSSEError(
+      streamWriter,
+      new APICallError({
+        message: 'rate limited sk-live-SECRET-1234',
+        url: 'https://provider.example.test/v1/chat/completions',
+        requestBodyValues: { messages: ['sk-live-SECRET-1234'] },
+        statusCode: 429,
+        responseBody: '{"error":"sk-live-SECRET-1234"}',
+      }),
+    );
+
+    expect(JSON.parse(writes[0].replace(/^data: /, ''))).toEqual({
+      type: 'error',
+      errorText: 'The response stream failed.',
+      statusCode: 429,
+    });
+    expect(writes[0]).not.toContain('sk-live-SECRET');
+    expect(writes[0]).not.toContain('provider.example.test');
+  });
+
+  test('keeps the credential-shaped 401 and drops a status outside 4xx/5xx', async () => {
+    const writes: string[] = [];
+    const streamWriter = {
+      write: vi.fn(async (value: string) => writes.push(value)),
+    };
+
+    await writeSSEError(streamWriter, new Error('missing credential'));
+    await writeSSEError(
+      streamWriter,
+      Object.assign(new Error('redirected'), { statusCode: 302 }),
+    );
+    await writeSSEError(streamWriter, new Error('plain failure'));
+
+    expect(
+      writes.map((w) => JSON.parse(w.replace(/^data: /, '')).statusCode),
+    ).toEqual([401, undefined, undefined]);
+  });
 });
 
 // archive#1207 review round 2, item 3: the keepalive producer's cadence

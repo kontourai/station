@@ -513,6 +513,50 @@ function claimPendingIdlessToolCall(
 }
 
 /** Translate Station's existing chat SSE chunks into the canonical task stream. */
+/** A 4xx/5xx integer from the inner stream's error frame, else undefined. */
+function providerErrorHttpStatus(value: unknown): number | undefined {
+  return typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 400 &&
+    value <= 599
+    ? value
+    : undefined;
+}
+
+/**
+ * The `runtime.error` message for a failed inner `/chat` turn. Composed only
+ * from the model provider's HTTP status, so it states why the turn failed
+ * without quoting anything the provider said. With no status there is
+ * nothing safe to add, and the message stays the fixed generic.
+ *
+ * Wording avoids the words `classifyAgentRunFailure`
+ * (orchestration-session-state.ts) reads from the message — "timeout",
+ * "offline", "recover", "cancel" — so the classified sentence cannot change
+ * how a delegated run's failure is classified or whether it is retried.
+ */
+function stationAgentTurnFailureMessage(
+  httpStatus: number | undefined,
+): string {
+  if (httpStatus === undefined) return 'Station agent turn failed';
+  const suffix = `(HTTP ${httpStatus}).`;
+  if (httpStatus === 401 || httpStatus === 403) {
+    return `The model provider rejected the credentials ${suffix}`;
+  }
+  if (httpStatus === 404) {
+    return `The model provider could not find the model ${suffix}`;
+  }
+  if (httpStatus === 408 || httpStatus === 504) {
+    return `The model provider timed out ${suffix}`;
+  }
+  if (httpStatus === 429) {
+    return `The model provider rate-limited the request ${suffix}`;
+  }
+  if (httpStatus >= 500) {
+    return `The model provider returned an error ${suffix}`;
+  }
+  return `The model provider refused the request ${suffix}`;
+}
+
 export function mapStationAgentStreamEvent(options: {
   event: Record<string, unknown>;
   threadId: string;
@@ -735,13 +779,18 @@ export function mapStationAgentStreamEvent(options: {
     return { finishReason: finishReason(event.finishReason) };
   }
   if (event.type === 'error') {
+    // The chunk's `errorText` is the outward generic and is never read;
+    // only the numeric `statusCode` (`writeSSEError`) is, and it becomes a
+    // sentence composed here, so no provider text reaches the event.
+    const httpStatus = providerErrorHttpStatus(event.statusCode);
     publish({
       ...base,
       method: 'runtime.error',
       severity: 'error',
-      message: 'Station agent turn failed',
+      message: stationAgentTurnFailureMessage(httpStatus),
       code: 'station_agent_turn_failed',
       retriable: true,
+      ...(httpStatus !== undefined ? { details: { httpStatus } } : {}),
     });
     return { failed: true };
   }
