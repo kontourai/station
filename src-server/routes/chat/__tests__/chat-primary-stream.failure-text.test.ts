@@ -66,7 +66,14 @@ describe('streamPrimaryAgentChat failed-turn marker text', () => {
       ) => operation(),
     }) as any;
 
-  const run = async (thrown: unknown) => {
+  const run = async (thrown: unknown) =>
+    runWith(
+      vi.fn(async () => {
+        throw thrown;
+      }),
+    );
+
+  const runWith = async (streamText: ReturnType<typeof vi.fn>) => {
     const ctx = buildCtx();
     const app = new Hono();
     app.post('/chat', (c) =>
@@ -82,9 +89,7 @@ describe('streamPrimaryAgentChat failed-turn marker text', () => {
         agent: {
           getMemory: () => null,
           model: { modelId: 'test-model' },
-          streamText: vi.fn(async () => {
-            throw thrown;
-          }),
+          streamText,
         } as any,
         configurationLease: captureRuntimeConfigurationLease(ctx)!,
         dedupStore,
@@ -170,6 +175,58 @@ describe('streamPrimaryAgentChat failed-turn marker text', () => {
       '[SYSTEM_EVENT] [CHAT_ERROR] The model provider rejected the credentials.',
     );
     expect(marker).not.toContain('HTTP');
+    expect(persisted.join('\n')).not.toContain(SECRET);
+  });
+
+  // VoltAgent does not throw for a model error that arrives after output
+  // started: it emits an error PART carrying the raw APICallError.
+  test('a mid-stream provider error part is failed like a thrown one and never serialized', async () => {
+    async function* fullStream() {
+      yield { type: 'text-delta', id: 't1', text: 'Partial answer' };
+      yield {
+        type: 'tool-error',
+        toolCallId: 'call-1',
+        toolName: 'repo_read',
+        input: {},
+        error: new Error(`tool exploded ${SECRET}`),
+      };
+      yield { type: 'error', error: providerError(500) };
+      yield { type: 'text-delta', id: 't2', text: 'never written' };
+    }
+    const { body, persisted, marker } = await runWith(
+      vi.fn(async () => ({
+        fullStream: fullStream(),
+        text: Promise.resolve(''),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('error'),
+      })),
+    );
+
+    expect(body).not.toContain(SECRET);
+    expect(body).not.toContain('provider.example.test');
+    const frames = body
+      .split('\n')
+      .filter((line) => line.startsWith('data: {'))
+      .map((line) => JSON.parse(line.slice(6)));
+    // The pipeline re-chunks text; the output before the error still streams.
+    const streamed = frames
+      .filter((frame) => frame.type === 'text-delta')
+      .map((frame) => frame.text)
+      .join('');
+    expect(streamed).toBe('Partial answer');
+    expect(frames.filter((frame) => frame.type === 'error')).toEqual([
+      {
+        type: 'error',
+        errorText: 'The response stream failed.',
+        statusCode: 500,
+      },
+    ]);
+    expect(frames.find((frame) => frame.type === 'tool-error')?.error).toBe(
+      'The response stream failed.',
+    );
+    expect(marker).toContain(
+      '[SYSTEM_EVENT] [CHAT_ERROR] The model provider returned an error (HTTP 500).',
+    );
     expect(persisted.join('\n')).not.toContain(SECRET);
   });
 

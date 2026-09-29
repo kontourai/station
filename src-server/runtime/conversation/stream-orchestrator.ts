@@ -4,6 +4,7 @@
  */
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import { APICallError } from 'ai';
 import {
   MODEL_PROVIDER_CREDENTIALS_REJECTED,
   modelProviderErrorStatus,
@@ -241,7 +242,50 @@ export async function writeSSEChunk(
   streamWriter: any,
   chunk: any,
 ): Promise<void> {
-  await streamWriter.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  await streamWriter.write(
+    `data: ${JSON.stringify(outwardStreamChunk(chunk))}\n\n`,
+  );
+}
+
+/**
+ * The cause an engine's `{ type: 'error' }` stream part reports, when the
+ * part is one. VoltAgent does not throw for a model error that arrives after
+ * output has started; it emits this part carrying the raw provider error
+ * (an ai-sdk `APICallError`, whose serialized form holds the request URL,
+ * the whole prompt and the response body). The `/chat` route treats it
+ * exactly like a thrown error, so it must never be written as a chunk.
+ */
+export function streamErrorPartCause(chunk: unknown): unknown {
+  if (
+    !chunk ||
+    typeof chunk !== 'object' ||
+    (chunk as { type?: unknown }).type !== 'error'
+  ) {
+    return undefined;
+  }
+  return (chunk as { error?: unknown }).error ?? new Error('stream error part');
+}
+
+function isRawErrorValue(value: unknown): boolean {
+  return value instanceof Error || APICallError.isInstance(value);
+}
+
+/**
+ * The rule for every chunk written to a `/chat` client: no raw error object
+ * crosses. A top-level field holding an `Error` (a `tool-error` part's
+ * `error`, or any future part that carries one) is replaced by the fixed
+ * outward text, since serializing it exposes whatever the error holds.
+ * Chunks without such a field are returned as the same object.
+ */
+function outwardStreamChunk(chunk: unknown): unknown {
+  if (!chunk || typeof chunk !== 'object' || Array.isArray(chunk)) return chunk;
+  let next: Record<string, unknown> | undefined;
+  for (const [key, value] of Object.entries(chunk)) {
+    if (!isRawErrorValue(value)) continue;
+    next ??= { ...(chunk as Record<string, unknown>) };
+    next[key] = outwardTransportError('sse');
+  }
+  return next ?? chunk;
 }
 
 /**
