@@ -10541,8 +10541,8 @@
     },
     {
       "path": "docs/guides/agents.md",
-      "documentDigest": "8d66f17c9ab72933cf26109e5b989a9d5c1669d0e64f89d77786d45ed79b3fe1",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "documentDigest": "7d865d177cd57a733bba5caad0e3c575dcb98ae752733dc26194bba6af92ba3f",
+      "sourceRevision": "3d607908cd1b34cbb6f3ac4331150c9e1080477f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10847,6 +10847,10 @@
         {
           "path": "src-ui/src/views/provider-settings/providerCatalog.tsx",
           "digest": "a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758"
+        },
+        {
+          "path": "src-ui/src/components/kontour/station-tones.ts",
+          "digest": "1eeb2a838deac029d076e722339d6e84bca165b9dc3dc428219f767cd8587d46"
         }
       ],
       "checks": [
@@ -10865,7 +10869,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata to the acp, claude and codex adapters, adds Codex replyToApproval and serverRequest/resolved acknowledgement watching in codex-adapter-transport.ts, and adds lastDecision/earlierUnacknowledgedDecisions to delegation snapshots in station-control-delegation.ts. 7cd4892e5 routes Codex cancel and answer replies through replyToApproval and replaces the unknown-request error with 'This Codex approval request is not open.' The guide's Station-engine approval flow, autoApprove patterns and external-engine delivery limits are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); attention-projection.ts (comment only); claims unaffected.",
-        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."
+        "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
+        "#2862: rewrote Theming & Colors; the only other change to this record is the added source station-tones.ts. Checked against installed @kontourai/ui 1.12.0: tokens.css defines --k-positive/--k-caution/--k-negative/--k-active/--k-neutral and --k-positive-soft/--k-caution-soft/--k-negative-soft/--k-active-soft (no neutral soft fill), and no --k-status-contrast, --k-trust-*, --k-action or --k-focus; Badge and StatusBadge take a tone and render their label; station-tones.ts is Station's domain-to-tone mapping; index.css restyles .tone-positive/caution/negative/active (positive-status-contrast.test.ts checks AA). DESIGN.md is linked upstream because 1.12.0 does not ship it. The rest of the guide is unchanged."
       ]
     },
     {
@@ -21181,7 +21186,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "3d607908cd1b34cbb6f3ac4331150c9e1080477f",
       "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
       "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
       "sources": [
@@ -21191,7 +21196,7 @@
         },
         {
           "path": "docs/guides/agents.md",
-          "digest": "8d66f17c9ab72933cf26109e5b989a9d5c1669d0e64f89d77786d45ed79b3fe1"
+          "digest": "7d865d177cd57a733bba5caad0e3c575dcb98ae752733dc26194bba6af92ba3f"
         },
         {
           "path": "packages/contracts/src/agent-identity.ts",
@@ -21211,7 +21216,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map.md changes are limited to replacing CollaborativeEditorPane with ProjectTaskRoom and removing PluginForegroundRuns. No Agent identity or adapter-selector section changed, and the inventory has no link into the removed sections. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "#2862 changed only the Theming & Colors section of docs/guides/agents.md (status tokens and DESIGN.md pointer). The plan records that guide as a source but makes no claim about theming; the change adds no Agent identity text or synthetic identity literals, so its inventory claims still hold."
       ]
     },
     {
@@ -29029,12 +29035,12 @@
     },
     {
       "path": "packages/basis-pane/README.md",
-      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "sourceRevision": "3d607908cd1b34cbb6f3ac4331150c9e1080477f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read. Checked private source package exports, current connected host/action scope, full-versus-page view contract, portable resource ownership and actual Session inventory controls, AppBridge navigation and continuation merge behavior. Removed no-actions/no-links/page-replacement and universal browser-no-fetch overclaims.",
       "limits": "No full protected-reader/server lifecycle audit, live MCP host, provider execution, physical native display, accessibility/visual proof or public package release. Protected authority belongs to the host; package source and tests are not grants.",
-      "documentDigest": "4424b387758f31609154e0c02ec47f10e350ec1d3f6b3b34f8807bc392ac90fa",
+      "documentDigest": "83177b816737b1d535d7517bedde776aa9f593694ce80ac9c534193620f12134",
       "sources": [
         {
           "path": "packages/basis-pane/package.json",
@@ -29087,17 +29093,18 @@
         "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
         "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
         "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
-        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries.",
+        "#2862: added a DESIGN.md/--k-* token pointer phrased as guidance. station-basis-pane.css reads --k-text and --k-line (with hex fallbacks), so the guidance matches current practice; no other claim changed."
       ]
     },
     {
       "path": "packages/board-pane/README.md",
-      "sourceRevision": "42491ca6bab31b1365b33e3190c171819881eb72",
+      "sourceRevision": "3d607908cd1b34cbb6f3ac4331150c9e1080477f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read. Corrected descriptor subpath ownership and obsolete injected component slots; verified private source exports, current WorkspacePaneHostContract alias, SDK error primitive, Project/standalone/preview descriptor and the actual core mounter and intent-routing implementation.",
       "limits": "Boundary tests prove package import/shape rules, not absence of behavioral drift. No real Board execution, consent/provider operation, responsive visual/physical device proof or npm publication.",
-      "documentDigest": "1712fb54c56adde82bddae32ea9f49b9abb66d010905bd63f31ede3ec353d83b",
+      "documentDigest": "f7fde6380c810e97b0e606ffbf2e0b82a1686695b840fcd9baff9d2c91873069",
       "sources": [
         {
           "path": "packages/board-pane/package.json",
@@ -29128,7 +29135,8 @@
         "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
         "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries.",
         "Integration source review through d1e0facc2: Process-ID comment now names the Console bridge; parsing behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes WORKSPACE_BOARD_PANE_DESCRIPTOR_ID and _SOURCE_ID module-private and deletes the unused isCanonicalWorkspaceBoardDescriptor. The /workspace-board-pane entry still exports the descriptor, renderer IDs, createWorkspaceBoardPaneInstance and isCanonicalWorkspaceBoardPaneInstance. The README's 'React-free descriptor and instance helpers' does not name the removed symbols. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes WORKSPACE_BOARD_PANE_DESCRIPTOR_ID and _SOURCE_ID module-private and deletes the unused isCanonicalWorkspaceBoardDescriptor. The /workspace-board-pane entry still exports the descriptor, renderer IDs, createWorkspaceBoardPaneInstance and isCanonicalWorkspaceBoardPaneInstance. The README's 'React-free descriptor and instance helpers' does not name the removed symbols. Prose accurate. Source review is separate from executed test evidence.",
+        "#2862: added a DESIGN.md/--k-* token pointer phrased as guidance; console-board-pane.css only positions the header and hard-codes no colors. No other claim changed."
       ]
     },
     {
