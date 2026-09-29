@@ -1242,12 +1242,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const row = page.locator('.split-pane__item-row').filter({
       has: page.getByRole('button', { name: /^Worker task · task first home/ }),
     });
-    await row
-      .getByRole('button', { name: /^Worker task · task first home/ })
-      .click();
-    await expect(page.getByTestId('session-detail')).toBeVisible();
-
-    // A delegated row's "Delegate subtask…" lives in its row menu.
+    // A delegated row's "Delegate subtask…" lives in its row menu, opened
+    // from the list (in a maximized dock, selecting the row swaps the list
+    // for its detail).
     await row.getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Delegate subtask…' }).click();
     const launcher = page.getByRole('dialog', { name: 'Delegate a task' });
