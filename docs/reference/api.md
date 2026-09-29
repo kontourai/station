@@ -730,9 +730,12 @@ provider's own error message. It is one of: a status sentence such as
 "The model provider returned an error (HTTP 500).", "The model provider
 rejected the credentials.", "Stream aborted by client", or "The response
 stream failed.". A marker stored before this rule holds provider text on
-disk; this route, the export route, title regeneration and the knowledge
-store's conversation records serve it as "The response stream failed."
-instead ([marker scrubber](../../src-server/runtime/conversation/chat-error-marker.ts)).
+disk; this route and everything behind the same read seam (export, fork and
+summary), title regeneration and the knowledge store's conversation records
+serve it as "The response stream failed." instead
+([marker scrubber](../../src-server/runtime/conversation/chat-error-marker.ts)).
+The marker never reaches a model: the Station-engine prompt, native-memory
+history and a direct Strands conversation's replayed history all exclude it.
 
 ### Update Conversation
 
