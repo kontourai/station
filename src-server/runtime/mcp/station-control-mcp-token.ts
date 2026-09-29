@@ -73,7 +73,6 @@ export const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
 export type StationControlMcpTokenChannel =
   | 'url-token'
   | 'http-header-token'
-  | 'stdio-env-token'
   | 'sdk-in-process';
 
 /**
@@ -88,11 +87,9 @@ export type StationControlMcpTokenChannel =
  *   ACP agent app in `session/new` over a private pipe, but what the app does
  *   with it next is the app's business: a third-party agent may write it to
  *   its own config, argv or logs. Station cannot prove it stayed private.
- * - `bearer-exposed`: the token sits in a spawned process's argv or env.
- *   `url-token` is in Codex's `-c mcp_servers…url=` argv; `stdio-env-token`
- *   is in a stdio child's env, which the Claude CLI copies into its own
- *   `--mcp-config` argv. Any same-user process can read it with `ps`, so
- *   presenting it proves possession, not session identity.
+ * - `bearer-exposed`: `url-token`. The token sits in Codex's
+ *   `-c mcp_servers…url=` argv, which any same-user process can read with
+ *   `ps`, so presenting it proves possession, not session identity.
  *
  * Only `bound` may gate an action that must be attributable to the session
  * (a session-scoped browser tool, an owned child session).
@@ -111,16 +108,24 @@ export function stationControlTokenAssurance(
     case 'http-header-token':
       return 'delegated-custody';
     case 'url-token':
-    case 'stdio-env-token':
       return 'bearer-exposed';
+    default: {
+      // Fail closed. `undefined` would slip past the policy's
+      // `ASSURANCE_RANK[assurance] < REQUIREMENT_RANK[...]` refusal (the
+      // comparison is false), so an unknown channel must never yield a
+      // value; the caller derivation turns this into "no caller".
+      const unknown: never = channel;
+      throw new Error(
+        `Unknown station-control token channel: ${String(unknown)}`,
+      );
+    }
   }
 }
 
 /**
- * The channels the `/mcp/station-control` HTTP endpoint accepts. A stdio
- * env token or an in-process token presented there is refused: neither
- * channel ever needs the endpoint, so a presentation there is a copied
- * credential.
+ * The channels the `/mcp/station-control` HTTP endpoint accepts. An
+ * in-process token presented there is refused: that channel never needs the
+ * endpoint, so a presentation there is a copied credential.
  */
 export const STATION_CONTROL_MCP_HTTP_CHANNELS: readonly StationControlMcpTokenChannel[] =
   ['url-token', 'http-header-token'];

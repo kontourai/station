@@ -478,7 +478,10 @@ describe("the scheduler's own default path, end to end", () => {
       join(wedgeDir, 'store-integrity-probe.js'),
       // CJS on purpose: the workspace tmpdir has no package.json, so `.js`
       // parses as CommonJS regardless of the repo's module type.
-      'require("node:fs").writeFileSync(process.argv[2] + ".pid", String(process.pid));\n' +
+      // Write then rename, so the pid file never exists empty.
+      'const fs = require("node:fs");\n' +
+        'fs.writeFileSync(process.argv[2] + ".pid.tmp", String(process.pid));\n' +
+        'fs.renameSync(process.argv[2] + ".pid.tmp", process.argv[2] + ".pid");\n' +
         'setInterval(() => {}, 1000);\n',
     );
     const databasePath = join(wedgeDir, 'orchestration.sqlite');
@@ -496,7 +499,10 @@ describe("the scheduler's own default path, end to end", () => {
       await vi.waitFor(() => expect(existsSync(pidFile)).toBe(true), {
         timeout: 10_000,
       });
-      pid = Number(readFileSync(pidFile, 'utf8'));
+      const published = Number(readFileSync(pidFile, 'utf8'));
+      // pid 0 would address this process group in both kill calls below.
+      expect(Number.isSafeInteger(published) && published > 0).toBe(true);
+      pid = published;
       // Alive before, dead after — `kill(pid, 0)` is the OS's answer, not a
       // flag of ours.
       expect(() => process.kill(pid as number, 0)).not.toThrow();
