@@ -1013,11 +1013,13 @@ jobs:
           rm -f "$keys/dry-run-private-key.pem"
           node scripts/ecosystem-manifest.mjs verify --manifest "$publication/dry-run-manifest.json" --keys "$keys/dry-run-keys.json" > /dev/null
           node scripts/portable-release-publication.mjs verify --ring "$RELEASE_RING" --manifest "$publication/dry-run-manifest.json" --keys "$keys/dry-run-keys.json" --expected-payload "$publication/payload.json"
-          # The throwaway envelope must never pass the pinned keys.
-          if node scripts/ecosystem-manifest.mjs verify --manifest "$publication/dry-run-manifest.json" > /dev/null 2>&1; then
+          # The throwaway envelope must never pass the pinned keys, and the
+          # refusal must be the unpinned-key one, not a wrong path or argument.
+          if node scripts/ecosystem-manifest.mjs verify --manifest "$publication/dry-run-manifest.json" > /dev/null 2> "$publication/pinned-verify.err"; then
             echo '::error::the dry-run manifest verified against the pinned key table' >&2
             exit 1
           fi
+          grep -qxF 'manifest signing key station-portable-release-dry-run is not pinned' "$publication/pinned-verify.err" || { echo '::error::the pinned-key check refused the dry-run manifest for an unexpected reason:' >&2; cat "$publication/pinned-verify.err" >&2; exit 1; }
       - name: Stage the host archives and payload as release assets
         run: |
           set -euo pipefail

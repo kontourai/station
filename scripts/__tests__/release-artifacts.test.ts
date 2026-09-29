@@ -592,7 +592,15 @@ describe('release artifact inventory: the host stream (#2959)', () => {
         manifestKeys: table,
       }),
     ).not.toThrow();
-    expect(() => assertOnlyExpectedAssets(assetsDir, TAG)).not.toThrow();
+    expect(() =>
+      assertOnlyExpectedAssets(assetsDir, TAG, {
+        allowSignedHostManifest: true,
+      }),
+    ).not.toThrow();
+    // release.yml's own assembly never admits it: it must not exist yet.
+    expect(() => assertOnlyExpectedAssets(assetsDir, TAG)).toThrow(
+      `unexpected asset ${name}`,
+    );
     // The same envelope against the real pinned table: the test key is not
     // the release key, so it does not verify.
     expect(() =>
@@ -618,9 +626,11 @@ describe('release artifact inventory: the host stream (#2959)', () => {
       join(assetsDir, 'station-portable-preview-manifest.json'),
       '{}\n',
     );
-    expect(() => assertOnlyExpectedAssets(assetsDir, TAG)).toThrow(
-      'unexpected asset station-portable-preview-manifest.json',
-    );
+    expect(() =>
+      assertOnlyExpectedAssets(assetsDir, TAG, {
+        allowSignedHostManifest: true,
+      }),
+    ).toThrow('unexpected asset station-portable-preview-manifest.json');
     expect(signedHostManifestAsset('v1.2.3-preview.4')).toBe(
       'station-portable-preview-manifest.json',
     );

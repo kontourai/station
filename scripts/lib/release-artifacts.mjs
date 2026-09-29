@@ -777,12 +777,21 @@ export function readInventory(file) {
   }
 }
 
-export function assertOnlyExpectedAssets(assetsDir, tag) {
+/**
+ * `allowSignedHostManifest` admits the signed host manifest that
+ * publish-release.yml attaches: validating a draft or a published release,
+ * never release.yml's own assembly, where it must not exist yet.
+ */
+export function assertOnlyExpectedAssets(
+  assetsDir,
+  tag,
+  { allowSignedHostManifest = false } = {},
+) {
   const allowed = new Set(expectedAssets(tag).keys());
   allowed.add('station-release-inventory.json');
   allowed.add('station-release-checksums.txt');
   // Attached by publish-release.yml; validateReleaseInventory verifies it.
-  allowed.add(signedHostManifestAsset(tag));
+  if (allowSignedHostManifest) allowed.add(signedHostManifestAsset(tag));
   for (const entry of readdirSync(assetsDir, { withFileTypes: true })) {
     if (!allowed.has(entry.name)) fail(`unexpected asset ${entry.name}`);
     if (entry.isSymbolicLink() || !entry.isFile())

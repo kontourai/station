@@ -133,10 +133,17 @@ describe('release availability driver', () => {
         ),
     });
     const validateInventory = vi.fn();
+    const assertAssets = vi.fn();
     await expect(
-      runReleaseAvailability(event, options(api, { validateInventory })),
+      runReleaseAvailability(
+        event,
+        options(api, { validateInventory, assertAssets }),
+      ),
     ).resolves.toMatchObject({ kind: 'projected' });
     expect(validateInventory).toHaveBeenCalledTimes(1);
+    expect(assertAssets).toHaveBeenCalledWith(expect.any(String), tag, {
+      allowSignedHostManifest: true,
+    });
     expect(
       api.verifyAttestation.mock.calls.map(([path]: unknown[]) =>
         String(path).split(/[\\/]/).at(-1),

@@ -300,7 +300,7 @@ export async function runReleaseAvailability(
       updaterPublicKey,
       containerDescriptor: join(directory, 'station-container-release.json'),
     });
-    assertAssets(directory, event.tag);
+    assertAssets(directory, event.tag, { allowSignedHostManifest: true });
     validatePredicates(directory);
     // The signed host manifest is attached by publish-release.yml, not
     // release.yml, so it carries no release.yml attestation. validateInventory

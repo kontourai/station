@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash, createPrivateKey } from 'node:crypto';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   symlinkSync,
@@ -15,7 +16,6 @@ import { PORTABLE_SERVER_TARGETS } from '../../packages/shared/src/portable-serv
 import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
-  assertNotRegressing,
   checkArchives,
   compareRingVersions,
   createDryRunKeys,
@@ -36,6 +36,7 @@ import {
 } from '../portable-nightly-publication.mjs';
 import {
   assertReleasePayload,
+  planRollingPointer,
   RELEASE_DRY_RUN_KEY_ID,
   RELEASE_SIGNING_KEY_ID,
 } from '../portable-release-publication.mjs';
@@ -193,20 +194,26 @@ function runStep(
 }
 
 /**
- * A `node` on PATH that makes every pinned-table verify
- * (`ecosystem-manifest.mjs verify` without `--keys`) use `$SHIM_KEYS`: the
- * only way to make the throwaway envelope "verify against the pinned table"
- * without the release key, so the refusal branch actually runs.
+ * A `node` on PATH for running workflow bash with a test key table. In
+ * `keys` mode every verify that would use the pinned table (no `--keys`) gets
+ * `--keys "$SHIM_KEYS"`: the only way to make a throwaway envelope "verify
+ * against the pinned table" without the release key, so refusal branches
+ * actually run. In `wrong` mode the pinned `ecosystem-manifest.mjs verify`
+ * fails for an unrelated reason instead.
  */
-function pinnedTableShim() {
+function nodeShim(mode: 'keys' | 'wrong' = 'keys') {
   const bin = freshDir('shim');
   writeFileSync(
     join(bin, 'node'),
     [
       '#!/bin/sh',
+      'case " $* " in *" --keys "*) exec "$REAL_NODE" "$@" ;; esac',
       'case "$1 $2" in',
-      '  *ecosystem-manifest.mjs\\ verify)',
-      '    case " $* " in *" --keys "*) ;; *) exec "$REAL_NODE" "$@" --keys "$SHIM_KEYS" ;; esac ;;',
+      mode === 'wrong'
+        ? '  *ecosystem-manifest.mjs\\ verify) echo "ENOENT: unrelated failure" >&2; exit 1 ;;'
+        : '  *ecosystem-manifest.mjs\\ verify) exec "$REAL_NODE" "$@" --keys "$SHIM_KEYS" ;;',
+      '  *portable-release-publication.mjs\\ verify|*portable-release-publication.mjs\\ pointer-plan)',
+      '    exec "$REAL_NODE" "$@" --keys "$SHIM_KEYS" ;;',
       'esac',
       'exec "$REAL_NODE" "$@"',
       '',
@@ -426,70 +433,154 @@ function signWithThrowaway(
   };
 }
 
+/** One throwaway key that signs several payloads, and its key table. */
+function keyring(ring: 'stable' | 'preview') {
+  const dir = freshDir('keyring');
+  const { privateKeyPem, keyTable } = createDryRunKeys(
+    ring,
+    RELEASE_DRY_RUN_KEY_ID,
+  );
+  writeFileSync(join(dir, 'key.pem'), privateKeyPem, { mode: 0o600 });
+  const keysPath = join(dir, 'keys.json');
+  writeFileSync(keysPath, JSON.stringify(keyTable));
+  let count = 0;
+  return {
+    keysPath,
+    keyTable,
+    sign(payloadPath: string) {
+      count += 1;
+      const manifest = join(dir, `manifest-${count}.json`);
+      const created = runNode('scripts/ecosystem-manifest.mjs', [
+        'create',
+        '--payload',
+        payloadPath,
+        '--key-id',
+        RELEASE_DRY_RUN_KEY_ID,
+        '--private-key',
+        join(dir, 'key.pem'),
+        '--allow-unpinned-key',
+        '--output',
+        manifest,
+      ]);
+      expect(created.status, created.stderr).toBe(0);
+      return manifest;
+    },
+  };
+}
+
 describe('publication checks for stable and preview', () => {
-  it('refuses to replace the rolling manifest with an equal or older version', () => {
+  it('plans the rolling pointer: forward, idempotent rerun, never backwards', () => {
     for (const [ring, current, newer, older] of [
       ['stable', '1.2.3', '1.2.4', '1.2.2'],
       ['preview', '1.2.3-preview.4', '1.2.3-preview.5', '1.2.3-preview.3'],
     ] as const) {
-      const { output } = assemblePayload(ring, current);
-      const { envelope, keyTable } = signWithThrowaway(ring, output);
+      const keys = keyring(ring);
+      const served = readFileSync(
+        keys.sign(assemblePayload(ring, current).output),
+      );
+      const signed = (version: string) =>
+        readFileSync(keys.sign(assemblePayload(ring, version).output));
+      const plan = (
+        candidateVersion: string,
+        signedBytes: Buffer,
+        extra = {},
+      ) =>
+        planRollingPointer({
+          ring,
+          candidateVersion,
+          currentBytes: served,
+          signedBytes,
+          keys: keys.keyTable,
+          allowEmptyBootstrap: false,
+          rollingTag: `portable-${ring}`,
+          ...extra,
+        });
+      expect(plan(newer, signed(newer))).toEqual({
+        action: 'replace',
+        current,
+      });
+      // A rerun after the pointer already moved to these exact bytes.
+      expect(plan(current, served)).toEqual({ action: 'unchanged', current });
+      // An older tag (a desktop rollback) leaves the host pointer alone.
+      expect(plan(older, signed(older))).toEqual({
+        action: 'skip-older',
+        current,
+      });
+      // The same version with other bytes is refused, never replaced.
+      const other = assemblePayload(ring, current);
+      const otherPayload = JSON.parse(readFileSync(other.output, 'utf8'));
+      otherPayload.publishedAt = '2026-09-30T00:00:00.000Z';
+      writeFileSync(other.output, JSON.stringify(otherPayload));
+      expect(() =>
+        plan(current, readFileSync(keys.sign(other.output))),
+      ).toThrow(
+        `the rolling ${ring} manifest already names ${current} with different bytes than this run signed; inspect portable-${ring} before re-running`,
+      );
+      // A served manifest that does not verify is refused, not overwritten.
+      expect(() =>
+        plan(newer, signed(newer), { keys: keyring(ring).keyTable }),
+      ).toThrow('manifest signature did not verify');
+      // An empty pointer needs the owner's explicit bootstrap.
+      expect(() => plan(newer, signed(newer), { currentBytes: null })).toThrow(
+        `the rolling pointer portable-${ring} serves no ${ring} manifest; confirm it is new, then re-run with allow_empty_host_manifest_bootstrap for its first publish only`,
+      );
       expect(
-        assertNotRegressing(ring, {
-          current: envelope,
-          keys: keyTable,
-          candidateVersion: newer,
+        plan(newer, signed(newer), {
+          currentBytes: null,
+          allowEmptyBootstrap: true,
         }),
-      ).toEqual({ current });
-      for (const candidate of [current, older])
-        expect(() =>
-          assertNotRegressing(ring, {
-            current: envelope,
-            keys: keyTable,
-            candidateVersion: candidate,
-          }),
-        ).toThrow(
-          `refusing to replace the rolling ${ring} manifest ${current} with ${candidate}, which is not newer`,
-        );
-      expect(
-        assertNotRegressing(ring, {
-          current: null,
-          keys: keyTable,
-          candidateVersion: newer,
-        }),
-      ).toEqual({ current: null });
+      ).toEqual({ action: 'replace', current: null });
     }
   });
 
-  it('refuses an equal version through the CLI the publish job runs', () => {
-    const { output } = assemblePayload('stable', '1.2.3');
-    const { manifest, keysPath } = signWithThrowaway('stable', output);
-    const run = (candidate: string) =>
+  it('plans through the CLI the workflow runs, refusing an empty pointer without bootstrap', () => {
+    const keys = keyring('stable');
+    const current = keys.sign(assemblePayload('stable', '1.2.3').output);
+    const candidate = keys.sign(assemblePayload('stable', '1.2.4').output);
+    const run = (location: string, extra: string[] = []) =>
       runNode('scripts/portable-release-publication.mjs', [
-        'not-regressing',
+        'pointer-plan',
         '--ring',
         'stable',
         '--candidate-version',
-        candidate,
+        '1.2.4',
         '--current',
-        manifest,
+        location,
+        '--signed',
+        candidate,
         '--keys',
-        keysPath,
+        keys.keysPath,
+        ...extra,
       ]);
-    expect(run('1.2.4').status).toBe(0);
-    const equal = run('1.2.3');
-    expect(equal.status).toBe(1);
-    expect(equal.stderr).toContain('which is not newer');
-    // Against the pinned table the throwaway rolling manifest does not
-    // verify, and that is refused rather than overwritten.
+    const forward = run(current);
+    expect(forward.status, forward.stderr).toBe(0);
+    expect(forward.stdout).toBe('action=replace\n');
+    const missing = join(
+      freshDir('empty'),
+      'station-portable-stable-manifest.json',
+    );
+    const empty = run(missing, ['--allow-empty-bootstrap', 'false']);
+    expect(empty.status).toBe(1);
+    expect(empty.stderr).toContain('serves no stable manifest');
+    expect(run(missing, ['--allow-empty-bootstrap', 'true']).stdout).toBe(
+      'action=replace\n',
+    );
+    const invalid = run(missing, ['--allow-empty-bootstrap', 'yes']);
+    expect(invalid.status).toBe(1);
+    expect(invalid.stderr).toContain(
+      '--allow-empty-bootstrap must be true or false',
+    );
+    // Against the pinned table the throwaway rolling manifest does not verify.
     const pinned = runNode('scripts/portable-release-publication.mjs', [
-      'not-regressing',
+      'pointer-plan',
       '--ring',
       'stable',
       '--candidate-version',
       '1.2.4',
       '--current',
-      manifest,
+      current,
+      '--signed',
+      candidate,
     ]);
     expect(pinned.status).toBe(1);
     expect(pinned.stderr).toContain(
@@ -677,6 +768,7 @@ describe('release.yml builds and dry-runs the host stream on every tag', () => {
       version: string,
       shim?: string,
     ) {
+      // shim: a nodeShim() directory, or undefined for the real node.
       const runnerTemp = freshDir('runner');
       // download-artifact lays the station-server-* artifacts out here.
       writeArchiveTree(ring, version, join(runnerTemp, 'archives'));
@@ -739,11 +831,20 @@ describe('release.yml builds and dry-runs the host stream on every tag', () => {
     });
 
     it('fails the dry run if the throwaway envelope ever verifies against the pinned table', () => {
-      const { signed } = runReleaseSteps('stable', '1.2.3', pinnedTableShim());
+      const { signed } = runReleaseSteps('stable', '1.2.3', nodeShim());
       expect(signed.status).toBe(1);
       expect(signed.stderr).toContain(
         'the dry-run manifest verified against the pinned key table',
       );
+    });
+
+    it('fails the dry run when the pinned-key check fails for any other reason', () => {
+      const { signed } = runReleaseSteps('stable', '1.2.3', nodeShim('wrong'));
+      expect(signed.status).toBe(1);
+      expect(signed.stderr).toContain(
+        'the pinned-key check refused the dry-run manifest for an unexpected reason:',
+      );
+      expect(signed.stderr).toContain('ENOENT: unrelated failure');
     });
   });
 });
@@ -779,12 +880,21 @@ function isHostEffect(step: Step): boolean {
 
 describe('publish-release.yml signs and moves the host pointer only behind the owner gate', () => {
   const job = publish.jobs.publish;
+  const pointerJob = publish.jobs['host-pointer'] as Job & {
+    outputs?: unknown;
+  };
   const steps = job.steps ?? [];
-  const index = (name: string) => {
-    const found = steps.findIndex((step) => step.name === name);
+  const pointerSteps = pointerJob.steps ?? [];
+  const index = (list: Step[], name: string) => {
+    const found = list.findIndex((step) => step.name === name);
     expect(found, name).toBeGreaterThanOrEqual(0);
     return found;
   };
+  const PLAN = 'Plan the rolling host-stream pointer';
+  const REPLACE =
+    'Replace the rolling host-stream manifest (last) and re-verify it';
+  const UNCHANGED =
+    'Re-verify the unchanged rolling host-stream manifest with the pinned key';
 
   it('gates every signing and host publication step on the literal owner variable', () => {
     const gated = steps.filter((step) => step.if?.includes(GATE_VARIABLE));
@@ -792,21 +902,22 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       'Sign the host-stream manifest with the pinned release key',
       'Verify the signed host-stream manifest with the pinned key table',
       "Require the owner's rolling host-stream pointer release",
-      'Refuse to publish over a newer or equal rolling host-stream manifest',
+      PLAN,
       'Attach the signed host-stream manifest to the versioned release',
-      'Re-download the versioned host-stream assets and compare them with the manifest',
-      'Refuse to replace a newer or equal rolling host-stream manifest',
-      'Replace the rolling host-stream manifest (last)',
-      'Re-fetch and re-verify the rolling host-stream manifest with the pinned key',
+      'Hand the signed host-stream manifest to the pointer job',
     ]);
     for (const step of gated) expect(step.if, step.name).toBe(GATE);
-    const effects = steps.filter(isHostEffect);
+    // The pointer job as a whole is gated on the same literal.
+    expect(pointerJob.if).toBe(GATE);
+    expect(pointerJob.needs).toEqual(['resolve', 'publish']);
+    const effects = [...steps, ...pointerSteps].filter(isHostEffect);
     expect(effects.map((step) => step.name)).toEqual([
       'Sign the host-stream manifest with the pinned release key',
       'Attach the signed host-stream manifest to the versioned release',
-      'Replace the rolling host-stream manifest (last)',
+      REPLACE,
     ]);
-    for (const step of effects) expect(step.if, step.name).toBe(GATE);
+    for (const step of steps.filter(isHostEffect))
+      expect(step.if, step.name).toBe(GATE);
     for (const value of [undefined, '', 'true', 'Enabled', 'enabled ', 'on'])
       expect(
         gateAllows(GATE, value === undefined ? {} : { [GATE_VARIABLE]: value }),
@@ -832,63 +943,78 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       MANIFEST_ASSET: expr('steps.host_plan.outputs.manifest_asset'),
     });
     expect(secretSteps[0].run).toContain(`--key-id ${RELEASE_SIGNING_KEY_ID}`);
+    expect(JSON.stringify(pointerJob)).not.toMatch(/\bsecrets\./);
+    expect(pointerJob.permissions).toEqual({ contents: 'write' });
     expect(JSON.stringify(release)).not.toContain(SIGNING_SECRET);
   });
 
-  it('replaces the rolling pointer last, after the versioned assets are public, verified and not regressing', () => {
-    const rolling = index('Replace the rolling host-stream manifest (last)');
-    expect(steps[rolling].run).toContain(
-      'gh release upload "$ROLLING_TAG" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/host-manifest/$MANIFEST_ASSET"',
-    );
-    // Nothing else writes the rolling pointer.
-    for (const [position, step] of steps.entries())
-      if (position !== rolling)
-        expect(step.run ?? '', step.name).not.toMatch(
-          /gh release (upload|create|edit|delete)[^\n]*"\$ROLLING_TAG"/,
-        );
+  it('never lets a host-pointer failure skip the ledger or release availability', () => {
+    // Only the pointer job writes the rolling pointer, after publish.
+    for (const step of steps)
+      expect(step.run ?? '', step.name).not.toMatch(
+        /gh release (upload|create|edit|delete)[^\n]*"\$ROLLING_TAG"/,
+      );
+    const availability = publish.jobs['release-availability'];
+    expect(availability.needs).toEqual(['resolve', 'publish']);
+    expect(JSON.stringify(availability.if)).not.toContain('host-pointer');
+    expect(
+      index(steps, 'Record the stable release in the deploy ledger'),
+    ).toBeGreaterThan(-1);
+  });
+
+  it('attaches the versioned manifest before publication and moves the pointer last', () => {
     const order = [
       'Plan the host-stream manifest publication',
       'Dry-run sign the host-stream manifest with a throwaway key',
       'Sign the host-stream manifest with the pinned release key',
       'Verify the signed host-stream manifest with the pinned key table',
       "Require the owner's rolling host-stream pointer release",
-      'Refuse to publish over a newer or equal rolling host-stream manifest',
+      PLAN,
       'Attach the signed host-stream manifest to the versioned release',
+      'Hand the signed host-stream manifest to the pointer job',
       'Publish release and compensate to draft until feed verifies',
-      'Re-download the versioned host-stream assets and compare them with the manifest',
-      'Refuse to replace a newer or equal rolling host-stream manifest',
-      'Replace the rolling host-stream manifest (last)',
-      'Re-fetch and re-verify the rolling host-stream manifest with the pinned key',
-    ].map(index);
+    ].map((name) => index(steps, name));
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    // The last not-regressing check immediately precedes the replacement, and
-    // the pinned-key re-verification immediately follows it.
-    expect(
-      index('Refuse to replace a newer or equal rolling host-stream manifest'),
-    ).toBe(rolling - 1);
-    expect(
-      index(
-        'Re-fetch and re-verify the rolling host-stream manifest with the pinned key',
-      ),
-    ).toBe(rolling + 1);
-    const reverify = steps[rolling + 1].run ?? '';
-    expect(reverify).toContain('--manifest "$ROLLING_MANIFEST_URL"');
-    expect(reverify).not.toMatch(/--keys|--public-key/);
-    const versioned =
-      steps[
-        index(
-          'Re-download the versioned host-stream assets and compare them with the manifest',
-        )
-      ].run ?? '';
-    expect(versioned).toContain('verify-assets --payload');
-    expect(versioned).toContain('--manifest "$VERSIONED_MANIFEST_URL"');
-    for (const name of [
-      'Refuse to publish over a newer or equal rolling host-stream manifest',
-      'Refuse to replace a newer or equal rolling host-stream manifest',
-    ])
-      expect(steps[index(name)].run).toContain(
-        'not-regressing --ring "$RELEASE_RING" --candidate-version "$RELEASE_VERSION" --current "$ROLLING_MANIFEST_URL"',
+    const pointerOrder = [
+      'Re-download the versioned host-stream assets and compare them with the manifest',
+      PLAN,
+      REPLACE,
+      UNCHANGED,
+    ].map((name) => index(pointerSteps, name));
+    expect(pointerOrder).toEqual([...pointerOrder].sort((a, b) => a - b));
+    // Nothing after the replacement writes anything.
+    for (const step of pointerSteps.slice(index(pointerSteps, REPLACE) + 1))
+      expect(step.run ?? '', step.name).not.toMatch(/gh release/);
+    const replace = pointerSteps[index(pointerSteps, REPLACE)];
+    expect(replace.if).toBe(
+      expr("steps.host_pointer.outputs.action == 'replace'"),
+    );
+    expect(pointerSteps[index(pointerSteps, UNCHANGED)].if).toBe(
+      expr("steps.host_pointer.outputs.action == 'unchanged'"),
+    );
+    // Re-verification is pinned-key only.
+    for (const name of [REPLACE, UNCHANGED])
+      expect(pointerSteps[index(pointerSteps, name)].run).not.toMatch(
+        /--keys|--public-key/,
       );
+    // Both plans honor the owner's bootstrap input.
+    const inputs = (
+      load(
+        readFileSync(
+          join(repoRoot, '.github/workflows/publish-release.yml'),
+          'utf8',
+        ),
+      ) as { on: { workflow_dispatch: { inputs: Record<string, unknown> } } }
+    ).on.workflow_dispatch.inputs;
+    expect(inputs.allow_empty_host_manifest_bootstrap).toMatchObject({
+      required: false,
+      default: false,
+      type: 'boolean',
+    });
+    for (const list of [steps, pointerSteps])
+      expect(
+        list[index(list, PLAN)].env?.ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP,
+      ).toBe(expr('inputs.allow_empty_host_manifest_bootstrap'));
   });
 
   it('checks the staged payload and archives before any signing', () => {
@@ -900,8 +1026,6 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     expect(plan.run).toContain(
       'check-archives --payload "$payload" --archives release-assets',
     );
-    // The attestation loop exempts only the signed manifest, by its exact
-    // name for this ring, after the inventory revalidation verified it.
     const provenance = namedStep(
       job,
       'Verify GitHub provenance for every downloaded asset',
@@ -913,9 +1037,9 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       'if [ "$(basename "$asset")" = "$host_manifest" ]; then continue; fi',
     );
     expect(
-      index('Download and revalidate every staged release asset'),
+      index(steps, 'Download and revalidate every staged release asset'),
     ).toBeLessThan(
-      index('Verify GitHub provenance for every downloaded asset'),
+      index(steps, 'Verify GitHub provenance for every downloaded asset'),
     );
   });
 
@@ -933,8 +1057,10 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       const runnerTemp = freshDir('runner');
       return {
         cwd,
+        payload: output,
         env: {
           RUNNER_TEMP: runnerTemp,
+          RELEASE_TAG: `v${version}`,
           RELEASE_RING: ring,
           RELEASE_VERSION: version,
           GITHUB_REPOSITORY: REPOSITORY,
@@ -942,36 +1068,44 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       };
     }
 
+    const dryRunName =
+      'Dry-run sign the host-stream manifest with a throwaway key';
+
     it('dry-runs without any secret and never verifies against the pinned table', () => {
-      const dryRun =
-        namedStep(
-          job,
-          'Dry-run sign the host-stream manifest with a throwaway key',
-        ).run ?? '';
+      const dryRun = namedStep(job, dryRunName).run ?? '';
       const ok = workspace('preview', '1.2.3-preview.4');
       const passed = runStep(dryRun, ok);
       expect(passed.status, passed.stderr).toBe(0);
       expect(passed.stdout).toContain(
         `verified 1.2.3-preview.4 (${RELEASE_DRY_RUN_KEY_ID})`,
       );
-      const refused = workspace('stable', '1.2.3');
-      const shimmed = runStep(dryRun, {
-        cwd: refused.cwd,
-        env: {
-          ...refused.env,
-          PATH: `${pinnedTableShim()}:${process.env.PATH ?? ''}`,
-          REAL_NODE: process.execPath,
-          SHIM_KEYS: join(
-            refused.env.RUNNER_TEMP,
-            'host-dry-run',
-            'dry-run-keys.json',
-          ),
-        },
-      });
-      expect(shimmed.status).toBe(1);
-      expect(shimmed.stderr).toContain(
-        'the dry-run host manifest verified against the pinned key table',
-      );
+      for (const [mode, message] of [
+        [
+          'keys',
+          'the dry-run host manifest verified against the pinned key table',
+        ],
+        [
+          'wrong',
+          'the pinned-key check refused the dry-run host manifest for an unexpected reason:',
+        ],
+      ] as const) {
+        const refused = workspace('stable', '1.2.3');
+        const shimmed = runStep(dryRun, {
+          cwd: refused.cwd,
+          env: {
+            ...refused.env,
+            PATH: `${nodeShim(mode)}:${process.env.PATH ?? ''}`,
+            REAL_NODE: process.execPath,
+            SHIM_KEYS: join(
+              refused.env.RUNNER_TEMP,
+              'host-dry-run',
+              'dry-run-keys.json',
+            ),
+          },
+        });
+        expect(shimmed.status, mode).toBe(1);
+        expect(shimmed.stderr, mode).toContain(message);
+      }
     });
 
     it('fails closed with a readable error when the gate is on but the secret is absent', () => {
@@ -992,6 +1126,174 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(
         `${GATE_VARIABLE} is enabled, but ${SIGNING_SECRET} is not available in the native-release-publish environment`,
+      );
+    });
+
+    const ASSET = 'station-portable-stable-manifest.json';
+
+    /**
+     * The pointer job's workspace: the handed-over signed manifest and
+     * payload, a fake `gh` whose releases are directories, and the rolling
+     * pointer served (as a file the scripts read) from that fake.
+     */
+    function pointerWorkspace(
+      candidate: string,
+      served: string | null,
+      options: { corruptUpload?: boolean } = {},
+    ) {
+      const keys = keyring('stable');
+      const base = workspace('stable', candidate);
+      const hand = join(base.env.RUNNER_TEMP, 'host-manifest');
+      mkdirSync(hand);
+      const signed = keys.sign(base.payload);
+      writeFileSync(join(hand, ASSET), readFileSync(signed));
+      writeFileSync(join(hand, 'payload.json'), readFileSync(base.payload));
+      const releases = freshDir('releases');
+      const rolling = join(releases, 'portable-stable');
+      mkdirSync(rolling);
+      if (served === 'same')
+        writeFileSync(join(rolling, ASSET), readFileSync(signed));
+      else if (served !== null)
+        writeFileSync(
+          join(rolling, ASSET),
+          readFileSync(keys.sign(assemblePayload('stable', served).output)),
+        );
+      const bin = freshDir('gh');
+      writeFileSync(
+        join(bin, 'gh'),
+        [
+          '#!/bin/sh',
+          '[ "$1" = release ] || exit 97',
+          'sub=$2; tag=$3; shift 3',
+          'dir="$FAKE_RELEASES/$tag"',
+          'echo "$sub $tag $*" >> "$FAKE_RELEASES/.log"',
+          'case "$sub" in',
+          '  view) ls "$dir" ;;',
+          '  download)',
+          '    while [ $# -gt 0 ]; do case "$1" in --dir) out=$2; shift ;; --pattern) pattern=$2; shift ;; esac; shift; done',
+          '    cp "$dir/$pattern" "$out/$pattern" ;;',
+          '  upload)',
+          '    for arg in "$@"; do case "$arg" in --*|"$GITHUB_REPOSITORY") ;; *) file=$arg ;; esac; done',
+          '    name=$(basename "$file")',
+          '    if [ -n "$FAKE_GH_CORRUPT_FIRST_UPLOAD" ] && [ ! -e "$FAKE_RELEASES/.corrupted" ]; then',
+          '      printf "{}" > "$dir/$name"; touch "$FAKE_RELEASES/.corrupted"',
+          '    else cp "$file" "$dir/$name"; fi ;;',
+          '  delete-asset) rm -f "$dir/$1" ;;',
+          '  *) exit 98 ;;',
+          'esac',
+          '',
+        ].join('\n'),
+      );
+      chmodSync(join(bin, 'gh'), 0o755);
+      const output = join(base.env.RUNNER_TEMP, 'github-output');
+      writeFileSync(output, '');
+      return {
+        cwd: base.cwd,
+        signed,
+        rollingFile: join(rolling, ASSET),
+        releases,
+        output,
+        env: {
+          ...base.env,
+          PATH: `${bin}:${nodeShim()}:${process.env.PATH ?? ''}`,
+          REAL_NODE: process.execPath,
+          SHIM_KEYS: keys.keysPath,
+          FAKE_RELEASES: releases,
+          ...(options.corruptUpload
+            ? { FAKE_GH_CORRUPT_FIRST_UPLOAD: '1' }
+            : {}),
+          GITHUB_OUTPUT: output,
+          ROLLING_TAG: 'portable-stable',
+          MANIFEST_ASSET: ASSET,
+          ROLLING_MANIFEST_URL: join(rolling, ASSET),
+          ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP: 'false',
+        } as Record<string, string>,
+      };
+    }
+
+    const stepRun = (name: string) =>
+      pointerSteps[index(pointerSteps, name)].run ?? '';
+
+    it('plans a rerun as unchanged and re-verifies without replacing', () => {
+      const ws = pointerWorkspace('1.2.3', 'same');
+      const plan = runStep(stepRun(PLAN), ws);
+      expect(plan.status, plan.stderr).toBe(0);
+      expect(readFileSync(ws.output, 'utf8')).toBe('action=unchanged\n');
+      const reverify = runStep(stepRun(UNCHANGED), ws);
+      expect(reverify.status, reverify.stderr).toBe(0);
+      expect(reverify.stdout).toContain('verified 1.2.3');
+      // The publish job's own plan step is the same script: a rerun passes it.
+      const publishPlan = runStep(steps[index(steps, PLAN)].run ?? '', ws);
+      expect(publishPlan.status, publishPlan.stderr).toBe(0);
+    });
+
+    it('leaves the pointer alone for an older tag (a desktop rollback) with a notice', () => {
+      const ws = pointerWorkspace('1.2.2', '1.2.3');
+      const before = readFileSync(ws.rollingFile);
+      for (const run of [stepRun(PLAN), steps[index(steps, PLAN)].run ?? '']) {
+        writeFileSync(ws.output, '');
+        const plan = runStep(run, ws);
+        expect(plan.status, plan.stderr).toBe(0);
+        expect(readFileSync(ws.output, 'utf8')).toBe('action=skip-older\n');
+        expect(plan.stdout).toContain(
+          '::notice::v1.2.2 is older than the rolling stable host-stream manifest; the host pointer never moves backwards',
+        );
+      }
+      expect(readFileSync(ws.rollingFile)).toEqual(before);
+    });
+
+    it('refuses an empty pointer unless the owner bootstraps it', () => {
+      const ws = pointerWorkspace('1.2.3', null);
+      const refused = runStep(stepRun(PLAN), ws);
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toContain(
+        'the rolling pointer portable-stable serves no stable manifest',
+      );
+      const allowed = runStep(stepRun(PLAN), {
+        cwd: ws.cwd,
+        env: { ...ws.env, ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP: 'true' },
+      });
+      expect(allowed.status, allowed.stderr).toBe(0);
+      expect(readFileSync(ws.output, 'utf8')).toBe('action=replace\n');
+    });
+
+    it('replaces a newer version and re-verifies it', () => {
+      const ws = pointerWorkspace('1.2.4', '1.2.3');
+      const plan = runStep(stepRun(PLAN), ws);
+      expect(readFileSync(ws.output, 'utf8'), plan.stderr).toBe(
+        'action=replace\n',
+      );
+      const replaced = runStep(stepRun(REPLACE), ws);
+      expect(replaced.status, replaced.stderr).toBe(0);
+      expect(readFileSync(ws.rollingFile)).toEqual(readFileSync(ws.signed));
+      expect(replaced.stdout).toContain('verified 1.2.4');
+    });
+
+    it('restores the previous manifest when the replaced pointer does not verify', () => {
+      const ws = pointerWorkspace('1.2.4', '1.2.3', { corruptUpload: true });
+      const before = readFileSync(ws.rollingFile);
+      const replaced = runStep(stepRun(REPLACE), ws);
+      expect(replaced.status).not.toBe(0);
+      expect(replaced.stderr).toContain(
+        '::warning::the rolling host-stream manifest did not verify; restoring portable-stable to its previous state',
+      );
+      expect(readFileSync(ws.rollingFile)).toEqual(before);
+      // A rerun of the job then replaces it normally.
+      const rerun = runStep(stepRun(REPLACE), ws);
+      expect(rerun.status, rerun.stderr).toBe(0);
+      expect(readFileSync(ws.rollingFile)).toEqual(readFileSync(ws.signed));
+    });
+
+    it('removes a failed bootstrap manifest instead of leaving it served', () => {
+      const ws = pointerWorkspace('1.2.3', null, { corruptUpload: true });
+      const replaced = runStep(stepRun(REPLACE), {
+        cwd: ws.cwd,
+        env: { ...ws.env, ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP: 'true' },
+      });
+      expect(replaced.status).not.toBe(0);
+      expect(existsSync(ws.rollingFile)).toBe(false);
+      expect(readFileSync(join(ws.releases, '.log'), 'utf8')).toContain(
+        `delete-asset portable-stable ${ASSET}`,
       );
     });
   });

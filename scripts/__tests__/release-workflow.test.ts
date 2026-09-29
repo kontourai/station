@@ -846,6 +846,7 @@ describe('native release workflow topology', () => {
         'scripts/release-sbom-predicates.mjs',
         'scripts/verify-release-checksums.sh',
       ],
+      'host-pointer': ['scripts/portable-release-publication.mjs'],
       'release-availability': ['scripts/release-availability-driver.mjs'],
     });
 
@@ -997,7 +998,8 @@ describe('native release workflow topology', () => {
           .filter((step) => step.uses?.startsWith('actions/checkout@'))
           .map((step) => [jobName, step] as const),
     );
-    expect(checkouts).toHaveLength(6);
+    // #2959 adds the host-pointer job's policy checkout.
+    expect(checkouts).toHaveLength(7);
     for (const [jobName, step] of checkouts)
       expect(step.with?.['persist-credentials'], jobName).toBe(false);
   });

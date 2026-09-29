@@ -14,19 +14,23 @@
 //   check-archives --payload P --archives D    (local bytes are the signed ones)
 //   verify         --ring R --manifest <file|https URL> --expected-payload P [--keys T]
 //   verify-assets  --payload P                 (published bytes are the signed ones)
-//   not-regressing --ring R --candidate-version V --current <file|https URL> [--keys T]
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+//   pointer-plan   --ring R --candidate-version V --current <file|https URL>
+//                  --signed M [--allow-empty-bootstrap true|false] [--keys T]
+//                  (GITHUB_OUTPUT: action=replace|unchanged|skip-older)
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { verifyReleaseManifest } from '../packages/shared/src/release-manifest.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
-  assertNotRegressing,
   assertPayloadIdentity,
   checkArchives,
+  compareRingVersions,
   createDryRunKeys,
+  fetchBytes,
+  parseRingVersion,
   publicationLocations,
-  readManifest,
   verifyManifestLocation,
   verifyPublishedAssets,
 } from './lib/portable-publication.mjs';
@@ -75,6 +79,60 @@ export function assertReleasePayload(
   );
 }
 
+/**
+ * What to do with the ring's rolling pointer, given the manifest bytes it
+ * serves now (`currentBytes`, null when it serves none) and the bytes this
+ * run signed. The pointer never moves backwards and is never silently
+ * bootstrapped:
+ *
+ * - none served: refused unless the owner allowed an empty-pointer bootstrap
+ *   for this run, then `replace`;
+ * - served manifest that does not verify with the pinned keys: refused;
+ * - older than the candidate: `replace`;
+ * - the same version: `unchanged` when the served bytes are exactly this
+ *   run's (a rerun after the pointer already moved), refused otherwise;
+ * - newer than the candidate (publishing or repairing an older tag, such as a
+ *   desktop rollback): `skip-older`; the host pointer stays where it is.
+ */
+export function planRollingPointer({
+  ring,
+  candidateVersion,
+  currentBytes,
+  signedBytes,
+  keys,
+  allowEmptyBootstrap,
+  rollingTag,
+}) {
+  parseRingVersion(releaseRing(ring), candidateVersion);
+  if (currentBytes === null) {
+    if (allowEmptyBootstrap !== true)
+      throw new Error(
+        `the rolling pointer ${rollingTag} serves no ${ring} manifest; confirm it is new, then re-run with allow_empty_host_manifest_bootstrap for its first publish only`,
+      );
+    return { action: 'replace', current: null };
+  }
+  const current = verifyReleaseManifest(
+    JSON.parse(currentBytes.toString('utf8')),
+    keys,
+    { expectedChannel: ring },
+  );
+  const order = compareRingVersions(ring, candidateVersion, current.version);
+  if (order > 0) return { action: 'replace', current: current.version };
+  if (order < 0) return { action: 'skip-older', current: current.version };
+  if (Buffer.compare(currentBytes, signedBytes) === 0)
+    return { action: 'unchanged', current: current.version };
+  throw new Error(
+    `the rolling ${ring} manifest already names ${current.version} with different bytes than this run signed; inspect ${rollingTag} before re-running`,
+  );
+}
+
+async function readCurrentBytes(location) {
+  if (/^https:\/\//.test(location))
+    return fetchBytes(location, { allowMissing: true });
+  const path = resolve(location);
+  return existsSync(path) ? readFileSync(path) : null;
+}
+
 function readJson(path) {
   return JSON.parse(readFileSync(resolve(path), 'utf8'));
 }
@@ -96,6 +154,8 @@ async function main(argv) {
       'candidate-version': { type: 'string' },
       'source-sha': { type: 'string' },
       current: { type: 'string' },
+      signed: { type: 'string' },
+      'allow-empty-bootstrap': { type: 'string' },
     },
     strict: true,
   });
@@ -171,23 +231,28 @@ async function main(argv) {
       await verifyPublishedAssets(readJson(values.payload));
       process.stdout.write('every published archive matches the manifest\n');
       return;
-    case 'not-regressing': {
-      const current = await readManifest(values.current, {
-        allowMissing: true,
-      });
-      const result = assertNotRegressing(ring(), {
-        current,
-        keys: keys(),
+    case 'pointer-plan': {
+      const flag = values['allow-empty-bootstrap'] ?? 'false';
+      if (flag !== 'true' && flag !== 'false')
+        throw new Error('--allow-empty-bootstrap must be true or false');
+      const plan = planRollingPointer({
+        ring: ring(),
         candidateVersion: values['candidate-version'],
+        currentBytes: await readCurrentBytes(values.current),
+        signedBytes: readFileSync(resolve(values.signed)),
+        keys: keys(),
+        allowEmptyBootstrap: flag === 'true',
+        rollingTag: manifestPointer(ring()).rollingTag,
       });
-      process.stdout.write(
-        `${values['candidate-version']} is newer than ${result.current ?? 'no published manifest'}\n`,
+      process.stderr.write(
+        `rolling ${values.ring} pointer serves ${plan.current ?? 'no manifest'}; ${values['candidate-version']}: ${plan.action}\n`,
       );
+      process.stdout.write(`action=${plan.action}\n`);
       return;
     }
     default:
       throw new Error(
-        'Usage: portable-release-publication.mjs <locations|manifest-asset|dry-run-keys|check-payload|check-archives|verify|verify-assets|not-regressing> ...',
+        'Usage: portable-release-publication.mjs <locations|manifest-asset|dry-run-keys|check-payload|check-archives|verify|verify-assets|pointer-plan> ...',
       );
   }
 }
