@@ -507,8 +507,12 @@ describe('POST /core-update on a launcher-run archive', () => {
   // (a 302 to release-assets.githubusercontent.com), so these are the shape a
   // real check always takes, not an edge case.
   function serveRedirects(hops: string[], body: string) {
-    fetchFn.mockImplementation(async (url: string) => {
+    fetchFn.mockImplementation(async (url: string, init?: RequestInit) => {
       const index = url === MANIFEST_URL ? 0 : hops.indexOf(url) + 1;
+      // As undici does: a redirect under `redirect: 'error'` is a network
+      // error, which is exactly what the real check reported.
+      if (index < hops.length && init?.redirect === 'error')
+        throw new TypeError('fetch failed');
       if (index < hops.length)
         return new Response(null, {
           status: 302,
