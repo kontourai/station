@@ -17,7 +17,10 @@ import {
   scanSpawnedScripts,
   sourceSpawns,
 } from '../lib/spawned-script-scan.mjs';
-import { selectChangedVerification } from '../run-changed-verification.mjs';
+import {
+  prepareChangedSelection,
+  selectChangedVerification,
+} from '../run-changed-verification.mjs';
 import {
   buildTestImpactManifest,
   SPAWNED_SCRIPT_FANOUT_LIMIT,
@@ -185,6 +188,38 @@ describe('fan-out budget (#2922 review)', () => {
       SPAWNED_SCRIPT_FANOUT_LIMIT,
     );
     expect(selection.lanes.map((lane) => lane.id)).toContain('test-full');
+  });
+
+  it('keeps related discovery for the rest of a diff that one fan-out deferral sends to test-full', () => {
+    const prepare = (paths: string[]) =>
+      prepareChangedSelection('HEAD', {
+        root: ROOT,
+        changedPathsFn: () => ({ mergeBase: 'HEAD', paths }),
+      });
+    // The shim defers to test-full; icns.mjs is an ordinary related path.
+    const mixed = prepare([
+      'scripts/lib/module-entry.mjs',
+      'scripts/lib/icns.mjs',
+    ]);
+    expect(mixed.selection.lanes.map((lane) => lane.id)).toEqual(['test-full']);
+    expect(mixed.selection.relatedPaths).toEqual([
+      'scripts/lib/icns.mjs',
+      'scripts/lib/module-entry.mjs',
+    ]);
+    // Only the deferring path leaves inline discovery.
+    expect(mixed.executionSelection.relatedPaths).toEqual([
+      'scripts/lib/icns.mjs',
+    ]);
+    // A real escalation still drops every related path, as before.
+    const escalated = prepare([
+      'scripts/lib/module-entry.mjs',
+      'scripts/lib/icns.mjs',
+      'no-owner/unmapped.txt',
+    ]);
+    expect(escalated.selection.lanes.map((lane) => lane.id)).toContain(
+      'ci-fast',
+    );
+    expect(escalated.executionSelection.relatedPaths).toEqual([]);
   });
 
   it('refuses a deferred lane on an ordinary edge', () => {
