@@ -316,6 +316,24 @@ describe('GitLabPullRequestProvider', () => {
     });
   });
 
+  test('projects the open list to branch mergeability for conflict indicators', async () => {
+    const transport = vi
+      .fn()
+      .mockResolvedValueOnce({ stdout: '' })
+      .mockResolvedValueOnce({ stdout: JSON.stringify([mergeRequest]) });
+    const result = await new GitLabPullRequestProvider(
+      transport,
+    ).listOpenPullRequestMergeability(context);
+    expect(result).toMatchObject({ available: true });
+    expect(result.data).toEqual([
+      { ref: '7', sourceBranch: 'feature', mergeability: expect.any(String) },
+    ]);
+    const args = transport.mock.calls[1]?.[0] as string[];
+    expect(args.slice(0, 2)).toEqual(['mr', 'list']);
+    for (const flag of ['--closed', '--merged', '--all'])
+      expect(args).not.toContain(flag);
+  });
+
   test.each([
     ['opened', []],
     [undefined, []],

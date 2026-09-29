@@ -451,6 +451,14 @@ and indeterminate attempts. A forge review is not a Station gate verdict.
 `PullRequestMergeInput.expectedHeadSha` optionally constrains merge admission to
 the inspected revision; review-origin merges observe the resulting provider state.
 
+`PullRequestBranchMergeability` on `pull-request-provider` is a conflict
+indicator's read: one open pull request's ref, source branch and mergeability,
+and nothing a review needs. The GitHub adapter serves at most 100 and refuses
+a longer list as unavailable rather than serving part of it. The optional
+`IPullRequestProvider.listOpenPullRequestMergeability` answers it for a
+repository; the route refuses a provider without it rather than falling back
+to the full list. See the [GitHub adapter](../../src-server/services/pull-requests/github-pull-request-provider.ts).
+
 `AttentionInputReplyContext` on the attention subpath projects one exact open
 input request's reply binding and declared file/image transport. `needs_input`
 items may carry `inputReference`; approval/permission references keep their

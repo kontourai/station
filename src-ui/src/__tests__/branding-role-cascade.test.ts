@@ -35,6 +35,8 @@ type Mode = 'dark' | 'light';
 type Channel = 'release' | 'dev' | 'beta' | 'nightly';
 
 interface Measured {
+  brand: string;
+  brandContrast: string;
   accent: string;
   onAccent: string;
   action: string;
@@ -98,6 +100,8 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
         const read = (name: string) => style.getPropertyValue(name).trim();
         const probe = document.getElementById('probe')!;
         return {
+          brand: read('--k-brand'),
+          brandContrast: read('--k-brand-contrast'),
           accent: read('--accent-primary'),
           onAccent: read('--text-on-accent'),
           action: read('--k-action'),
@@ -161,7 +165,7 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
   );
 
   test.each(channels)(
-    'the %s channel in %s mode (vendor roles: %s) drives action and focus with readable values',
+    'the %s channel in %s mode (vendor roles: %s) drives brand, action and focus with readable values',
     async (channel, mode, vendorRoles) => {
       const m = await measure(mode, channel, { vendorRoles });
       const action = toHex(m.action);
@@ -173,8 +177,12 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
       expect(toHex(m.accent)).toBe(action);
       expect(toHex(m.onAccent)).toBe(actionContrast);
       expect(toHex(m.outline)).toBe(focus);
-      // The same rules a white-label theme must pass.
+      // The same rules a white-label theme must pass. The brand group covers
+      // brand painted as text (the channel badge, the kit's `.eyebrow`) and
+      // the brand fill with its own text (#2905).
       const check = checkModeOverrides(mode, {
+        '--k-brand': toHex(m.brand),
+        '--k-brand-contrast': toHex(m.brandContrast),
         '--k-action': action,
         '--k-action-contrast': actionContrast,
         '--k-focus': focus,

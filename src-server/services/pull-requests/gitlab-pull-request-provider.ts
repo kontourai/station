@@ -2,6 +2,7 @@ import type {
   IPullRequestProvider,
   PullRequest,
   PullRequestAvailability,
+  PullRequestBranchMergeability,
   PullRequestCapabilities,
   PullRequestMergeInput,
   PullRequestMergeMethod,
@@ -421,6 +422,26 @@ export class GitLabPullRequestProvider implements IPullRequestProvider {
       ...listStateArgs(q.state),
       ...(q.limit ? ['--per-page', String(q.limit)] : []),
     ]);
+  }
+
+  /**
+   * GitLab's REST list is not the GraphQL-quota cost #2937 narrowed on
+   * GitHub, so this projects the open list rather than adding a second read.
+   */
+  async listOpenPullRequestMergeability(
+    c: PullRequestRepositoryContext,
+  ): Promise<PullRequestResult<PullRequestBranchMergeability[]>> {
+    const result = await this.listPullRequests(c, { state: 'OPEN' });
+    if (!result.available || !Array.isArray(result.data))
+      return { ...result, data: undefined };
+    return {
+      ...result,
+      data: result.data.map((pullRequest: PullRequest) => ({
+        ref: pullRequest.ref,
+        sourceBranch: pullRequest.sourceBranch,
+        mergeability: pullRequest.mergeability,
+      })),
+    };
   }
 
   async getPullRequest(c: PullRequestRepositoryContext, ref: string) {
