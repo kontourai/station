@@ -1449,7 +1449,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "cc469a473b890ddeec604be6380535bb10ec20b2",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1479,7 +1479,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968"
+          "digest": "98a1cfd9bc19a22cee2d2e5a0aa200b0c3199a7c828ee3df9260d49607a2a213"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1504,7 +1504,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map.md and the extension-ecosystem/workspace-surfaces contexts removed the deleted CollaborativeEditorPane controller and PluginForegroundRuns entries in favor of ProjectTaskRoom. The five context links and relationship statements do not name either; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "activity-list lane: glossary gained Activity and delegated Run entries. This map only links the glossary and names contexts; it makes no claim about Activity's grouping, filters or run folding, so no prose change."
       ]
     },
     {
@@ -1512,7 +1513,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "cc469a473b890ddeec604be6380535bb10ec20b2",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1542,7 +1543,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968"
+          "digest": "98a1cfd9bc19a22cee2d2e5a0aa200b0c3199a7c828ee3df9260d49607a2a213"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1567,7 +1568,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map replaced the CollaborativeEditorPane entry with ProjectTaskRoom and removed PluginForegroundRuns, and the two child CONTEXT files follow suit. The root CONTEXT names neither module and routes only to the child contexts and guides, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "activity-list lane: re-read Work surfaces. It names Activity as a Surface that occupies a region, which is unchanged (the list's grouping, filters and row menu changed, not its placement). Glossary additions do not alter any claim here; no prose change."
       ]
     },
     {
@@ -9866,8 +9868,8 @@
     },
     {
       "path": "docs/design/shell-ownership-and-boards.md",
-      "documentDigest": "d1cb726c803bad2f5ccb50ad104de6c5906f96e03aa749cfd7ab22231d40850d",
-      "sourceRevision": "e5efef30008198db7198fe9dac38f3ad632c6621",
+      "documentDigest": "ba9737616d7b9cc816b9a0e43fe4e8685357abfd63bab100f045847970c74c3d",
+      "sourceRevision": "cc469a473b890ddeec604be6380535bb10ec20b2",
       "kind": "design",
       "state": "classified",
       "summary": "Accepted ownership/Board design with staged implementation history and current personal-Board owner routing.",
@@ -9902,7 +9904,8 @@
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Entire original body byte-identical after removing reading banner.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
-        "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence."
+        "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence.",
+        "activity-list lane: D5 said Activity renders LiveCollaboratorsSection; Activity no longer mounts it, so the sentence now names the component and says the footer tray shows presence. The retained 'time-ordered stream as Activity's direction' matches the new dated history sub-sections."
       ]
     },
     {
@@ -10229,8 +10232,8 @@
     },
     {
       "path": "docs/glossary.md",
-      "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "documentDigest": "98a1cfd9bc19a22cee2d2e5a0aa200b0c3199a7c828ee3df9260d49607a2a213",
+      "sourceRevision": "cc469a473b890ddeec604be6380535bb10ec20b2",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10511,7 +10514,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports layout constants and helpers; behavior and the glossary's terms are unchanged and the glossary cites none of the removed exports; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "activity-list lane: added Activity (state lanes via partitionSessionLanes/partitionHomeWorkItems, dated history sub-sections, Kind/Project/Started-from as filters, status is not proof of the work) and Run (root plus subtasks joined only by recorded parent link, per run-groups.ts). Checked against SessionsView.tsx, activity-list-model.ts and run-groups.ts."
       ]
     },
     {
@@ -18103,7 +18107,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "cc469a473b890ddeec604be6380535bb10ec20b2",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18111,7 +18115,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "909da95a5b7ab8aba8dd55bab4e0fb9a4c5c58e580348404402167d92d134ad9"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -18262,7 +18266,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. The shared mobile [class*=__actions] wrap/44px rule it describes still matches .tool-call__actions (the class name is unchanged; the base rule now also wraps). The #2917 Playwright journey asserts no horizontal page overflow at 360px; it does not re-assert the 44px floor. No claim changed.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Shared mobile [class*=__actions] rule unchanged and still matches .tool-call__actions; the new case runs above the breakpoint where that rule does not apply, consistent with the guide. No claim changed.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Shared mobile __actions rule unchanged; #2917 right-dock desktop case still consistent. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "activity-list lane: added an ActivityFilterBar exception entry to responsive-action-surfaces.txt following the rule stated here (record action surfaces; exception when no surface fixture). The guide's rules and ratchet description are unchanged and accurate."
       ]
     },
     {
@@ -19703,7 +19708,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "6b1815a15e332e6f0799348d7c2c7c2d7c29fee226f4fb91ca081590207ca08c",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "cc469a473b890ddeec604be6380535bb10ec20b2",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19711,7 +19716,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "909da95a5b7ab8aba8dd55bab4e0fb9a4c5c58e580348404402167d92d134ad9"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -19878,7 +19883,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Its guidance (verify changed surface in light/dark incl. disabled state) was followed: rendered and measured the card in both themes; the change uses existing --accent-primary/--text-on-accent/--accent-hover-fill/--error-dark/--bg-tertiary/--text-secondary tokens. No claim changed.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Guidance to verify disabled state in light and dark was followed (rendered and measured 4.33:1 light, 4.38:1 dark); uses existing tokens. No claim changed.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). The guide's new claim that --accent-primary/--text-on-accent read the action role holds, and the #2917 Allow Once button consumes exactly that pair (hover: --accent-hover-fill -> --accent-darker -> the action role), so channel and white-label action roles reach it. No prose change.",
-        "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium."
+        "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium.",
+        "activity-list lane: the only change on this dependency is one new inventory line for the Activity filter bar; theming.md only points at the responsive guide and makes no claim about individual inventory entries. No prose change."
       ]
     },
     {
@@ -20879,7 +20885,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "cc469a473b890ddeec604be6380535bb10ec20b2",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -20887,7 +20893,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "909da95a5b7ab8aba8dd55bab4e0fb9a4c5c58e580348404402167d92d134ad9"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -21039,13 +21045,14 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Backend approval ownership only; no UI styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Backend approval ownership only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "activity-list lane: dependency changed by one new UI inventory line (Activity filter bar). Nothing in the backend patterns describes action-surface inventory entries; no prose change."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "sourceRevision": "cc469a473b890ddeec604be6380535bb10ec20b2",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21053,7 +21060,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "909da95a5b7ab8aba8dd55bab4e0fb9a4c5c58e580348404402167d92d134ad9"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -21208,7 +21215,8 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. No tool-call card or button-state styling claim.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-button styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed."
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
+        "activity-list lane: one new inventory line for the Activity filter bar, which reuses .choice-trigger and .responsive-surface-actions as the styling section recommends. The section's guidance is unchanged and accurate; no prose change."
       ]
     },
     {
