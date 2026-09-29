@@ -59,6 +59,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
   INTERNAL_TENANT_HEADER,
 } from '../../utils/internal-api-token.js';
+import { outwardTransportError } from '../../utils/outward-error.js';
 import {
   type ProviderAdapterShape,
   type ProviderSendTurnInput,
@@ -756,7 +757,10 @@ export function mapStationAgentStreamEvent(options: {
       message: inferredCredentials
         ? MODEL_PROVIDER_CREDENTIALS_REJECTED
         : httpStatus === undefined
-          ? 'Station agent turn failed'
+          ? // The same text the route persists in its failed-turn marker
+            // (`outwardTurnFailureText`), so a reloaded chat's projected
+            // runtime error and marker de-duplicate to one card.
+            outwardTransportError('sse')
           : modelProviderFailureMessage(httpStatus),
       code: 'station_agent_turn_failed',
       retriable: true,

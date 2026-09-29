@@ -2701,9 +2701,17 @@ describe('StationAgentAdapter — inner /chat error frame becomes a classified r
         ...extra,
       });
 
+      // The exact text the route persists as its failed-turn marker for a
+      // statusless failure, so the two de-duplicate to one card on reload.
+      const { outwardTurnFailureText } = await import(
+        '../../runtime/conversation/stream-orchestrator.js'
+      );
+      expect(outwardTurnFailureText(new Error('no status'))).toBe(
+        'The response stream failed.',
+      );
       expect(error).toMatchObject({
         method: 'runtime.error',
-        message: 'Station agent turn failed',
+        message: 'The response stream failed.',
         code: 'station_agent_turn_failed',
         retriable: true,
       });

@@ -105,7 +105,7 @@ test('a failed engine turn preserves its refusal without claiming the session wa
 test('a station-agent retriable turn failure renders translated copy with a retry hint, not the bare engine sentence', async () => {
   const { container } = renderPart({
     type: 'text',
-    content: '⚠️ Station agent turn failed',
+    content: '⚠️ The response stream failed.',
     runtimeError: true,
     runtimeErrorCode: 'station_agent_turn_failed',
   });

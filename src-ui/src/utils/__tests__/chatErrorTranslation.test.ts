@@ -378,7 +378,7 @@ describe('translateChatError', () => {
 
   it("classifies the station-agent adapter's retriable turn failure by code, with a retry hint and no invented cause", () => {
     const result = translateChatError({
-      message: 'Station agent turn failed',
+      message: 'The response stream failed.',
       code: 'station_agent_turn_failed',
     });
 
@@ -554,7 +554,7 @@ describe('translateProjectedRuntimeError', () => {
 
   it('translates the station-agent retriable turn failure instead of quoting it verbatim', () => {
     const result = translateProjectedRuntimeError(
-      '⚠️ Station agent turn failed',
+      '⚠️ The response stream failed.',
       'station_agent_turn_failed',
     );
 

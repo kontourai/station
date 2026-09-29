@@ -169,7 +169,7 @@ const NOT_LAUNCHABLE_PATTERN = /not (currently )?launchable/i;
  * (`mapStationAgentStreamEvent`). Unlike `ENGINE_TURN_FAILED_CODE`, the
  * message never carries provider text — the inner chunk's `errorText` is the
  * outward-safe generic (`writeSSEError` in `stream-orchestrator.ts`). It is
- * either the fixed "Station agent turn failed" or a sentence the adapter
+ * either the fixed "The response stream failed." or a sentence the adapter
  * composed from the provider's HTTP status (see
  * `STATION_AGENT_CLASSIFIED_REASON`). The event IS marked `retriable: true`,
  * which is what lets the hint below promise a retry honestly.
