@@ -349,6 +349,12 @@ describe('staging and interrupted requests (#2675 D review F5, F8)', () => {
       STATION_INSTALL_SERVER_PORT: '9999',
       STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: 'https://attacker.invalid/key',
       STATION_VERSION: 'v0.0.1',
+      // The service CLI's bootstrap launch facts, not install ports.
+      STATION_SERVER_PORT: '18141',
+      STATION_PORT: '18141',
+      STATION_UI_PORT: '18000',
+      STATION_CONSENT_PORT: '18144',
+      STATION_INSTANCE_ID: 'stable',
       KEEP_ME: 'yes',
     };
     await expect(
@@ -376,6 +382,15 @@ describe('staging and interrupted requests (#2675 D review F5, F8)', () => {
       'https://example.invalid/manifest.json',
     );
     expect(seen.STATION_VERSION).toBeUndefined();
+    for (const key of [
+      'STATION_SERVER_PORT',
+      'STATION_PORT',
+      'STATION_UI_PORT',
+      'STATION_CONSENT_PORT',
+      'STATION_INSTANCE_ID',
+    ]) {
+      expect(seen, key).not.toHaveProperty(key);
+    }
     expect(seen.KEEP_ME).toBe('yes');
 
     // install.sh's own test mode carries its test-only verifier override.
