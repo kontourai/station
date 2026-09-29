@@ -94,7 +94,7 @@
 
     {"path":"scripts/test-impact-manifest.mjs","digest":"b99ba45d91fa2f3b341df5792649721e905ae89359218209e6e65dae7716514b","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
 
-    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"5638911fd695344c0aaf5e24464e8e23c236e383da9d38354b0735410b8999bf","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
+    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"128e8cab29d4156442aeef08e5c92216de6bdea69ad67534216a76f0c1bb3728","revision":"fa6d395f60636c40fb32eb1f27204ca7b9871da9"},
 
     {"path":"scripts/__tests__/portable-server-archive.test.ts","digest":"080cf7aa36c4680b1a4e296ae8aa96b83ee57a84c71c61c225a074e9e3468b4a","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
