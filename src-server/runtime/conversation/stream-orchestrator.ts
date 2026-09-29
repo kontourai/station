@@ -6,10 +6,9 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   MODEL_PROVIDER_CREDENTIALS_REJECTED,
+  modelProviderErrorStatus,
   modelProviderFailureMessage,
-  modelProviderHttpStatus,
 } from '../../providers/model-provider-failure.js';
-import { providerHttpErrorStatus } from '../../providers/registries/catalog-http.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { outwardTransportError } from '../../utils/outward-error.js';
 import { parseToolName } from '../../utils/tool-name-normalizer.js';
@@ -263,8 +262,8 @@ function isCredentialShapedError(error: unknown): boolean {
 
 /**
  * The status a `/chat` failure may carry to a client: the model provider's
- * own status (ai-sdk's `APICallError.statusCode`, read structurally by
- * `providerHttpErrorStatus`) when it is a 4xx/5xx integer. Only when no such
+ * own status (`modelProviderErrorStatus`: an ai-sdk `APICallError` only)
+ * when it is a 4xx/5xx integer. Only when no such
  * status exists does a credential-shaped message stand in as a 401, flagged
  * `statusInferred` because no HTTP response supplied it.
  */
@@ -272,7 +271,7 @@ function outwardFailureStatus(error: unknown): {
   statusCode?: number;
   statusInferred?: true;
 } {
-  const statusCode = modelProviderHttpStatus(providerHttpErrorStatus(error));
+  const statusCode = modelProviderErrorStatus(error);
   if (statusCode !== undefined) return { statusCode };
   return isCredentialShapedError(error)
     ? { statusCode: 401, statusInferred: true }

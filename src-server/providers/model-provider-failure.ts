@@ -1,3 +1,5 @@
+import { APICallError } from 'ai';
+
 /**
  * Outward-safe wording for a model provider's refusal, composed from its HTTP
  * status alone. Nothing the provider said (its error text, response body or
@@ -23,6 +25,19 @@ export function modelProviderHttpStatus(value: unknown): number | undefined {
     value >= 400 &&
     value <= 599
     ? value
+    : undefined;
+}
+
+/**
+ * The HTTP status of a MODEL PROVIDER's refusal: only an ai-sdk
+ * `APICallError` (the error every provider SDK call raises for an HTTP
+ * refusal) qualifies. Any other error that happens to carry `status` or
+ * `statusCode` (a Hono `HTTPException`, a catalog or route error) is not the
+ * model provider's answer and must not be worded as one.
+ */
+export function modelProviderErrorStatus(error: unknown): number | undefined {
+  return APICallError.isInstance(error)
+    ? modelProviderHttpStatus(error.statusCode)
     : undefined;
 }
 
