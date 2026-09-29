@@ -30,7 +30,10 @@ import {
 } from '../../domain/settings-registry-server.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
-import { projectPublicCredentialProfiles } from '../../providers/app-home/credential-profile-registry.js';
+import {
+  persistableCredentialProfiles,
+  projectPublicCredentialProfiles,
+} from '../../providers/app-home/credential-profile-registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { mayGrantFullAccess } from '../../security/coding-authority.js';
 import {
@@ -91,6 +94,27 @@ function projectPublicAppConfig(config: Record<string, any>) {
       ),
     ),
   };
+}
+
+function persistPublicSafeProfiles(
+  agentConnections: Record<string, any>,
+): Record<string, any> {
+  return Object.fromEntries(
+    Object.entries(agentConnections).map(([id, settings]) => {
+      const recovery = settings?.credentialRecovery;
+      if (!recovery || recovery.profiles === undefined) return [id, settings];
+      return [
+        id,
+        {
+          ...settings,
+          credentialRecovery: {
+            ...recovery,
+            profiles: persistableCredentialProfiles(recovery.profiles),
+          },
+        },
+      ];
+    }),
+  );
 }
 
 /**
@@ -537,6 +561,18 @@ export function createConfigRoutes(
       }
       if (ignored.length > 0) {
         configOps.add(1, { op: 'update_app_ignored_keys' });
+      }
+      // `agentConnections` is a composite that replaces the stored value
+      // wholesale. Credential profiles written this way (including a settings
+      // import) are normalized like any registry write, so an invalid env
+      // overlay is persisted only as its value-free marker (#2966).
+      if (
+        accepted.agentConnections &&
+        typeof accepted.agentConnections === 'object'
+      ) {
+        accepted.agentConnections = persistPublicSafeProfiles(
+          accepted.agentConnections as Record<string, any>,
+        );
       }
       if (
         Object.hasOwn(accepted, 'builtinAgentEngineConnectionId') &&

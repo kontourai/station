@@ -510,6 +510,18 @@ export function projectPublicCredentialProfiles(
   return normalizeProfiles(value).map(projectProfile);
 }
 
+/**
+ * Persisted form of a raw, untrusted `credentialRecovery.profiles` value
+ * written around the registry (for example `PUT /config/app` or a settings
+ * import): normalized records, so an invalid overlay is stored only as its
+ * value-free marker and its values never reach disk.
+ */
+export function persistableCredentialProfiles(
+  value: unknown,
+): RegistryCredentialProfile[] {
+  return normalizeProfiles(value);
+}
+
 /** Public projection intentionally does not include pending attempt identity. */
 export function projectCredentialProfileRegistry(
   value: unknown,

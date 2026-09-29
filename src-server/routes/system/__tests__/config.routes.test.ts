@@ -284,6 +284,31 @@ describe('Config Routes', () => {
         envInvalid: { names: ['ANTHROPIC_API_KEY'] },
       });
     });
+
+    test('PUT /app with a raw invalid overlay (a settings import) persists only the marker', async () => {
+      const loader = createMockConfigLoader({ region: 'us-east-1' });
+      const app = createConfigRoutes(loader as any, mockLogger);
+      const res = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          agentConnections: handEdited().agentConnections,
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).not.toContain(canary);
+      const persisted = await loader.loadAppConfig();
+      expect(JSON.stringify(persisted)).not.toContain(canary);
+      expect(
+        persisted.agentConnections.claude.credentialRecovery.profiles,
+      ).toEqual([
+        { ref: 'proxy', label: 'Proxy', env: routed },
+        { ref: 'pasted', envInvalid: { names: ['ANTHROPIC_API_KEY'] } },
+      ]);
+      expect(
+        persisted.agentConnections.claude.credentialRecovery.group,
+      ).toEqual({ profileRefs: ['proxy', 'pasted'], enrolledProfileRefs: [] });
+    });
   });
 
   test('GET /app injects mcpUiFrameOrigin when the frame server is running', async () => {

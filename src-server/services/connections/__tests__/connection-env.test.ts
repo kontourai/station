@@ -212,6 +212,10 @@ describe('validateCredentialProfileEnv (#2966)', () => {
     ['DB_PASSWD', 'x'],
     ['HTTPS_PROXY', 'http://user:pw@proxy.example.internal:8080'],
     ['UPSTREAM_URL', 'https://token@host.example.internal/v1'],
+    // Schemes whose only letter sits far from `://`, or none at all.
+    ['UPSTREAM_URL', `a${'1'.repeat(40)}://user:pw@host`],
+    ['UPSTREAM_URL', `a${'-'.repeat(32)}://user:pw@host`],
+    ['UPSTREAM_URL', `s3+${'0'.repeat(32)}://k:s@h`],
     ['EXTRA', 'Authorization: Bearer abc'],
     ['EXTRA', 'proxy-authorization: Basic dXNlcjpwYXNz'],
     ['EXTRA', 'x-api-key: abc'],

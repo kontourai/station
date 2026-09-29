@@ -143,12 +143,12 @@ const CREDENTIAL_SHAPED_ENV_NAME_PATTERNS: readonly RegExp[] = [
 ];
 
 const CREDENTIAL_SHAPED_ENV_VALUE_PATTERNS: readonly RegExp[] = [
-  // scheme://user[:password]@host — credentials embedded in a URL. The
-  // scheme run is bounded: an unbounded `[a-z0-9+.-]*` rescans the rest of
-  // the value from every start position, which is quadratic (tens of
-  // seconds for a full-cap overlay of letters). Unanchored, a longer scheme
-  // still matches on its last 32 characters.
-  /[a-z][a-z0-9+.-]{0,31}:\/\/[^/?#\s@]+@/i,
+  // scheme://user[:password]@host — credentials embedded in a URL. Only the
+  // scheme's last character is matched: an unbounded scheme run rescans the
+  // rest of the value from every start position, which is quadratic (tens
+  // of seconds for a full-cap overlay of letters), and any scheme, however
+  // long or oddly spelled, still ends in one of these characters.
+  /[a-z0-9+.-]:\/\/[^/?#\s@]+@/i,
   // An HTTP authorization header or an API-key header, anywhere in the value.
   /\b(proxy-)?authorization\s*:/i,
   /\b(x-)?api[-_]?key\s*:/i,

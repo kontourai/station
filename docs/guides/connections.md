@@ -404,8 +404,10 @@ If a saved overlay is invalid (for example after hand-editing
 `config/app.json`), or the connection's active profile cannot otherwise be
 prepared, the session start fails instead of running on the global engine
 configuration. Station does not keep the invalid values: the next profile
-change rewrites the overlay as an `envInvalid` marker that holds only the
-offending variable names, and `GET /config/app` never returns them. The
+change (or a settings save or import that includes the profiles) rewrites
+the overlay as an `envInvalid` marker that holds only the offending variable
+names, and `GET /config/app` never returns them. Until then a hand-edited
+value stays in `config/app.json`. The
 marker keeps the profile refused, so other profile changes cannot quietly
 un-route it. `station connections profiles` shows such a profile with
 `envInvalid` and the offending variable names, and the server log names them

@@ -238,7 +238,7 @@ A selected-profile environment failure — an explicit ref or the connection's a
 profile, including an invalid persisted env overlay — fails closed rather than silently
 falling back to global credentials. Normalization reduces an invalid saved overlay to a
 value-free `envInvalid` marker holding the offending variable names only: its values are
-not retained by the next registry write, and the marker keeps the profile refused (an
+not retained by the next registry write or `PUT /config/app`, and the marker keeps the profile refused (an
 unrelated write cannot silently un-route it) until a valid overlay replaces it.
 
 **Capability matrix and application.** Capability is adapter-declared, never inferred

@@ -939,10 +939,13 @@ of the `/api/connections/agent/:id/credential-recovery` family
 overlay is not secret: it is also readable at `orchestration:read` through the
 connection listings and `GET /config/app`, and the whole credential-recovery
 registry, overlay included, can be written through `PUT /config/app` at
-`orchestration:operate`, which does not apply these rules. A saved overlay that
-breaks them makes sessions under that profile fail closed; `GET /config/app`
-and the `PUT /config/app` response show it only as `envInvalid` with variable
-names, and the next registry write persists only that marker, not the values.
+`orchestration:operate`. That write does not refuse an invalid overlay, but it
+normalizes the profiles it is given, so it persists such an overlay only as
+its `envInvalid` marker. A saved overlay that breaks the rules (for example
+after hand-editing `config/app.json`) makes sessions under that profile fail
+closed; `GET /config/app` and the `PUT /config/app` response show it only as
+`envInvalid` with variable names, and the next registry write persists only
+that marker. Until then the hand-edited values remain in the file.
 
 `POST /api/connections/agent/:id/credential-recovery/profiles` (profile upsert)
 manages the ref and label only; a body that includes `env` is refused with 400
