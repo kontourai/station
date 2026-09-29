@@ -3568,13 +3568,54 @@
         {
           "path": "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
           "digest": "d088c73563837f29d5e1c39e122785b0f45afccb5323396df40f0d1524f0b9c0"
+        },
+        {
+          "path": "packaging/portable-server/bin/station-launcher.mjs",
+          "digest": "bb4b5acbe1ca4528b66c51821919b0c048d51102ae47eda12ada64bc236f14a2"
+        },
+        {
+          "path": "scripts/portable-nightly-publication.mjs",
+          "digest": "ead20dbb641dd589b6f6eae6ecbd7923ac744f38e958ea57b0a099ba006d3940"
+        },
+        {
+          "path": "src-desktop/tauri.conf.json",
+          "digest": "24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1"
+        },
+        {
+          "path": "src-desktop/tauri.beta.conf.json",
+          "digest": "91b0495f471651c383602046d4a2d4d32ff5cd5e4b7219cf4f7c9daf3486ccc5"
+        },
+        {
+          "path": "src-desktop/tauri.nightly.conf.json",
+          "digest": "7958e34fb92ec4938b550c12306bc6b300dcb302a69906753b70ff8ce1181262"
+        },
+        {
+          "path": "packages/connect/src/core/pairingDeepLink.ts",
+          "digest": "e52ea12978d577a648ca00eecbd9bede7f7e6257c34b3fb573c5f976ad92feda"
+        },
+        {
+          "path": "src-server/routes/system/build-provenance.ts",
+          "digest": "825fc8c500a09d351fbedb19373d2c65aca0549b45296d62c411cad41f6adb7b"
+        },
+        {
+          "path": "packages/shared/src/station-home-store-registry.ts",
+          "digest": "76ec8c229b2fa73eb4eda7ba18ebf3aa5b29320e0c06d081fc7a97b50da5381d"
+        },
+        {
+          "path": "packages/shared/src/release-manifest.mjs",
+          "digest": "9dbda2644188254731d9806fc22278870a713b6dcddf7a7c1467fee1170fbf83"
+        },
+        {
+          "path": "packages/shared/src/prebuilt-archive.ts",
+          "digest": "d77ed4ca76a7a0a19e7c722ac9a62756eea7b307ab84220e51a7391dbfe65a69"
         }
       ],
       "checks": [
-        "Context claims checked against source: launcher protocol constants and refusals (install.sh range refuse; service-launcher-protocol.ts; archive-update.ts; none in src-desktop Rust); client API compat (environment-security.ts STATION_COMPAT_*; compatibility.ts client-side refusal; host records only); home schema downgrade refusal (station-home-schema.ts); install state record read by lifecycle.ts; pinned keys (release-manifest-keys.json); per-channel identities (channel-ports.json). Decisions: owner direction and owner answers of 2026-09-29; engineering additions labeled."
+        "Context claims checked against source: launcher protocol constants and refusals (install.sh range refuse; service-launcher-protocol.ts; archive-update.ts; none in src-desktop Rust); client API compat (environment-security.ts STATION_COMPAT_*; compatibility.ts client-side refusal; host records only); home schema downgrade refusal (station-home-schema.ts); install state record read by lifecycle.ts; pinned keys (release-manifest-keys.json); per-channel identities (channel-ports.json). Decisions: owner direction and owner answers of 2026-09-29; engineering additions labeled.",
+        "Review fix round: D1 restated as ring-tagged pointers now with promotion as the target (owner), verifier = packages/shared/src/release-manifest.mjs plus install.sh's golden-vector copy only, bundled-host pin (not the startup ticket) becomes a range check, supersedes ADR 0015 in part, channel records described as two agreeing records today with a single-writer target, CLI axes split, host-side refusal needs a client protocol field, D6 split updater keys (owner), engineering additions labeled, alternatives and NOT_VERIFIED added."
       ],
-      "documentDigest": "1779ad1aa736105e5032a29d24aa9786b1e3c2e876975847c6c22c3edad9ffdd",
-      "sourceRevision": "8608541b9e415540cefdce10aece994bb51d0000"
+      "documentDigest": "d4dd26cde4cdeb217e27d8a6f2c9c2f294e4df742302500345c7a9d688de0b17",
+      "sourceRevision": "6b835bf13f4cd2c8c50704eb223e0ab82f0b8fbf"
     },
     {
       "path": "docs/architecture.md",
