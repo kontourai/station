@@ -10,7 +10,7 @@
       "scenario": "Create durable work",
       "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "reviewedRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -22,7 +22,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/ProjectPage.css",
@@ -51,7 +51,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed previously): it shows no answer table, phone chat header, landscape phone or failure card, so the image is unaffected."
       ]
     },
     {
@@ -63,7 +64,7 @@
       "scenario": "Save a shared revision",
       "evidence": "Running isolated Station; the document and revision were persisted. No external Agent or provider. The small editor and clipped heading are the current UI.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "reviewedRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "sources": [
         {
           "path": "src-server/services/orchestration/project-task-room-runtime.ts",
@@ -79,7 +80,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -116,7 +117,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed previously): it shows no answer table, phone chat header, landscape phone or failure card, so the image is unaffected."
       ]
     },
     {
@@ -128,7 +130,7 @@
       "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "reviewedRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "sources": [
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
@@ -148,7 +150,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -189,7 +191,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed previously): it shows no answer table, phone chat header, landscape phone or failure card, so the image is unaffected."
       ]
     },
     {
@@ -201,7 +204,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "reviewedRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -229,7 +232,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -258,7 +261,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed previously): it shows no answer table, phone chat header, landscape phone or failure card, so the image is unaffected."
       ]
     },
     {
@@ -270,7 +274,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "reviewedRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -298,7 +302,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -326,7 +330,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed previously): it shows no answer table, phone chat header, landscape phone or failure card, so the image is unaffected."
       ]
     },
     {
@@ -338,7 +343,7 @@
       "scenario": "Connections \u2192 Models and Engines",
       "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "reviewedRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -350,7 +355,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -389,7 +394,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed previously): it shows no answer table, phone chat header, landscape phone or failure card, so the image is unaffected."
       ]
     },
     {
@@ -401,7 +407,7 @@
       "scenario": "Knowledge Library \u2192 selected repository record",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "reviewedRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -461,7 +467,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -477,7 +483,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed previously): it shows no answer table, phone chat header, landscape phone or failure card, so the image is unaffected."
       ]
     },
     {
@@ -489,7 +496,7 @@
       "scenario": "Knowledge Library \u2192 narrow layout",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "reviewedRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -549,7 +556,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -565,7 +572,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed): it shows no phone chat header, maximized dock, answer table, running Stop, or phone transcript, so the image is unaffected.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Checked this capture's scene (desktop pages with a collapsed dock, per the capture description; three PNGs viewed previously): it shows no answer table, phone chat header, landscape phone or failure card, so the image is unaffected."
       ]
     }
   ]

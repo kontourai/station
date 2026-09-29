@@ -3890,7 +3890,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4902,7 +4902,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d"
+          "digest": "f067309e3b7dfcef792abb03dc59ca2d688b4072c15b56e8f5df66b73de9ad5b"
         },
         {
           "path": "src-server/services/orchestration/flow-policy-sidecar.ts",
@@ -4994,7 +4994,7 @@
         },
         {
           "path": "src-server/services/orchestration/session-query-module.ts",
-          "digest": "75570be97597139f4bcd95a0b862b08a5487495f1979d90a9aea7a435f0f1522"
+          "digest": "561d25babceae640528aac6e593827c894ed38442e21ed23d36f98f5dfe6f0a2"
         },
         {
           "path": "src-server/services/orchestration/session-recovery-coordinator.ts",
@@ -5639,7 +5639,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; registry.ts only deleted the caller-less registerBrandingProvider (getBrandingProvider default unchanged); chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-report.ts (reads the outcome list through a readonly string[] view (type-only)); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); scheduler.test.ts (drops the addProvider and legacy-provider tests); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-host-resolver.ts (test-only createLocalDeviceHostResolver deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); resource-posture.test.ts (drops the env-override test (99% diagnostic test remains)); resource-posture.ts (createRuntimeResourcePostureProbe alias and ignored env parameter removed); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); action-operation-authority.ts (actionOperationAccountId inlined (same tenant-qualified account id)); native-invocation-runs.test.ts (fault seams passed by name); voice-turn-runs.test.ts (fault seams passed by name); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); session-inventory-module.ts (unused withTaskKeptRows and test-only legacy event shapes removed); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.test.ts (passes a per-scheduler announced-run set); external-monitor.test.ts (redirect refusal split into a table test); builtin-scheduler.ts (owns the announced-run set); scheduler-ledger.ts (toScheduledJob unexported); claims corrected: scheduler paragraph no longer names the deleted addProvider or legacy provider output.",
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "conversation-lineage delta: readSessionConversation uses the same conversationTitle rule; lineage, identity and authorization unchanged. session-query-module delta: conversationTitle takes the first text from any user message, bounds it to 80 code points at a word boundary with an ellipsis, and falls back to 'New chat' instead of the engine slug; read authority, projection and response shape unchanged. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "conversation-lineage delta: readSessionConversation uses the same conversationTitle rule; lineage, identity and authorization unchanged. session-query-module delta: conversationTitle takes the first text from any user message, bounds it to 80 code points at a word boundary with an ellipsis, and falls back to 'New chat' instead of the engine slug; read authority, projection and response shape unchanged. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "event-store delta: the persisted conversation-history row derives its title from the first prompt through the same derivedConversationTitle helper instead of a raw 80-character slice; existing rows are not rewritten; schema, ledger, quarantine, migration and evidence behaviour unchanged. session-query-module delta: conversationTitle now calls the shared derivedConversationTitle helper (conversation-title.ts: markdown stripped, word-boundary cut at 80 code points, 'New chat' fallback); read authority, replay and projection unchanged, so 'title and messages are derived from that same event set' still holds. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -5811,7 +5812,7 @@
     {
       "path": "docs/contexts/evidence-governance/CONTEXT.md",
       "documentDigest": "976207569e04724170b807f2585f4b93359a37107399fd0f81072217384b153c",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Definitions reconciled with actual storage, scheduling, notification, telemetry, review and governance interfaces; receipts and declarations distinguished from evaluated proof.",
@@ -5887,7 +5888,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d"
+          "digest": "f067309e3b7dfcef792abb03dc59ca2d688b4072c15b56e8f5df66b73de9ad5b"
         },
         {
           "path": "src-server/services/orchestration/flow-policy-sidecar.ts",
@@ -5925,7 +5926,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds the recognizeCredential hook in runtime-routes.ts (identity without admission, for a 403 answer); prose accurate: the receipt/governance definitions don't depend on HTTP refusal status. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the service update-home action, a launcher install step and a service-update status line to service.ts. None of that bears on the evidence-governance glossary terms, which do not describe service commands; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
+        "event-store delta: the persisted conversation-history row derives its title from the first prompt through the same derivedConversationTitle helper instead of a raw 80-character slice; existing rows are not rewritten; schema, ledger, quarantine, migration and evidence behaviour unchanged. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -6004,7 +6006,7 @@
     {
       "path": "docs/contexts/operations/CONTEXT.md",
       "documentDigest": "ecec943113be3307ec644a418883c4ea8a172cd156a57ba0bb58c8b21f3cd73b",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Definitions reconciled with actual storage, scheduling, notification, telemetry, review and governance interfaces; receipts and declarations distinguished from evaluated proof.",
@@ -6080,7 +6082,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d"
+          "digest": "f067309e3b7dfcef792abb03dc59ca2d688b4072c15b56e8f5df66b73de9ad5b"
         },
         {
           "path": "src-server/services/orchestration/flow-policy-sidecar.ts",
@@ -6118,7 +6120,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to runtime-routes.ts. No storage, scheduling, notification, telemetry, review or governance definition in the document is affected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds launcher install, a hidden update-home action and status `update` rendering. This context names no CLI service or upgrade behavior (its owner table covers server services); prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
+        "event-store delta: the persisted conversation-history row derives its title from the first prompt through the same derivedConversationTitle helper instead of a raw 80-character slice; existing rows are not rewritten; schema, ledger, quarantine, migration and evidence behaviour unchanged. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -7241,7 +7244,7 @@
     {
       "path": "docs/design/collaborative-editor-pane.md",
       "documentDigest": "39b13443c5fd44c9c548a6563cb8840390f8df55533d03cd72637d812f06b06e",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Historical design for the deleted pure collaborative editor controller (#2900), marked not shipped. Only the server-owned editing capability remains current; the shipped Task path is ProjectTaskRoom.",
@@ -7257,7 +7260,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.tsx",
@@ -7280,7 +7283,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Re-grepped: no tool-call, approval-button or disabled-button styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -7619,7 +7623,7 @@
     {
       "path": "docs/design/event-store-ledger-migration.md",
       "documentDigest": "6aff5fb02eed6dbab5e770c36852398841c1b0d6eab95bb7a9f00ad5fc6f0452",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed extraction dispositions, durable turn/recovery/credential owners and their actual EventStore/module composition. Added reserved/commit-pending states and the startup-scan unavailable-as-empty limitation tracked in #2823.",
@@ -7647,7 +7651,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d"
+          "digest": "f067309e3b7dfcef792abb03dc59ca2d688b4072c15b56e8f5df66b73de9ad5b"
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
@@ -7679,7 +7683,8 @@
         "Integration source review through d72f79b08: #2904 added read-only EventStore queries: latestApprovalModeDecision now also returns the actor, plus approvalModeDecisionThreadsByDevice, hostStartThreadsGrantedByDevice, conversationTitle and unattributedFullAccessDecisionThreads. attached-session-adoption now takes an AdoptionConfinement {stamp, grantor} and writes the grantor metadata. orchestration-service uses both for the revocation reset. Adoption still commits through AdoptionLedger with the receipt coupling unchanged. The doc explicitly does not claim every EventStore method has moved, so the new query methods fit its dispositions, and the RecoveryLedger/credential claims are untouched. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "event-store delta: the persisted conversation-history row derives its title from the first prompt through the same derivedConversationTitle helper instead of a raw 80-character slice; existing rows are not rewritten; schema, ledger, quarantine, migration and evidence behaviour unchanged. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -8753,7 +8758,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8837,7 +8842,7 @@
         },
         {
           "path": "src-ui/src/components/chat/chat.css",
-          "digest": "b57bbe0461b6e83f3d85ee27b4294a3d608e5532d8b5e3fa14a792c5558ac874"
+          "digest": "17a538da39b90664eaa87ce67651d93266b093ac0be0e103a0bed0380b0d47bf"
         },
         {
           "path": "src-ui/src/components/dialog-history.ts",
@@ -8929,7 +8934,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/layouts/index.tsx",
@@ -9056,7 +9061,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Its disabled claims concern pane chooser rows and its dockSlotPlacement right/left dock claims are unchanged by this CSS; no approval-button claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "RegionShells delta: passes the same Chat failure context to each dock region host; shell composition unchanged. ChatDock delta: passes ambientChatPaneFailureContext (open conversation title as plain text + Back to chats clearing the chat URL param) to the region host; no route, API or config change. index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. RegionPaneHost delta: optional chatPaneFailureContext prop forwarded as the host's paneFailureContext for the Chat pane only; region/pane derivation, selection and persistence unchanged. controller delta: fail() accepts the caught error detail and exposes rendererFailureDetails for display; the reducer's rendererFailures remains the failure authority. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "RegionShells delta: passes the same Chat failure context to each dock region host; shell composition unchanged. ChatDock delta: passes ambientChatPaneFailureContext (open conversation title as plain text + Back to chats clearing the chat URL param) to the region host; no route, API or config change. index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. RegionPaneHost delta: optional chatPaneFailureContext prop forwarded as the host's paneFailureContext for the Chat pane only; region/pane derivation, selection and persistence unchanged. controller delta: fail() accepts the caught error detail and exposes rendererFailureDetails for display; the reducer's rendererFailures remains the failure authority. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -9499,7 +9505,7 @@
     {
       "path": "docs/design/project-task-room-history.md",
       "documentDigest": "3f77bb159020d9d6bb2a5f9e8fbebd1326a5ff27a7ff0b960edae7cb2e1726cb",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed durable event projection, worker, route and history adapter review; corrected channel/principal disclosure and bounded JSON counting claims.",
@@ -9519,7 +9525,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d"
+          "digest": "f067309e3b7dfcef792abb03dc59ca2d688b4072c15b56e8f5df66b73de9ad5b"
         },
         {
           "path": "src-server/services/orchestration/project-task-room-history-worker.ts",
@@ -9540,7 +9546,8 @@
         "Reviewed integration deltas: Completed durable event projection, worker, route and history adapter review; corrected channel/principal disclosure and bounded JSON counting claims.",
         "Integration source review through d72f79b08: #2904 adds EventStore queries for approval-mode decision actors, device-granted host starts, conversation titles and unattributed never decisions. It leaves the Project Task room event projection, worker, route and bounded JSON counting this document describes untouched. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-task-room-runtime.test.ts (fault seams passed by name); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-task-room-runtime.test.ts (fault seams passed by name); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); claims unaffected.",
+        "event-store delta: the persisted conversation-history row derives its title from the first prompt through the same derivedConversationTitle helper instead of a raw 80-character slice; existing rows are not rewritten; schema, ledger, quarantine, migration and evidence behaviour unchanged. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -9610,7 +9617,7 @@
     {
       "path": "docs/design/revision-bound-evidence.md",
       "documentDigest": "02e65ecf6fbd4fadabfc175d3d685df58ad453004079716d4011585c829d10cf",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed exact-revision and persistence contract review; optional proposed-change lookup is not supplied by the production room bridge, which provides attribution only.",
@@ -9626,7 +9633,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d"
+          "digest": "f067309e3b7dfcef792abb03dc59ca2d688b4072c15b56e8f5df66b73de9ad5b"
         },
         {
           "path": "src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts",
@@ -9643,13 +9650,14 @@
         "Reviewed integration deltas: Completed exact-revision and persistence contract review; optional proposed-change lookup is not supplied by the production room bridge, which provides attribution only.",
         "Integration source review through d72f79b08: in event-store.ts, #2904 adds `actor` to `latestApprovalModeDecision` and adds read-only queries for device decision threads, device-granted host starts, conversation titles and unattributed never-decisions. No revision-bound evidence receipt, persistence, restore or proposed-change lookup code changed. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); claims unaffected.",
+        "event-store delta: the persisted conversation-history row derives its title from the first prompt through the same derivedConversationTitle helper instead of a raw 80-character slice; existing rows are not rewritten; schema, ledger, quarantine, migration and evidence behaviour unchanged. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
       "path": "docs/design/session-tape-replay.md",
       "documentDigest": "4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9733,7 +9741,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx",
@@ -9756,7 +9764,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The one other changed source is codex-adapter.ts, whose #2921 change since this record is a comment on the tool-level session grant; the page makes no claim about Codex session grants.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -9833,7 +9842,7 @@
     {
       "path": "docs/design/shared-working-state.md",
       "documentDigest": "1934cf0e1e341c669f57f475a1ae4ecd3a3077dd70720190a23070776f0d71b0",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed shared state ordering, resync, compaction, authority and editing adapter review; retained local sealSource is not called by the production controller.",
@@ -9853,7 +9862,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d"
+          "digest": "f067309e3b7dfcef792abb03dc59ca2d688b4072c15b56e8f5df66b73de9ad5b"
         },
         {
           "path": "src-server/services/orchestration/project-task-room-working-state.ts",
@@ -9867,7 +9876,8 @@
         "Integration source review through e0314c727: shared-working-state.ts now documents that no production caller composes createSharedWorkingState() recovery and points to this record's 'Ordering and outcomes'. That section described adapter-owned recovery as current, and a grep confirmed only tests call it while the room runtime and workers construct the live-only SharedWorkingState. Added that disclosure. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 added read-only EventStore approval-decision and host-start-grantor queries, a conversation-title read, and an actor on latestApprovalModeDecision. Shared-state ordering, resync, compaction, authority and the retained sealSource are untouched. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: the page itself dropped its paragraph on the deleted assertion-free shared-working-state-benchmark.test.ts (batch 59); event-store.ts only deleted the caller-less readChatTurn; claims corrected in-branch: the removed benchmark paragraph was the only claim affected. Source review only; no new executed evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); claims unaffected.",
+        "event-store delta: the persisted conversation-history row derives its title from the first prompt through the same derivedConversationTitle helper instead of a raw 80-character slice; existing rows are not rewritten; schema, ledger, quarantine, migration and evidence behaviour unchanged. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -11805,7 +11815,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11813,7 +11823,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "87d004278937d149c69eeb77441947f0809652016cdeeb2f35c15572178e5028"
+          "digest": "24aec687fd4fb14943c4195c5f8f6b69f24147258200db0a83ccb7adcb17502a"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -12185,7 +12195,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -12320,7 +12330,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval here is key/device approval; no tool-call card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -12337,7 +12348,7 @@
     {
       "path": "docs/guides/delegation-attempt-claims.md",
       "documentDigest": "34c8d048c03a6f1c6baf4382ccd8f45e30bcec42e8f82a32b503e86223e4e07d",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Opt-in receiver-side portable delegation duplicate suppression and lookup. Full57-line baseline read. Followed actual route schema/lookup currentness, SDK lookup, forwarding capability check, receiver reservation/dedup path and store capacity/state definitions; route fixtures passed.",
@@ -12497,7 +12508,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
-          "digest": "e02f779f919b4198571aa0cfec7fd06800e34ecf16c23cadaac93edec1c5268c"
+          "digest": "4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276"
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
@@ -12535,7 +12546,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "WorkspacePaneFrame delta: the pane error boundary reads the pane-owned failure context once, when it catches, keeps it in state and hands it to the host with the error; the failure card has its own h2 heading, Close this chat, a Minimize action and repo-free stack frames. Still an error boundary, not a sandbox. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -13987,7 +13999,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14099,7 +14111,7 @@
         },
         {
           "path": "tests/mobile-chat-composer.spec.ts",
-          "digest": "3ec92aa0311b60cd0a6f65e28dd459f7891da88a137142598eb9c9ceda6bd6bb"
+          "digest": "72343e45dc2dd3404ce7ab4b9cf9320be7163a11432f6851aaa60926293b77b0"
         },
         {
           "path": "tests/monitoring.spec.ts",
@@ -14161,7 +14173,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): tests/e2e-manifest.mjs adds tests/branding-theme-boot.spec.ts to the product bucket (parallel-safe, surface Shell, tier full); PR_BROWSER_SMOKE_CONTRACT and suite runner behavior are unchanged. The matrix names no Shell/theming row and claims no exhaustive coverage. Prose accurate. Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
-        "mobile-chat-composer spec delta: added phone geometry tests (single safe-area inset and centred wider title for the maximized header; transcript fade) inside the already-listed spec; bucket unchanged. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "mobile-chat-composer spec delta: added phone geometry tests (single safe-area inset and centred wider title for the maximized header; transcript fade) inside the already-listed spec; bucket unchanged. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "mobile-chat-composer spec delta: added iPhone portrait and landscape inset tests and header assertions (no maximized accent border, wider centred title) inside the already-listed spec; bucket unchanged. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -14236,7 +14249,7 @@
     {
       "path": "docs/guides/home-transfer-controller.md",
       "documentDigest": "bf96eb4dbcc2ad08e9b4f3e8182066307fb2eefadf66cff348c030306c9ae42c",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented pairing/binding probes, external storage custody, preparation/advance outcomes, bounded admission journal, capability/replay/grant revision control sessions, room-write ordering and receipt reconciliation. Traced mounted versus private-only callers and confirmed transfer/resume flags remain false; current prose remains accurate.",
@@ -14456,7 +14469,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
-          "digest": "e02f779f919b4198571aa0cfec7fd06800e34ecf16c23cadaac93edec1c5268c"
+          "digest": "4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276"
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
@@ -14500,7 +14513,8 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by planned-home-transfer-store.ts (unguarded store constructor deleted; the guarded entry is the only one); claims unaffected.",
-        "WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "WorkspacePaneFrame delta: the pane error boundary reads the pane-owned failure context once, when it catches, keeps it in state and hands it to the host with the error; the failure card has its own h2 heading, Close this chat, a Minimize action and repo-free stack frames. Still an error boundary, not a sandbox. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -14655,7 +14669,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14663,7 +14677,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "87d004278937d149c69eeb77441947f0809652016cdeeb2f35c15572178e5028"
+          "digest": "24aec687fd4fb14943c4195c5f8f6b69f24147258200db0a83ccb7adcb17502a"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14771,7 +14785,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -14819,7 +14833,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No tool-call card or button-state claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -16961,7 +16976,7 @@
     {
       "path": "docs/guides/private-runner-partition.md",
       "documentDigest": "3a71d00a2de396d6ec7ccf680c41e99d9e7afd1f07e0217bdef00f41042ce8b9",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Conditional operator plan for separating fleet listeners, with current routing context. Full59-line baseline read. Checked current hosted CI, persistent Linux container-smoke and Windows diagnostic/performance workflow labels, capacity step and actionlint routing policy.",
@@ -17121,7 +17136,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
-          "digest": "e02f779f919b4198571aa0cfec7fd06800e34ecf16c23cadaac93edec1c5268c"
+          "digest": "4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276"
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
@@ -17159,13 +17174,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "WorkspacePaneFrame delta: the pane error boundary reads the pane-owned failure context once, when it catches, keeps it in state and hands it to the host with the error; the failure card has its own h2 heading, Close this chat, a Minimize action and repo-free stack frames. Still an error boundary, not a sandbox. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
       "path": "docs/guides/product-law-authoring.md",
       "documentDigest": "e73cd5b9a92cfe8795d643d6c583b120b486366eea57f015ff412f35524336c6",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Normative authoring and interpretation of selected executable product laws. Full29-line baseline read. Traced manifest bounds, path dispositions, exact structured observation and timeout/infrastructure result classification; focused owner tests passed.",
@@ -17325,7 +17341,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
-          "digest": "e02f779f919b4198571aa0cfec7fd06800e34ecf16c23cadaac93edec1c5268c"
+          "digest": "4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276"
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
@@ -17364,7 +17380,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "WorkspacePaneFrame delta: the pane error boundary reads the pane-owned failure context once, when it catches, keeps it in state and hands it to the host with the error; the failure card has its own h2 heading, Close this chat, a Minimize action and repo-free stack frames. Still an error boundary, not a sandbox. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -17915,7 +17932,7 @@
     {
       "path": "docs/guides/repository-layout.md",
       "documentDigest": "9db07997f2440ee4cf5062fd805657beb7baffc40831f1f31625089695e7c021",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "policy",
       "state": "classified",
       "summary": "Repository navigation, ownership conventions and contributor routing. Full69-line baseline read. Current directories and links checked; root instructions and module-map routing retain their normative purpose. No stale text requiring edit found.",
@@ -18075,7 +18092,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
-          "digest": "e02f779f919b4198571aa0cfec7fd06800e34ecf16c23cadaac93edec1c5268c"
+          "digest": "4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276"
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
@@ -18113,13 +18130,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "WorkspacePaneFrame delta: the pane error boundary reads the pane-owned failure context once, when it catches, keeps it in state and hands it to the host with the error; the failure card has its own h2 heading, Close this chat, a Minimize action and repo-free stack frames. Still an error boundary, not a sandbox. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18227,7 +18245,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -18279,7 +18297,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Shared mobile [class*=__actions] rule unchanged and still matches .tool-call__actions; the new case runs above the breakpoint where that rule does not apply, consistent with the guide. No claim changed.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Shared mobile __actions rule unchanged; #2917 right-dock desktop case still consistent. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -18824,7 +18843,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18832,7 +18851,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "87d004278937d149c69eeb77441947f0809652016cdeeb2f35c15572178e5028"
+          "digest": "24aec687fd4fb14943c4195c5f8f6b69f24147258200db0a83ccb7adcb17502a"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -18980,7 +18999,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/lib/starter-work-operation-store.ts",
@@ -19072,7 +19091,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval flow only; no inline approval-card styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -19721,7 +19741,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "6b1815a15e332e6f0799348d7c2c7c2d7c29fee226f4fb91ca081590207ca08c",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19829,7 +19849,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -19897,7 +19917,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Guidance to verify disabled state in light and dark was followed (rendered and measured 4.33:1 light, 4.38:1 dark); uses existing tokens. No claim changed.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). The guide's new claim that --accent-primary/--text-on-accent read the action role holds, and the #2917 Allow Once button consumes exactly that pair (hover: --accent-hover-fill -> --accent-darker -> the action role), so channel and white-label action roles reach it. No prose change.",
         "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -20069,7 +20090,7 @@
     {
       "path": "docs/guides/work-board-security.md",
       "documentDigest": "ec519bd0a32aefd4172f8fe3d20068ccc480ae9236d16fe9797eba4570fc7cc2",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Trusted Work Board rendering, Home eligibility and owner-resolved reference storage boundaries. Full16-line baseline read. Checked builtin registry/Pane frame React error boundary, actual plugin-only Home eligibility and granted-Home recovery, closed store/reference shape, request-bound resolved route and owner projection tests.",
@@ -20229,7 +20250,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
-          "digest": "e02f779f919b4198571aa0cfec7fd06800e34ecf16c23cadaac93edec1c5268c"
+          "digest": "4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276"
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
@@ -20267,13 +20288,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "WorkspacePaneFrame delta: the pane error boundary reads the pane-owned failure context once, when it catches, keeps it in state and hands it to the host with the error; the failure card has its own h2 heading, Close this chat, a Minimize action and repo-free stack frames. Still an error boundary, not a sandbox. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
       "path": "docs/guides/workspace-packages.md",
       "documentDigest": "01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented AES envelope, Git snapshot/content/path/expansion limits, source rechecks, fresh destination and cleanup, read-only verification, and import-project durable intent/create/readback caller semantics. Current prose accurately distinguishes metadata verification from target filesystem and execution authority.",
@@ -20445,7 +20467,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
-          "digest": "e02f779f919b4198571aa0cfec7fd06800e34ecf16c23cadaac93edec1c5268c"
+          "digest": "4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276"
         },
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
@@ -20488,7 +20510,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
-        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "Upstream delta (682308b99, not this branch): projectDelegatedTaskEvent now bounds request titles in code points with a trailing ellipsis (markedString); delegation routing, claims, authority and persistence unchanged. WorkspacePaneFrame delta: the per-occurrence error boundary now keeps the caught error and renders the shared WorkspacePaneFailure state (labelled plain-text subject, Try again, optional pane-supplied Back, Technical details disclosure inside the card); still an error boundary, not a sandbox. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "WorkspacePaneFrame delta: the pane error boundary reads the pane-owned failure context once, when it catches, keeps it in state and hands it to the host with the error; the failure card has its own h2 heading, Close this chat, a Minimize action and repo-free stack frames. Still an error boundary, not a sandbox. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -20644,7 +20667,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20652,7 +20675,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "87d004278937d149c69eeb77441947f0809652016cdeeb2f35c15572178e5028"
+          "digest": "24aec687fd4fb14943c4195c5f8f6b69f24147258200db0a83ccb7adcb17502a"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20772,7 +20795,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -20869,7 +20892,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Approval scene is Notifications inspection, not the inline card; no claim touched.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. The #2843 hover-contrast note concerns the release selection style, which this change does not touch.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -20901,7 +20925,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -21009,7 +21033,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21062,13 +21086,14 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Backend approval ownership only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21176,7 +21201,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21232,7 +21257,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-button styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -21534,7 +21560,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21542,7 +21568,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "87d004278937d149c69eeb77441947f0809652016cdeeb2f35c15572178e5028"
+          "digest": "24aec687fd4fb14943c4195c5f8f6b69f24147258200db0a83ccb7adcb17502a"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21586,7 +21612,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -21634,7 +21660,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No UI styling claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -22800,7 +22827,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23005,7 +23032,7 @@
         },
         {
           "path": "src-server/services/orchestration/event-store.ts",
-          "digest": "f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d"
+          "digest": "f067309e3b7dfcef792abb03dc59ca2d688b4072c15b56e8f5df66b73de9ad5b"
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
@@ -23077,7 +23104,8 @@
         "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); strands-tool-loader.ts now imports the shared tool-load-failure classifier instead of its private copy of the same redaction decision; mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
-        "ChatDock delta: passes ambientChatPaneFailureContext (open conversation title as plain text + Back to chats clearing the chat URL param) to the region host; no route, API or config change. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "ChatDock delta: passes ambientChatPaneFailureContext (open conversation title as plain text + Back to chats clearing the chat URL param) to the region host; no route, API or config change. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "event-store delta: the persisted conversation-history row derives its title from the first prompt through the same derivedConversationTitle helper instead of a raw 80-character slice; existing rows are not rewritten; schema, ledger, quarantine, migration and evidence behaviour unchanged. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -23991,7 +24019,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -23999,7 +24027,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "87d004278937d149c69eeb77441947f0809652016cdeeb2f35c15572178e5028"
+          "digest": "24aec687fd4fb14943c4195c5f8f6b69f24147258200db0a83ccb7adcb17502a"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -24031,7 +24059,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -24085,12 +24113,13 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24763,7 +24792,7 @@
         },
         {
           "path": "src-server/services/orchestration/session-query-module.ts",
-          "digest": "75570be97597139f4bcd95a0b862b08a5487495f1979d90a9aea7a435f0f1522"
+          "digest": "561d25babceae640528aac6e593827c894ed38442e21ed23d36f98f5dfe6f0a2"
         },
         {
           "path": "src-server/services/orchestration/transcript-search-queries.ts",
@@ -25091,7 +25120,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "session-query-module delta: conversationTitle takes the first text from any user message, bounds it to 80 code points at a word boundary with an ellipsis, and falls back to 'New chat' instead of the engine slug; read authority, projection and response shape unchanged. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "session-query-module delta: conversationTitle takes the first text from any user message, bounds it to 80 code points at a word boundary with an ellipsis, and falls back to 'New chat' instead of the engine slug; read authority, projection and response shape unchanged. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "session-query-module delta: conversationTitle now calls the shared derivedConversationTitle helper (conversation-title.ts: markdown stripped, word-boundary cut at 80 code points, 'New chat' fallback); read authority, replay and projection unchanged, so 'title and messages are derived from that same event set' still holds. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -26843,7 +26873,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26860,7 +26890,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "87d004278937d149c69eeb77441947f0809652016cdeeb2f35c15572178e5028"
+          "digest": "24aec687fd4fb14943c4195c5f8f6b69f24147258200db0a83ccb7adcb17502a"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -26972,7 +27002,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -27042,7 +27072,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval buttons (Approve once/Deny) are a different surface; no claim touched.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -27915,7 +27946,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -27923,7 +27954,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "87d004278937d149c69eeb77441947f0809652016cdeeb2f35c15572178e5028"
+          "digest": "24aec687fd4fb14943c4195c5f8f6b69f24147258200db0a83ccb7adcb17502a"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -28003,7 +28034,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -28033,7 +28064,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. No approval-card claim.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
@@ -30334,7 +30366,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "df260708f5f9bf50161373dfe76b7382d07bb4cb",
+      "sourceRevision": "ee9150ab7d05d18b292fc7bde2914faeff84b6f9",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -30386,7 +30418,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "77b18d63d48ff6709d0366f5789d0005a2894dbf00ffe07d5b8dc246eb3e90f7"
+          "digest": "9715d2cf67abbe97c709fd5d4e54ca82b7dd24504f3b30cef326797bfc763acc"
         }
       ],
       "checks": [
@@ -30407,7 +30439,8 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Icon generation only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The raster channel icons and the favicon-dev swap under is-dev-build are unchanged; the CSS brand stays an amber/indigo/violet shade per channel.",
-        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged."
+        "index.css/chat.css delta of this branch: the maximized phone dock header no longer adds the top safe-area inset the dock already clears; the maximized phone dock drops its 2px accent top border; the phone chat header's centred title track takes the bar minus a fixed 96px reserve per edge; the phone transcript fades over its bottom gutter (mask); phone answer rows stretch to the row with the details trigger below; answer markdown tables scroll inside a wrapper with cells opting out of overflow-wrap: anywhere and whole inline code, and the old slash-command column rules are removed; the Stop button rests on --error-fill with white. Searched this document for claims about these areas (safe area, dock header/border, pane failure, message and table layout, Stop, conversation titles): none describe the changed behaviour; prose unchanged.",
+        "Fix-round index.css/chat.css delta: answer markdown tables size to their content inside the sideways scroller (cells 6rem to 20rem, no letter-by-letter breaking); the transcript bottom fade now applies at every width; the phone chat header's centred title uses fit-content so a short title returns width to the project name; the landscape phone dock and app toolbar pad by the side safe-area insets; the dock's No chat open card keeps the dock gutter; the answer details trigger uses --text-secondary. Searched this document for claims about these areas (tables, safe areas, dock header, pane failure, conversation titles, history rows): none describe the changed behaviour; prose unchanged."
       ]
     },
     {
