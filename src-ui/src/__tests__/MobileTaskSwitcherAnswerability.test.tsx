@@ -8,7 +8,7 @@
  * files over carried both. Same label, two answers, one of them a bare
  * adjective.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
@@ -117,7 +117,11 @@ describe('MobileTaskSwitcher answerability basis', () => {
     expect(screen.queryByTestId('inbox-row-answerability')).toBeNull();
     // The shared row renders the lifecycle CHIP ("Active"), not the raw
     // 'Running' wire enum the old bespoke row leaked (#3312 richness parity).
-    expect(screen.getByText('Active')).toBeTruthy();
-    expect(screen.queryByText('Running')).toBeNull();
+    // Scoped to the row: "Running" is now also the GROUP heading above it
+    // (the live lanes split), which is lane vocabulary, not a leaked enum.
+    const row = screen.getByTestId('inbox-row');
+    expect(within(row).getByText('Active')).toBeTruthy();
+    expect(within(row).queryByText('Running')).toBeNull();
+    expect(screen.getByRole('heading', { name: /^Running/ })).toBeTruthy();
   });
 });
