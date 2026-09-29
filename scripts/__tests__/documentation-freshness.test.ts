@@ -1317,10 +1317,7 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
         [LEGACY_REVIEW_LEDGER, MEDIA].sort(),
       );
       // No hand resolution: the command resolves media.json itself.
-      const folded = run(f.root, 'migrate-review-ledger.mjs', [
-        '--base',
-        base,
-      ]);
+      const folded = run(f.root, 'migrate-review-ledger.mjs', ['--base', base]);
       expect(folded.status, folded.stderr).toBe(0);
       expect(folded.stdout).toContain('Resolved the docs/learn/media.json');
       // Judged against the bytes it writes, the citer is not reported stale.
@@ -1333,9 +1330,7 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
       expect(compiledMedia(f.root).captures[0].reviewNotes).toContain(
         'Their capture review.',
       );
-      expect(compiled(f.root, 'docs/d.md').sources[0].digest).toBe(
-        hash(media),
-      );
+      expect(compiled(f.root, 'docs/d.md').sources[0].digest).toBe(hash(media));
       expect(compiled(f.root, 'docs/d.md').checks).toEqual(
         expect.arrayContaining(['Our review of d.', 'Their review of d.']),
       );
