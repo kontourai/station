@@ -3550,7 +3550,7 @@
         },
         {
           "path": "src-server/routes/system/archive-update.ts",
-          "digest": "97a36602f6d3d0b0ad2e19d566784adad7c1caafece78d961c849167232003f9"
+          "digest": "11cd46218325618ceefcd54079f5012b981eb6b1c2872d562434523de1ef63e9"
         },
         {
           "path": "packages/contracts/src/environment-security.ts",
@@ -3586,7 +3586,7 @@
         },
         {
           "path": "scripts/portable-nightly-publication.mjs",
-          "digest": "ead20dbb641dd589b6f6eae6ecbd7923ac744f38e958ea57b0a099ba006d3940"
+          "digest": "049faa935dda343a453bb41426423f4bd50ae9f6b4f7596886731a6280400dbc"
         },
         {
           "path": "src-desktop/tauri.conf.json",
@@ -3619,6 +3619,10 @@
         {
           "path": "packages/shared/src/prebuilt-archive.ts",
           "digest": "73f956c32b937353113b247025a4c7e7feba6e4f305703d4366593b9e5ba78d8"
+        },
+        {
+          "path": "scripts/lib/portable-publication.mjs",
+          "digest": "7dfc568f61bdc5e44bcb12a1c098d92ab4a37428cd641adf36797e0c3acffb5b"
         }
       ],
       "checks": [
@@ -3627,10 +3631,11 @@
         "Delta-review fixes: hold rule requires a strictly greater core (equal cores hide newer nightly code); D4 verifies only under a pinned or verified-archive Node; D6 rotation bootstrap (signed with the shared key, then retire it from nightly); migration labels split; baked-ring copy qualified.",
         "Wording: nightly core reason corrected; lines re-wrapped.",
         "Source ADR 0015 changed by the merged #2957 evidence addendum (e8dc2e22). ADR 0020's NOT_VERIFIED carry-list and the addendum anchor match the landed text (Windows readiness and watchdog timings, stale sidecar entries, shared roots refusing first launch).",
-        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold."
+        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold.",
+        "#2959 merge: archive-update.ts changed on main only to follow bounded https redirects (#2975); the ADR's claims (refuses an out-of-range release, ring from the baked marker, manifest URL from install state) still hold. portable-nightly-publication.mjs now re-exports the launcher protocol range from scripts/lib/portable-publication.mjs, which the release publisher also reads: still one publisher copy of the four the Context lists. Context still accurate that only Nightly publishes a manifest today; #2959's stable/preview publication is owner-gated."
       ],
       "documentDigest": "d5acbd007ab05fd13e9689943a2040edbc5a8980c4c04eb7a3f0aa6e2dc03372",
-      "sourceRevision": "54e0ffb5c1ae765b4127f031e525793087fb9669"
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"
     },
     {
       "path": "docs/architecture.md",
@@ -11076,7 +11081,7 @@
     {
       "path": "docs/guides/android-build.md",
       "documentDigest": "37d8dffe745a92d090cb31abdd509507d7666139868987c50cac217887a11d49",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Android build, generated-project ownership, provenance and verification boundaries. Full baseline read. Traced debug/release/Nightly workflow callers, managed bootstrap and app-directory selection, Kotlin geometry/native permissions, packaged provenance writer and Settings consumer, ELF/ZIP alignment owner, signing handoff and emulator checks. No builds or recipes executed.",
@@ -11100,7 +11105,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -11354,7 +11359,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "#2959 delta: release.yml adds host-stream archive/manifest jobs; the Android job, provenance and signing steps are unchanged, so no Android claim changes.",
-        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {
@@ -13255,8 +13261,8 @@
     },
     {
       "path": "docs/guides/desktop-build.md",
-      "documentDigest": "77055f3a680def05143bb5ba04e5bb7f40ef154663094843ef7191edae473e8d",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "documentDigest": "86bb87f004892c11d9eca946680a914572d9078d43fbf82a68d6e80502e4cbb1",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop compile/update/CSP contract and bounded packaged Browser Preview fixture. Full baseline read. Traced clean-checkout status-entry verifier, update UI/native registration and capabilities, manifest/lock versions, CSP config and trusted registry caller. Independently probed actual fixture helpers/shared schema; traced earlier native profile-genesis refusal. No native launch or package build.",
@@ -13280,7 +13286,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -13542,13 +13548,14 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Updated the reviewed @tauri-apps/cli range to ^2.11.5; Rust tauri 2.11.5, tauri-build 2.6.3 and @tauri-apps/api ^2.11.1 are unchanged (plugin-updater deliberately held at 2.11.0 to match its crate). | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "#2959 delta: release.yml adds host-stream archive/manifest jobs; desktop build, updater overlay and CSP steps unchanged. No claim changes.",
-        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {
       "path": "docs/guides/desktop-tray.md",
       "documentDigest": "65ed27eebefb1258681b81b175dd06c183fdaec0a3c3294e79215a4ba68acdc4",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop-owned service/sidecar tray health, controls, companion lifetime and logs. Full baseline read. Traced tray snapshot/action/destination decisions and ten-second health cadence, service-command identity arguments, Windows Task Scheduler implementation, companion caller after backend health, logging registration and pinned dependency rotation. Runtime/tray OS behavior remains unverified.",
@@ -13572,7 +13579,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -13843,7 +13850,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "#2959 delta: release.yml adds host-stream jobs only; tray and service claims unaffected.",
-        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {
@@ -15811,7 +15819,7 @@
     {
       "path": "docs/guides/mobile-release.md",
       "documentDigest": "e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205",
-      "sourceRevision": "8edcc8c3ebf56213db4403133bd53651e7e298df",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all remaining documented claims through actual release/TestFlight and client callers: optional feed reads versus compile inclusion, pinned-origin fetch and HTTPS action validation, conditional writes/readback/compensation and ambiguous outcomes, container alias publication, three-profile/extension entitlement export checks, native credential persistence rejection and iOS accessibility, and pinned OIDC/Secret Manager action behavior. Corrected guarantees to the checks performed.",
@@ -15839,11 +15847,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "0662818fdd47afa054bad6cfaca0251a55f302e504d438b03a1f9f220482fba8"
+          "digest": "23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -16061,7 +16069,8 @@
         "#2959 delta: release.yml gains host-archives/host-manifest jobs feeding assemble-draft; publish-release.yml gains gated host-stream steps; inventory schema gains host-archive/host-manifest-payload roles. No mobile feed, TestFlight, Play or credential claim changes; re-checked the draft/publish sequence claims still hold.",
         "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
         "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes.",
-        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes."
+        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {
@@ -16157,7 +16166,7 @@
     {
       "path": "docs/guides/native-releases.md",
       "documentDigest": "79e9a4650cbdd6a96d8f6ae35eaddd4e4b1206f18e0e5cb06b4ff6928a808f45",
-      "sourceRevision": "8edcc8c3ebf56213db4403133bd53651e7e298df",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed detailed cohort admission/fence/ledger/partial-provider protocols, mobile and desktop compensation boundaries, macOS notarization overlap, Windows installer/payload proof limits and portable host-target staging. Actual AppImage entrypoint callers checked against Cargo.lock-verified tauri-utils resource resolution; source/config mismatch documented without claiming an executed Linux failure. Frozen Windows/shared-runtime-pruning changes traced through callers.",
@@ -16189,11 +16198,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "0662818fdd47afa054bad6cfaca0251a55f302e504d438b03a1f9f220482fba8"
+          "digest": "23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -16511,7 +16520,8 @@
         "#2959: documented the native-release-publish signing secret and gate variable, the host-stream draft assets, the single attestation-loop exemption for the signed manifest (verified by inventory revalidation) and the gated step order; qualified the every-asset provenance claim. Other publish/rollback claims re-read against publish-release.yml and unchanged.",
         "#2959 review fixes: updated the host-stream paragraph for the separate host-pointer job, ledger/availability independence, compensation, rerun and rollback behavior; checked against publish-release.yml.",
         "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. Updated the host-pointer sentences to match; checked against publish-release.yml.",
-        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). Its host-pointer sentences stay accurate (it takes the manifest from the versioned release and verifies it before any pointer write)."
+        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). Its host-pointer sentences stay accurate (it takes the manifest from the versioned release and verifies it before any pointer write).",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {
@@ -16702,7 +16712,7 @@
     {
       "path": "docs/guides/nightly.md",
       "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
-      "sourceRevision": "8edcc8c3ebf56213db4403133bd53651e7e298df",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
@@ -16730,11 +16740,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "0662818fdd47afa054bad6cfaca0251a55f302e504d438b03a1f9f220482fba8"
+          "digest": "23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -16997,7 +17007,8 @@
         "#2959 delta: portable-nightly-publication.mjs now wraps the ring-generic scripts/lib/portable-publication.mjs with its API, CLI and URLs unchanged (existing nightly tests pass unmodified); release workflow and inventory changes touch tagged releases only. Nightly claims unchanged.",
         "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
         "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes.",
-        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes."
+        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {
@@ -17604,7 +17615,7 @@
     {
       "path": "docs/guides/release-channel-ports.md",
       "documentDigest": "bdf05919cd734e87b183113da0d55a7c0fcd1fa980af544adb12467d5830f04a",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
@@ -17628,7 +17639,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -17908,13 +17919,14 @@
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "#2959: stable/beta also accept a signed public manifest via STATION_INSTALL_PUBLIC_MANIFEST_URL (existing install.sh behavior, ecosystem-manifest tests) and may be published per ring once the owner enables it; default path unchanged. release.yml change adds host-stream jobs only; port and identity claims unaffected.",
-        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {
       "path": "docs/guides/release-rings.md",
-      "documentDigest": "05394fd622161ca69adcaa774f64822f0b1bef1d9e6fbcb81e43ae92eb674664",
-      "sourceRevision": "9d537242fb65f453cbec69c65155a7ebe19af2d3",
+      "documentDigest": "38b9a357ea7cdf9201e9f6dabff750bf1ad1c0e1fe763745970aef9a091c0078",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Portable release trust, exact-commit promotion and recovery requirements. Full143-line baseline read. Traced install.sh default attestation and optional pinned-key public manifest branches, token lifetime, explicit channel mapping, downgrade/freshness limits, restore failure handling and publish authority. Corrected exact preview-commit promotion and routine destructive cleanup recipe.",
@@ -17946,11 +17958,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "0662818fdd47afa054bad6cfaca0251a55f302e504d438b03a1f9f220482fba8"
+          "digest": "23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -18106,7 +18118,8 @@
         "#2959 review fixes: rewrote the gated flow to the publish job plus host-pointer job; checked pointer-plan outcomes (replace, unchanged rerun, skip-older rollback, refusals), the allow_empty_host_manifest_bootstrap input, compensation on failed replace/re-verify, and added the pre-change-tag note against publish-release.yml and portable-release-publication.mjs.",
         "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. Rewrote the host-pointer paragraph (released gating, pinned verify of the fetched manifest before any write, warning in the run summary, mis-tagged high version recovery is an owner action); checked against publish-release.yml.",
         "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). Added the run binding and cancel behavior to the host-pointer paragraph; checked against publish-release.yml and portable-release-publication.mjs.",
-        "#2959: added the cancel-during-clobber runbook note (empty pointer, fail-safe empty-pointer refusal, bootstrap re-run recovery); checked against the host-pointer replace step and the pointer-plan refusal."
+        "#2959: added the cancel-during-clobber runbook note (empty pointer, fail-safe empty-pointer refusal, bootstrap re-run recovery); checked against the host-pointer replace step and the pointer-plan refusal.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Linked ADR 0020 from the host-stream section now that it is on main; re-read the section against publish-release.yml and release.yml."
       ]
     },
     {
@@ -19345,7 +19358,7 @@
     {
       "path": "docs/guides/store-entry.md",
       "documentDigest": "147cfd2465d9fa280eda3d75b7a7d5fc963bafe32d7593d196e4fdeb629e06e8",
-      "sourceRevision": "8edcc8c3ebf56213db4403133bd53651e7e298df",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed owner-setup, API key, workload identity, channel profile, upload/reconciliation and bounded group-assignment claims through declared workflows, pinned action inputs and primary provider documentation. Intended names and privacy/ads answers marked as owner decisions, not observed account facts.",
@@ -19373,11 +19386,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "0662818fdd47afa054bad6cfaca0251a55f302e504d438b03a1f9f220482fba8"
+          "digest": "23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -19570,13 +19583,14 @@
         "#2959 delta: release/publish workflows gain host-stream jobs and gated steps and the inventory gains two roles; store owner-setup and upload claims unaffected.",
         "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
         "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes.",
-        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes."
+        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {
       "path": "docs/guides/store-listing.md",
       "documentDigest": "e232df90ff2b65b81e24c84bd160b17719d25a054828ab64da8fa98870ce4057",
-      "sourceRevision": "8edcc8c3ebf56213db4403133bd53651e7e298df",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Completed all draft copy and capture claims. Channel identity and mobile client ownership checked; seller, ads, age, privacy and tracking assertions made proposed owner-reviewed declarations. Screenshot content plan separated from current primary-provider specifications. Unpublished draft remains a design artifact.",
@@ -19604,11 +19618,11 @@
         },
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "0662818fdd47afa054bad6cfaca0251a55f302e504d438b03a1f9f220482fba8"
+          "digest": "23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -19743,7 +19757,8 @@
         "#2959 delta: release/publish workflow and inventory changes are host-stream only; listing copy and capture claims unaffected.",
         "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
         "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes.",
-        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes."
+        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {
@@ -22695,7 +22710,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951",
-      "sourceRevision": "8edcc8c3ebf56213db4403133bd53651e7e298df",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22703,11 +22718,11 @@
       "sources": [
         {
           "path": ".github/workflows/publish-release.yml",
-          "digest": "0662818fdd47afa054bad6cfaca0251a55f302e504d438b03a1f9f220482fba8"
+          "digest": "23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57"
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": "install.sh",
@@ -23090,7 +23105,8 @@
         "#2959 delta: release-artifacts assemble/validate now also require the host archives and payload and verify an attached signed host manifest; the documented assemble/validate behavior (every asset digest, SBOM bindings, validation before draft and publish) still holds. No CLI claim changes.",
         "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
         "#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes.",
-        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes."
+        "#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {
@@ -30686,7 +30702,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "162f86970a28d6d4d826236ad54fa2bab1d2a55f",
+      "sourceRevision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -30702,7 +30718,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "a216a91084ff2a0d2f8b4c267ee2c50988ee256915c6620603830711611c5580"
+          "digest": "c2cdc17baf65ee2aac415b5f99cc4e7476571eaaf8b47241996c7a1150b47c18"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -30761,7 +30777,8 @@
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The raster channel icons and the favicon-dev swap under is-dev-build are unchanged; the CSS brand stays an amber/indigo/violet shade per channel.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "#2959 delta: release.yml adds host-stream jobs; icon generation and channel overlay steps unchanged.",
-        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources."
+        "#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.",
+        "Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes."
       ]
     },
     {

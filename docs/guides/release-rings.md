@@ -70,7 +70,9 @@ the default GitHub-attested source path described above. See the
 
 ## Signed host-stream manifests
 
-Every tag also builds the host stream (#2959): the five
+This implements the ring pointers and the one manifest base of
+[ADR 0020](../adr/0020-distribution-two-trains-channels-as-pointers.md)
+(D1 and D3). Every tag also builds the host stream (#2959): the five
 `station-server-<os>-<arch>` prebuilt archives for the tag's ring, and the
 schema v2 payload that names them. The `host-manifest` job in
 [`release.yml`](../../.github/workflows/release.yml) assembles the payload
