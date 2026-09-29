@@ -142,6 +142,7 @@ Common fields:
 | `build` | string | no | Reserved; currently rejected so builds cannot execute manifest-supplied commands |
 | `capabilities` | string[] | no | Declared capabilities, e.g. `["chat", "navigation"]` |
 | `commands` | PluginCommandContribution[] | no | Palette-command declarations (at most 32). Each `id` must be `<name>.<command>` and unique; `navigate` names a destination id. Validated for both manifest formats; declarations that fail are dropped (the plugin still loads) and the inventory shows `commandsRejected.reason`. Declaration grants no execution authority, and every effect is admitted by Station (see [Plugin Command Effects](../reference/api.md#plugin-command-effects)) |
+| `commandsRejected` | `{ reason: string }` | no | Set by Station, not by authors: the loader discards any value in `plugin.json` and sets it only when `commands` failed validation and was dropped |
 | `permissions` | string[] | no | Permissions the plugin needs (see Permissions) |
 | `links` | unknown | no | Opaque link metadata returned by plugin preview; it grants no capability |
 | `agents` | array | no | Agent configs to install |

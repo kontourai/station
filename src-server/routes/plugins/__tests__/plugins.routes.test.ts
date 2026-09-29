@@ -1784,6 +1784,11 @@ describe('Plugin Routes', () => {
           hasBundle: true,
           hasSettings: true,
           layout: { slug: 'test-layout', source: 'layout.js' },
+          // A ready row publishes its validated command declarations (none
+          // in this manifest) and the generation a command request echoes:
+          // no managed incarnation in this fixture, so `[null, digest]`.
+          commands: [],
+          installationGeneration: '[null,"sha256:test"]',
           agents: [],
           providers: [{ type: 'test-provider', module: 'provider.js' }],
           links: null,
