@@ -1201,8 +1201,12 @@
    starts; only its fill and glyph change. Always enabled — stopping a running
    turn must not depend on there being text in the input. */
 .chat-input .chat-input__stop-btn {
-  background: var(--error-bg);
-  color: var(--error-text, var(--text-primary));
+  /* The white-carrying danger fill (4.98:1, see the hover note below). The
+     previous tint — `--error-text` on `--error-bg` — was a red square on a
+     dark-red circle that nearly vanished on a phone, where there is no
+     hover to reach the legible state. */
+  background: var(--error-fill);
+  color: white;
 }
 
 .chat-input .chat-input__stop-btn svg {
@@ -2069,6 +2073,21 @@
     min-height: 44px;
     min-width: 44px;
   }
+
+  /* The Agent/Model/Mode rail has no fill of its own and sits flush on the
+     transcript's bottom edge, so a line scrolled to that edge was sliced
+     mid-glyph right against the chips and read as text running under them.
+     Fade the transcript out over its own bottom gutter instead: at rest at
+     the bottom only padding is in the fade, and mid-scroll the cut line
+     dissolves before it reaches the rail. */
+  .chat-messages {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 16px),
+      transparent
+    );
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
+  }
 }
 
 /* #1132 defect 2: below this width the toolbar's action cluster no longer fits,
@@ -2152,6 +2171,25 @@
    a sheet from one separate touch target, outside the message bubble. */
 .message-row--compact {
   gap: 8px;
+}
+/* An answer's trigger goes under the answer, not beside it. Beside it, every
+   answer reserved a 52px column for one 44px button — the text column ended
+   ~85% across a 412px phone — and because the answer was a shrink-to-fit
+   flex item, each row ended wherever its own content did, so rows (and
+   their tool-row chevrons) ended at different widths from one answer to
+   the next. The user's bubble is right-aligned and short; it keeps the
+   side-by-side layout. */
+.message-row--compact:not(.message-row--user) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+.message-row--compact:not(.message-row--user) > .message {
+  max-width: none;
+}
+.message-row--compact:not(.message-row--user) > .message-details__trigger {
+  align-self: flex-end;
+  margin-top: -10px;
 }
 .message-row--compact .message {
   padding: 10px 14px;

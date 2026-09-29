@@ -702,7 +702,14 @@ function MessageBubbleComponent({
       <div
         style={{
           position: 'relative',
-          maxWidth: isMobile ? 'calc(100% - 52px)' : '70%',
+          // On a phone only the user's bubble keeps the reserved column for
+          // its ⋯ trigger; an answer spends the full width on its words and
+          // carries the trigger below it (chat.css `.message-row--compact`).
+          maxWidth: isMobile
+            ? msg.role === 'user'
+              ? 'calc(100% - 52px)'
+              : undefined
+            : '70%',
         }}
         className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
       >

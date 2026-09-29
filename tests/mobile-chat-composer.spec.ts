@@ -3,6 +3,7 @@ import { copyFile, mkdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
+import { PNG } from 'pngjs';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { expectNoBlockingAccessibilityViolations } from './helpers/accessibility';
 import {
@@ -2021,6 +2022,107 @@ for (const width of [361, 375, 390, 431, 481]) {
     }
   });
 }
+
+/**
+ * The full-screen dock counts the top safe-area inset once. The dock itself
+ * starts below the status bar (`--app-toolbar-total-height`, reduced to
+ * `--safe-top` in this mode); its header used to pad by the inset as well,
+ * which on an edge-to-edge phone left a status-bar-tall empty band between
+ * the sheet's grip and the project/chat title. `env(safe-area-inset-top)` is
+ * always 0 in headless Chromium, so the inset is written to the token whose
+ * only source is that env() — without it this test could not fail.
+ */
+test('the maximized phone dock header clears the status bar once, not twice', async ({
+  page,
+}) => {
+  const SAFE_TOP_PX = 48;
+  await page.addInitScript((inset) => {
+    const apply = () =>
+      document.documentElement.style.setProperty('--safe-top', `${inset}px`);
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', apply, { once: true });
+    } else {
+      apply();
+    }
+  }, SAFE_TOP_PX);
+  await page.setViewportSize({ width: 412, height: 915 });
+  await mockChatShell(page);
+  await openComposer(page, true);
+  const header = page.getByTestId('chat-dock-mobile-header');
+  const resting = (await header.boundingBox())!;
+
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Expand chat/ }).click();
+  await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+  await expect(page.getByRole('button', { name: 'Toggle menu' })).toBeVisible();
+  const geometry = await page.evaluate(() => {
+    const box = (selector: string) =>
+      document.querySelector(selector)!.getBoundingClientRect();
+    return {
+      dockTop: box('.chat-dock').top,
+      headerTop: box('.chat-dock__mobile-header').top,
+      headerHeight: box('.chat-dock__mobile-header').height,
+      leadingTop: box('.chat-dock__mobile-leading').top,
+    };
+  });
+  // The premise: the dock itself sits below the inset.
+  expect(geometry.dockTop).toBeGreaterThanOrEqual(SAFE_TOP_PX);
+  // So the header is the same bar it is when not maximized — no second inset.
+  expect(
+    geometry.headerHeight,
+    JSON.stringify({ resting: resting.height, ...geometry }),
+  ).toBeLessThanOrEqual(resting.height + 1);
+  expect(geometry.leadingTop - geometry.dockTop).toBeLessThan(SAFE_TOP_PX / 2);
+});
+
+/**
+ * The transcript fades out over its bottom gutter instead of being sliced
+ * against the transparent Agent/Model/Mode rail. A solid probe block fills the
+ * scroller past its bottom edge; the rendered pixels in the last rows of the
+ * scroller must fall back toward the dock background, while rows above the
+ * fade stay the probe colour.
+ */
+test('mobile transcript fades out above the composer rail instead of cutting under it', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 412, height: 915 });
+  await mockChatShell(page);
+  await openComposer(page, true);
+  const messages = page.locator('.chat-messages');
+  await expect(messages).toBeVisible();
+  await messages.evaluate((element) => {
+    const probe = document.createElement('div');
+    probe.setAttribute('data-testid', 'fade-probe');
+    probe.style.cssText =
+      'flex: 0 0 auto; align-self: stretch; height: 2000px; background: rgb(255, 255, 255);';
+    element.prepend(probe);
+    element.scrollTop = 200;
+  });
+  const box = (await messages.boundingBox())!;
+  // Whatever sits below the scroller (a stream-status line, the rail), the
+  // transcript's own bottom edge is where a scrolled line used to be cut.
+  const shot = PNG.sync.read(
+    await page.screenshot({
+      clip: {
+        x: box.x + box.width / 2 - 4,
+        y: box.y + box.height - 40,
+        width: 8,
+        height: 40,
+      },
+    }),
+  );
+  const brightness = (row: number) => {
+    const y = Math.min(shot.height - 1, Math.round((row / 40) * shot.height));
+    const offset = (shot.width * y + Math.floor(shot.width / 2)) << 2;
+    return (
+      (shot.data[offset] + shot.data[offset + 1] + shot.data[offset + 2]) / 3
+    );
+  };
+  // Above the fade the probe paints at full strength...
+  expect(brightness(4)).toBeGreaterThan(240);
+  // ...and at the rail it has faded to (nearly) nothing.
+  expect(brightness(39)).toBeLessThan(80);
+});
 
 for (const viewport of [
   { width: 320, height: 568 },

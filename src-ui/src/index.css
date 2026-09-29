@@ -9579,6 +9579,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* A maximized chat is the active phone surface; keep its Restore target
        above sticky toolbar descendants at the shared boundary. */
     z-index: calc(var(--layer-sticky) + 1);
+    /* No accent rule on a maximized sheet. The 2px `--accent-primary` top
+       border is the dock's edge against the page (it is a static accent, not
+       a progress indicator). Maximized, there is no page above it: under a
+       visible toolbar it stacked beneath the toolbar's own hairline as a
+       double rule, and with the toolbar hidden it drew a bright line along
+       the status bar. */
+    border-top: 0;
     /* The 44px mobile dock controls overhang the nominal header line box by a
        few pixels. Keep that hit target below the toolbar while preserving the
        visual-viewport bottom exactly. */
@@ -9787,9 +9794,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      owns this header's one mobile treatment). See page-frame.css's own
      responsive breakpoints. */
 
-  .app__main--mobile-dock-fullscreen > .chat-dock .chat-dock__mobile-header {
-    padding-top: calc(var(--space-1) + var(--safe-top, 0px));
-  }
+  /* No top safe-area padding on the full-screen dock's own header. The dock
+     already starts below the status bar: its `top` adds
+     `--app-toolbar-total-height`, which this mode reduces to `--safe-top`
+     (the maximized rule, and the short-window rule, which adds `--safe-top`
+     itself). Padding the header by the inset as well counted it twice and
+     left a status-bar-tall empty band above the project and chat title on
+     every edge-to-edge phone. tests/mobile-chat-composer.spec.ts measures
+     the header's height against the collapsed bar's with a real inset. */
 
   /* Deliberately NOT animated, reverting an attempt of mine to animate the
      snap into Full. A maximized dock's height tracks the visual viewport, so
