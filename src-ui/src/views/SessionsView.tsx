@@ -167,7 +167,13 @@ function ActivityRowMeta({
   const state = orchestrationLifecycleLabel(session);
   const stateWord = sessionStatusWord(session);
   const running =
-    state === 'Running' ? activityRunningDetail(session, now) : [];
+    state === 'Running' ? activityRunningDetail(session, now) : null;
+  const stateText = [
+    running?.duration ? `${stateWord} for ${running.duration}` : stateWord,
+    running?.activity,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const turnProgress = activeTurnProgress(session);
   const attached = isReadOnlyAttachedSession(session);
   const agentName = attached ? null : sessionIconAgent(session, agents).name;
@@ -199,9 +205,7 @@ function ActivityRowMeta({
     >
       <span className="activity-row-meta__state">
         {!attached && <StatusGlyph state={state} />}{' '}
-        <span data-testid="activity-row-state">
-          {[stateWord, ...running].join(' ')}
-        </span>
+        <span data-testid="activity-row-state">{stateText}</span>
       </span>
       {turnProgress?.progressSilence && (
         <>

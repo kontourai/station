@@ -189,37 +189,36 @@ export function datedStreamBucket(
 }
 
 /**
- * The running detail a Running row adds after its state word: how long the
- * open turn has run and the tool it is inside. Every fact is read from the
+ * The running detail a Running row adds to its state word: how long the
+ * open turn has run ("for 3m") and what it is doing ("using Bash", or when
+ * no tool is in flight, "last progress 2m ago"). Every fact is read from the
  * summary's own projections — `conversationActivity.openTurn`/`runningTools`
- * (the same fold as `hasActiveTurn`) gated through `activeTurnProgress`'s
- * applicability rule — and any missing one is omitted, never defaulted.
+ * (the same fold as `hasActiveTurn`) and `activeTurnProgress`'s
+ * applicability gate — and any missing or sub-minute one is omitted, never
+ * defaulted: a fresh turn reads plain "Running".
  */
 export function activityRunningDetail(
   session: OrchestrationSessionSummary,
   now: number,
-): string[] {
-  if (!session.hasActiveTurn) return [];
+): { duration: string | null; activity: string | null } {
+  if (!session.hasActiveTurn) return { duration: null, activity: null };
   const activity = session.conversationActivity;
-  const parts: string[] = [];
-  const startedAt = Date.parse(activity?.openTurn?.startedAt ?? '');
-  if (Number.isFinite(startedAt) && startedAt > 0) {
-    const elapsed = relativeTime(startedAt, now);
-    parts.push(elapsed === 'now' ? 'just started' : `for ${elapsed}`);
-  }
+  const minutesSince = (stamp: string | undefined) => {
+    const at = Date.parse(stamp ?? '');
+    if (!Number.isFinite(at) || at <= 0) return null;
+    const compact = relativeTime(at, now);
+    return compact === 'now' ? null : compact;
+  };
+  const duration = minutesSince(activity?.openTurn?.startedAt);
   const runningTool = activity?.runningTools?.at(-1)?.name;
-  if (runningTool) parts.push(`using ${runningTool}`);
-  else {
-    const lastProgress = activeTurnProgress(session)?.lastProgressEventAt;
-    const progressAt = Date.parse(lastProgress ?? '');
-    if (Number.isFinite(progressAt) && progressAt > 0) {
-      const ago = relativeTime(progressAt, now);
-      parts.push(
-        ago === 'now' ? 'progress just now' : `last progress ${ago} ago`,
-      );
-    }
-  }
-  return parts;
+  if (runningTool) return { duration, activity: `using ${runningTool}` };
+  const progress = minutesSince(
+    activeTurnProgress(session)?.lastProgressEventAt,
+  );
+  return {
+    duration,
+    activity: progress ? `last progress ${progress} ago` : null,
+  };
 }
 
 /**

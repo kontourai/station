@@ -304,7 +304,7 @@ describe('Activity list', () => {
     const row = screen.getByRole('button', { name: /^Refactor the parser/ });
     const meta = within(row).getByTestId('activity-row-meta');
     expect(within(meta).getByTestId('activity-row-state').textContent).toBe(
-      'Running for 3m using Bash',
+      'Running for 3m · using Bash',
     );
     expect(within(meta).getByRole('img').getAttribute('aria-label')).toBe(
       'Running',
