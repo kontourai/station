@@ -364,8 +364,25 @@ interface ChatWorkspacePaneSharedProps {
  */
 type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
   (
-    | { placement: 'dock'; shellChrome: DockShellChrome }
-    | { placement: 'fullscreen'; shellChrome?: never }
+    | {
+        placement: 'dock';
+        shellChrome: DockShellChrome;
+        ownsDockShortcuts?: never;
+        onPresentationTitleChange?: never;
+      }
+    | {
+        placement: 'fullscreen';
+        shellChrome?: never;
+        /**
+         * Whether this full-screen placement registers the dock's maximize
+         * chord. True for the Chat layout, which owns the whole viewport. The
+         * Coding layout's centre passes false: its page has nothing to
+         * maximize, and the chord would write the (suspended) dock region.
+         */
+        ownsDockShortcuts?: boolean;
+        /** The title a host's breadcrumb shows for the conversation on screen. */
+        onPresentationTitleChange?: (title: string) => void;
+      }
   );
 
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
@@ -390,7 +407,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // the same ids (station#4460 review H1).
   const localShellChrome = useDockShellChrome({
     publishesDockSlotClearance: false,
-    registersDockShortcuts: isFullscreenPlacement,
+    registersDockShortcuts:
+      isFullscreenPlacement && props.ownsDockShortcuts !== false,
   });
   // Narrowed on `props.placement` directly (not a destructured alias) so
   // TypeScript proves `props.shellChrome` is defined in the docked branch —
@@ -1015,6 +1033,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const importedOrigin = importedSession
     ? `Started in ${displayProvider(importedSession)}`
     : 'Started in another app';
+  // The same title the header leads with, published to a host that shows it
+  // elsewhere (the Coding stack's breadcrumb).
+  const presentationTitle = importedSessionId
+    ? importedTitle
+    : activeSession?.title || 'Chat';
+  const onPresentationTitleChange = props.onPresentationTitleChange;
+  useEffect(() => {
+    onPresentationTitleChange?.(presentationTitle);
+  }, [onPresentationTitleChange, presentationTitle]);
   const activeChatModelLabel = chatModelLabel(
     activeChatModelId,
     effectiveModels,

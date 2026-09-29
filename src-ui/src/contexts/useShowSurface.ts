@@ -1,5 +1,9 @@
 import { surfaceDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { useCallback } from 'react';
+import {
+  requestCenterChatPage,
+  useLayoutChatPlacement,
+} from '../app-shell/chat-placement';
 import { navigationStore } from './navigation-store';
 import { type SurfaceIntent, useRegionModel } from './RegionModelContext';
 
@@ -26,9 +30,20 @@ export function useShowSurface(): (
   surfaceId: string,
   intent?: SurfaceIntent,
 ) => void {
-  const { canRenderRegionSurfaces, showSurface } = useRegionModel();
+  const { canRenderRegionSurfaces, showSurface, deliverSurfaceIntent } =
+    useRegionModel();
+  const centerOwnsChat = useLayoutChatPlacement() === 'center';
   return useCallback(
     (surfaceId: string, intent?: SurfaceIntent) => {
+      // While the Coding layout's centre owns Chat, "show Chat" is its Chat
+      // page: revealing Chat's dock region would reveal a region the shells
+      // render without Chat. The intent (a session to open) still goes
+      // through the outbox, which the centre's Chat consumes like any other
+      // Chat placement.
+      if (surfaceId === 'chat' && centerOwnsChat && requestCenterChatPage()) {
+        if (intent) deliverSurfaceIntent(surfaceId, intent);
+        return;
+      }
       if (canRenderRegionSurfaces) {
         showSurface(surfaceId, intent);
         return;
@@ -41,6 +56,11 @@ export function useShowSurface(): (
         }),
       );
     },
-    [canRenderRegionSurfaces, showSurface],
+    [
+      canRenderRegionSurfaces,
+      centerOwnsChat,
+      deliverSurfaceIntent,
+      showSurface,
+    ],
   );
 }

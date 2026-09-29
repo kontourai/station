@@ -38,6 +38,22 @@ export function readWorkspacePaneHostSelection(
     : null;
 }
 
+/**
+ * Whether the URL currently names a pane FOR THIS HOST'S SCOPE — any pane,
+ * including one the host just closed. The `'explicit'` selection mode keeps
+ * such a name current and never mints one (`workspacePaneHostController`).
+ */
+export function workspacePaneHostSelectionIsNamed(
+  document: WorkspacePaneHostDocumentV1,
+): boolean {
+  const snapshot = navigationStore.getSnapshot();
+  return (
+    snapshot.activeWorkspacePane !== null &&
+    snapshot.activeWorkspacePaneScope ===
+      workspacePaneHostScopeKey(document.scope)
+  );
+}
+
 export function workspacePaneHostScopeKey(
   scope: WorkspacePaneHostScope,
 ): string {

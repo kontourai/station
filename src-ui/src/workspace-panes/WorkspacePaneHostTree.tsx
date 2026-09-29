@@ -89,9 +89,11 @@ export interface WorkspacePaneHostTreeProps {
   /**
    * Whether the host's selection is a navigation fact (`?pane=`, a history
    * entry). Default true; a region host passes false — its selection
-   * authority is the region model (see the controller's option).
+   * authority is the region model (see the controller's option); the Coding
+   * navigation stack passes `'explicit'`, whose URL names a pane only when a
+   * user or an open named one.
    */
-  navigationSelection?: boolean;
+  navigationSelection?: boolean | 'explicit';
   runtime?: WorkspacePaneHostRuntime;
   storage?: WorkspacePaneHostStorage;
   /** Injectable only at the browser-lock boundary; production uses Web Locks. */

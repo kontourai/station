@@ -46,10 +46,15 @@ import type { WorkspacePaneHostDocumentV1 } from '@kontourai/station-contracts/w
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
 import { telemetry, useProjectLayoutQuery } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CodingWorkbench } from '../components/coding-layout/CodingWorkbench';
+import {
+  resolveCodingStackLocation,
+  useCodingStackSelection,
+} from '../components/coding-layout/codingStackPage';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { Empty, ErrorState, SkeletonList } from '../components/state';
 import { useNavigationActions } from '../contexts/NavigationContext';
-import { useIsMobile } from '../hooks/useIsMobile';
+import { useDockFoldsToOneRegion, useIsMobile } from '../hooks/useIsMobile';
 import { LayoutRenderer } from '../layouts';
 import {
   type NativePlatformAdapter,
@@ -61,6 +66,7 @@ import {
   browserPreviewPanePresentationLabel,
   removeRemovedBrowserPreviewPaneState,
 } from '../workspace-panes/browserPreviewPaneInstance';
+import { builtinWorkspacePaneName } from '../workspace-panes/builtinWorkspacePaneCanonical';
 import {
   getBuiltinWorkspacePaneRenderer,
   isCanonicalBuiltinBrowserPreviewDescriptor,
@@ -110,7 +116,10 @@ import { codingEvidenceUnavailableCopy } from './codingEvidenceUnavailableCopy';
 import { trackCodingFileCompositionReceipt } from './codingFileCompositionTelemetry';
 import { isUnplacedLayoutRecord } from './layout-record-absent';
 import { layoutTypeRegistry } from './layoutRegistry';
-import { resolveProjectLayoutRendererKind } from './project-layout-kind';
+import {
+  resolveLayoutChatPlacement,
+  resolveProjectLayoutRendererKind,
+} from './project-layout-kind';
 
 const loadProjectBasisMcpWorkspacePane = () =>
   import('../workspace-panes/BasisMcpWorkspacePane').then(
@@ -418,6 +427,18 @@ function BuiltinCodingLayoutHost({
     useState<WorkspacePaneHostOpenRefusal | null>(null);
   const [hostInstanceIds, setHostInstanceIds] = useState<ReadonlySet<string>>();
   /**
+   * The host's live panes, in document order: what the Coding stack's Views
+   * menu lists and what a `?pane=` must name to be a drill-in. Moves with
+   * `hostInstanceIds` (membership), not with every document change.
+   */
+  const [hostInstances, setHostInstances] =
+    useState<readonly WorkspacePaneInstance[]>();
+  /** The host's latest document, read when the catalog needs a target group. */
+  const liveHostDocument = useRef<WorkspacePaneHostDocumentV1 | null>(null);
+  const announcedInstanceIds = useRef<ReadonlySet<string> | undefined>(
+    undefined,
+  );
+  /**
    * Stable sink, and a set identity that moves only when its membership does.
    * Both halves matter: an inline handler made the host re-announce on every
    * render, and a freshly built `Set` made every announcement — including the
@@ -426,15 +447,24 @@ function BuiltinCodingLayoutHost({
    */
   const handleHostDocumentChange = useCallback(
     (next: WorkspacePaneHostDocumentV1) => {
-      setHostInstanceIds((current) => {
-        const ids = new Set(
-          next.instances.map((instance) => instance.instanceId),
-        );
-        return sameWorkspacePaneInstanceIds(current, ids) ? current : ids;
-      });
+      liveHostDocument.current = next;
+      const ids = new Set(
+        next.instances.map((instance) => instance.instanceId),
+      );
+      if (sameWorkspacePaneInstanceIds(announcedInstanceIds.current, ids))
+        return;
+      announcedInstanceIds.current = ids;
+      setHostInstanceIds(ids);
+      setHostInstances(next.instances);
     },
     [],
   );
+  // The Coding stack (#928): which page the URL names, and whether the
+  // centre shows Chat — the same derivation App suspends the dock's Chat by.
+  const stackSelection = useCodingStackSelection();
+  const bottomOnly = useDockFoldsToOneRegion();
+  const centerChat =
+    resolveLayoutChatPlacement({ type: 'coding' }, { bottomOnly }) === 'center';
   /**
    * archive#3794: these five are host-effect dependencies
    * (`workspacePaneHostController.ts` — the availability sweep, the
@@ -677,6 +707,34 @@ function BuiltinCodingLayoutHost({
       setOpenRefusal(outcome.reason);
     },
     [catalog.entries, catalog.projectSlug, catalogRequest, hostOpen],
+  );
+  /**
+   * The Coding occurrence is the layout's Chat position, which is the stack's
+   * Chat page now — never a drill-in. Refused at the host's open seam, and
+   * left out of the picker below, so it cannot come back as a pane.
+   */
+  const admitOpenInstance = useCallback(
+    (instance: WorkspacePaneInstance) =>
+      !catalog.entries.some(
+        (candidate) =>
+          candidate.descriptor.id === instance.descriptorId &&
+          isCanonicalBuiltinCodingOccurrence(instance, candidate.descriptor),
+      ),
+    [catalog.entries],
+  );
+  const pickerEntries = useMemo(
+    () =>
+      catalog.entries.filter(
+        (candidate) =>
+          !(
+            candidate.instance &&
+            isCanonicalBuiltinCodingOccurrence(
+              candidate.instance,
+              candidate.descriptor,
+            )
+          ),
+      ),
+    [catalog.entries],
   );
   const codingOccurrence = catalog.entries.find(
     (candidate) =>
@@ -1030,23 +1088,37 @@ function BuiltinCodingLayoutHost({
     evidenceCompositionControl === 'legacy'
       ? trustInstance
       : selectedEvidence(WORKSPACE_TRUST_PANE_DESCRIPTOR_ID);
-  const document = retainWorkspacePaneHostDocument(
-    publishedDocument,
-    createWorkspacePaneHostBaselineDocument(
-      `builtin-coding-${layoutSlug}`,
-      { kind: 'project', projectId, layoutId: layout.id },
-      [
-        codingInstance,
-        ...(selectedFileBrowserInstance ? [selectedFileBrowserInstance] : []),
-        ...(selectedDiffInstance ? [selectedDiffInstance] : []),
-        ...(terminalInstance ? [terminalInstance] : []),
-        ...(selectedPlanInstance ? [selectedPlanInstance] : []),
-        ...(selectedReadinessInstance ? [selectedReadinessInstance] : []),
-        ...(selectedTrustInstance ? [selectedTrustInstance] : []),
-      ],
-    ),
-  );
-  if (!document) {
+  // The Coding occurrence gates the host (above) but is not one of its panes:
+  // the layout's Chat position is the stack's Chat page (`CodingWorkbench`).
+  // A document persisted before the stack still lists it; the host's restore
+  // drops an occurrence its catalog no longer issues and prunes the group it
+  // leaves empty, keeping every other pane and its state
+  // (`restoreWorkspacePaneHostDocument`), so the stored id is reused as is.
+  const drillInInstances = [
+    ...(selectedFileBrowserInstance ? [selectedFileBrowserInstance] : []),
+    ...(selectedDiffInstance ? [selectedDiffInstance] : []),
+    ...(terminalInstance ? [terminalInstance] : []),
+    ...(selectedPlanInstance ? [selectedPlanInstance] : []),
+    ...(selectedReadinessInstance ? [selectedReadinessInstance] : []),
+    ...(selectedTrustInstance ? [selectedTrustInstance] : []),
+  ];
+  const hostScope = {
+    kind: 'project' as const,
+    projectId,
+    layoutId: layout.id,
+  };
+  const document =
+    drillInInstances.length > 0
+      ? retainWorkspacePaneHostDocument(
+          publishedDocument,
+          createWorkspacePaneHostBaselineDocument(
+            `builtin-coding-${layoutSlug}`,
+            hostScope,
+            drillInInstances,
+          ),
+        )
+      : null;
+  if (drillInInstances.length > 0 && !document) {
     return (
       <ErrorState
         title="Coding workspace cannot mount"
@@ -1054,8 +1126,32 @@ function BuiltinCodingLayoutHost({
       />
     );
   }
+  const location = resolveCodingStackLocation(
+    hostScope,
+    // Unknown until the host reports its live set: trust the URL meanwhile.
+    hostInstances ?? (document ? undefined : []),
+    stackSelection.pane,
+    stackSelection.paneScope,
+  );
+  const stackPaneLabel = (instance: WorkspacePaneInstance) =>
+    presentationLabel(instance) ??
+    builtinWorkspacePaneName(instance.descriptorId) ??
+    'Pane';
   return (
-    <>
+    <CodingWorkbench
+      projectId={projectId}
+      projectSlug={projectSlug}
+      layoutSlug={layoutSlug}
+      centerChat={centerChat}
+      location={location}
+      scope={hostScope}
+      instances={hostInstances ?? document?.instances ?? []}
+      hostDocument={() => liveHostDocument.current ?? document!}
+      paneLabel={stackPaneLabel}
+      hostOpen={hostOpen}
+      onOpenCatalog={requestCatalog}
+      browserPreviewAvailability={browserPreviewEntry?.availability}
+    >
       {fileCompositionReceipt ? (
         <CodingFileCompositionReceiptTracker receipt={fileCompositionReceipt} />
       ) : null}
@@ -1071,221 +1167,232 @@ function BuiltinCodingLayoutHost({
       {(evidenceComposition?.unavailablePanes ?? []).map((entry) => (
         <Empty key={entry.category} {...codingEvidenceUnavailableCopy(entry)} />
       ))}
-      <WorkspacePaneHost
-        document={document}
-        runtime={workspacePaneRuntime.current}
-        compact={compact}
-        onDocumentChange={handleHostDocumentChange}
-        onOpenCatalog={requestCatalog}
-        onOpenActionChange={captureHostOpen}
-        popOut={popOut}
-        operationalEventContext={operationalEventContext}
-        operationalAvailability={operationalAvailability}
-        admitRestoredInstance={admitRestoredInstance}
-        onInstanceRemoved={onInstanceRemoved}
-        presentationLabel={presentationLabel}
-        renderPane={(instance, presentation) => {
-          // #2465: a dock-only pane (the host-global Device pane) is not
-          // another Project's — it is no Project's. Say where it lives. The
-          // same predicate keeps the picker from offering it.
-          const dockOnly = catalog.entries.find(
-            (candidate) =>
-              candidate.descriptor.id === instance.descriptorId &&
-              !isProjectPlaceableWorkspacePane(candidate.descriptor),
-          )?.descriptor;
-          if (dockOnly) {
-            const remove =
-              hostOpen?.close && (hostInstanceIds?.size ?? 0) > 1
-                ? hostOpen.close
-                : undefined;
-            return (
-              <DockOnlyWorkspacePaneNotice
-                descriptor={dockOnly}
-                {...(remove
-                  ? { onRemove: () => void remove(instance.instanceId) }
-                  : {})}
-              />
-            );
-          }
-          if (!isWorkspacePaneInstanceOwnedByProject(instance, projectId)) {
-            return (
-              <Empty
-                label="Workspace pane unavailable"
-                description="This pane belongs to a different Project."
-              />
-            );
-          }
-          const paneEntry = catalog.entries.find(
-            (candidate) =>
-              candidate.instance?.instanceId === instance.instanceId &&
-              candidate.descriptor.id === instance.descriptorId,
-          );
-          const codeIssuedBasisMcp =
-            isCanonicalBasisMcpWorkspacePaneInstance(instance);
-          const descriptor =
-            paneEntry?.descriptor ??
-            (instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id
-              ? WORKSPACE_BASIS_PANE_DESCRIPTOR
-              : instance.descriptorId === entry.descriptor.id
-                ? entry.descriptor
-                : instance.descriptorId === fileBrowserEntry?.descriptor.id
-                  ? fileBrowserEntry?.descriptor
-                  : instance.descriptorId === diffEntry?.descriptor.id
-                    ? diffEntry?.descriptor
-                    : instance.descriptorId === terminalEntry?.descriptor.id
-                      ? terminalEntry?.descriptor
-                      : instance.descriptorId === planEntry?.descriptor.id
-                        ? planEntry?.descriptor
-                        : instance.descriptorId ===
-                            readinessEntry?.descriptor.id
-                          ? readinessEntry?.descriptor
-                          : instance.descriptorId === trustEntry?.descriptor.id
-                            ? trustEntry?.descriptor
-                            : instance.descriptorId ===
-                                filePreviewEntry?.descriptor.id
-                              ? filePreviewEntry?.descriptor
-                              : instance.descriptorId ===
-                                  browserPreviewEntry?.descriptor.id
-                                ? browserPreviewEntry.descriptor
-                                : null);
-          const Pane =
-            descriptor &&
-            getBuiltinWorkspacePaneRenderer(
-              descriptor,
-              instance.descriptorId === entry.descriptor.id
-                ? instance
-                : undefined,
-            );
-          if (paneEntry && paneEntry.availability.state !== 'available') {
-            const presentation = presentWorkspacePaneAvailability(
-              paneEntry.availability,
-              paneEntry.rendererGate,
-              paneEntry.rendererResolution,
-            );
-            return (
-              <Empty
-                label={`${paneEntry.descriptor.name} unavailable`}
-                description={`${presentation.reasonLabel}${presentation.actionLabel ? ` Next: ${presentation.actionLabel}.` : ''}`}
-              />
-            );
-          }
-          const mcpRenderer =
-            paneEntry?.selectedRenderer?.renderer.kind === 'mcp-tool-ui'
-              ? paneEntry.selectedRenderer.renderer
-              : null;
-          const pluginRenderer =
-            paneEntry?.selectedRenderer?.renderer.kind === 'plugin-component'
-              ? paneEntry.selectedRenderer
-              : null;
-          const pluginComponent =
-            pluginRenderer?.renderer.kind === 'plugin-component'
-              ? pluginRenderer.renderer
-              : null;
-          const trustedPluginLayout =
-            pluginRenderer && pluginComponent && descriptor
-              ? resolveClientTrustedPluginLayout(
-                  descriptor,
-                  pluginRenderer,
-                  instance,
-                )
-              : null;
-          if (codeIssuedBasisMcp) {
-            return (
-              <LazyBoundary
-                load={loadProjectBasisMcpWorkspacePane}
-                componentProps={{ instance, presentation }}
-                pending={<SkeletonList count={1} label="Loading Basis App" />}
-              />
-            );
-          }
-          if (mcpRenderer && descriptor) {
-            const selectedTab = {
-              id: instance.instanceId,
-              label: descriptor.name,
-              description: descriptor.description,
-              component: mcpRenderer,
-              actions: descriptor.actions,
-            };
-            return (
-              <LayoutRenderer
-                componentId={mcpRenderer}
-                layout={{
-                  name: descriptor.name,
-                  slug: instance.instanceId,
-                  tabs: [selectedTab],
-                }}
-                activeTab={selectedTab}
-                activeTabId={selectedTab.id}
-                mcpUiPaneIdentity={{
-                  descriptorId: instance.descriptorId,
-                  instanceId: instance.instanceId,
-                  stateKey: instance.stateKey,
-                }}
-                mcpUiDisplayMode={presentation.displayMode}
-                mcpUiHostAvailableDisplayModes={
-                  presentation.availableDisplayModes
-                }
-                onMcpUiRequestDisplayMode={presentation.requestDisplayMode}
-                onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
-              />
-            );
-          }
-          if (
-            trustedPluginLayout &&
-            pluginRenderer &&
-            pluginComponent &&
-            descriptor
-          ) {
-            const pluginName =
-              instance.boundContext?.contribution?.provenance.origin ===
-              'plugin'
-                ? instance.boundContext.contribution.provenance.pluginId
-                : undefined;
-            if (!pluginName || !catalog.projectSlug) {
+      {document ? null : (
+        <Empty
+          label="No panes to show"
+          description="This Project’s Coding workspace has no panes available yet."
+        />
+      )}
+      {document ? (
+        <WorkspacePaneHost
+          document={document}
+          runtime={workspacePaneRuntime.current}
+          compact={compact}
+          navigationSelection="explicit"
+          onDocumentChange={handleHostDocumentChange}
+          onOpenCatalog={requestCatalog}
+          onOpenActionChange={captureHostOpen}
+          popOut={popOut}
+          operationalEventContext={operationalEventContext}
+          operationalAvailability={operationalAvailability}
+          admitRestoredInstance={admitRestoredInstance}
+          admitOpenInstance={admitOpenInstance}
+          onInstanceRemoved={onInstanceRemoved}
+          presentationLabel={presentationLabel}
+          renderPane={(instance, presentation) => {
+            // #2465: a dock-only pane (the host-global Device pane) is not
+            // another Project's — it is no Project's. Say where it lives. The
+            // same predicate keeps the picker from offering it.
+            const dockOnly = catalog.entries.find(
+              (candidate) =>
+                candidate.descriptor.id === instance.descriptorId &&
+                !isProjectPlaceableWorkspacePane(candidate.descriptor),
+            )?.descriptor;
+            if (dockOnly) {
+              const remove =
+                hostOpen?.close && (hostInstanceIds?.size ?? 0) > 1
+                  ? hostOpen.close
+                  : undefined;
               return (
-                <Empty
-                  label="Workspace pane unavailable"
-                  description="Station could not bind this plugin pane to its owning Project and plugin."
+                <DockOnlyWorkspacePaneNotice
+                  descriptor={dockOnly}
+                  {...(remove
+                    ? { onRemove: () => void remove(instance.instanceId) }
+                    : {})}
                 />
               );
             }
-            const selectedTab = {
-              id: instance.instanceId,
-              label: descriptor.name,
-              description: descriptor.description,
-              component: pluginComponent,
-              actions: descriptor.actions,
-            };
-            const paneLayout = {
-              name: descriptor.name,
-              slug: instance.instanceId,
-              tabs: [selectedTab],
-            };
-            return (
-              <PluginWorkspacePaneSDKBoundary
-                layout={paneLayout}
-                projectSlug={catalog.projectSlug}
-                pluginName={pluginName}
-              >
+            if (!isWorkspacePaneInstanceOwnedByProject(instance, projectId)) {
+              return (
+                <Empty
+                  label="Workspace pane unavailable"
+                  description="This pane belongs to a different Project."
+                />
+              );
+            }
+            const paneEntry = catalog.entries.find(
+              (candidate) =>
+                candidate.instance?.instanceId === instance.instanceId &&
+                candidate.descriptor.id === instance.descriptorId,
+            );
+            const codeIssuedBasisMcp =
+              isCanonicalBasisMcpWorkspacePaneInstance(instance);
+            const descriptor =
+              paneEntry?.descriptor ??
+              (instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id
+                ? WORKSPACE_BASIS_PANE_DESCRIPTOR
+                : instance.descriptorId === entry.descriptor.id
+                  ? entry.descriptor
+                  : instance.descriptorId === fileBrowserEntry?.descriptor.id
+                    ? fileBrowserEntry?.descriptor
+                    : instance.descriptorId === diffEntry?.descriptor.id
+                      ? diffEntry?.descriptor
+                      : instance.descriptorId === terminalEntry?.descriptor.id
+                        ? terminalEntry?.descriptor
+                        : instance.descriptorId === planEntry?.descriptor.id
+                          ? planEntry?.descriptor
+                          : instance.descriptorId ===
+                              readinessEntry?.descriptor.id
+                            ? readinessEntry?.descriptor
+                            : instance.descriptorId ===
+                                trustEntry?.descriptor.id
+                              ? trustEntry?.descriptor
+                              : instance.descriptorId ===
+                                  filePreviewEntry?.descriptor.id
+                                ? filePreviewEntry?.descriptor
+                                : instance.descriptorId ===
+                                    browserPreviewEntry?.descriptor.id
+                                  ? browserPreviewEntry.descriptor
+                                  : null);
+            const Pane =
+              descriptor &&
+              getBuiltinWorkspacePaneRenderer(
+                descriptor,
+                instance.descriptorId === entry.descriptor.id
+                  ? instance
+                  : undefined,
+              );
+            if (paneEntry && paneEntry.availability.state !== 'available') {
+              const presentation = presentWorkspacePaneAvailability(
+                paneEntry.availability,
+                paneEntry.rendererGate,
+                paneEntry.rendererResolution,
+              );
+              return (
+                <Empty
+                  label={`${paneEntry.descriptor.name} unavailable`}
+                  description={`${presentation.reasonLabel}${presentation.actionLabel ? ` Next: ${presentation.actionLabel}.` : ''}`}
+                />
+              );
+            }
+            const mcpRenderer =
+              paneEntry?.selectedRenderer?.renderer.kind === 'mcp-tool-ui'
+                ? paneEntry.selectedRenderer.renderer
+                : null;
+            const pluginRenderer =
+              paneEntry?.selectedRenderer?.renderer.kind === 'plugin-component'
+                ? paneEntry.selectedRenderer
+                : null;
+            const pluginComponent =
+              pluginRenderer?.renderer.kind === 'plugin-component'
+                ? pluginRenderer.renderer
+                : null;
+            const trustedPluginLayout =
+              pluginRenderer && pluginComponent && descriptor
+                ? resolveClientTrustedPluginLayout(
+                    descriptor,
+                    pluginRenderer,
+                    instance,
+                  )
+                : null;
+            if (codeIssuedBasisMcp) {
+              return (
+                <LazyBoundary
+                  load={loadProjectBasisMcpWorkspacePane}
+                  componentProps={{ instance, presentation }}
+                  pending={<SkeletonList count={1} label="Loading Basis App" />}
+                />
+              );
+            }
+            if (mcpRenderer && descriptor) {
+              const selectedTab = {
+                id: instance.instanceId,
+                label: descriptor.name,
+                description: descriptor.description,
+                component: mcpRenderer,
+                actions: descriptor.actions,
+              };
+              return (
                 <LayoutRenderer
-                  componentId={pluginComponent}
-                  trustedPluginLayout={trustedPluginLayout}
-                  layout={paneLayout}
+                  componentId={mcpRenderer}
+                  layout={{
+                    name: descriptor.name,
+                    slug: instance.instanceId,
+                    tabs: [selectedTab],
+                  }}
                   activeTab={selectedTab}
                   activeTabId={selectedTab.id}
+                  mcpUiPaneIdentity={{
+                    descriptorId: instance.descriptorId,
+                    instanceId: instance.instanceId,
+                    stateKey: instance.stateKey,
+                  }}
+                  mcpUiDisplayMode={presentation.displayMode}
+                  mcpUiHostAvailableDisplayModes={
+                    presentation.availableDisplayModes
+                  }
+                  onMcpUiRequestDisplayMode={presentation.requestDisplayMode}
+                  onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
                 />
-              </PluginWorkspacePaneSDKBoundary>
-            );
-          }
-          return Pane ? (
-            <Pane
-              descriptor={descriptor}
-              instance={instance}
-              browserPreviewAvailability={browserPreviewEntry?.availability}
-            />
-          ) : null;
-        }}
-      />
+              );
+            }
+            if (
+              trustedPluginLayout &&
+              pluginRenderer &&
+              pluginComponent &&
+              descriptor
+            ) {
+              const pluginName =
+                instance.boundContext?.contribution?.provenance.origin ===
+                'plugin'
+                  ? instance.boundContext.contribution.provenance.pluginId
+                  : undefined;
+              if (!pluginName || !catalog.projectSlug) {
+                return (
+                  <Empty
+                    label="Workspace pane unavailable"
+                    description="Station could not bind this plugin pane to its owning Project and plugin."
+                  />
+                );
+              }
+              const selectedTab = {
+                id: instance.instanceId,
+                label: descriptor.name,
+                description: descriptor.description,
+                component: pluginComponent,
+                actions: descriptor.actions,
+              };
+              const paneLayout = {
+                name: descriptor.name,
+                slug: instance.instanceId,
+                tabs: [selectedTab],
+              };
+              return (
+                <PluginWorkspacePaneSDKBoundary
+                  layout={paneLayout}
+                  projectSlug={catalog.projectSlug}
+                  pluginName={pluginName}
+                >
+                  <LayoutRenderer
+                    componentId={pluginComponent}
+                    trustedPluginLayout={trustedPluginLayout}
+                    layout={paneLayout}
+                    activeTab={selectedTab}
+                    activeTabId={selectedTab.id}
+                  />
+                </PluginWorkspacePaneSDKBoundary>
+              );
+            }
+            return Pane ? (
+              <Pane
+                descriptor={descriptor}
+                instance={instance}
+                browserPreviewAvailability={browserPreviewEntry?.availability}
+              />
+            ) : null;
+          }}
+        />
+      ) : null}
       <ProjectWorkspacePaneModal
         show={catalogRequest !== null && hostOpen !== null}
         notice={
@@ -1295,7 +1402,7 @@ function BuiltinCodingLayoutHost({
           setCatalogRequest(null);
           setOpenRefusal(null);
         }}
-        entries={catalog.entries}
+        entries={pickerEntries}
         loading={catalog.isLoading}
         error={catalog.isError}
         hasData={catalog.data !== undefined}
@@ -1316,14 +1423,14 @@ function BuiltinCodingLayoutHost({
           Boolean(
             candidate.instance &&
               (hostInstanceIds?.has(candidate.instance.instanceId) ??
-                document.instances.some(
+                document?.instances.some(
                   (instance) =>
                     instance.instanceId === candidate.instance?.instanceId,
                 )),
           )
         }
       />
-    </>
+    </CodingWorkbench>
   );
 }
 

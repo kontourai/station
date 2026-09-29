@@ -38,6 +38,7 @@ import {
 } from './workspacePaneHostLease';
 import {
   readWorkspacePaneHostSelection,
+  workspacePaneHostSelectionIsNamed,
   writeWorkspacePaneHostSelection,
 } from './workspacePaneHostNavigation';
 import {
@@ -88,8 +89,16 @@ interface WorkspacePaneHostControllerOptions {
    * cannot leave — and never reads it, so a popstate that changes `?pane=`
    * cannot pull the host away from the model and start the write loop that
    * pushed three entries for one placement (2a review, HIGH).
+   *
+   * `'explicit'` (the Coding layout's navigation stack): the URL names a pane
+   * only when someone NAMED one — a select or an open. The host's own
+   * reconciliation (a catalog-driven restore, the successor a close selects,
+   * a split or maximize) keeps an existing `?pane=` for this host current but
+   * never creates one, because in that host the ABSENCE of `?pane=` is a page
+   * of its own (the Chat page) and a catalog refresh must not navigate the
+   * reader away from it. Reads are the same as `true`.
    */
-  navigationSelection?: boolean;
+  navigationSelection?: boolean | 'explicit';
   runtime?: WorkspacePaneHostRuntime;
   storage?: WorkspacePaneHostStorage;
   lockManager?: WorkspacePaneHostLockManager | null;
@@ -181,9 +190,16 @@ export function useWorkspacePaneHostController({
     (
       document: WorkspacePaneHostDocumentV1,
       instanceId: WorkspacePaneInstanceId | null,
+      cause: 'named' | 'reconciled' = 'reconciled',
     ) => {
-      if (navigationSelection)
-        writeWorkspacePaneHostSelection(document, instanceId);
+      if (!navigationSelection) return;
+      if (
+        navigationSelection === 'explicit' &&
+        cause === 'reconciled' &&
+        !workspacePaneHostSelectionIsNamed(document)
+      )
+        return;
+      writeWorkspacePaneHostSelection(document, instanceId);
     },
     [navigationSelection],
   );
@@ -651,7 +667,7 @@ export function useWorkspacePaneHostController({
   const select = useCallback(
     (instanceId: WorkspacePaneInstanceId) => {
       dispatch({ type: 'select', instanceId });
-      writeSelection(stateRef.current.document, instanceId);
+      writeSelection(stateRef.current.document, instanceId, 'named');
     },
     [writeSelection],
   );
@@ -702,7 +718,7 @@ export function useWorkspacePaneHostController({
       if (!prepared.ok) return workspacePaneOpenRefused(prepared.reason);
       stateRef.current = prepared.state;
       dispatch(action);
-      writeSelection(prepared.state.document, instance.instanceId);
+      writeSelection(prepared.state.document, instance.instanceId, 'named');
       emitOperationalEvent(instance, 'opened');
       return WORKSPACE_PANE_OPENED;
     },
