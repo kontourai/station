@@ -1584,7 +1584,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "6a0d3e154170e88514a9ad71e1b7af587073aeb4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1592,7 +1592,7 @@
       "sources": [
         {
           "path": "Dockerfile",
-          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+          "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4"
         },
         {
           "path": "docker-compose.yml",
@@ -1677,7 +1677,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds a 'Recorded versus acknowledged decisions' subsection to docs/reference/cli.md under station delegate. The auto-merged cli.md reads coherently with the branch text. The README still correctly points to the CLI reference for target and credential setup. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed."
       ]
     },
     {
@@ -1694,7 +1695,7 @@
     {
       "path": "deploy/gcp-dev/README.md",
       "documentDigest": "b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "6a0d3e154170e88514a9ad71e1b7af587073aeb4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Single-owner GCP development recipe with a retained historical qualification record. Full 170-line baseline read. Bootstrap guard/swap helper, container enrollment boundary and GCP preview source checked; official GCP documentation checked read-only. The 2026-09-05 drill remains historical evidence, not fresh cloud qualification.",
@@ -1702,11 +1703,11 @@
       "sources": [
         {
           "path": ".dockerignore",
-          "digest": "ed530db5077644149da9a9124e49f2b3010aa84023444ad93edbad32d5dec71d"
+          "digest": "cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04"
         },
         {
           "path": "Dockerfile",
-          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+          "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4"
         },
         {
           "path": "deploy/gcp-dev/bootstrap.sh",
@@ -1778,7 +1779,7 @@
         },
         {
           "path": "scripts/__tests__/container-release.test.ts",
-          "digest": "c002a45df6f19bba02b30abb40ecb77965fd2e7f022f436403d6014f8d699ed0"
+          "digest": "6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524"
         },
         {
           "path": "scripts/__tests__/gcp-bootstrap.test.ts",
@@ -1870,13 +1871,14 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) un-exports contributorCommandMessage (distribution.ts) and cf43e14d0 (#2731) adds the recognizeCredential hook in runtime-routes.ts for a 403 on unadmitted credentials; prose accurate: the recipe makes no claim about either the export or the refusal status. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) passes STATION_SERVICE_LAUNCHER through lifecycle.ts start, adds the service-update status line to service.ts, and adds update backup/restore to station-home-archive.ts. 8b48e2b35 (#2914) drops listeningPidsByPort from station-dogfood-health and a redundant assertion from container-release.test. None of this touches the container/VM recipe, the offline-backup guidance or the verification checklist; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The README's separate terminal/voice listener and station-control delivery statements do not depend on the removed path, so the prose remains accurate. Source review only."
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The README's separate terminal/voice listener and station-control delivery statements do not depend on the removed path, so the prose remains accurate. Source review only.",
+        "Re-read the single-operator GCP recipe against the .dockerignore and Dockerfile edits. Its container claims are about the runtime image, the boot/data disk, IAP/OS Login and the E2 machine reference, not the build context or COPY list, so no prose change is needed. The Dockerfile edit adds docs/ to the discarded build stage only; the runtime stage at line 63 onward pulls no docs path, so the image it deploys is unchanged. | Re-read the GCP single-operator recipe against the follow-up .dockerignore/Dockerfile change. The build stage now also copies biome.json, .gitignore and config/; the runtime stage still copies /app/config from build, so the runtime image now carries all of config/'s public JSON (previously two files) and still no docs/, biome.json or .gitignore (checked with docker run ls /app). The recipe's claims concern image enrollment by digest or archive, UID/GID 1000, disk, IAP/OS Login and measured sizing on an older revision; none enumerate image contents, so no prose change is needed. | Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern)."
       ]
     },
     {
       "path": "deploy/public-ingress/README.md",
       "documentDigest": "713a080bec7e77d77db623d83a52874bb698556e6ddc28bb75eda69b0e864d5b",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "6a0d3e154170e88514a9ad71e1b7af587073aeb4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Optional Caddy Compose ingress template and its protocol qualification fixture. Full 128-line baseline read. Compose/Caddy files and the synthetic smoke upstream traced; actual Compose model validated read-only. No Caddy/Station startup, public CA issuance, DNS change or smoke execution.",
@@ -1884,11 +1886,11 @@
       "sources": [
         {
           "path": ".dockerignore",
-          "digest": "ed530db5077644149da9a9124e49f2b3010aa84023444ad93edbad32d5dec71d"
+          "digest": "cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04"
         },
         {
           "path": "Dockerfile",
-          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+          "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4"
         },
         {
           "path": "deploy/gcp-dev/bootstrap.sh",
@@ -1960,7 +1962,7 @@
         },
         {
           "path": "scripts/__tests__/container-release.test.ts",
-          "digest": "c002a45df6f19bba02b30abb40ecb77965fd2e7f022f436403d6014f8d699ed0"
+          "digest": "6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524"
         },
         {
           "path": "scripts/__tests__/gcp-bootstrap.test.ts",
@@ -2052,7 +2054,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) stops exporting contributorCommandMessage from packages/cli/src/distribution.ts, with no behavior change. cf43e14d0 (#2731) adds the recognizeCredential wiring in runtime-routes. The README makes claims only about the Caddy/Compose template, protocol qualification and passing through Station's own authorization and cookies, and neither change touches those. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds the launcher's context env scrub in lifecycle.ts, the launcher install, `service update-home` and update status in service.ts, and a separate update-backup schema (station.home-update-backup/v1) in station-home-archive.ts. 8b48e2b35 (#2914) removed a redundant assertion in container-release.test.ts and the unused listeningPidsByPort export from station-dogfood-health.mjs. The README's Compose, volume and backup/rollback guidance does not depend on any of these. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The profile's ingress, CA and rate-limit statements are unaffected, so the prose remains accurate. Source review only."
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The profile's ingress, CA and rate-limit statements are unaffected, so the prose remains accurate. Source review only.",
+        "Re-read the optional Caddy Compose ingress template against the .dockerignore and Dockerfile edits. It documents the ingress protocol, its qualification fixture and Caddyfile directives, and makes no claim about the build context, the COPY list or image contents, so no prose change is needed. The Dockerfile edit stays inside the discarded build stage. | Re-read the Caddy ingress template against the follow-up .dockerignore/Dockerfile change (build stage adds biome.json, .gitignore and config/; runtime gains the rest of config/'s public JSON). The template requires a reviewed digest-pinned Station image and documents only the ingress protocol, fixture and Caddyfile, with no claim about build context or image contents, so no prose change is needed. | Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern)."
       ]
     },
     {
@@ -8387,8 +8390,8 @@
     },
     {
       "path": "docs/design/native-capabilities.md",
-      "documentDigest": "3a02d05bd97995747fe2b0fca97a3917b11909cc0baa2f8a7695df920a8a2e90",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "documentDigest": "98c83399ec14d6d59fb414ceeb805d33e3af952853fcdc0e1bfdb377c4c4f451",
+      "sourceRevision": "29421a64d5ab7e0b1ca095a8b5e0afe665e19539",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current capability, permission, platform-adapter and host-caller claims. Corrected extra typed host subscriptions, dev pairing schemes, distinct closed open-browser route, second-launch background exception and updater ownership. Added Desktop native-grant maintenance boundary while preserving disabled native application transport and dated external platform survey.",
@@ -8477,6 +8480,14 @@
         {
           "path": "src-desktop/src/native_relay_key_approval.rs",
           "digest": "7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16"
+        },
+        {
+          "path": "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
+          "digest": "1d795d9736c057647572a7f02a1a916355e072cbe072c1234c5ed433d3b7c00c"
+        },
+        {
+          "path": "src-ui/src/platform/native/nativeRelaySignalingBridge.ts",
+          "digest": "e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914"
         }
       ],
       "checks": [
@@ -8486,7 +8497,8 @@
         "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
         "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution. Application binding/open/read share the existing diagnostic host service: profile revision, approved trust and keyring grant are rechecked around I/O. Outputs are public binding/expiry / answer + opaque proof, not a DataChannel, proof verification, account sign-in or application traffic. Read the changed document in context; its purpose and prior evidence limits remain.",
-        "Integration source review through e0314c727: lib.rs removed the dormant notification_watch_start/stop commands and their state, Cargo.toml reworded the rustls comment and a TLS-backend test was added, and ApiBaseContext dropped a comment. The document never listed those commands and its capability, permission and signaling claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through e0314c727: lib.rs removed the dormant notification_watch_start/stop commands and their state, Cargo.toml reworded the rustls comment and a TLS-backend test was added, and ApiBaseContext dropped a comment. The document never listed those commands and its capability, permission and signaling claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Desktop application signaling commands: replaced 'No renderer adapter ... currently invokes these names' because this branch adds createNativeApplicationSignalingBridge, which invokes station_native_relay_application_binding/open/read for one exact saved-profile revision and validates binding, open receipt and answer shapes (exact keys match the host's deny_unknown_fields serde structs in native_relay_redemption.rs). No ordinary native application caller composes it (grep: only its test). Command-side limits (no DataChannel, proof verification, route selection, sign-in or enrollment) unchanged. Checked: focused bridge tests 12/12 and typecheck:ui on the merged tree. Limits: no executed Tauri IPC or packaged-platform receipt."
       ]
     },
     {
@@ -9487,7 +9499,7 @@
     },
     {
       "path": "docs/design/private-cloud-environment.md",
-      "sourceRevision": "98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80",
+      "sourceRevision": "6a0d3e154170e88514a9ad71e1b7af587073aeb4",
       "kind": "design",
       "state": "classified",
       "summary": "Working single-operator VM deployment design already identifies unvalidated provisioning and restore drills; no prose edit needed. Located runtime image and actual container smoke owners without treating them as executed cloud evidence.",
@@ -9500,7 +9512,7 @@
         },
         {
           "path": "Dockerfile",
-          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+          "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4"
         },
         {
           "path": "scripts/container-smoke.sh",
@@ -9511,7 +9523,8 @@
         "Full document read: 114 original lines; all original body bytes preserved.",
         "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
         "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
-        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition.",
+        "Re-read the working single-operator VM deployment design against the Dockerfile edit. Its backup and restore claims concern VM filesystem and SQLite-consistency, not the container build context or image contents, so no prose change is needed. The runtime image is byte-identical: docs/ is copied only into the build stage, which is discarded. | Re-read the single-VM deployment design against the follow-up Dockerfile change. Its claims concern execution boundaries, storage and backup/restore, and it names the container smoke as an owner without treating it as executed cloud evidence; the Dockerfile change only adds build inputs (biome.json, .gitignore, config/) and makes the runtime image carry all of config/'s public JSON. No claim depends on image contents, so no prose change is needed. scripts/container-smoke.sh passed locally on this tree (arm64 Docker Desktop), which is not cloud evidence."
       ]
     },
     {
@@ -12937,7 +12950,7 @@
     {
       "path": "docs/guides/deployment.md",
       "documentDigest": "1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2",
-      "sourceRevision": "da7d7a5a189e8873b3d8047937486727c258feb3",
+      "sourceRevision": "6a0d3e154170e88514a9ad71e1b7af587073aeb4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Operating paths for checkout/container deployments, hosted foundations, and the legacy macOS dogfood supervisor. Full 920-line baseline and parent working bytes read. Source checks cover Docker, CLI/proxy/auth, home archive/schema/migration, hosted preflight, channel homes, supervisor staging/timing/health and cleanup. Detailed installer rollback, tenant carriers and lifecycle journal failure matrices were not fully re-executed; runtime qualification is partial. Follow-up: Changed pre-provisioning paragraphs checked against real schema-gate/lifecycle/server/migration ordering. Windows issue-link addition preserves the already disclosed staging limitation.",
@@ -12945,11 +12958,11 @@
       "sources": [
         {
           "path": ".dockerignore",
-          "digest": "ed530db5077644149da9a9124e49f2b3010aa84023444ad93edbad32d5dec71d"
+          "digest": "cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04"
         },
         {
           "path": "Dockerfile",
-          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+          "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4"
         },
         {
           "path": "deploy/gcp-dev/bootstrap.sh",
@@ -13029,7 +13042,7 @@
         },
         {
           "path": "scripts/__tests__/container-release.test.ts",
-          "digest": "c002a45df6f19bba02b30abb40ecb77965fd2e7f022f436403d6014f8d699ed0"
+          "digest": "6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524"
         },
         {
           "path": "scripts/__tests__/gcp-bootstrap.test.ts",
@@ -13127,7 +13140,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) deletes the unused parseGitSource/extractPluginName from packages/cli/src/commands/helpers.ts and un-exports contributorCommandMessage in distribution.ts; cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401; prose accurate: the guide does not describe those helpers or the 401/403 split, the distribution-boundary link still holds, and the unauthenticated `authentication_required` curl check is unchanged. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds createStationHomeUpdateBackup/restoreStationHomeUpdateBackup to station-home-archive.ts, moves packaged-release parsing from lifecycle-code-root.ts to shared prebuilt-archive, adds a hidden service update-home action, service status `update` output and the launcher install. #2914 removes the listeningPidsByPort alias and one tautological container-release assertion. home backup/restore, published-CLI service status|start|stop control, and install needing a checkout or prebuilt archive are unchanged; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The hosted tenant carrier claim (token-bound Codex HTTP/SSE session, exact built-in child environment, trusted async context) remains accurate. Source review only."
+        "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). The hosted tenant carrier claim (token-bound Codex HTTP/SSE session, exact built-in child environment, trusted async context) remains accurate. Source review only.",
+        "Re-read the deployment guide's container and image claims against the .dockerignore and Dockerfile edits. The guide documents runtime deployment, the hosted preflight, the installer rollback and channel homes; it does not enumerate the build-context allowlist, the COPY list, or image contents, so no prose change is needed. The Dockerfile edit is confined to the build stage (line 46, before the runtime stage at line 63) and the .dockerignore edit only widens what is sent to the docker daemon, not what lands in the image. | Re-read the local source build paragraph and command block against the follow-up .dockerignore/Dockerfile change. The claim that the Docker context excludes .git, credentials, nested node_modules and dist still holds: .gitignore is admitted as a Biome input but no pattern re-admits .git (container-release.test.ts now rejects !.git, !.git/, !.git/**, !.git* per line; fault-injected), and node scripts/check-container-build-context.mjs passed. The documented docker build with explicit provenance build-args was executed on this tree and succeeded (it failed on the prior head), and scripts/container-smoke.sh passed on arm64 Docker Desktop. The runtime image now also carries the rest of config/'s public JSON; the guide's image-content claims (Git, OpenSSH client, certificate trust, terminal support, UID/GID 1000) are unchanged, so no prose change is needed. | Re-reviewed after the container-release.test.ts guard change: the .dockerignore assertion now trims whitespace and normalizes ./ and **/ prefixes before rejecting any line that re-admits .git. Only that regex changed; .dockerignore and the Dockerfile are unchanged. This page makes no claim about the guard beyond the build context excluding .git, which still holds (checked the current .dockerignore against the new pattern)."
       ]
     },
     {
@@ -14895,7 +14909,7 @@
     {
       "path": "docs/guides/local-collaboration-lab.md",
       "documentDigest": "23cebd66c9b548a70e1f3199e1212c52d89af935d8fd2da9c3c511d79658d748",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "29421a64d5ab7e0b1ca095a8b5e0afe665e19539",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented stage selection/exit/retention, TLS and signing trust, persistence/caller currentness, application framing, account/protocol versus UI profiles, cross-machine SSH fixture and native-v2 diagnostic boundaries. Historical receipts stay dated. Corrected the signing-command ownership statement and matching CLI help scope.",
@@ -15155,7 +15169,7 @@
         },
         {
           "path": "src-ui/src/platform/native/nativeDiagnosticEchoBridge.ts",
-          "digest": "aa8bd65c8291ebcb012abfc48d05e0ba924ac3cce52f62bd7730fa0182d9c774"
+          "digest": "1707339c3fe03e51ae2ce88a6f2133528ed20af0a987887bad204c1bbb8ba535"
         },
         {
           "path": "src-ui/src/views/account/AccountEntryView.tsx",
@@ -15204,6 +15218,10 @@
         {
           "path": "scripts/lib/local-collaboration-udp-relay.mjs",
           "digest": "3b8afc8d9b439b8b709ba318bdc26227916cb60c220dd7a53c3711966ac7845d"
+        },
+        {
+          "path": "src-ui/src/platform/native/nativeRelaySignalingBridge.ts",
+          "digest": "e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914"
         }
       ],
       "checks": [
@@ -15229,7 +15247,8 @@
         "Integration source review through e0314c727: SelfHostedBrokerNativeClient gained a comment saying only tests and the opt-in native relay echo lab use it, which matches the guide's native-v2 diagnostic limits. The package.json bearing/forage removal and lib.rs notification_watch removal do not touch its claims. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 adds three things to runtime-routes: refusal-identity middleware, the resetFullAccessGrantedBy option, and the full-access reset in the pairing device DELETE and scope responses. The lab's stage, TLS/signing, trust-store, fixture and signing-command ownership claims are unchanged. Device revocation still revokes as the guide describes. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 sends 403 insufficient_scope only when a Station credential is present and recognized but not admitted. Three 401 claims are outside that change. Account guests with no Device credential have no credential to recognize, so they still get 401. An account-bound Device without account proof gets 401 account_authentication_required from the alias path inside the admitted branch. The broker withdrawal 401 comes from a separate owner. Historical receipts stay dated. Prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+        "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+        "nativeDiagnosticEchoBridge.ts now delegates to the shared createNativeRelaySignalingBridge with the same three diagnostic commands and native_diagnostic_* error codes; the shared factory additionally requires exact open-receipt and answer keys, which match the host's serde structs. The lab guide's native-v2 diagnostic claims (Chromium/Node controller, no Tauri command invocation, no protected application channel) remain accurate; no prose change. Checked: nativeDiagnosticEchoBridge and nativeApplicationSignalingBridge focused tests 12/12 on the merged tree. Limits: the lab itself was not run."
       ]
     },
     {
@@ -18659,8 +18678,8 @@
     },
     {
       "path": "docs/guides/self-hosted-broker.md",
-      "documentDigest": "aa31ec9e0516c69ff3475d1f014a4b5e350ab20cf9326745a5a8a330e549f791",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "documentDigest": "4e8da08fcfcf0f9dc703fc93569237ceccb062e1cf5a51456a61a59ca2e77157",
+      "sourceRevision": "29421a64d5ab7e0b1ca095a8b5e0afe665e19539",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented broker schema/grant/proof/offer/renewal, connector lifecycle and private configuration claims through routes, service transactions, native signer/host command table and browser consumer. Corrected distinct browser/native header contracts and redemption exceptions, renewal window and conflict receipt wording. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; ordinary Desktop route activation remains unwired; the explicit native library/server application lane is now documented.",
@@ -18828,7 +18847,7 @@
         },
         {
           "path": "src-ui/src/platform/native/nativeDiagnosticEchoBridge.ts",
-          "digest": "aa8bd65c8291ebcb012abfc48d05e0ba924ac3cce52f62bd7730fa0182d9c774"
+          "digest": "1707339c3fe03e51ae2ce88a6f2133528ed20af0a987887bad204c1bbb8ba535"
         },
         {
           "path": "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
@@ -18869,6 +18888,14 @@
         {
           "path": "src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime-native.test.ts",
           "digest": "6784c9f57b329a5094f402f66f0bcd11ca06907cdbefe8987e4ce2e3d627df2d"
+        },
+        {
+          "path": "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
+          "digest": "1d795d9736c057647572a7f02a1a916355e072cbe072c1234c5ed433d3b7c00c"
+        },
+        {
+          "path": "src-ui/src/platform/native/nativeRelaySignalingBridge.ts",
+          "digest": "e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914"
         }
       ],
       "checks": [
@@ -18893,7 +18920,8 @@
         "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution. Application binding/open/read share the existing diagnostic host service: profile revision, approved trust and keyring grant are rechecked around I/O. Outputs are public binding/expiry / answer + opaque proof, not a DataChannel, proof verification, account sign-in or application traffic. Read the changed document in context; its purpose and prior evidence limits remain.",
         "Required merge-queue recovery through 421517851: Corrected the obsolete production-native-adapter refusal: nativeClient explicitly enables one exact surface, separate browser/native offer polling and verified-request provenance. Retained separate grant/Device/provider/Project authority and unwired ordinary Desktop activation.. Changed inputs reviewed: docs/guides/self-hosted-broker.md, src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts, src-server/runtime/bootstrap/self-hosted-broker-runtime.ts, src-server/runtime/bootstrap/self-hosted-connector-config.ts, src-server/services/connections/native-v2-pion-application-adapter.ts, src-server/services/connections/virtual-application.ts, src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime-native.test.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Integration source review through e0314c727: lib.rs removed the dormant notification_watch module and its commands and added a rustls TLS test for the native HTTP agent. SelfHostedBrokerNativeClient gained a comment saying only tests and the native relay echo lab use it, linking this guide's 'Native routing grant foundation (v2)' heading, which exists. ApiBaseContext lost only a notification comment. The guide's native grant, command-table, supervisor and lab claims remain accurate. Source review is separate from executed test evidence."
+        "Integration source review through e0314c727: lib.rs removed the dormant notification_watch module and its commands and added a rustls TLS test for the native HTTP agent. SelfHostedBrokerNativeClient gained a comment saying only tests and the native relay echo lab use it, linking this guide's 'Native routing grant foundation (v2)' heading, which exists. ApiBaseContext lost only a notification comment. The guide's native grant, command-table, supervisor and lab claims remain accurate. Source review is separate from executed test evidence.",
+        "Merge of main (#2886 rewrite) into the native application UI bridge branch: resolved the native-adapter conflict to main's wording after re-reading the merged owners. The production Pion runtime passes nativeOfferPolling = (native adapter configured) (self-hosted-broker-pion-runtime.ts) and the lifecycle calls pollNative only under that flag (self-hosted-broker-runtime.ts), so 'additionally calls pollNative() for that opt-in surface' is accurate where the branch's 'own explicit opt-in' overstated a separate switch. Corrected 'application names have no renderer caller': this branch adds createNativeApplicationSignalingBridge, which wraps the three application commands for one saved-profile revision; grep finds no non-test caller composing it. Checked: focused bridge tests 12/12 and typecheck:ui on the merged tree. Limits: no executed Tauri IPC, packaged app or live broker."
       ]
     },
     {
@@ -26951,12 +26979,12 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "1ba3762af0c435e9098bcc32b75d65e6ba8761bb",
+      "sourceRevision": "6a0d3e154170e88514a9ad71e1b7af587073aeb4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
       "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
-      "documentDigest": "20d9606f51e401e9af84ae88925327dd6a692bdd4cdd58c317e0d46f7f21c68e",
+      "documentDigest": "267eb15eb3c8a487f4fa8f4eb2f3f38e04337b08821be5ea1a4d34ea9541cfc1",
       "sources": [
         {
           "path": ".nvmrc",
@@ -27149,12 +27177,13 @@
         "#2917: docs/learn/media.json changed only the review metadata (revision, source hashes, notes) of captures re-reviewed for the approval-card CSS change; capture identities, image bytes and captions are unchanged, so this document's media references stay accurate.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Notifications approval buttons (Approve once/Deny) are a different surface; no claim touched.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
+        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
         "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
         "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It tells users to choose Approve once or Deny after reviewing a request; both actions behave as before. Prose accurate.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Approve once and Deny behave as before. Prose accurate.",
         "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): both sides changed this record. Main recorded #2917's approval-card CSS (row wrap, button states in src-ui/src/index.css) and its capture metadata; this branch's side is the session-grant notes and the inspect-request captures' re-recording. docs/learn/media.json now also carries the merged inspect-request review. Approve once and Deny behave as before; the card's buttons now wrap at narrow width and the session button may be absent or relabelled, neither of which the guide describes. Prose accurate.",
-        "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
-        "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Approve once and Deny behave as before; the guide describes neither channel colours nor the session button. Prose accurate."
+        "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Approve once and Deny behave as before; the guide describes neither channel colours nor the session button. Prose accurate.",
+        "Own edit: only the archive-install guide's link target changed, from the repo-relative ../guides/release-channel-ports.md to the absolute repository blob URL for the same file and the same #prebuilt-archives-and-source-releases anchor, so the published Start Here page no longer links to an ungenerated target. The surrounding claims (STATION_INSTALL_PUBLIC_MANIFEST_URL, the signed platform-v2 prebuilt archive, bundled Node.js, and the published-manifest requirement) are untouched. Verified docs:links:check re-resolves the blob URL as a local link and validates the anchor in 423 Markdown files."
       ]
     },
     {
