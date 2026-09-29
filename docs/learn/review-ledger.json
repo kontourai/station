@@ -7059,7 +7059,7 @@
     {
       "path": "docs/design/chat-composer.md",
       "documentDigest": "efd7c4f6aa8f068fd268b5e121bc6e6f2471a5a546f15dd0861472fc161c0cb8",
-      "sourceRevision": "d7298b014d7e87d07e4d4fd4413565a5c95b9cd0",
+      "sourceRevision": "55222be9905441b0e18c8154ee74f549c5002aef",
       "kind": "policy",
       "state": "classified",
       "summary": "Composer interaction and navigability policy with dated audit evidence and corrected current public HTTP entry points.",
@@ -7107,7 +7107,7 @@
         },
         {
           "path": "src-ui/src/utils/chatErrorTranslation.ts",
-          "digest": "00a49cdcbad0dde00f2ac71d0621b12d1ec5e3065d3959a886563251bb3c9813"
+          "digest": "bdf5e05edcff88b4bec20b837570f9174bb004a351cc0a3cdefa54a242352cda"
         },
         {
           "path": "src-ui/src/utils/sessionFailure.ts",
@@ -7122,7 +7122,8 @@
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 adds the refusal-details contract, parser and sanitizer to contracts orchestration.ts. In useActiveChatSessionMessaging, a full-access refusal now returns the chat to idle with the draft restored, a FullAccessRefusalCard, and an explicit 'Send without full access' action. The policy's public HTTP entry points, composer layout and navigation claims do not describe the refusal path and remain correct. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal; useChatInput now opens the ACP model picker on a conversation that never ran a turn; useComposerAttachments blocks Send on refused images and emits the caveat note. Prose changed: added a 3.1 bullet on ACP model selection (closed after a turn, open in the dock for a Draft or first-send-failure conversation, successor session on next send per conversation-lineage needsModelRestart) and a 3.2 Attachments section (pre-send image refusal on chips and Send, paperclip explains on tap, unconfirmed-support note, chip statuses, validation below the draft, Remove attachments instead of Retry, banner defers on a never-run session). Checked against useChatInput.ts, useComposerAttachments.ts, ComposerAttachmentStrip.tsx, FileAttachmentInput.tsx, sessionFailure.ts, ChatDockBody.tsx and chatErrorTranslation.ts."
+        "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal; useChatInput now opens the ACP model picker on a conversation that never ran a turn; useComposerAttachments blocks Send on refused images and emits the caveat note. Prose changed: added a 3.1 bullet on ACP model selection (closed after a turn, open in the dock for a Draft or first-send-failure conversation, successor session on next send per conversation-lineage needsModelRestart) and a 3.2 Attachments section (pre-send image refusal on chips and Send, paperclip explains on tap, unconfirmed-support note, chip statuses, validation below the draft, Remove attachments instead of Retry, banner defers on a never-run session). Checked against useChatInput.ts, useComposerAttachments.ts, ComposerAttachmentStrip.tsx, FileAttachmentInput.tsx, sessionFailure.ts, ChatDockBody.tsx and chatErrorTranslation.ts.",
+        "Re-checked 3.2 Attachments after chatErrorTranslation.ts changed the attachment_input_unsupported hint from 'accepts images' to 'accepts them' (the refusal also covers non-image files). The doc names the Remove attachments action and the no-Retry rule, not the hint wording, so its claims still hold."
       ]
     },
     {
