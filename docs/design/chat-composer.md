@@ -124,6 +124,32 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   restores the original default Provider and model for the chat.
 - Station-managed chats may switch Model Providers. Externally managed agent
   chats remain bound to their engine so resume semantics stay intact.
+- An ACP engine applies a model only when its session starts, so Model stays
+  closed on an ACP conversation that has run a turn. In the chat dock, a
+  conversation that has never run one (a Draft, or one whose only sends were
+  refused or failed) keeps Model open. The next send starts a successor session with the chosen
+  model, and there is no engine history to carry over.
+
+### 3.2 Attachments
+
+- The composer decides image support before Send from the engine's declared
+  and observed answers (`resolveComposerImageSupport`). When images cannot be
+  sent, image chips say so and Send is disabled with the reason until the
+  images are removed. When nothing can be attached, tapping the paperclip
+  shows the reason instead of opening a file picker, so a touch user sees it
+  too.
+- When support is not confirmed (an ACP engine that has not reported its
+  answer yet, or one that accepts images while the selected model's support is
+  unknown), attaching an image shows a non-blocking note below the draft.
+- Each chip shows one short status that names what happened, such as
+  **Upload expired** or **Upload didn't finish**, and its action (**Upload
+  again**, **Retry**, **Remove**). Validation messages flow below the draft
+  instead of covering it.
+- A send the engine refuses because of its attachments
+  (`attachment_input_unsupported`) is shown as one chat error with **Remove
+  attachments** instead of Retry, because the same send would be refused
+  again. On a conversation whose sends never took, the session failure banner
+  defers to that error instead of repeating it.
 
 ## 4. API parity contract
 

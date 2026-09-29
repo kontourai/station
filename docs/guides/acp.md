@@ -122,6 +122,8 @@ connection's current capability observations, not the name of its default Agent.
 
 Image support is **not** carried on the Agent row. It was, as `supportsAttachments`, but no server code ever wrote that field — the composer read `undefined` and refused every image while the adapter declared `image-input` and built real image `ContentBlock`s (station#3344). It is now derived from two places that are actually written: the connection's `capabilities` (the adapter's own declaration, spread from `ACP_ADAPTER_CAPABILITIES`) and, for the per-connection answer, `capabilityInventory.sessionSurfaces.promptImage` — this connection's live `initialize` handshake reporting `agentCapabilities.promptCapabilities.image`.
 
+Both the chat dock and the ACP chat panel read that handshake answer from the engine connection inventory (`useEngineConnectionsQuery`); the model picker's connection projection does not carry it. A reported `false` refuses images at attach time. Images already in the draft are marked on their chips and block Send until they are removed, and when nothing else can be attached the paperclip explains the refusal when tapped. Until the handshake has answered, or when it answers yes while the selected model's own image support is unknown, the composer still accepts images but shows a note saying what is unconfirmed (`ComposerImageSupport.caveat` from `resolveComposerImageSupport`). The adapter checks again at send time. A send carrying images to an engine whose handshake did not advertise image support, or carrying any non-image file, is refused before anything reaches the engine with `attachment_input_unsupported` (`ATTACHMENT_INPUT_UNSUPPORTED_CODE`). The same send would be refused again, so the chat error offers **Remove attachments** instead of Retry, and the client re-reads the engine inventory so the composer shows the engine's answer.
+
 The default exists independently of probe/readiness state. The Agent row carries explicit availability and reason fields; Station never encodes connection kind into the Agent ID.
 
 ---
@@ -134,6 +136,8 @@ Sending a message to an ACP-connected agent is identical, from the UI's perspect
 2. The UI posts the Agent through `POST /api/orchestration/chat`; the server resolves the Agent's binding and supplies the ACP adapter with its connection ID — see [`docs/reference/session-api.md`](../reference/session-api.md).
 3. A later turn uses the bound continuation endpoint. The `acp` adapter forwards it to the runtime via `connection.prompt()`.
 4. The runtime's ACP session-update and extension notifications are translated by the adapter into [Canonical runtime events](../glossary.md) and streamed back over `GET /api/orchestration/events` (SSE), exactly like any other provider.
+
+A message sent while a turn is running steers that turn. Kiro and Grok receive it through their own extension methods. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
