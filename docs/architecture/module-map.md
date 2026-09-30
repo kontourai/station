@@ -3081,7 +3081,10 @@ one pending frame per viewer, latest-frame replacement, acknowledgments and
 adaptive delivery. Capture starts with the first viewer and stops at zero;
 session lifetime remains with its Browser/Device owner. `control-lease.ts`
 allows one controller: current-epoch human input can preempt an Agent, while
-an Agent cannot preempt a live human. Epoch identifies controller succession;
+an Agent cannot preempt a live human. A person's `keep-alive` lease request
+extends only their own current hold at the current epoch, never claims, and
+is capped by `maxHumanHoldMs` from their last real input. Epoch identifies
+controller succession;
 the separate fence changes on release/expiry as well, so reclaiming cannot
 resurrect old work. The registry serializes and fences input, cancels held
 buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.

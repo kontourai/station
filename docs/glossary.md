@@ -359,7 +359,9 @@ frame, input and lifecycle ownership.
   including release and expiry, so work from an earlier claim cannot become
   valid when the same agent reclaims control. An agent cannot preempt a live
   human lease. The holder can release it explicitly (the Browser pane's driver chip,
-  **Hand back to agent**); otherwise a human hold lapses. Viewing and
+  **Hand back to agent**); otherwise a human hold lapses. A keep-alive (sent
+  while a person is shown a page's held dialog) is not input: it extends only
+  their own current hold, capped from their last real input. Viewing and
   controlling are authorized separately.
 
 Follow the implementation through
