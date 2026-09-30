@@ -23,6 +23,7 @@ import {
   sanitizeFreeText,
 } from '@kontourai/station-shared/redaction';
 import { type HonoServerConfig } from '@voltagent/server-hono';
+import type { Context } from 'hono';
 import { cors } from 'hono/cors';
 import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
@@ -450,12 +451,7 @@ function isInteractiveWorkspacePerformanceDiagnostic(c: {
 const NATIVE_DEVICE_PROOF_BODY_LIMIT_BYTES = 16 * 1024;
 
 interface NativeDeviceProofAdmissionCall {
-  c: PairingScopeContextStore & {
-    req: { raw: Request; method: string; path: string; url: string };
-    json(value: unknown, status: 401 | 403 | 413 | 429 | 503): Response;
-    header(name: string, value: string): void;
-    res: Response;
-  };
+  c: Context;
   security: RuntimeHttpSecurityOptions;
   limiter: RuntimeAuthFailureLimiter;
   requiredCapability: ExternalSurfaceCapabilityRule;
@@ -752,12 +748,7 @@ function configureRuntimeSecurity(
     // or a canonical refusal, nothing else.
     if (c.req.raw.headers.has(NATIVE_DEVICE_PROOF_HEADER)) {
       return await admitNativeDeviceProofRequest({
-        c: c as unknown as PairingScopeContextStore & {
-          req: { raw: Request; method: string; path: string; url: string };
-          json(value: unknown, status: 401 | 403 | 413 | 429 | 503): Response;
-          header(name: string, value: string): void;
-          res: Response;
-        },
+        c,
         security,
         limiter,
         requiredCapability,
