@@ -134,6 +134,13 @@ unmounted: they do not authenticate an operator or authorize Project requests.
 The [broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)
 owns the remaining approval, host-signing and runtime composition requirements.
 
+The separate [paired-Device custody owner](../../src-desktop/src/native_device_custody.rs)
+captures authenticated pairing identity in an app/channel-bound keyring
+companion and resolves it under current profile authority. Its retirement
+journal permits cleanup retries without restoring credential authority.
+See [native capability boundaries](../design/native-capabilities.md#desktop-paired-device-identity-custody)
+for legacy, crash-recovery and unmounted signing limits.
+
 **Intent and Interface.** The public `deployment-authentication` contract lets an
 operator supply a versioned authentication module at startup. Its factory receives the
 selected Station identity, public origin, fixed authentication base path and private

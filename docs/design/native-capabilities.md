@@ -155,6 +155,34 @@ approval. Bounded signing IPC, runtime Device authorization and a packaged
 Project journey remain integration requirements. The software key is decoded
 inside Rust for signing; this is not hardware-backed non-exportability.
 
+### Desktop paired-Device identity custody
+
+The [Device custody owner](../../src-desktop/src/native_device_custody.rs) keeps
+a versioned companion beside the existing bearer in a separate OS-keyring
+namespace. The authenticated pairing exchange captures the Device ID and kind
+in host-held pending state. The companion binds the native app and channel,
+credential reference, bearer digest, exact origin, Station and client instance.
+Neither the bearer nor its digest is returned to the renderer.
+
+The Rust-internal resolver holds the profile-file lock and checks the current
+authorized profile, revision and epoch against the bearer and companion.
+Missing, malformed or mismatched metadata refuses Device identity resolution;
+ordinary legacy HTTP credential use remains independent. This establishes no
+Device-key approval, account or Project authority and exposes no signing IPC.
+
+Credential retirement records durable, profile-scoped intent before a profile
+removal or replacement. Public and cold-start retries permit cleanup only,
+check the original credential digest and refuse an intervening replacement or
+reauthorization. An unreadable legacy entry without a trustworthy digest stays
+quarantined for manual removal. Its journal entry can be released only after
+both owned keyring entries are confirmed absent, without attempting deletion.
+
+Pending pairing handles remain process-memory state; they do not survive a
+crash. Cold observation of a completed profile and retirement recovery are
+separate from unfinished pairing recovery. Mobile deletion behavior is
+unchanged. Source tests and the macOS Keychain roundtrip do not establish
+packaged or physical-device Project access.
+
 ### Pairing deep-link threat review (station#1957)
 
 The `tauri-plugin-deep-link` association uses the custom channel-specific scheme
