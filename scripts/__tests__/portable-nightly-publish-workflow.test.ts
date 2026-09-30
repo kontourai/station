@@ -23,6 +23,8 @@ import {
   publicationLocations,
   ROLLING_NIGHTLY_TAG,
   verifyExpectedManifest,
+  isStaleRollingManifest,
+  ManifestMismatchError,
   verifyPublishedAssets,
 } from '../portable-nightly-publication.mjs';
 import { platformPayload } from './fixtures/release-manifest-v2';
@@ -695,6 +697,17 @@ describe('dry-run signing through the real signer CLI', () => {
     expect(() => verifyExpectedManifest(envelope, keyTable, payload)).toThrow(
       /not the payload this run signed/,
     );
+    // The real mismatch carries the fetched version the retry decision reads.
+    let mismatch: unknown;
+    try {
+      verifyExpectedManifest(envelope, keyTable, payload);
+    } catch (error) {
+      mismatch = error;
+    }
+    expect(mismatch).toBeInstanceOf(ManifestMismatchError);
+    expect((mismatch as ManifestMismatchError).fetchedVersion).toBe(
+      '0.7.0-nightly.13',
+    );
     expect(
       verifyExpectedManifest(
         envelope,
@@ -702,6 +715,29 @@ describe('dry-run signing through the real signer CLI', () => {
         JSON.parse(readFileSync(other, 'utf8')),
       ).version,
     ).toBe('0.7.0-nightly.13');
+  });
+});
+
+describe('rolling-manifest re-verify retries only staleness', () => {
+  const expected = { version: '0.7.0-nightly.13' };
+  it('retries a validly signed but OLDER manifest: the asset host serving replaced bytes', () => {
+    expect(
+      isStaleRollingManifest(
+        new ManifestMismatchError('0.7.0-nightly.12', expected.version),
+        expected,
+      ),
+    ).toBe(true);
+  });
+  it('fails at once on anything waiting cannot fix', () => {
+    for (const error of [
+      new ManifestMismatchError('0.7.0-nightly.13', expected.version),
+      new ManifestMismatchError('0.7.0-nightly.14', expected.version),
+      new ManifestMismatchError('not-a-version', expected.version),
+      new Error('manifest signature did not verify'),
+    ])
+      expect(isStaleRollingManifest(error, expected), error.message).toBe(
+        false,
+      );
   });
 });
 

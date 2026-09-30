@@ -144,10 +144,35 @@ export function verifyExpectedManifest(envelope, keys, expectedPayload) {
     expectedChannel: RING,
   });
   if (canonicalManifestJson(payload) !== canonicalManifestJson(expectedPayload))
-    throw new Error(
-      `manifest payload for ${String(payload.version)} is not the payload this run signed (${String(expectedPayload?.version)})`,
-    );
+    throw new ManifestMismatchError(payload.version, expectedPayload?.version);
   return payload;
+}
+
+/** A validly signed manifest whose payload is not the one this run signed. */
+export class ManifestMismatchError extends Error {
+  constructor(fetchedVersion, expectedVersion) {
+    super(
+      `manifest payload for ${String(fetchedVersion)} is not the payload this run signed (${String(expectedVersion)})`,
+    );
+    this.fetchedVersion = fetchedVersion;
+  }
+}
+
+/**
+ * True only for the one failure waiting can fix: a validly signed rolling
+ * manifest that is still an OLDER Nightly than the one just published, i.e.
+ * the asset host serving the replaced bytes from cache. A bad signature, a
+ * wrong key or a newer or equal version is not staleness and fails at once.
+ */
+export function isStaleRollingManifest(error, expectedPayload) {
+  if (!(error instanceof ManifestMismatchError)) return false;
+  try {
+    return (
+      compareNightlyVersions(error.fetchedVersion, expectedPayload?.version) < 0
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -384,8 +409,9 @@ async function main(argv) {
       // A just-replaced rolling asset can serve the previous bytes for a
       // while: GitHub's asset host cached the old manifest for longer than a
       // minute after the replacement on 2026-09-30, so a remote read retries a
-      // mismatch for up to REVERIFY_ATTEMPTS * REVERIFY_DELAY_MS (5 minutes)
-      // before failing. A mismatch that outlasts that still fails the job.
+      // stale (older) manifest for up to REVERIFY_ATTEMPTS * REVERIFY_DELAY_MS
+      // (5 minutes). Any other failure, or staleness that outlasts that,
+      // fails the job at once.
       for (let attempt = 1; ; attempt += 1) {
         const envelope = await readManifest(values.manifest);
         try {
@@ -395,7 +421,12 @@ async function main(argv) {
           );
           return;
         } catch (error) {
-          if (!remote || attempt >= REVERIFY_ATTEMPTS) throw error;
+          if (
+            !remote ||
+            attempt >= REVERIFY_ATTEMPTS ||
+            !isStaleRollingManifest(error, expected)
+          )
+            throw error;
           await sleep(REVERIFY_DELAY_MS);
         }
       }
