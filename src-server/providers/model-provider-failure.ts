@@ -69,8 +69,7 @@ export function modelProviderFailureMessage(httpStatus: number): string {
 }
 
 /** A model provider request that failed without an HTTP status. */
-export const MODEL_PROVIDER_REQUEST_FAILED =
-  'The model provider request failed.';
+const MODEL_PROVIDER_REQUEST_FAILED = 'The model provider request failed.';
 
 const PROVIDER_ERROR_SEARCH_DEPTH = 4;
 const PROVIDER_ERROR_SEARCH_BREADTH = 8;
@@ -86,7 +85,7 @@ const PROVIDER_ERROR_SEARCH_BREADTH = 8;
  * so a provider error may still be hiding inside: a caller must not trust
  * the wrapper's own message then.
  */
-export function searchModelProviderError(error: unknown): {
+function searchModelProviderError(error: unknown): {
   found?: APICallError;
   inconclusive: boolean;
 } {
