@@ -277,7 +277,9 @@ behavior.
   [`/api/branding`](../../src-server/routes/system/branding.ts)).
 - The white-label theme applies five role tokens and refuses the whole theme
   (keeping defaults) on an unknown key, a non-hex value or a failed contrast
-  check ([branding-theme.ts](../../src-ui/src/lib/branding-theme.ts);
+  check. Since #2952, which was re-checked after merging it, the check is
+  `@kontourai/ui` 1.16.0's `validateBrandOverride` plus two stricter Station
+  rules ([branding-theme.ts](../../src-ui/src/lib/branding-theme.ts);
   [theming guide](../guides/theming.md#white-label-branding-theme)).
 - Operator-configured sign-in exists: an OIDC configuration file and an
   authentication module
@@ -592,9 +594,14 @@ The manifest adds no second path for any of these.
      separate from status colour.
    - When a manifest's tokens fail, the shell refuses the whole theme and
      keeps defaults, the rejection path `branding-theme.ts` already has.
-   - The design rules in the `@kontourai/ui` DESIGN.md are not shipped in the
-     installed package (1.12.0), so this record cites the package README and
-     token ADR instead (OPEN-10).
+   - Since #2952, Station pins `@kontourai/ui` `^1.16.0` and validates
+     themes with that package's `validateBrandOverride`, plus two stricter
+     Station rules. A manifest's tokens pass through the same check.
+   - The package's DESIGN.md (shipped in 1.16.0) states both rules this limit
+     relies on. "White-label overrides" requires a runtime-applied theme to
+     reject a pair that fails the AA text and non-text thresholds.
+     "Product color is identity, not status" keeps product accents out of
+     state.
 
 A manifest may choose and configure sign-in. It never implements credential
 verification, sessions or access recovery. Those remain kernel code.
@@ -757,10 +764,11 @@ record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
 - **OPEN-9. Member hiding of a slot override.** May a member hide an
   operator-overridden Home and see the default filler instead?
   *Proposed:* no. Members may not hide the operator's Home override.
-- **OPEN-10. Brand rule source.** The `@kontourai/ui` DESIGN.md rules could not
-  be verified from the installed package (1.12.0). The validator comment
-  points at a later `@kontourai/ui/contrast` module (1.16.0).
-  *Proposed:* bump `@kontourai/ui` to current in slice h.
+- **OPEN-10. Brand rule source: resolved on main.** #2952 bumped
+  `@kontourai/ui` to `^1.16.0`, which ships DESIGN.md, and
+  `branding-theme.ts` now calls the package's `validateBrandOverride`. The
+  rules limit 3 cites were read in that package. The proposal to bump the
+  package in slice h is overtaken.
 - **OPEN-11. Approval decisions from the client realm.** The server accepts a
   tool-approval decision from any caller holding the requesting session's
   authority, which includes every tier-2 plugin. Options:
@@ -1041,7 +1049,8 @@ key, and a catalog-equality test for the legacy profile.
 - New hooks for favicon, title, onboarding copy, empty states, help links and
   legal links.
 - A fixed kernel-prompt frame with a provenance line.
-- Bump `@kontourai/ui` if OPEN-10's proposal is accepted.
+- Use the `validateBrandOverride` path that #2952 landed; add no second
+  validator.
 
 Acceptance:
 
