@@ -123,7 +123,7 @@ function validatePeer(
 function validatePeerAnswer(
   value: unknown,
   peer: NativeApplicationPeer,
-  expectedExpiresAt: number | undefined,
+  priorDeadline: number | undefined,
   now: number,
 ): NativeApplicationPeerAnswer {
   const keys = ['version', 'answerSdp', 'stationProof', 'expiresAt'];
@@ -147,7 +147,7 @@ function validatePeerAnswer(
     !Number.isSafeInteger(answer.expiresAt) ||
     answer.expiresAt <= now ||
     answer.expiresAt > peer.expiresAt ||
-    (expectedExpiresAt !== undefined && answer.expiresAt !== expectedExpiresAt)
+    (priorDeadline !== undefined && answer.expiresAt > priorDeadline)
   )
     throw new Error('native_application_signal_invalid');
   return answer;
@@ -407,7 +407,7 @@ export function createNativeApplicationTransport(
           expiresAt,
           now(),
         );
-        expiresAt ??= value.expiresAt;
+        expiresAt = Math.min(expiresAt ?? value.expiresAt, value.expiresAt);
         await assertCurrent(authority, 'checkpoint', owned);
         if (value.answerSdp !== null || value.stationProof !== null) {
           if (

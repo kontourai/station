@@ -133,6 +133,10 @@ async function fixture() {
   let prepareGate: Promise<unknown> | undefined;
   let resolvePrepare!: (value: unknown) => void;
   let unknownOpen = false;
+  let readExpiresAt = EXPIRES_AT;
+  let readExpirySequence: number[] = [];
+  let pendingReadCount = 0;
+  let readCount = 0;
   let signGate: Promise<string> | undefined;
   let resolveSign!: (value: string) => void;
   let signalSignStarted!: () => void;
@@ -171,6 +175,10 @@ async function fixture() {
       async (peerHandle: string): Promise<NativeApplicationPeerAnswer> => {
         lifecycle.push('read');
         expect(peerHandle).toBe(PEER_HANDLE);
+        const readIndex = readCount++;
+        const responseExpiresAt =
+          readExpirySequence[readIndex] ?? readExpiresAt;
+        const answerPending = readIndex < pendingReadCount;
         if (revokeOnRead) current = null;
         const binding = {
           stationId: trust.stationId,
@@ -186,14 +194,16 @@ async function fixture() {
         };
         return {
           version: 'station-broker-native-connection-answer/v2' as const,
-          expiresAt: EXPIRES_AT,
-          answerSdp: ANSWER_SDP,
-          stationProof: await signStationConnectionProof({
-            trust,
-            binding,
-            signingKey: pair.privateKey,
-            now: Math.floor(Date.now() / 1000),
-          }),
+          expiresAt: responseExpiresAt,
+          answerSdp: answerPending ? null : ANSWER_SDP,
+          stationProof: answerPending
+            ? null
+            : await signStationConnectionProof({
+                trust,
+                binding,
+                signingKey: pair.privateKey,
+                now: Math.floor(Date.now() / 1000),
+              }),
         };
       },
     ),
@@ -306,6 +316,13 @@ async function fixture() {
     makeOpenUnknown() {
       unknownOpen = true;
     },
+    setReadExpiresAt(value: number) {
+      readExpiresAt = value;
+    },
+    setReadExpirySequence(values: number[], pendingCount: number) {
+      readExpirySequence = values;
+      pendingReadCount = pendingCount;
+    },
     revokeOnRead() {
       revokeOnRead = true;
     },
@@ -329,6 +346,48 @@ async function fixture() {
 }
 
 describe('native application transport client', () => {
+  test('accepts a valid signed answer with an earlier host read expiry', async () => {
+    const f = await fixture();
+    f.setReadExpiresAt(EXPIRES_AT - 500);
+    const response = await f.transport.fetch(new URL('/api/health', ORIGIN));
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(f.signaling.open).toHaveBeenCalledOnce();
+    expect(f.signaling.read).toHaveBeenCalledOnce();
+    expect(f.peer.setRemoteDescription).toHaveBeenCalledOnce();
+  });
+
+  test('refuses an answer expiry that extends the open deadline', async () => {
+    const f = await fixture();
+    f.setReadExpiresAt(EXPIRES_AT + 1);
+    await expect(
+      f.transport.fetch(new URL('/api/health', ORIGIN)),
+    ).rejects.toThrow('native_application_signal_invalid');
+    expect(f.peer.setRemoteDescription).not.toHaveBeenCalled();
+    expect(f.requests).toHaveLength(0);
+  });
+
+  test('later polling cannot extend a previously shortened read deadline', async () => {
+    const f = await fixture();
+    f.setReadExpirySequence([EXPIRES_AT - 500, EXPIRES_AT - 250], 1);
+    await expect(
+      f.transport.fetch(new URL('/api/health', ORIGIN)),
+    ).rejects.toThrow('native_application_signal_invalid');
+    expect(f.signaling.read).toHaveBeenCalledTimes(2);
+    expect(f.peer.setRemoteDescription).not.toHaveBeenCalled();
+    expect(f.requests).toHaveLength(0);
+  });
+
+  test('refuses an expired host read deadline before applying its answer', async () => {
+    const f = await fixture();
+    f.setReadExpiresAt(Date.now() - 1);
+    await expect(
+      f.transport.fetch(new URL('/api/health', ORIGIN)),
+    ).rejects.toThrow('native_application_signal_invalid');
+    expect(f.peer.setRemoteDescription).not.toHaveBeenCalled();
+    expect(f.requests).toHaveLength(0);
+  });
+
   test('verifies the exact proof, opens only station-application-v1, and dispatches through createApplicationChannelFetch without HTTP', async () => {
     const f = await fixture();
     const running = f.transport.fetch(new URL('/api/health', ORIGIN), {
