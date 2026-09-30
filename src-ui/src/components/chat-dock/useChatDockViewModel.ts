@@ -36,21 +36,16 @@ import {
 type ModelOption = { id: string; name: string };
 
 /**
- * Whether an engine's catalog spans models from more than one provider
- * (`provider/model` ids with distinct prefixes, as OpenCode reports them).
- * Such an engine's image capability is per model, not per engine.
+ * Engines whose handshake answers image support for the whole engine while
+ * the model it routes to decides whether an image is read, keyed by the
+ * registry connection id. OpenCode is the observed case: its ACP handshake
+ * says `image: true`, then `provider/transform.ts` swaps the image for an
+ * error text when the selected model lacks image input, and nothing in ACP
+ * reports per-model modalities. Parsing model ids for "several providers"
+ * was a guess in both directions (single-prefix routers, `org/model` ids), so
+ * this names the evidence instead; an engine without it gets no note.
  */
-function routesToSeveralModelProviders(
-  models: ReadonlyArray<{ id: string }>,
-): boolean {
-  const prefixes = new Set(
-    models.flatMap((model) => {
-      const slash = model.id.indexOf('/');
-      return slash > 0 ? [model.id.slice(0, slash)] : [];
-    }),
-  );
-  return prefixes.size > 1;
-}
+const PER_MODEL_IMAGE_SUPPORT_ENGINES = new Set(['opencode']);
 const EMPTY_CONNECTIONS: never[] = [];
 const EMPTY_ORCHESTRATION_SESSIONS: never[] = [];
 
@@ -476,8 +471,8 @@ export function useChatDockViewModel({
           }
         : {}),
       modelSupport: selectedModelImageSupport,
-      modelSupportVaries: routesToSeveralModelProviders(
-        runtimeConnection ? runtimeCatalogVisibleModels(runtimeConnection) : [],
+      modelSupportVaries: PER_MODEL_IMAGE_SUPPORT_ENGINES.has(
+        agentConnectionId ?? '',
       ),
       ...(typeof currentModelId === 'string'
         ? { modelLabel: currentModelId }

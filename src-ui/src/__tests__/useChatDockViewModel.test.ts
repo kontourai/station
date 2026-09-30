@@ -384,22 +384,27 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
       );
     });
 
-    test('an engine-wide yes is quiet for one provider, and caveated for a multi-provider catalog', () => {
-      const withCatalog = (ids: string[]) => ({
-        ...grokBuild(true),
-        runtimeCatalog: {
-          source: 'live',
-          models: ids.map((id) => ({ id, name: id, originalId: id })),
-          builtInModels: [],
-        },
-      });
-      queryState.agentConnections = [withCatalog(['grok-4.7', 'grok-4.6'])];
+    test('an engine-wide yes is quiet, except for an engine whose model decides (OpenCode)', () => {
+      queryState.agentConnections = [grokBuild(true)];
       expect(render().result.current.imageAttachmentCaveat).toBeUndefined();
       queryState.agentConnections = [
-        withCatalog(['opencode/big-pickle', 'anthropic/claude-opus']),
+        { ...grokBuild(true), id: 'opencode', name: 'OpenCode' },
       ];
-      expect(render().result.current.imageAttachmentCaveat).toMatch(
-        /accepts images, but Station can't confirm/,
+      const { result } = renderHook(
+        (props: Props) => useChatDockViewModel(props),
+        {
+          initialProps: {
+            activeSessionId: 's1',
+            availableModels,
+            agents,
+            sessions: [
+              { ...sessions[0], agentConnectionId: 'opencode' },
+            ] as typeof sessions,
+          },
+        },
+      );
+      expect(result.current.imageAttachmentCaveat).toMatch(
+        /OpenCode accepts images, but Station can't confirm/,
       );
     });
 
