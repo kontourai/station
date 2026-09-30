@@ -34,6 +34,29 @@ const START_POLL_ATTEMPTS = 20;
 // Task Scheduler defaults to 7, a background-tier priority. 5 is in its
 // interactive band and is appropriate for Station's user-facing service.
 export const WINDOWS_INTERACTIVE_TASK_PRIORITY = 5;
+// `schtasks /Create` without settings XML leaves a task that Task Scheduler
+// stops after 72 hours and never restarts after a failure (#2970). The launchd
+// (`KeepAlive`) and systemd (`Restart=always`) units restart without a limit,
+// and the service launcher (#2675) relies on that: a failed restore exits and
+// is retried by the next start. `PT0S` removes the time limit. Task Scheduler's
+// shortest restart interval is one minute, and the schema types the restart
+// count as an unsigned byte, so 255 one-minute retries is the closest bounded
+// equivalent of an unconditional restart.
+export const WINDOWS_TASK_EXECUTION_TIME_LIMIT = 'PT0S';
+export const WINDOWS_TASK_RESTART_COUNT = 255;
+export const WINDOWS_TASK_RESTART_INTERVAL = 'PT1M';
+/** The settings line an install leaves behind and `service status` expects. */
+export const WINDOWS_TASK_SETTINGS_EXPECTED = `Priority=${WINDOWS_INTERACTIVE_TASK_PRIORITY}, ExecutionTimeLimit=${WINDOWS_TASK_EXECUTION_TIME_LIMIT}, RestartCount=${WINDOWS_TASK_RESTART_COUNT}, RestartInterval=${WINDOWS_TASK_RESTART_INTERVAL}`;
+
+/**
+ * PowerShell that formats a task's persisted settings in the shape of
+ * WINDOWS_TASK_SETTINGS_EXPECTED. `settings` is a PowerShell expression for a
+ * CIM task-settings object. Both the install read-back and the status probe
+ * use it, so the two cannot disagree about what "current" means.
+ */
+export function windowsTaskSettingsObservation(settings: string): string {
+  return `('Priority={0}, ExecutionTimeLimit={1}, RestartCount={2}, RestartInterval={3}' -f [int]${settings}.Priority, [string]${settings}.ExecutionTimeLimit, [int]${settings}.RestartCount, [string]${settings}.RestartInterval)`;
+}
 
 function sleepSynchronously(milliseconds: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
@@ -245,11 +268,13 @@ function taskState(
 }
 
 /**
- * `schtasks /Create` has no priority switch. The ScheduledTasks module is
- * already required for our locale-independent state query, so update the
- * registered task through that supported API before Station starts it.
+ * `schtasks /Create` has no switch for priority, execution time limit or
+ * restart-on-failure. The ScheduledTasks module is already required for our
+ * locale-independent state query, so update the registered task through that
+ * supported API before Station starts it, then read every value back: a
+ * setting Task Scheduler accepted but did not persist fails the install.
  */
-function setWindowsTaskPriority(
+export function applyWindowsTaskSettings(
   registration: ServiceRegistration,
   run: CommandRunner,
 ): void {
@@ -260,9 +285,21 @@ function setWindowsTaskPriority(
     JSON.stringify({ taskName: registration.taskName }),
     'utf8',
   ).toString('base64');
-  const program = `$ErrorActionPreference = 'Stop'; $request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json; $task = Get-ScheduledTask -TaskName $request.taskName.TrimStart('\\') -TaskPath '\\'; $task.Settings.Priority = ${WINDOWS_INTERACTIVE_TASK_PRIORITY}; Set-ScheduledTask -InputObject $task | Out-Null; $updated = Get-ScheduledTask -TaskName $request.taskName.TrimStart('\\') -TaskPath '\\'; if ([int]$updated.Settings.Priority -ne ${WINDOWS_INTERACTIVE_TASK_PRIORITY}) { throw 'Station Task Scheduler priority did not persist' }`;
+  const program = [
+    "$ErrorActionPreference = 'Stop'",
+    `$request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json`,
+    "$task = Get-ScheduledTask -TaskName $request.taskName.TrimStart('\\') -TaskPath '\\'",
+    `$task.Settings.Priority = ${WINDOWS_INTERACTIVE_TASK_PRIORITY}`,
+    `$task.Settings.ExecutionTimeLimit = '${WINDOWS_TASK_EXECUTION_TIME_LIMIT}'`,
+    `$task.Settings.RestartCount = ${WINDOWS_TASK_RESTART_COUNT}`,
+    `$task.Settings.RestartInterval = '${WINDOWS_TASK_RESTART_INTERVAL}'`,
+    'Set-ScheduledTask -InputObject $task | Out-Null',
+    "$updated = Get-ScheduledTask -TaskName $request.taskName.TrimStart('\\') -TaskPath '\\'",
+    `$observed = ${windowsTaskSettingsObservation('$updated.Settings')}`,
+    `if ($observed -ne '${WINDOWS_TASK_SETTINGS_EXPECTED}') { throw "Station Task Scheduler settings did not persist: $observed" }`,
+  ].join('; ');
   requireSuccess(
-    'Task Scheduler priority update',
+    'Task Scheduler settings update',
     run(windowsSystemUtilityPath('powershell'), [
       '-NoProfile',
       '-NonInteractive',
@@ -678,7 +715,7 @@ export function installWindowsService(
         '/F',
       ]),
     );
-    setWindowsTaskPriority(registration, run);
+    applyWindowsTaskSettings(registration, run);
     // Task registration can take long enough for a writable command path to
     // change. Recheck the full control/execution boundary immediately before
     // asking Task Scheduler to execute the wrapper.

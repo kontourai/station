@@ -79,7 +79,9 @@ vi.mock('../commands/service-systemd.js', () => ({
   uninstallSystemd,
 }));
 vi.mock('../commands/service-windows.js', () => ({
-  WINDOWS_INTERACTIVE_TASK_PRIORITY: 5,
+  WINDOWS_TASK_SETTINGS_EXPECTED:
+    'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M',
+  windowsTaskSettingsObservation: () => '',
   assertWindowsServiceExecutionTrusted,
   installWindowsService,
   startWindowsService,
