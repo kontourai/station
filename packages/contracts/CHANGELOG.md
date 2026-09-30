@@ -55,19 +55,19 @@
 - 5f54657: Add bounded personal-controller control-session handshake and operator review observation contracts. These prototype responses grant no room access, Agent execution, home activation or admission API.
 - 716480e: Add an operator-promoted `home:control` pairing scope and show it in paired-device access controls. The permission only identifies private control-session participation; live control APIs, room access and Agent execution remain unavailable without their separate authorities.
 - 1344781: Record recovery-from-copy provenance atomically with an offline home restore. Show the snapshot time and explicit absence of transferred execution authority in CLI and JSON output, and expose a bounded read-only recovery-record reader.
-  
+
   Expose a host-scoped system-status disclosure and show a persistent browser recovery notice with snapshot time and explicit authority limits.
 - c3474f5: Expose optional operator-configured browser identity choices alongside Station
   local accounts, with verified OIDC callbacks and independent account sessions.
 - eb1fd17: Add host-neutral mobile device inventory and single-frame capture contracts, with an authenticated SDK subpath that validates the selected target. Honor optional response byte ceilings for JSON POST responses as well as GET requests.
 - ad2f0d3: Add the Muse background-work codes: `MUSE_LINGERING_CHILD_REAPED_CODE` and `MUSE_HELD_TURN_UNFINISHED_CODE` (`runtime.warning` codes for a held Muse turn's unreported background work), and `MUSE_TURN_SLOT_RELEASING_CODE` (a retryable send refusal while the previous Muse process is still exiting). Document that an adapter may suspend a turn's declared `idleLimitMs`.
-  
+
   The runtime-event projection now reconciles `turn.completed.outputText` against ALL text the turn emitted, as the live chat path already does: an equal text adds nothing, and a strict extension appends only the missing suffix. This changes how reloaded transcripts render for more than Muse, in each case to match what the live view showed:
-  
+
   - Muse, Codex and station-agent turns whose `outputText` is the whole turn's text no longer repeat the text written before a tool (or across several tool segments) in the final paragraph.
   - Turns with reasoning between text segments (thinking-interleaved Claude) no longer repeat the text before the reasoning.
   - When `outputText` extends the streamed text only by a trailing suffix (a coincidental prefix, text reported only at the terminal, or a trailing newline), that suffix is now appended rather than dropped.
-  
+
   Turns whose `outputText` is only the final answer (Claude without interleaved reasoning) render as before.
 - fa6338a: Delegated turn supervision can now be idle-only. `DelegatedTaskTurnSupervision.deadlineAt`, `remainingMs` and `totalLimitMs` (SDK) and `TurnSupervisionFacts.deadlineAt`/`totalLimitMs` (contracts) are optional and present together only when a total turn budget was declared; Muse declares none by default. Consumers that read them as always-present numbers must handle their absence. Contracts also add `MUSE_TURN_IDLE_TIMEOUT_CODE`/`MUSE_TURN_TOTAL_TIMEOUT_CODE` and widen the `tool.completed` status documentation (`unresolved` at a one-turn engine's turn end, engine-reported `cancelled`).
 - 5570767: Muse turns no longer have a default idle bound (#2269). `TurnSupervisionFacts.idleLimitMs` (contracts) and `DelegatedTaskTurnSupervision.idleLimitMs` (SDK) are now optional and present only when an idle bound was declared for the turn; a Muse turn with no declared bound publishes a declaration with neither `idleLimitMs` nor a total budget. Consumers that read `idleLimitMs` as an always-present number must handle its absence. `station delegate status` prints "Idle limit: none declared for this turn" for such a turn.
@@ -76,7 +76,7 @@
 - 4e39225: Add explicit operator-approved device binding to verified Tailscale person identity. Host pairing consent and the local access-approval CLI opt in without changing ordinary device grants, Project membership or wire scopes. Require server acknowledgment so older servers cannot silently approve device access as person binding.
 - 984f9bc: Expose the server-issued portable execution consent marker with its original receiver-local Project identity. Portable continuation requires fresh admission for that identity; older markers cannot silently adopt a replacement Project.
 - a777b37: Add typed portable Project identity snapshots and explicit receiver-local associations, with SDK methods to read, prepare and attach an identity. Reject incompatible responses and preserve the requested association through asynchronous work.
-  
+
   Attachment publishes a new local Project and its imported identity together without changing existing Project history, copying paths into shared identity, or granting membership or execution authority.
 - 272c29b: Carry an optional repository-relative execution root in portable Project identities.
 - 17c17a1: Add explicit portable Project/resource execution intent and receiver capability
@@ -104,7 +104,7 @@
   transport and malformed responses stay errors and never read as absence.
   `StationHttpError` now preserves the envelope's machine `code` for
   status+code branching (never message-text sniffing).
-  
+
   `useDelegateOrchestrationTaskMutation` keeps its published call shape — a
   plain `DelegateTaskInput` resolved against the hook's `apiBase` default and
   ambient authority, unchanged for existing consumers — and additionally
@@ -116,7 +116,7 @@
   late hook-option changes cannot redirect an in-flight dispatch.
   `delegateOrchestrationTask` accepts an optional `ClientRequestOptions`
   second parameter.
-  
+
   Scope note (#480): the supported Project-placement path is the portable
   DELEGATION intent (`project-portable`) dispatched by the delegation
   launcher, where the receiving Station verifies the offer on submit. The
@@ -146,11 +146,11 @@
   account, Project, publication, and Task authority before releasing content.
 - 0d75052: Add the `project` skill origin, so a workspace-scoped skill is distinguishable from a machine-wide one. Both are writable roots and previously reported `user`, which left no reader able to name the difference. Command-claim precedence places `project` in the same tier as `user`, matching the order discovery already resolves a name collision by.
 - 9ccd6e4: Add `Skill.writable` and `Skill.writeRefusal`, so a reader can tell whether Station will write a skill's own package instead of inferring it. The server already decided this and no read model carried the decision, which left the Skills editor offering a Save that the route answers 409 for. `source` and `origin` were the fields a client had to guess from and answer a different question: a registry install in a writable root is writable, and an install record stating `source: 'local'` says nothing about which root the package sits in.
-  
+
   `writeRefusal.reason` is a code — `served-in-place`, `canonical-package`, `outside-writable-root`, `unresolvable-name`, `directory-name-mismatch`, `containment-unreadable` — because the remedies genuinely differ and a reader cannot tell them apart from prose: a plugin-served prompt has no registry entry to install; a name that cannot become a directory name needs a rename; a package whose directory is simply named something else is plainly the user's own, sitting in a root Station writes, so telling that reader Station does not own it would be a false explanation of a real refusal; and a package whose path cannot be read at all may be sitting in exactly the right root with a broken link, where "install it into your workspace" repairs nothing.
-  
+
   `writeRefusal.detail` is Station's own sentence about WHAT is wrong, and it contains no author-controlled text at all: not the skill's name, not its path, not an exception message. Where the package sits travels separately in `writeRefusal.packageDirectory`, which is required: every refusal has one, because the rule answers writable outright when no package was discovered. That split is the point rather than a detail of phrasing — every segment of the path is author-controlled, a plugin names its own directories, and text spliced into Station's sentence is read as Station speaking. Surfaces must render `packageDirectory` as its own element, labelled as a path, and never inside `detail`.
-  
+
   The rule holds for this refusal, not yet for every message about a refused write: the write path's own failure message still interpolates the name and two paths and is surfaced verbatim, which is pre-existing and tracked in #1681. An absent `writable` is not a grant — a reader with no decision must treat the package as read-only.
 - a30cab6: Expose the durable current execution Session on orchestration session summaries so reconnecting clients can rebind a conversation after an idle lineage transition.
 - a30cab6: Expose authoritative unresolved request ids on orchestration session summaries so reconnecting clients can replace stale approval state.
@@ -159,16 +159,16 @@
 - be60151: Expose a bounded, currently authorized answer quotation source with exact Session, turn, message and text-revision identity.
 - a30cab6: Name the idless trailing orchestration activity frame that refreshes conversation liveness after coalesced live bursts.
 - 09bd7e6: Add applied registry-policy and untrusted package-claim contracts, explicit Node signing/digest leaves, and root/dependency trust-review transport. Keep signer fingerprints distinct from publisher identity and preserve offline retained recovery.
-  
+
   Release the fixed contracts/shared/SDK group together. Shared and CLI dependency floors must include the contracts release containing the new public leaves; unreleased same-version candidate tarballs require an explicit override throughout the consumer graph and do not prove npm availability.
 - 0c3d60e: Verify restored Git workspace contents through the bounded package codecs and emit a package-bound verification receipt. Check fresh local imports before target Project creation, preserving failed imports for explicit recovery and reporting platform limitations.
 
 ### Patch Changes
 
 - e4d61c8: Wake API initialization readers directly, bound diagnostic telemetry, and separate MCP transport construction from custody while preserving the published API.
-  
+
   Align plugin preview component and conflict kinds with the emitted layout contract and share those types with server and UI producers.
-  
+
   Canonicalize newly allocated temporary homes before admission so read-only source observation shares the writer home identity.
 - d0ca944: Correct CLI help for supported option syntax, distribution boundaries, request
   deadlines, and checkpoint limitations. Update package documentation and examples
@@ -213,7 +213,7 @@
 ### Minor Changes
 
 - fd9a422: Use behavior-specific names for pre-release contracts.
-  
+
   - Runtime model catalogs now expose `source: 'built-in'` and `builtInModels`.
   - A model launch with no capability declaration records
     `evidence: 'capability-absent'`.
@@ -227,7 +227,7 @@
     `useMigratePreIndexKnowledgeMutation`.
   - The synthesized local-only project resource helper is named
     `localProjectResourceId`.
-  
+
   Update pre-release callers and fixtures directly; removed identifiers and
   serialized values are not read as aliases. Development homes with stored
   session events using the removed model-plan or policy-engine values should be
@@ -240,13 +240,13 @@
 - 62c5c0d: `ResourceResolutionResult` becomes a discriminated union that carries the
   observations each state was derived from (station#1594). **Source-breaking for
   TypeScript consumers**, deliberately: the restructure is the migration story.
-  
+
   Before, the type was one flat interface with optional `path` and `reason`, so
   the resolver reported a derived label and discarded the two facts it derived it
   from — whether anything *declares* a realization of the resource, and what was
   *observed* at the declared place. Two defects followed from that, and this
   change closes both:
-  
+
   - **`unbound` meant two opposite things.** "Nothing on this Station records a
     realization" and "the recorded directory is gone" were the same state, with
     the difference living only in the prose of `reason`. The session-cwd seam owes
@@ -260,18 +260,18 @@
     Both are only ever emitted *after* an existence check has passed, so the
     resolver held a real directory and the contract forbade it from saying so.
     They now carry a required `unverifiedPath`.
-  
+
   `path` stays the answer slot — present on `bound` and nowhere else, unchanged.
   `unverifiedPath` is a separately named observation slot whose name is the
   warning; a consumer asking "where is the verified checkout of resource X" reads
   `path`, and one asking the weaker "where is this project's realized directory"
   reads `path ?? unverifiedPath`.
-  
+
   Also exported: `ResourceRealizationRecord`. `isWellFormedResolution` now takes
   `unknown` and narrows — with the union in place, an in-repo TypeScript producer
   of a malformed shape is already a compile error, so what remains for the
   predicate is exactly what it is for: values that arrive without a compiler.
-  
+
   **Migration:** every producer must supply the per-state required fields, and any
   consumer reading `.path` without narrowing to `bound` is now a compile error.
   Both are intended. The contract is marked `@experimental` until the remaining
@@ -279,7 +279,7 @@
   slices.
 - 278bf3b: Both Review Queue read projections are now total over the project inventory,
   and both changed their published return type to say so.
-  
+
   - `listAllReviewReceipts` / `fetchIndependentReviewReceipts` /
     `useReviewEvidenceQuery` resolve to `ReviewEvidenceAggregate`
     (`{ receipts, unavailableProjects }`) instead of
@@ -290,11 +290,11 @@
     `SurveyFlowReviewsVM` (`{ items, unavailableProjects }`) instead of
     `SurveyFlowReviewItemVM[]`, with `SurveyFlowReviewUnavailableReason` naming
     the derived reason a project could not be read.
-  
+
   A project Station cannot read contributes zero rows plus one
   `unavailableProjects` entry carrying its reason, rather than failing the whole
   read — one corrupt file used to 500 an entire Review Queue source.
-  
+
   Callers destructure the collection instead of consuming the array directly;
   this is a breaking export change, expressed as a minor while these packages are
   pre-1.0. The survey fetcher's compat adapter covers the old-server /

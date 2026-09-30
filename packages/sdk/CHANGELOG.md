@@ -47,7 +47,7 @@
   decision, including earlier unacknowledged ones and requests the engine
   closed before Station answered.
 - 1344781: Record recovery-from-copy provenance atomically with an offline home restore. Show the snapshot time and explicit absence of transferred execution authority in CLI and JSON output, and expose a bounded read-only recovery-record reader.
-  
+
   Expose a host-scoped system-status disclosure and show a persistent browser recovery notice with snapshot time and explicit authority limits.
 - c5a4cf2: Add captured-actor preconditions for Project access mutations and an explicit,
   operator-approved collaborator-management Device scope choice. Invited admins
@@ -62,7 +62,7 @@
   `gitMetadata: 'excluded'`, echoing a preview that staged the source without its
   git metadata so the install stages it the same way.
 - a777b37: Add typed portable Project identity snapshots and explicit receiver-local associations, with SDK methods to read, prepare and attach an identity. Reject incompatible responses and preserve the requested association through asynchronous work.
-  
+
   Attachment publishes a new local Project and its imported identity together without changing existing Project history, copying paths into shared identity, or granting membership or execution authority.
 - 272c29b: Carry an optional repository-relative execution root in portable Project identities.
 - 4d38391: Add scoped Project membership and invitation administration, built-in local
@@ -88,7 +88,7 @@
   transport and malformed responses stay errors and never read as absence.
   `StationHttpError` now preserves the envelope's machine `code` for
   status+code branching (never message-text sniffing).
-  
+
   `useDelegateOrchestrationTaskMutation` keeps its published call shape — a
   plain `DelegateTaskInput` resolved against the hook's `apiBase` default and
   ambient authority, unchanged for existing consumers — and additionally
@@ -100,7 +100,7 @@
   late hook-option changes cannot redirect an in-flight dispatch.
   `delegateOrchestrationTask` accepts an optional `ClientRequestOptions`
   second parameter.
-  
+
   Scope note (#480): the supported Project-placement path is the portable
   DELEGATION intent (`project-portable`) dispatched by the delegation
   launcher, where the receiving Station verifies the offer on submit. The
@@ -137,7 +137,7 @@
   validation details, a string `error`, the object `error`'s `message` then
   `code`, the top-level `message`, then the fallback. An object `error` now
   reads as its message or code rather than as serialized JSON.
-  
+
   A thrown `StationHttpError`'s message names each field of a validation
   refusal — `Validation failed: command Required, name Required` — matching the
   CLI. New `envelopeReasons(details)` and `envelopeDetailsMessage(details)` on
@@ -156,7 +156,7 @@
   a validation refusal (`Validation failed: name Required`). A failure whose
   body is not JSON (a proxy's HTML 502) keeps its status instead of throwing a
   bare `SyntaxError`; an unreadable 2xx is still a plain `Error`.
-  
+
   - The Agent fetchers (`getAgent`, `fetchAgentCatalog`, `createAgentDetailed`,
     `createAgentRaw`, `materializeEngineAgent`, `updateAgentRaw`,
     `deleteAgentRaw`) throw `StationHttpError`. A `200` carrying
@@ -190,7 +190,7 @@
   `200` carrying `{ success: false }` now throws a `StationHttpError` whose
   status is `200` instead of a plain `Error`; a body that is not JSON keeps its
   status on a non-2xx and is still a plain `Error` on a 2xx.
-  
+
   **Breaking (constructor only).** `PluginCollectionHttpError`'s constructor now
   takes the `StationHttpError` the client built from the response, and an
   optional `{ grantsUnavailable }`, in place of `(status, envelope, options)`:
@@ -205,36 +205,36 @@
   `station_control_caller_required`), `details` and `Retry-After`. Their thrown
   message names each field of a validation refusal, as `readEnvelopeOrThrow`'s
   does (`Validation failed: command Required`).
-  
+
   **Breaking (constructors only).** `SchedulerResponseError`,
   `SchedulerRunIndeterminateError`, `SchedulerRunFailedError` and
   `SchedulerRunRefusedError` now extend `StationHttpError`, and their
   constructors take the `StationHttpError` the client built from the response
   in place of a status and message:
-  
+
   - `new SchedulerResponseError(status, message, detail)` becomes
     `new SchedulerResponseError(new StationHttpError(status, message), detail)`.
   - `new SchedulerRunFailedError(message, receipt)` (and the refused and
     indeterminate forms) becomes
     `new SchedulerRunFailedError(new StationHttpError(status, message), receipt)`.
-  
+
   Code that only catches these errors is unaffected, and a run error's `code`
   is still its own fixed value. The SDK throws these errors itself; nothing in
   Station constructs them outside the SDK.
-  
+
   `PluginCollectionHttpError` now extends `StationHttpError`. Its constructor
   keeps `(status, envelope)` and gains an optional third argument,
   `{ details }`. It carries the envelope's `code` on the error and on
   `envelope.code`, and keeps a refusal's `details`.
-  
+
   The skills and secret-binding fetchers keep the status of a failure whose body
   is not JSON (a proxy's HTML 502) instead of throwing a bare `SyntaxError`.
-  
+
   New `createLocalSkill` and `updateLocalSkill` fetchers back
   `useCreateLocalSkillMutation` and `useUpdateLocalSkillMutation`, which still
   resolve to the whole envelope.
 - 797b975: Type the host context hooks and knowledge results (#2399, #2400).
-  
+
   - `useAgents`, `useNavigation`, `useToast` and `useAuth` now return the
     published `AgentSummary[]`, `SDKNavigation`, `SDKToast` and `SDKAuthState`
     contracts instead of `any`. Code that read members outside a contract stops
@@ -267,7 +267,7 @@
   account, Project, publication, and Task authority before releasing content.
 - be60151: Expose a bounded, currently authorized answer quotation source with exact Session, turn, message and text-revision identity.
 - 09bd7e6: Add applied registry-policy and untrusted package-claim contracts, explicit Node signing/digest leaves, and root/dependency trust-review transport. Keep signer fingerprints distinct from publisher identity and preserve offline retained recovery.
-  
+
   Release the fixed contracts/shared/SDK group together. Shared and CLI dependency floors must include the contracts release containing the new public leaves; unreleased same-version candidate tarballs require an explicit override throughout the consumer graph and do not prove npm availability.
 
 ### Patch Changes
@@ -276,16 +276,16 @@
   guest views can cancel stale requests when the Station or signed-in account
   changes.
 - e4d61c8: Wake API initialization readers directly, bound diagnostic telemetry, and separate MCP transport construction from custody while preserving the published API.
-  
+
   Align plugin preview component and conflict kinds with the emitted layout contract and share those types with server and UI producers.
-  
+
   Canonicalize newly allocated temporary homes before admission so read-only source observation shares the writer home identity.
 - d0ca944: Correct CLI help for supported option syntax, distribution boundaries, request
   deadlines, and checkpoint limitations. Update package documentation and examples
   to match current exports, hook signatures, build paths, and authorization limits.
   These documentation changes do not implement the separately tracked runtime fixes.
 - ecfa545: Invalidate feedback guidelines and status after ratings are saved or removed, so clients refresh derived preferences and pending-analysis state.
-  
+
   Preserve configured cache invalidations when a successful mutation's observer throws, while keeping that observer failure visible to its caller.
 - 2ae242b: LayoutHeader: `canLaunchPrompts`. An optional prop a host sets to `false` when it has no prompt launcher; the header then renders no prompt action, global skill, tab prompt or quick-actions menu instead of rendering them wired to a no-op. `external` and `internal` actions still render. Absent keeps the previous behaviour.
 - 15a2761: Surface classified provider-plan quota failures in delegate status and
@@ -297,20 +297,20 @@
   switch, or paid fallback is added — the task stays failed and resumable.
 - 390ea80: Declare the Zod runtime dependency used by account authentication, local accounts, and project access clients so they resolve outside the Station workspace.
 - 74c2f4f: A per-call request deadline that fires while a response body is being read, through `json()`, `text()`, `arrayBuffer()`, `blob()`, `formData()` or `bytes()`, now raises `StationRequestTimeoutError` with the same `method` and `mutation` facts as a deadline missed before the headers. `response.body` streams are not covered.
-  
+
   Every SDK helper that unwraps a body passes that error on instead of reporting an unreadable or non-JSON body ("Orchestration API error: 200", "Request failed", "Expected JSON response"). This covers `readEnvelopeOrThrow`, `readJsonBody` and each client module's own unwrap, on both the 2xx and non-2xx branches, and every fallback written as `.catch(...)` on a chain that reads a body, including a body read inside a `.then(...)` callback on that chain. Before, a command whose headers had arrived, and whose change may have been applied, read as a plain failure.
-  
+
   Where a call classifies failures into its own typed uncertainty, a mid-body deadline now gets the same classification as a deadline before the headers:
-  
+
   - `adoptOrchestrationSession` throws `AdoptSessionError` with `failureClass: 'uncertain-no-response'` when the deadline fires after 2xx headers, so a continuation that may have been created is not read as a definite answer. After a refusal's headers it is `'certain-response'` with that status: Station did answer.
   - `launchContinueSessionStarter` throws `AdoptSessionError` with `failureClass: 'uncertain-no-response'` for a deadline before the headers or after 2xx headers. Before, both reached the caller as a raw `StationRequestTimeoutError`. After a refusal's headers it throws a plain error carrying the HTTP status.
   - `launchScheduledCheckStarter` throws `ScheduledCheckStarterResponseError`.
   - `resolveConversationOpen` fails with kind `'network'`.
-  
+
   Helpers that wrap the whole request in a typed error of their own keep doing so for a mid-body deadline too. The answer basis, narrative binding, flow-gate evaluations, task basis and unified search helpers report it as their typed error with status 0, exactly as they report a deadline before the headers. For task basis this is a change: its inner body read used to report a mid-body deadline as a non-JSON answer with the response's status, and now reports it as status 0.
-  
+
   The capability probes are unchanged: the attachment-staging probe reports `unknown`, the event-stream resume probe reports "not supported", and the session event-window probe reports "unknown", for a deadline as for any other failure.
-  
+
   The deadline-bound response is still a `Response`: `response.constructor === Response` holds, and a body reader the runtime lacks is reported as absent.
 - a4dfd04: Depends on `@kontourai/ui` `^1.16.0` (was `^1.12.0`), so the workspace resolves
   one version of the design kit. The SDK's own use of it (`Empty`) is unchanged.
@@ -436,7 +436,7 @@
 ### Minor Changes
 
 - fd9a422: Use behavior-specific names for pre-release contracts.
-  
+
   - Runtime model catalogs now expose `source: 'built-in'` and `builtInModels`.
   - A model launch with no capability declaration records
     `evidence: 'capability-absent'`.
@@ -450,7 +450,7 @@
     `useMigratePreIndexKnowledgeMutation`.
   - The synthesized local-only project resource helper is named
     `localProjectResourceId`.
-  
+
   Update pre-release callers and fixtures directly; removed identifiers and
   serialized values are not read as aliases. Development homes with stored
   session events using the removed model-plan or policy-engine values should be
@@ -462,7 +462,7 @@
   not portable, and clients must treat environment hints as credential-free.
 - 278bf3b: Both Review Queue read projections are now total over the project inventory,
   and both changed their published return type to say so.
-  
+
   - `listAllReviewReceipts` / `fetchIndependentReviewReceipts` /
     `useReviewEvidenceQuery` resolve to `ReviewEvidenceAggregate`
     (`{ receipts, unavailableProjects }`) instead of
@@ -473,11 +473,11 @@
     `SurveyFlowReviewsVM` (`{ items, unavailableProjects }`) instead of
     `SurveyFlowReviewItemVM[]`, with `SurveyFlowReviewUnavailableReason` naming
     the derived reason a project could not be read.
-  
+
   A project Station cannot read contributes zero rows plus one
   `unavailableProjects` entry carrying its reason, rather than failing the whole
   read — one corrupt file used to 500 an entire Review Queue source.
-  
+
   Callers destructure the collection instead of consuming the array directly;
   this is a breaking export change, expressed as a minor while these packages are
   pre-1.0. The survey fetcher's compat adapter covers the old-server /

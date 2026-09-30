@@ -36,16 +36,16 @@
   for independent approval, generation-checked rotation and retained revocation.
   These describe endpoint trust only and grant no account or Project access.
 - 1344781: Record recovery-from-copy provenance atomically with an offline home restore. Show the snapshot time and explicit absence of transferred execution authority in CLI and JSON output, and expose a bounded read-only recovery-record reader.
-  
+
   Expose a host-scoped system-status disclosure and show a persistent browser recovery notice with snapshot time and explicit authority limits.
 - ad2f0d3: Add the Muse background-work codes: `MUSE_LINGERING_CHILD_REAPED_CODE` and `MUSE_HELD_TURN_UNFINISHED_CODE` (`runtime.warning` codes for a held Muse turn's unreported background work), and `MUSE_TURN_SLOT_RELEASING_CODE` (a retryable send refusal while the previous Muse process is still exiting). Document that an adapter may suspend a turn's declared `idleLimitMs`.
-  
+
   The runtime-event projection now reconciles `turn.completed.outputText` against ALL text the turn emitted, as the live chat path already does: an equal text adds nothing, and a strict extension appends only the missing suffix. This changes how reloaded transcripts render for more than Muse, in each case to match what the live view showed:
-  
+
   - Muse, Codex and station-agent turns whose `outputText` is the whole turn's text no longer repeat the text written before a tool (or across several tool segments) in the final paragraph.
   - Turns with reasoning between text segments (thinking-interleaved Claude) no longer repeat the text before the reasoning.
   - When `outputText` extends the streamed text only by a trailing suffix (a coincidental prefix, text reported only at the terminal, or a trailing newline), that suffix is now appended rather than dropped.
-  
+
   Turns whose `outputText` is only the final answer (Claude without interleaved reasoning) render as before.
 - 0a73a73: `observePluginTreeAsync` can also report, from the same walk, the digest of a
   tree with some named entries left out. `PluginInstallConsent` gains an optional
@@ -54,7 +54,7 @@
 - ce6ec59: Add encrypted, bounded Git workspace packages with shared capture, inspection, and fresh-directory import APIs and cloud CLI commands. Preserve supported staged and uncommitted work without transferring credentials or execution authority. Document self-hosted use, resource limits, and recovery.
 - 9c5c353: Remove `outcomeFirstAllQuietHeadline` from `@kontourai/station-shared/notification-priority`. No Station surface read it; callers that composed an all-quiet headline should inline the two strings.
 - 09bd7e6: Add applied registry-policy and untrusted package-claim contracts, explicit Node signing/digest leaves, and root/dependency trust-review transport. Keep signer fingerprints distinct from publisher identity and preserve offline retained recovery.
-  
+
   Release the fixed contracts/shared/SDK group together. Shared and CLI dependency floors must include the contracts release containing the new public leaves; unreleased same-version candidate tarballs require an explicit override throughout the consumer graph and do not prove npm availability.
 - 08370b2: Resolve Windows PowerShell by its System32 path for process-birth probes, give the
   lock's own-process lookup the Windows cold-start budget, and name the failed probe
@@ -67,9 +67,9 @@
 
 - b8417e5: Add bounded newest-first conversation history hydration and recover complete terminal text from a retained suffix. Expose full saved Station addresses and host-owned native profile editing without forwarding credentials to a changed origin.
 - e4d61c8: Wake API initialization readers directly, bound diagnostic telemetry, and separate MCP transport construction from custody while preserving the published API.
-  
+
   Align plugin preview component and conflict kinds with the emitted layout contract and share those types with server and UI producers.
-  
+
   Canonicalize newly allocated temporary homes before admission so read-only source observation shares the writer home identity.
 - d0ca944: Correct CLI help for supported option syntax, distribution boundaries, request
   deadlines, and checkpoint limitations. Update package documentation and examples
@@ -179,7 +179,7 @@
   credentials, which `--include-secrets` writes as plaintext, from secret-binding
   references and binding-backed credentials, which never export.
 - 737e343: `build`: load esbuild lazily, and stop assuming a `packages/` directory exists.
-  
+
   `buildPlugin` now resolves esbuild through `await import('esbuild')` at the top
   of a layout-plugin build instead of a module-level static import, and reports a
   named, actionable error when it is absent. Nothing about the exported API
@@ -187,7 +187,7 @@
   config or parse manifests no longer pull esbuild's per-platform native binary
   (~9.9 MB unpacked) into their load path or their install. `@kontourai/station-cli`
   uses this to declare esbuild as an optional peer dependency.
-  
+
   `buildAllowedInputRoots` also stops falling back to a
   `<package>/../packages/shared` path that `resolveWorkspacePackageRoot` has
   already rejected. Inside the monorepo the fallback never fired; outside it — a

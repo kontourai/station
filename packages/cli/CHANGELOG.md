@@ -29,7 +29,7 @@
   decision, including earlier unacknowledged ones and requests the engine
   closed before Station answered.
 - 1344781: Record recovery-from-copy provenance atomically with an offline home restore. Show the snapshot time and explicit absence of transferred execution authority in CLI and JSON output, and expose a bounded read-only recovery-record reader.
-  
+
   Expose a host-scoped system-status disclosure and show a persistent browser recovery notice with snapshot time and explicit authority limits.
 - 4e39225: Add explicit operator-approved device binding to verified Tailscale person identity. Host pairing consent and the local access-approval CLI opt in without changing ordinary device grants, Project membership or wire scopes. Require server acknowledgment so older servers cannot silently approve device access as person binding.
 - ce6ec59: Add encrypted, bounded Git workspace packages with shared capture, inspection, and fresh-directory import APIs and cloud CLI commands. Preserve supported staged and uncommitted work without transferring credentials or execution authority. Document self-hosted use, resource limits, and recovery.
@@ -52,9 +52,9 @@
   installed that way) installs instead of being refused.
 - 9c5c353: `station registry` no longer fails with "Registry install aliases are unavailable" once a registry plugin has been installed, and no longer guesses installed state from local files. The running Station owns installed state; `station registry plugins list` reports it.
 - e4d61c8: Wake API initialization readers directly, bound diagnostic telemetry, and separate MCP transport construction from custody while preserving the published API.
-  
+
   Align plugin preview component and conflict kinds with the emitted layout contract and share those types with server and UI producers.
-  
+
   Canonicalize newly allocated temporary homes before admission so read-only source observation shares the writer home identity.
 - d23831f: Add `station delegate wait <task-id>` — bounded, observation-only completion
   waiting for delegated tasks (#2264). It polls the canonical delegation status
@@ -86,7 +86,7 @@
   renders them beneath the fixed guidance line. No retry, model/provider
   switch, or paid fallback is added — the task stays failed and resumable.
 - 09bd7e6: Add applied registry-policy and untrusted package-claim contracts, explicit Node signing/digest leaves, and root/dependency trust-review transport. Keep signer fingerprints distinct from publisher identity and preserve offline retained recovery.
-  
+
   Release the fixed contracts/shared/SDK group together. Shared and CLI dependency floors must include the contracts release containing the new public leaves; unreleased same-version candidate tarballs require an explicit override throughout the consumer graph and do not prove npm availability.
 - ae8f5d4: Run every Windows current-user ACL command through one shared runner with one
   120-second budget, sized for a cold or saturated host. The server's local-grant
@@ -115,7 +115,7 @@
   a one-time short-TTL local-bootstrap token lets that opener hand the local
   browser a paired credential through the URL fragment without any peer-address
   trust.
-  
+
   Commander is bundled (a devDependency esbuild inlines into `dist/station.mjs`),
   not added to `dependencies`: the published tarball still carries only the
   audited `@napi-rs/keyring` runtime dependency (`bundle.test.ts`). The
