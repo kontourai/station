@@ -140,20 +140,26 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   images are removed. When nothing can be attached, tapping the paperclip
   shows the reason instead of opening a file picker, so a touch user sees it
   too.
-- When support is not confirmed (an ACP engine that has not reported its
-  answer yet, or one whose catalog spans several model providers while the
-  selected model's support is unknown), attaching an image shows a
-  non-blocking note.
+- When support is not confirmed, attaching an image shows a non-blocking
+  note: an ACP engine that has not reported its answer yet, or OpenCode, whose
+  engine-wide "yes" says nothing about the selected model (it swaps an image
+  for an error text when the model lacks image input). Other engines get no
+  per-model note.
 - Each chip shows one short status that names what happened, such as
   **Upload expired**, **Upload didn't finish** or **Upload limit reached**, and
   its action (**Upload again**, **Retry**, **Remove**). A full staging capacity
-  offers no Retry: it names the limit and how to free it. Chips wrap to a
-  second row (two per row on a phone) instead of scrolling sideways.
+  (5 unsent uploads per login) offers no Retry: the line under the chips names
+  the limit and how to free it, with **Remove attachments**, and wins over the
+  generic upload failure. Chips wrap to a second row (two per row on a phone)
+  instead of scrolling sideways.
 - Attachment messages sit between the chips and the draft. When Send is
   blocked only by the attachments, that line carries **Remove attachments**,
   so the fix stays reachable in a short dock where the chat error may be out
-  of view. In a short dock the draft is the only part that shrinks (and
-  scrolls); chips, messages and the controls row keep their size.
+  of view. The composer reserves room for a two-line draft; in a short dock
+  the failure banner and the transcript yield first (down to zero, and in a
+  dock too short even for their padding they step aside), the chip strip
+  drops to one scrolling row, and only then does the draft shrink below two
+  lines — scrolling, never overlapped, with Send always on screen.
 - A send the engine refuses because of its attachments
   (`attachment_input_unsupported`) is shown as one chat error with **Remove
   attachments** instead of Retry, because the same send would be refused
