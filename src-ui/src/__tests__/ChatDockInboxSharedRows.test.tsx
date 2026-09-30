@@ -100,7 +100,7 @@ function expectSharedRowAnatomy(root: ParentNode) {
   // chip row used to drop its time entirely, leaving "how long has it sat
   // like this?" unanswerable from the inbox (chat-surface honesty pass).
   const state = root.querySelector('.chat-dock-inbox__state');
-  expect(state?.querySelector('.lifecycle-chip')?.textContent).toBe('Active');
+  expect(state?.querySelector('.lifecycle-chip')?.textContent).toBe('Running');
   expect(state?.querySelector('.chat-dock-inbox__since')?.textContent).toBe(
     '1m',
   );

@@ -1,5 +1,104 @@
 [
   {
+    "timestampUtc": "2026-09-30T06:25:54Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2464",
+    "sha": "e27600d1fcd3ba8b80f793713e7901c35cba4381",
+    "artifactBuiltAt": "2026-09-30T05:26:56.248Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36672468094",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36672468094)"
+    ],
+    "changelog": {
+      "previousSha": "fa78d02a509c2a30a4347130f54de67cd6f30ba1",
+      "groups": {
+        "feat": [
+          "[#2952](https://github.com/kontourai/station/pull/2952) feat(ui): bump @kontourai/ui to 1.16.0 and validate branding themes with its validateBrandOverride"
+        ],
+        "fix": [
+          "[#3015](https://github.com/kontourai/station/pull/3015) fix(chat): keep provider diagnostics off outward chat responses",
+          "[#2942](https://github.com/kontourai/station/pull/2942) fix(claude): keep session grants off escalations and plan exits (#2915, #2916)",
+          "[#2979](https://github.com/kontourai/station/pull/2979) fix(release): admit draft assets from an explicit producer artifact allowlist (#2977)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-09-30T06:25:51Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2464",
+    "sha": "e27600d1fcd3ba8b80f793713e7901c35cba4381",
+    "artifactBuiltAt": "2026-09-30T05:26:39.166Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36672468094",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36672468094)"
+    ],
+    "changelog": {
+      "previousSha": "fa78d02a509c2a30a4347130f54de67cd6f30ba1",
+      "groups": {
+        "feat": [
+          "[#2952](https://github.com/kontourai/station/pull/2952) feat(ui): bump @kontourai/ui to 1.16.0 and validate branding themes with its validateBrandOverride"
+        ],
+        "fix": [
+          "[#3015](https://github.com/kontourai/station/pull/3015) fix(chat): keep provider diagnostics off outward chat responses",
+          "[#2942](https://github.com/kontourai/station/pull/2942) fix(claude): keep session grants off escalations and plan exits (#2915, #2916)",
+          "[#2979](https://github.com/kontourai/station/pull/2979) fix(release): admit draft assets from an explicit producer artifact allowlist (#2977)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-09-30T06:22:05Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2464.36672468094",
+    "sha": "e27600d1fcd3ba8b80f793713e7901c35cba4381",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36672468094",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2464.36672468094 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "fa78d02a509c2a30a4347130f54de67cd6f30ba1",
+      "groups": {
+        "feat": [
+          "[#2952](https://github.com/kontourai/station/pull/2952) feat(ui): bump @kontourai/ui to 1.16.0 and validate branding themes with its validateBrandOverride"
+        ],
+        "fix": [
+          "[#3015](https://github.com/kontourai/station/pull/3015) fix(chat): keep provider diagnostics off outward chat responses",
+          "[#2942](https://github.com/kontourai/station/pull/2942) fix(claude): keep session grants off escalations and plan exits (#2915, #2916)",
+          "[#2979](https://github.com/kontourai/station/pull/2979) fix(release): admit draft assets from an explicit producer artifact allowlist (#2977)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
     "timestampUtc": "2026-09-29T23:54:41Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2463.3",

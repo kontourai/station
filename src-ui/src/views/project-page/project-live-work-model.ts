@@ -14,7 +14,8 @@ import {
  * THIRD CONSUMER, NOT A THIRD CLASSIFIER. Home partitions these sessions
  * (`partitionHomeWorkItems`), the Sessions list splits that partition into
  * lanes (`partitionSessionLanes`, archive#3027), and this scopes those lanes
- * to one project. Nothing here decides what "needs you" or "active" means; if
+ * to one project. Nothing here decides what "needs you", "running" or "idle"
+ * means; if
  * it did, a project badge, a project page and the Sessions list could each
  * report a different number for the same session — which is precisely the
  * defect archive#3202 was filed about, one layer down.
@@ -36,7 +37,8 @@ import {
  */
 export const PROJECT_LIVE_LANE_IDS: readonly SessionLaneId[] = [
   'needsYou',
-  'activeNow',
+  'running',
+  'idle',
 ];
 
 interface ProjectLiveWorkInputs {
@@ -47,7 +49,7 @@ interface ProjectLiveWorkInputs {
 
 /**
  * The live lanes for one project, in the Sessions list's own reading order
- * (Needs you, then Active now), each already sorted newest-first and each
+ * (Needs you, Running, then Idle), each already sorted newest-first and each
  * omitted when empty.
  *
  * Scoped with `matchesProjectFilter`, the Sessions list's project predicate,

@@ -227,7 +227,7 @@
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "637a38967906034798b78cd3e264e84026d869026c3e2aca66f855ac493a31c0"
+      "sha256": "406c0b701efe1c6bdf9f4d2b4682695ffe2caf0101639f254091107eea884cca"
     },
     {
       "name": "overlay-mobile-sheet",
@@ -305,7 +305,7 @@
       "name": "sessions-filtered-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "78e2b6058e080f00420219bed6ac354f51ccca52f806c3b1cc0bf108eb9eabcf"
+      "sha256": "18164df48092a5739d6165d2c3de6b5fbfbbe1ff81e47eb97e11b6370aaef2f8"
     },
     {
       "name": "settings",

@@ -1,7 +1,8 @@
 /**
- * The four counts. A BLOCK — see `activity-bars.tsx` for why these do not
+ * The Home counts. A BLOCK — see `activity-bars.tsx` for why these do not
  * live inside the page that renders them.
  */
+import { LIVE_LANE_LABELS } from '../home-lane-model';
 import type { useHomeWorkLanes } from '../useHomeWorkLanes';
 
 interface PulseStat {
@@ -19,7 +20,7 @@ interface PulseStat {
   onActivate?: () => void;
   /**
    * Where activating goes, in the user's words — becomes the tail of the
-   * control's accessible name ("Active now, 3, show the Active now lane").
+   * control's accessible name ("Running, 3, show the Running lane").
    * Required alongside `onActivate` so a control can never be labelled with
    * only a number.
    */
@@ -27,7 +28,7 @@ interface PulseStat {
 }
 
 /**
- * The four counts, without the page that frames them.
+ * The counts, without the page that frames them.
  */
 export function PulseStats({ stats }: { stats: PulseStat[] }) {
   return (
@@ -88,7 +89,11 @@ export function pulseStats(
   targets: Record<string, PulseStatTarget> = {},
 ): PulseStat[] {
   return [
-    { label: 'Active now', value: lanes.active.length },
+    // The live lanes, by what is happening (`liveLaneFor`) — never one
+    // "Active now" total that counted idle sessions as active.
+    { label: LIVE_LANE_LABELS.needsYou, value: lanes.needsYou.length },
+    { label: LIVE_LANE_LABELS.running, value: lanes.running.length },
+    { label: LIVE_LANE_LABELS.idle, value: lanes.idle.length },
     { label: 'Just finished', value: lanes.recentlyFinished.length },
     { label: 'Snoozed', value: lanes.snoozed.length },
     { label: 'Projects', value: projectRowCount },
