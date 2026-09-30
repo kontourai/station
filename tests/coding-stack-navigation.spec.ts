@@ -298,11 +298,14 @@ test.describe('Coding stack — desktop (1280px)', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goBack();
     await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
+    // The global reduced-motion rule (tokens.css) collapses the slide to
+    // 0.01ms: nothing of it is seen.
+    const duration = await chatPage(page).evaluate(
+      (element) => getComputedStyle(element).animationDuration,
+    );
     expect(
-      await chatPage(page).evaluate(
-        (element) => getComputedStyle(element).animationName,
-      ),
-    ).toBe('none');
+      Number.parseFloat(duration) * (duration.endsWith('ms') ? 1 : 1000),
+    ).toBeLessThanOrEqual(0.01);
     expect(
       await page.evaluate(
         () =>

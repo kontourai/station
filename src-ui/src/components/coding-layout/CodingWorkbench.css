@@ -23,7 +23,8 @@
   align-items: center;
   flex: none;
   min-width: 0;
-  padding: var(--space-4) var(--space-6);
+  min-height: 44px;
+  padding: 0 var(--space-6);
   border-bottom: 1px solid var(--border-primary);
 }
 
@@ -63,11 +64,19 @@
 }
 
 .coding-workbench__crumb-link {
+  position: relative;
   border: 0;
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
   cursor: pointer;
+}
+
+/* A 44px-tall target without growing the bar or asking the pointer. */
+.coding-workbench__crumb-link::after {
+  content: "";
+  position: absolute;
+  inset: -12px -2px;
 }
 
 .coding-workbench__crumb-link:hover {
@@ -154,10 +163,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-3);
+  gap: 0;
   flex: none;
   width: 44px;
-  padding: var(--space-5) 0;
+  padding: var(--space-2) 0;
   border-left: 1px solid var(--border-primary);
   overflow-y: auto;
 }
@@ -167,11 +176,14 @@
 }
 
 .coding-workbench__rail-item {
+  /* A 44px target on every pointer, drawn as a 32px round icon (the circle
+     is the ::before), so the touch floor needs no pointer query. */
   position: relative;
+  isolation: isolate;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
@@ -181,25 +193,40 @@
   cursor: pointer;
 }
 
+.coding-workbench__rail-item::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 6px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+
 .coding-workbench__rail-item:hover {
-  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
   color: var(--accent-primary);
 }
 
+.coding-workbench__rail-item:hover::before,
+.coding-workbench__rail-item[aria-expanded="true"]::before {
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+}
+
 .coding-workbench__rail-item[aria-current="page"] {
-  background: var(--accent-primary);
   color: var(--text-on-accent);
 }
 
+.coding-workbench__rail-item[aria-current="page"]::before {
+  background: var(--accent-primary);
+}
+
 .coding-workbench__rail-item[aria-expanded="true"] {
-  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
   color: var(--accent-primary);
 }
 
 .coding-workbench__rail-count {
   position: absolute;
-  top: -3px;
-  right: -5px;
+  top: 3px;
+  right: 1px;
   display: grid;
   place-items: center;
   min-width: 15px;
@@ -293,28 +320,10 @@
   }
 }
 
-/* The global reduced-motion rule shortens every animation to 0.01ms; this
-   removes the stack's outright, so no frame of it ever runs. */
-@media (prefers-reduced-motion: reduce) {
-  .coding-workbench__page[data-enter] {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* Coarse pointers keep the 44px floor. */
-@media (pointer: coarse), (max-width: 768px) {
-  .coding-workbench__rail {
-    width: 52px;
-  }
-
-  .coding-workbench__rail-item,
-  .coding-workbench__crumb-link {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
+/* Reduced motion needs no rule of its own here: the global one in
+   tokens.css shortens every animation to 0.01ms and one iteration, and the
+   motion tokens above resolve to 0.01ms under it, so no frame of the slide
+   is seen. */
 
 /* Read by assistive technology, not drawn. */
 .coding-workbench__announcement {
@@ -331,8 +340,4 @@
   flex: none;
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border-primary);
-}
-
-.coding-workbench__page--drill-in:focus {
-  outline: none;
 }

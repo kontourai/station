@@ -1458,7 +1458,10 @@ into from it.
   inert; a drill-in's pane renders only once the reader has drilled in during
   that mount and stays mounted after. Page changes animate with a short CSS
   slide-and-fade whose direction is the history index delta (not the View
-  Transitions API, which WebKitGTK lacks); `prefers-reduced-motion` removes it.
+  Transitions API, which WebKitGTK lacks); under `prefers-reduced-motion` the
+  global rule in `tokens.css` collapses it to 0.01ms, so none of it is seen. The
+  workbench's CSS carries no page-local media query: its rail and crumbs are
+  44px targets on every pointer.
 - **The inbox is Chat's own.** The centre's Chat is `ChatWorkspacePane`'s
   full-screen placement, whose inbox panel collapses and reopens through its
   `inboxOpen` device setting exactly as in the Chat layout; the stack mounts

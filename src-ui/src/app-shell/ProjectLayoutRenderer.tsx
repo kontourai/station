@@ -1294,12 +1294,6 @@ function BuiltinCodingLayoutHost({
       {(evidenceComposition?.unavailablePanes ?? []).map((entry) => (
         <Empty key={entry.category} {...codingEvidenceUnavailableCopy(entry)} />
       ))}
-      {document ? null : (
-        <Empty
-          label="No panes to show"
-          description="This Project’s Coding workspace has no panes available yet."
-        />
-      )}
       {document ? (
         <WorkspacePaneHost
           document={document}
