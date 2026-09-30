@@ -1140,7 +1140,10 @@ import {
   INTERNAL_PROXY_PEER_HEADER,
   isTrustedInternalApiToken,
 } from '../utils/internal-api-token.js';
-import { requiredExternalSurfaceCapability } from './pairing-route-scopes.js';
+import {
+  pairingScopeSatisfiesHttpRoute,
+  requiredExternalSurfaceCapability,
+} from './pairing-route-scopes.js';
 
 export interface CurrentRuntimeRequestPrincipalSecurity {
   authorizeCredential(
@@ -1181,6 +1184,9 @@ export function isRuntimeRequestPrincipalCurrent(
   const grantedScope = security.resolveGrantedScope(principal.credential);
   return (
     grantedScope !== undefined &&
-    pairingScopeIncludes(grantedScope, capability.scope)
+    pairingScopeSatisfiesHttpRoute(grantedScope, capability.scope, {
+      method: request.method,
+      path,
+    })
   );
 }

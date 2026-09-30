@@ -358,6 +358,7 @@ import {
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
+  pairingScopeSatisfiesHttpRoute,
   requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 import {
@@ -6133,10 +6134,10 @@ export function configureRuntimeRoutes(
       // SAME two gates the middleware applies to an approve/deny request, in
       // the same order: the pairing family's authority boundary
       // (`authorizeCredential`, via the exported predicate) and then the
-      // scope table's tier for the confirm/deny leaves (read from the table
-      // itself, not restated — live verification caught a device that passes
-      // the boundary with `access:approve` while the table still 403s it
-      // because the scope-edit promotion path cannot retain `access:manage`).
+      // scope requirement for the confirm/deny leaves, including the narrow
+      // explicit approval grant. The same matcher runs at ingress and delayed
+      // revalidation, so an operator-promoted device need not carry management
+      // authority to decide a pending request.
       // The attested internal principal (station-control/MCP) bypasses both
       // gates in `configureRuntimeHttp`, so it decides too; an absent
       // principal or an unmapped table entry fails closed.
@@ -6164,7 +6165,10 @@ export function configureRuntimeRoutes(
           );
         return (
           grantedScope !== undefined &&
-          pairingScopeIncludes(grantedScope, requiredScope)
+          pairingScopeSatisfiesHttpRoute(grantedScope, requiredScope, {
+            method: 'POST',
+            path: '/api/pairing/requests/request/confirm',
+          })
         );
       },
     }),

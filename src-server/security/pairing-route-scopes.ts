@@ -56,6 +56,7 @@
  */
 import type { PairingScope } from '@kontourai/station-contracts';
 import {
+  PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_CONTROL,
@@ -90,6 +91,60 @@ import {
   RELAY_ENROLLMENT_FINALIZE_PATH,
   RELAY_ENROLLMENT_LOGIN_PATH,
 } from '@kontourai/station-contracts/relay-enrollment';
+
+/**
+ * The exact `/api/pairing` leaves a promoted device may act on
+ * (archive#1887): read the pending-request list, and confirm or deny ONE
+ * pending request.
+ *
+ * Matched positively and exactly — no prefix, no wildcard. `/api/pairing` is
+ * where the authority to mint further authority lives, so a route added under
+ * it later must be denied to promoted devices by default and admitted only by
+ * someone editing this list on purpose. The id segment is bounded to the
+ * shapes the routes actually accept so a traversal-ish path cannot widen the
+ * match.
+ */
+const PAIRING_APPROVAL_LEAVES: readonly {
+  method: string;
+  pattern: RegExp;
+}[] = [
+  { method: 'GET', pattern: /^\/api\/pairing\/requests$/ },
+  {
+    method: 'POST',
+    pattern: /^\/api\/pairing\/requests\/[A-Za-z0-9._~-]{1,128}\/confirm$/,
+  },
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/pairing\/requests\/[A-Za-z0-9._~-]{1,128}$/,
+  },
+];
+
+export function isPairingApprovalLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  const method = request.method.toUpperCase();
+  // Compare against the path only; a query string must never participate in
+  // an authorization match.
+  const path = request.path.split('?')[0] ?? request.path;
+  return PAIRING_APPROVAL_LEAVES.some(
+    (leaf) => leaf.method === method && leaf.pattern.test(path),
+  );
+}
+
+/** Scope satisfaction only; credential authority must be checked first. */
+export function pairingScopeSatisfiesHttpRoute(
+  grantedScope: string,
+  requiredScope: PairingScope,
+  request: { method: string; path: string },
+): boolean {
+  return (
+    pairingScopeIncludes(grantedScope, requiredScope) ||
+    (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
+      isPairingApprovalLeaf(request) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE))
+  );
+}
 
 const READ_METHODS = ['GET', 'HEAD'] as const;
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
