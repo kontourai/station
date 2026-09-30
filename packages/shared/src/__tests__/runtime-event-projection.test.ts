@@ -1213,6 +1213,35 @@ describe('projectRuntimeEventsToMessages', () => {
       expect(callIds(3)).toEqual(['gap-call', 'late-call']);
     });
 
+    it('a turn with nothing after its steer keeps ownership of its late events', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'r1', prompt: 'one' }),
+        ev({ method: 'content.text-delta', itemId: 'i1', delta: 'before' }),
+        ev({
+          method: 'turn.started',
+          turnId: 'r1',
+          prompt: 'steer',
+          inputKind: 'steer',
+        }),
+        ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+        ev({ method: 'turn.started', turnId: 'r2', prompt: 'two' }),
+        ev({ method: 'content.text-delta', itemId: 'i2', delta: 'second' }),
+        ev({
+          method: 'tool.completed',
+          turnId: 'r1',
+          toolCallId: 'late-r1',
+          status: 'success',
+          output: 'x',
+        }),
+        ev({ method: 'turn.completed', turnId: 'r2', finishReason: 'stop' }),
+      ]);
+      const owner = messages.find((message) =>
+        message.parts.some((part) => part.toolCallId === 'late-r1'),
+      );
+      expect(owner?.parts.some((part) => part.text === 'before')).toBe(true);
+      expect(owner?.parts.some((part) => part.text === 'second')).toBe(false);
+    });
+
     it('a tool the steer interrupted settles on the row that shows the call', () => {
       const messages = projectRuntimeEventsToMessages([
         ev({ method: 'turn.started', turnId: 'r1', prompt: 'run the gates' }),

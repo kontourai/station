@@ -271,6 +271,8 @@ export function projectRuntimeEventsToMessages(
   // currently active Session for historical turn identity.
   let turnSessionId: string | undefined;
   let turnAnswerEligible = false;
+  /** The open turn's last pre-steer row, owner of last resort. */
+  let preSteerRowIndex: number | undefined;
   const revokedAnswerTurns = new Set<string>();
   // station#1182: `turnReportedModel` is per-turn (set from turn.started/
   // turn.completed metadata); `sessionReportedModel` is the last value seen
@@ -364,6 +366,7 @@ export function projectRuntimeEventsToMessages(
     // A pre-steer segment never owns the turn: the turn is still open, so
     // its later start-less completions belong to the live buffer, and after
     // the terminal the row that owns the turn is the one emitted last.
+    if (emittedKey && beforeSteer) preSteerRowIndex = messages.length - 1;
     if (
       emittedKey &&
       !beforeSteer &&
@@ -390,6 +393,17 @@ export function projectRuntimeEventsToMessages(
     flushReasoning();
     flushText();
     if (parts.length > 0) pushMessage('assistant', parts);
+    // A turn that produced nothing after its steer still needs an owner row,
+    // or a late event for it would land on whatever turn is open next.
+    const endedKey = turnKey(turnSessionId, turnIdentity);
+    if (
+      endedKey &&
+      preSteerRowIndex !== undefined &&
+      !assistantMessageIndexByTurn.has(endedKey)
+    ) {
+      assistantMessageIndexByTurn.set(endedKey, preSteerRowIndex);
+    }
+    preSteerRowIndex = undefined;
     // station#1558: an unsettled call outlives its turn (a stopped turn's
     // in-flight tool, a backgrounded Task). `toolsByCallId` only ever holds
     // calls with no terminal yet — the terminal branch deletes the slot — so
