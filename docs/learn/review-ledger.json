@@ -7069,7 +7069,7 @@
     {
       "path": "docs/design/chat-composer.md",
       "documentDigest": "3e9f27666cb5e0ba41a076c3b3899a1183736c90bc4b1348464b1398780018a2",
-      "sourceRevision": "a6d7d02ef33822966cd68257c7a6466e9797989e",
+      "sourceRevision": "e124ea226c43a9eda8663e7cf08a5ee058d37a2f",
       "kind": "policy",
       "state": "classified",
       "summary": "Composer interaction and navigability policy with dated audit evidence and corrected current public HTTP entry points.",
@@ -7109,7 +7109,7 @@
         },
         {
           "path": "src-ui/src/components/chat/ComposerAttachmentStrip.tsx",
-          "digest": "af3982c6f536d99d162a55ed27018c5169181d1c322874abe6e270399cb9b5a8"
+          "digest": "7b55bd0ab006ca2aec3bd1b4cdda4249406953c9332b3f410170eaa020f8a01a"
         },
         {
           "path": "src-ui/src/components/chat/FileAttachmentInput.tsx",
@@ -7134,7 +7134,8 @@
         "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "fix/chat-send-attachments review (keyword sweep for image/attach/steer/refusal/retry/turn.started/codes/model picker, then read each matching section against the branch diff): useActiveChatSessionMessaging.ts only changes the failed-send error action (no Retry when the translation is non-retryable; 'Remove attachments' for attachment_input_unsupported) and re-reads the engine inventory after that refusal; useChatInput now opens the ACP model picker on a conversation that never ran a turn; useComposerAttachments blocks Send on refused images and emits the caveat note. Prose changed: added a 3.1 bullet on ACP model selection (closed after a turn, open in the dock for a Draft or first-send-failure conversation, successor session on next send per conversation-lineage needsModelRestart) and a 3.2 Attachments section (pre-send image refusal on chips and Send, paperclip explains on tap, unconfirmed-support note, chip statuses, validation below the draft, Remove attachments instead of Retry, banner defers on a never-run session). Checked against useChatInput.ts, useComposerAttachments.ts, ComposerAttachmentStrip.tsx, FileAttachmentInput.tsx, sessionFailure.ts, ChatDockBody.tsx and chatErrorTranslation.ts.",
         "Re-checked 3.2 Attachments after chatErrorTranslation.ts changed the attachment_input_unsupported hint from 'accepts images' to 'accepts them' (the refusal also covers non-image files). The doc names the Remove attachments action and the no-Retry rule, not the hint wording, so its claims still hold.",
-        "Updated 3.1 (session list re-read after a send that did not take; a turn in flight keeps Model closed) and 3.2 (caveat scoped to multi-provider catalogs, Upload limit reached without Retry, chips wrap two per row on phones, attachment messages and Remove attachments above the draft, only the draft shrinks). Checked against useChatInput, useComposerAttachments, ComposerAttachmentStrip, ChatInputArea and chat.css."
+        "Updated 3.1 (session list re-read after a send that did not take; a turn in flight keeps Model closed) and 3.2 (caveat scoped to multi-provider catalogs, Upload limit reached without Retry, chips wrap two per row on phones, attachment messages and Remove attachments above the draft, only the draft shrinks). Checked against useChatInput, useComposerAttachments, ComposerAttachmentStrip, ChatInputArea and chat.css.",
+        "Re-checked after a formatting-only change to ComposerAttachmentStrip.tsx (the 'Not accepted here' chip label line); 3.2 claims unchanged."
       ]
     },
     {
