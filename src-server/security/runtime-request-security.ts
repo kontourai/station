@@ -205,34 +205,6 @@ export function getRuntimeNativeDeviceProofPrincipal(
 }
 
 /**
- * Explicit trusted transfer for bounded Request replacement (the server
- * substituting an equivalent Request object mid-pipeline). Copies ONLY the
- * already-minted, server-owned frozen principal — never client headers,
- * never a re-derivation — and removes it from the replaced Request so the
- * old object cannot keep speaking for the binding. A structurally cloned
- * Request never inherits anything: authority is WeakMap-keyed to the exact
- * object, so a clone starts unauthenticated.
- */
-export function transferRuntimeNativeDeviceProofPrincipal(
-  from: Request,
-  to: Request,
-): boolean {
-  const principal = nativeDeviceProofPrincipals.get(from);
-  if (!principal) return false;
-  if (
-    authenticatedRequestPrincipals.has(to) ||
-    nativeDeviceProofPrincipals.has(to) ||
-    from.url !== to.url ||
-    from.method !== to.method ||
-    !isRuntimeNativeDeviceProofCurrent(from)
-  )
-    return false;
-  nativeDeviceProofPrincipals.delete(from);
-  nativeDeviceProofPrincipals.set(to, principal);
-  return true;
-}
-
-/**
  * Fail-closed currentness check. Absent principal, a `false` recheck, or a
  * throwing recheck all mean "not current"; nothing here upgrades to true.
  *

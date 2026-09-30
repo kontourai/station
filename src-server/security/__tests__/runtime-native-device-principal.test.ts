@@ -2,7 +2,7 @@
  * #2893 inert foundation — the server-minted RuntimeNativeDeviceProofPrincipal.
  * Proves exact minting, the absence of any credential field, mutual exclusion
  * with the existing credential principal in both write orders, no implicit
- * inheritance by Request clone, explicit trusted transfer, fail-closed stale
+ * inheritance by Request clone, fail-closed stale
  * `isCurrent`, and that the existing credential-only helpers refuse native
  * authority.
  */
@@ -15,7 +15,6 @@ import {
   resolveInboundDelegationDeviceForRequest,
   setRuntimeAuthenticatedRequestPrincipal,
   setRuntimeNativeDeviceProofPrincipal,
-  transferRuntimeNativeDeviceProofPrincipal,
 } from '../runtime-request-security.js';
 
 const approvedSurface = () => ({
@@ -124,71 +123,6 @@ describe('RuntimeNativeDeviceProofPrincipal', () => {
     const clone = request.clone();
     expect(getRuntimeNativeDeviceProofPrincipal(clone)).toBeUndefined();
     expect(isRuntimeNativeDeviceProofCurrent(clone)).toBe(false);
-  });
-
-  it('transfers the principal only on the explicit trusted call and removes it from the source', () => {
-    const original = new Request('http://station.test/api/x');
-    setRuntimeNativeDeviceProofPrincipal(original, nativePrincipal());
-    const replacement = new Request('http://station.test/api/x');
-    expect(
-      transferRuntimeNativeDeviceProofPrincipal(original, replacement),
-    ).toBe(true);
-    expect(getRuntimeNativeDeviceProofPrincipal(original)).toBeUndefined();
-    expect(getRuntimeNativeDeviceProofPrincipal(replacement)?.bindingId).toBe(
-      'binding-1',
-    );
-    expect(isRuntimeNativeDeviceProofCurrent(replacement)).toBe(true);
-  });
-
-  it('refuses transfer when no native principal is bound', () => {
-    const a = new Request('http://station.test/api/x');
-    const b = new Request('http://station.test/api/x');
-    expect(transferRuntimeNativeDeviceProofPrincipal(a, b)).toBe(false);
-    expect(getRuntimeNativeDeviceProofPrincipal(b)).toBeUndefined();
-  });
-
-  it('refuses transfer onto a Request already owned by another authority', () => {
-    const from = new Request('http://station.test/api/x');
-    const to = new Request('http://station.test/api/x');
-    setRuntimeNativeDeviceProofPrincipal(from, nativePrincipal());
-    setRuntimeAuthenticatedRequestPrincipal(to, {
-      credential: 'existing',
-      authority: 'device-credential',
-      source: 'bearer',
-    });
-    expect(transferRuntimeNativeDeviceProofPrincipal(from, to)).toBe(false);
-    expect(getRuntimeNativeDeviceProofPrincipal(from)?.bindingId).toBe(
-      'binding-1',
-    );
-    expect(getRuntimeAuthenticatedRequestPrincipal(to)?.credential).toBe(
-      'existing',
-    );
-  });
-
-  it('refuses a cross-route or stale native-principal transfer without consuming the source', () => {
-    const from = new Request('http://station.test/api/project/a');
-    setRuntimeNativeDeviceProofPrincipal(from, nativePrincipal());
-    const wrongRoute = new Request('http://station.test/api/project/b');
-    expect(transferRuntimeNativeDeviceProofPrincipal(from, wrongRoute)).toBe(
-      false,
-    );
-    expect(getRuntimeNativeDeviceProofPrincipal(from)?.bindingId).toBe(
-      'binding-1',
-    );
-    expect(getRuntimeNativeDeviceProofPrincipal(wrongRoute)).toBeUndefined();
-
-    const stale = new Request('http://station.test/api/project/a');
-    setRuntimeNativeDeviceProofPrincipal(
-      stale,
-      nativePrincipal({ isCurrent: () => false }),
-    );
-    const replacement = new Request(stale.url);
-    expect(transferRuntimeNativeDeviceProofPrincipal(stale, replacement)).toBe(
-      false,
-    );
-    expect(getRuntimeNativeDeviceProofPrincipal(stale)?.bindingId).toBe(
-      'binding-1',
-    );
   });
 
   it('fails closed when the isCurrent recheck reports stale', () => {
