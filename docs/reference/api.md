@@ -2524,6 +2524,27 @@ admission does not replace authentication or scope. See
 
 ---
 
+## Read engine sign-in profiles
+
+```http
+GET /api/connections/agent/:id/device-code-profiles
+```
+
+This dedicated read requires a paired device's explicit `engine:login` grant
+or a verified Station operator credential. It returns
+`{success: true, data: {profiles: [{ref, label?, authState, mechanisms}]}}`.
+`authState` is `authenticated`, `unauthenticated` or `unknown`; `mechanisms`
+contains only observed `device-code` support. References and labels identify
+existing profiles, not provider account identity. Host paths, commands,
+environment variables, recovery policy and diagnostic details are excluded.
+
+Authority is rechecked around awaited reads and before publishing the result;
+revocation refuses an in-flight read. Profile management and manual enrolment
+retain their separate authority requirements. The operator exception covers
+only this read and GET/POST/DELETE of the existing profile device-code login
+leaf; it does not add `engine:login` to the operator's default scope set.
+See [profile sign-in](../guides/connections.md#sign-an-engine-profile-in-from-a-device).
+
 ## Decide a pending paired-device request
 
 A current operator, qualifying local-grant credential, or Device explicitly
