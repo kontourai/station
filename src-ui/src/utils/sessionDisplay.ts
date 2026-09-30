@@ -354,9 +354,7 @@ export function sessionIconAgent(
  * settled on, and a delegated Agent is exactly what the chip should name.
  * Adding an `'agent'` branch would be a live copy change, not a fix.
  */
-function delegationTargetLabel(
-  session: OrchestrationSessionSummary,
-): string {
+function delegationTargetLabel(session: OrchestrationSessionSummary): string {
   if (session.delegation?.targetKind === 'station-agent') {
     return 'Station agent';
   }
