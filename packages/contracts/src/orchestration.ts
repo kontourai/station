@@ -1,9 +1,9 @@
-import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type { AgentId, EngineId } from './agent-identity.js';
 import type { AttentionRequestReference } from './attention.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
+import type { HarnessQuestionAnswers } from './harness-questions.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
