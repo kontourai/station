@@ -149,6 +149,17 @@ development bundle and frozen harness. It does not establish signed release
 provenance or all-platform qualification. Later binaries and source changes need
 their own receipt.
 
+After merging the updated server runtime, the same debug executable completed
+the lane again at frozen Station/runtime and harness revision
+`a612b6df46e494c7905cfcb2579d402922db9246`. The retained
+`native-project-main-merge-tauri.log` ends with `TAURI_LANE_EXIT_CODE=0` and
+records the same 200/200/401/200/403 read, reconnect, account revocation,
+reauthentication and Device revocation sequence. It again observed nine selected
+relay pairs, zero browser direct-Project requests, current host self-receipt and
+successful fixture-owned cleanup. The binary/build identity above remains
+separate from this later server/runtime revision; this rerun does not broaden
+the platform, deployment or onboarding qualification.
+
 Cleanup targets only generated fixture homes, owned processes/containers and
 exact Keychain service/account owners. Device and account proof-key owner hashes
 use raw UUID bytes; candidate-record and credential metadata hashes use their
