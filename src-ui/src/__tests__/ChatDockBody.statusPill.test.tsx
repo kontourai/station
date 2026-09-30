@@ -119,8 +119,8 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
 import {
-  OPEN_APPROVAL_QUEUE_EVENT,
   getApprovalClaims,
+  OPEN_APPROVAL_QUEUE_EVENT,
 } from '../components/status/approvalReveal';
 import { setStreamConnectionState } from '../hooks/orchestration/streamConnectionState';
 import type { ChatSession } from '../types';
