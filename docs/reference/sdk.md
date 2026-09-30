@@ -1491,6 +1491,9 @@ unique Pion peer nonce, one-use JTI and a 30-second expiry. The route key in
 `surface.keyThumbprint` is not the Device key. The 16 KiB body limit matches
 the current application-channel pilot. The helper never receives a Device
 bearer, account continuation, broker secret or provider credential.
+The canonical path may contain up to 2,048 characters, but the complete compact
+JWS must fit 4,096 characters. A combination of long path and surface fields
+can exceed that aggregate bound; the helper refuses it before invoking the signer.
 
 This is a protocol component under #2893, not an enabled authentication path.
 Station must still store an operator-approved Device proof binding, verify the
