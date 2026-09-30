@@ -17,7 +17,7 @@ if (await cont.count()) await cont.first().click().catch(() => {});
 for (const step of action.split(',').filter(Boolean)) {
   if (step === 'changes') { await page.getByRole('button', { name: /^Changes vs HEAD/ }).first().click(); await page.waitForTimeout(3000); }
   if (step === 'menu') { await page.getByRole('button', { name: 'More file actions' }).first().click(); await page.waitForTimeout(500); }
-  if (step.startsWith('goto:')) { await page.getByRole('button', { name: 'More file actions' }).first().click(); await page.getByRole('menuitem', { name: 'Go to line…' }).click(); await page.getByLabel('Line').fill(step.slice(5)); await page.waitForTimeout(300); }
+  if (step.startsWith('goto:')) { await page.getByRole('button', { name: 'More file actions' }).first().click(); await page.getByRole('menuitem', { name: 'Go to line…' }).click(); await page.getByRole('spinbutton', { name: 'Line' }).fill(step.slice(5)); await page.waitForTimeout(300); }
   if (step === 'gosubmit') { await page.getByRole('button', { name: 'Go', exact: true }).click(); await page.waitForTimeout(800); }
   if (step.startsWith('pr:')) {
     await page.getByRole('tab', { name: /^Diff/ }).first().click().catch(async () => { await page.getByText('Diff', { exact: true }).first().click().catch(() => {}); });

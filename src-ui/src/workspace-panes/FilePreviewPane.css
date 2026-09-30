@@ -26,6 +26,7 @@
 }
 /* Folders give way first; the file name stays whole. */
 .workspace-file-preview__crumbs-lead {
+  flex: 0 100 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
