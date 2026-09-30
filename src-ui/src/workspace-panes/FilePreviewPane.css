@@ -31,6 +31,7 @@
   text-overflow: ellipsis;
 }
 .workspace-file-preview__crumb-sep {
+  padding: 0 5px;
   opacity: 0.5;
 }
 .workspace-file-preview__crumb-file {

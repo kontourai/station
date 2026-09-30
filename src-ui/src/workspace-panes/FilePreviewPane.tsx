@@ -1148,7 +1148,7 @@ function FilePreviewBreadcrumb({
               className="workspace-file-preview__crumb-sep"
               aria-hidden="true"
             >
-              {' / '}
+              /
             </span>
           </span>
         ))}
@@ -1476,8 +1476,9 @@ export function FilePreviewPane({
         data-station-project-slug={state.projectSlug}
         data-station-file-path={state.path}
         style={{
+          // Fills the pane below the one-row header; the pane host bounds it.
           flex: 1,
-          maxHeight: '60vh',
+          minHeight: 0,
           overflowY: 'auto',
           padding: '4px 12px 12px',
         }}
