@@ -517,6 +517,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             ...(part.approvalToolName !== undefined
               ? { approvalToolName: part.approvalToolName }
               : {}),
+            approvalSessionGrant: part.approvalSessionGrant,
             approvalStatus: part.approvalStatus,
           };
           // Preserve the same tool-result identity and sanitized blocks as

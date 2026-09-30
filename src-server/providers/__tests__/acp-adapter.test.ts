@@ -22,6 +22,7 @@ import type { SessionLifecycleState } from '@kontourai/station-contracts/session
 import {
   toolRequestFromPayload,
   toolRequestGrantLabel,
+  toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
@@ -658,9 +659,12 @@ describe('AcpAdapter', () => {
     const opened = await nextEvent(iterator, 'request.opened');
     expect((opened as any).payload).toMatchObject({ toolName: 'write' });
     // The shared label names it: the same words on the card and the toast.
+    const grant = toolRequestSessionGrantFromPayload((opened as any).payload);
+    expect(grant).toBe('tool');
     expect(
       toolRequestGrantLabel(
         toolRequestFromPayload((opened as any).payload).toolName,
+        grant,
       ),
     ).toBe('Allow write for this session');
     // …and that is exactly what the grant covers: the next `write` is

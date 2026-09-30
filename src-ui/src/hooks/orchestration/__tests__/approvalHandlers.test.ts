@@ -116,6 +116,115 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     ]);
   });
 
+  test('#2916: a plan exit offers no session grant', () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({
+        toolName: 'ExitPlanMode',
+        toolInput: { plan: 'Step 1' },
+      }),
+    );
+
+    expect(approvalToast().actions.map((action) => action.label)).toEqual([
+      'Allow Once',
+      'Deny',
+    ]);
+  });
+
+  const folderRule = {
+    type: 'addRules',
+    rules: [{ toolName: 'Read', ruleContent: '//work/b/**' }],
+    behavior: 'allow',
+    destination: 'session',
+  };
+  test.each([
+    [
+      'a Claude read-only tool with the engine folder rule',
+      { toolName: 'Grep', suggestions: [folderRule] },
+      'Allow reading this folder for this session',
+    ],
+    [
+      'a Claude read-only tool with nothing to forward (an ask rule)',
+      { toolName: 'Read' },
+      undefined,
+    ],
+    [
+      'a Bash read outside the working directories',
+      {
+        toolName: 'Bash',
+        blockedPath: '/etc/hosts',
+        suggestions: [
+          {
+            type: 'addRules',
+            rules: [{ toolName: 'Read', ruleContent: '//etc/**' }],
+            behavior: 'allow',
+            destination: 'session',
+          },
+        ],
+      },
+      'Allow reading this folder for this session',
+    ],
+    [
+      'a Bash redirect writing outside the working directories',
+      {
+        toolName: 'Bash',
+        blockedPath: '/work/b/out.txt',
+        suggestions: [
+          {
+            type: 'addDirectories',
+            directories: ['/work/b'],
+            destination: 'session',
+          },
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      'Allow access to this folder for this session',
+    ],
+    [
+      'a plain Claude file edit',
+      {
+        toolName: 'Edit',
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      'Auto-accept file edits for this session',
+    ],
+    [
+      'a file edit asked in plan mode',
+      {
+        toolName: 'Edit',
+        permissionMode: 'plan',
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      undefined,
+    ],
+    [
+      'a sensitive-file edit with nothing to forward',
+      { toolName: 'Edit', suggestions: [] },
+      undefined,
+    ],
+    [
+      'a Bash call forced by an ask rule',
+      {
+        toolName: 'Bash',
+        matchedAskRule: { source: 'userSettings', toolName: 'Bash' },
+      },
+      undefined,
+    ],
+  ])('#2915: labels the session grant for %s', (_case, payload, label) => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...payload, toolInput: { path: '/work/b' } }),
+    );
+
+    expect(approvalToast().actions.map((action) => action.label)).toEqual(
+      label ? ['Allow Once', label, 'Deny'] : ['Allow Once', 'Deny'],
+    );
+  });
+
   test('reads an MCP wire name as a person would in the grant label', () => {
     handleRequestOpenedEvent(
       'http://localhost:1',

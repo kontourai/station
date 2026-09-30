@@ -460,9 +460,11 @@ describe('ACP (OpenCode) tool rows', () => {
     expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(
       1,
     );
+    // #2915: a Claude Edit asked with no acceptEdits suggestion has nothing a
+    // session answer could forward, so no session option is offered.
     expect(
-      screen.getByRole('button', { name: 'Allow Edit for this session' }),
-    ).toBeTruthy();
+      screen.queryByRole('button', { name: /for this session/ }),
+    ).toBeNull();
     expect(screen.getAllByText(/^Edit approved\.txt/)).toHaveLength(1);
   });
 });

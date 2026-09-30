@@ -1,5 +1,6 @@
 import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import type { ToolRequestSessionGrant } from './tool-request-preview.js';
 
 /**
  * Canonical conversation message shape — the single shared contract every
@@ -105,6 +106,12 @@ export interface MessagePart {
    * only next to `approvalThreadId`.
    */
   approvalToolName?: string;
+  /**
+   * #2915/#2916: what a session answer to that request grants, computed from
+   * its payload with `toolRequestSessionGrantFromPayload` — the inline card's
+   * session option and label. Set only next to `approvalEventId`.
+   */
+  approvalSessionGrant?: ToolRequestSessionGrant;
   /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`

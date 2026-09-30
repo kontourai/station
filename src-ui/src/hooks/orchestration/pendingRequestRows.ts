@@ -3,7 +3,10 @@ import {
   approvalRetiredBy,
   isSubagentApprovalRequest,
 } from '@kontourai/station-shared/runtime-event-projection';
-import { toolRequestFromPayload } from '@kontourai/station-shared/tool-request-preview';
+import {
+  toolRequestFromPayload,
+  toolRequestSessionGrantFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
 import type { ChatMessage } from '../../types';
 
 /** One card for the pending-approvals strip: the transcript's own part shape. */
@@ -127,6 +130,7 @@ export function unansweredApprovalRequests(
       approvalId: request.requestId,
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
+      approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),
     };
   });
 }

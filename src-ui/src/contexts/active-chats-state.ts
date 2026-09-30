@@ -12,6 +12,7 @@ import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-even
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
+import type { ToolRequestSessionGrant } from '@kontourai/station-shared/tool-request-preview';
 import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
@@ -115,6 +116,8 @@ export type ChatContentPart = {
   approvalEventId?: string;
   /** See `MessagePart.approvalToolName`. */
   approvalToolName?: string;
+  /** #2915: see `MessagePart.approvalSessionGrant`. */
+  approvalSessionGrant?: ToolRequestSessionGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'

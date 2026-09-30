@@ -4,6 +4,7 @@ import type {
   ConversationMessage,
   MessagePart,
 } from './conversation-message.js';
+import { toolRequestSessionGrantFromPayload } from './tool-request-preview.js';
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
 
 function repeatedRuntimeErrorText(message: string, count: number) {
@@ -899,6 +900,9 @@ export function projectRuntimeEventsToMessages(
           if (typeof toolName === 'string' && toolName.trim())
             target.approvalToolName = toolName;
           else delete target.approvalToolName;
+          target.approvalSessionGrant = toolRequestSessionGrantFromPayload(
+            ev.payload,
+          );
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
           openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {
