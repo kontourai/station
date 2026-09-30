@@ -39,16 +39,19 @@ export function HarnessQuestionCard({
   const moveFocus = useRef(false);
   const customText = useRef<HTMLTextAreaElement>(null);
   const customSecret = useRef<HTMLInputElement>(null);
+  const moveCustomFocus = useRef(false);
   useEffect(() => {
-    if (customOpen[questionnaire.questions[step].id])
+    if (moveCustomFocus.current) {
       (customSecret.current ?? customText.current)?.focus();
-  }, [customOpen, questionnaire, step]);
+      moveCustomFocus.current = false;
+    }
+  });
   useEffect(() => {
     if (moveFocus.current) {
       heading.current?.focus();
       moveFocus.current = false;
     }
-  }, [step, review]);
+  });
   const navigate = (index: number) => {
     moveFocus.current = true;
     setStep(index);
@@ -256,6 +259,7 @@ export function HarnessQuestionCard({
                 variant="ghost"
                 className="harness-question-card__other"
                 onClick={() => {
+                  moveCustomFocus.current = true;
                   setCustomOpen((previous) => ({
                     ...previous,
                     [question.id]: true,

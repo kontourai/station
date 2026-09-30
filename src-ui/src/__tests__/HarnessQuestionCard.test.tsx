@@ -315,3 +315,19 @@ test('question navigation returns to the first unanswered question before review
   expect(document.activeElement?.textContent).toBe('Which colour?');
   expect(submit).not.toHaveBeenCalled();
 });
+
+test('stream projection refreshes never steal focus after Other was opened', () => {
+  const view = mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Other…' }));
+  expect(document.activeElement).toBe(screen.getByRole('textbox'));
+  const next = screen.getByRole('button', { name: 'Next' });
+  next.focus();
+  view.rerender(
+    <HarnessQuestionCard
+      questionnaire={structuredClone(questionnaire)}
+      draftKey="request-a"
+      onSubmit={submit}
+    />,
+  );
+  expect(document.activeElement).toBe(next);
+});

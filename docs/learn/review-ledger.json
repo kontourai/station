@@ -10899,8 +10899,8 @@
     },
     {
       "path": "docs/guides/agents.md",
-      "documentDigest": "7d8984f1334991ec4141905f2df57432ebd0a598b9f8ac18b9c7eb2296694c0b",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "documentDigest": "0289876b2d4676c45d030933cfabe4c05830c52952a87585a542473ba223b1b4",
+      "sourceRevision": "8324595096ed31b4727991cf6589d64985233386",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -11212,7 +11212,7 @@
         },
         {
           "path": "src-ui/src/components/chat/HarnessQuestionCard.tsx",
-          "digest": "e217263c3eb2eca267f660a8ea0044ecb466effce0c6bcbca353e668a4d14666"
+          "digest": "a14076cd68bf564b983f66d70e7986fe26d6dc442ef2c52bd7da9b7a6a554e8a"
         },
         {
           "path": "src-ui/src/components/chat/HarnessQuestionRequest.tsx",
@@ -11248,7 +11248,8 @@
         "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its Tool Approval Flow and delegation guidance hold: delegated respond still answers the request, as a one-call accept for an edit-mode session answer on this Station. Prose accurate.",
         "Replaced the '1.12.0 defines none of them' token sentence: installed ui 1.16.0 defines --k-status-contrast, --k-trust-* (ink, fill, line) and the --k-action/--k-focus roles, verified in node_modules/@kontourai/ui/tokens/tokens.css.",
-        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery."
+        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
+        "Bounded compact-card revision review: question tabs and progressive Other input replace always-visible instructions; review retains each header/answer with an accessible exact Edit action. Traversal returns to the first incomplete question before review; keyboard focus follows explicit navigation. SDK/wire, authority fencing and private draft semantics are unchanged. Updated agent guide and narrow-surface evidence; retained generic inspector captures remain outside this UI delta."
       ]
     },
     {
@@ -18642,7 +18643,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "8324595096ed31b4727991cf6589d64985233386",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18650,7 +18651,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "95152db966be88b49e784b2745da9251e1a0a681fb847d1f7616dd3ea583a852"
+          "digest": "cb91d29260c8a00f5a60ec6efdf6a8709f55299fc3153e86793998aef7ff8f7a"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -18807,7 +18808,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Bounded compact-card revision review: question tabs and progressive Other input replace always-visible instructions; review retains each header/answer with an accessible exact Edit action. Traversal returns to the first incomplete question before review; keyboard focus follows explicit navigation. SDK/wire, authority fencing and private draft semantics are unchanged. Updated agent guide and narrow-surface evidence; retained generic inspector captures remain outside this UI delta."
       ]
     },
     {
@@ -20288,7 +20290,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "50273b47fb6784cf8cdbe654ad46dad2121b0ed9b0872582d6c2100b0caecc5c",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "8324595096ed31b4727991cf6589d64985233386",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -20296,7 +20298,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "95152db966be88b49e784b2745da9251e1a0a681fb847d1f7616dd3ea583a852"
+          "digest": "cb91d29260c8a00f5a60ec6efdf6a8709f55299fc3153e86793998aef7ff8f7a"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -20469,7 +20471,8 @@
         "Updated for the ui 1.16.0 bump and the focus fix. The installed tokens define the roles, so the --k-brand fallback beside --k-action no longer applies. The focus-visible outline reads --k-focus only under data-brand-focus (applyBrandingTheme sets it while the applied theme supplies --k-focus for the current mode) or on a Dev, Beta or Nightly build, and --accent-primary otherwise, so a device accent recolours the ring again; checked against index.css, branding-theme.ts writeMode and branding-role-cascade.test.ts (device accent, theme focus and channel cases). The white-label section names validateBrandOverride from @kontourai/ui/contrast, the flat-key shape and Station's two stricter text rules, matching branding-theme.ts; #2944's channel brand-as-text paragraph is kept. Added that a mode setting only the brand also gets it as its action role, because the installed tokens define --k-action; checked against expandModes in branding-theme.ts and the brand-only cascade case in branding-role-cascade.test.ts (button fill, accent and focus follow the brand). The focus-ring and stricter-rule statements are unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Bounded compact-card revision review: question tabs and progressive Other input replace always-visible instructions; review retains each header/answer with an accessible exact Edit action. Traversal returns to the first incomplete question before review; keyboard focus follows explicit navigation. SDK/wire, authority fencing and private draft semantics are unchanged. Updated agent guide and narrow-surface evidence; retained generic inspector captures remain outside this UI delta."
       ]
     },
     {
@@ -21501,7 +21504,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "8324595096ed31b4727991cf6589d64985233386",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -21509,7 +21512,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "95152db966be88b49e784b2745da9251e1a0a681fb847d1f7616dd3ea583a852"
+          "digest": "cb91d29260c8a00f5a60ec6efdf6a8709f55299fc3153e86793998aef7ff8f7a"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -21667,13 +21670,14 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Checked HTTP composition, error and SSE patterns against the response boundary change. Fixed text on framework chat 5xx and type-only step frames do not change authentication or pipeline ownership.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Bounded compact-card revision review: question tabs and progressive Other input replace always-visible instructions; review retains each header/answer with an accessible exact Edit action. Traversal returns to the first incomplete question before review; keyboard focus follows explicit navigation. SDK/wire, authority fencing and private draft semantics are unchanged. Updated agent guide and narrow-surface evidence; retained generic inspector captures remain outside this UI delta."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "8324595096ed31b4727991cf6589d64985233386",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21681,7 +21685,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "95152db966be88b49e784b2745da9251e1a0a681fb847d1f7616dd3ea583a852"
+          "digest": "cb91d29260c8a00f5a60ec6efdf6a8709f55299fc3153e86793998aef7ff8f7a"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -21842,7 +21846,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Checked frontend transport and error contracts against changed server egress: no consumer reads step diagnostics; framework compatibility HTTP 5xx is outside ordinary orchestration UI dispatch. Existing claims remain accurate.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Bounded compact-card revision review: question tabs and progressive Other input replace always-visible instructions; review retains each header/answer with an accessible exact Edit action. Traversal returns to the first incomplete question before review; keyboard focus follows explicit navigation. SDK/wire, authority fencing and private draft semantics are unchanged. Updated agent guide and narrow-surface evidence; retained generic inspector captures remain outside this UI delta."
       ]
     },
     {
@@ -21879,7 +21884,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "8324595096ed31b4727991cf6589d64985233386",
       "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
       "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
       "sources": [
@@ -21889,7 +21894,7 @@
         },
         {
           "path": "docs/guides/agents.md",
-          "digest": "7d8984f1334991ec4141905f2df57432ebd0a598b9f8ac18b9c7eb2296694c0b"
+          "digest": "0289876b2d4676c45d030933cfabe4c05830c52952a87585a542473ba223b1b4"
         },
         {
           "path": "packages/contracts/src/agent-identity.ts",
@@ -21914,7 +21919,8 @@
         "Only change among its sources is the token sentence in agents.md (ui 1.16.0 token list); this plan does not rely on that sentence.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Bounded compact-card revision review: question tabs and progressive Other input replace always-visible instructions; review retains each header/answer with an accessible exact Edit action. Traversal returns to the first incomplete question before review; keyboard focus follows explicit navigation. SDK/wire, authority fencing and private draft semantics are unchanged. Updated agent guide and narrow-surface evidence; retained generic inspector captures remain outside this UI delta."
       ]
     },
     {
