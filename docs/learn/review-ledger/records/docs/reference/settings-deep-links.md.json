@@ -9,7 +9,7 @@
 
   "limits": "Browser/source and focused test evidence; no physical native-device result.",
 
-  "document": {"digest":"779b71ebb7067137aefa613e0df89a8d3665369aca2520e6076dd28c9083b594","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "document": {"digest":"9c41fe48ae34d551ffe7c2832f9b8a8af704887abb825db3415bad23d8dfdda2","revision":"e56b7b6bf847135adcce152d99112d104542d029"},
 
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"341b56c5c212e14bc26ad727ce7a6f266ca34aa94f64d19dad3705078a1fb9be","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
@@ -18,7 +18,7 @@
 
     {"path":"src-server/generated/settings-registry.json","digest":"49c10e15cc0774927a5191781af93e14231145efe08861f2b72281d7fcd6b191","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"4324cbcd6cca335a2beaed8df7d1abe24f497ab8325a51ae0542197a3f5ca988","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"5692bc623df1f878f5cbe2396b6d4e5f7825c6b66b3d668cbcf89226e0b33c57","revision":"e56b7b6bf847135adcce152d99112d104542d029"},
 
     {"path":"src-ui/src/views/settings/settings-deep-link.ts","digest":"48c9f6d2dfc21babff6ff3e8839b1cd3bf2781347f0aa622ae740613148c3990","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
