@@ -2836,7 +2836,7 @@
     },
     {
       "path": "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
-      "sourceRevision": "7fcc0a65c4067afc51dfc094037b4275177177d8",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "design",
       "state": "classified",
       "summary": "Decision text unchanged. A dated #2957 addendum records packaged-build runs of nightly 0.1.11-nightly.2463.2 against the NOT_VERIFIED list: signed and notarized macOS items executed, unsigned Windows NSIS partly executed, MSI/Linux/AppImage and real reboot NOT_VERIFIED. It also records findings: Windows readiness and watchdog timings, stale sidecar entries after abrupt death, and shared roots without saved metadata refusing first launch.",
@@ -2849,7 +2849,7 @@
         },
         {
           "path": "docs/guides/native-shell-verification.md",
-          "digest": "432b7cd00cff49ed7b1722124d7258563d21442b97030022d9efec695d7d60de"
+          "digest": "fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512"
         },
         {
           "path": "src-desktop/src/lib.rs",
@@ -2886,7 +2886,9 @@
         "Reviewed the candidate IPC against the retained sidecar decision and packaged-run evidence. It is a main-window descriptor/key-provisioning command and does not change sidecar resource lookup, lifecycle, or the dated qualification boundary.",
         "Bounded integration delta review at 4e912f043: checked Desktop-owned sidecar startup, attachment exclusion and dated packaged-run evidence. lib.rs captured digest ac2e5dabfbdf adds only the desktop public Device-candidate module/IPC and locked identity callback, plus the 60s foreground-chat response budget (ordinary headers remain 20s). The affected claims remain accurate; no prose change needed. Prior reviews/checks are retained as historical evidence. This source review adds no live provider, OS-keyring, packaged/native IPC, physical-device or fresh relay-enrollment receipt.",
         "Combined native receipt/Connect/backup delta review at 7abc84fcb: checked Desktop-owned sidecar startup, attachment exclusion and dated packaged-run evidence. lib.rs adds the private two-consumer HTTP sink and receipt collector, main-window registration and receipt-only remaining global/body budgets; original IPC passes no such budgets and SSE behavior stays unchanged. Material prose corrections are confined to the owning references; prior checks/classifications/limits remain retained evidence. Live-lock composition is SOURCE/REASONED, not a helper-test race proof. Retained integrated logs show 527 Rust tests passed with 3 macOS Keychain tests ignored and 38 Connect tests passed across 2 files; these unit/loopback/framing checks establish no executed native IPC, packaged/physical journey, native signer/UI integration or fresh relay enrollment.",
-        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked Desktop-owned sidecar startup, attachment exclusion and dated packaged-run evidence. lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence."
+        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked Desktop-owned sidecar startup, attachment exclusion and dated packaged-run evidence. lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence.",
+        "Source-scoped cross-dependency review at 0114a7cec: Reviewed the native-shell guide delta and opt-in shell selector: the added isolated debug native Project lane does not change this ADR’s desktop-owned sidecar/service separation, registry ownership or dated packaged-build evidence. The real debug WebView/IPC receipt does not qualify this ADR’s remaining signed-package or reboot obligations. Prior checks, classifications and dated evidence are retained; this is a delta review, not a fresh platform or release test.",
+        "Final receipt identity delta: recorded exercised debug executable SHA-256 baa3dee2f882354be1f55f2ffbcaaaf8163eb75bd2872e3cdc507eaff67d767b separately from embedded build/client d7f19eeda and frozen harness d468df795. Direct git comparison shows no production Rust/SDK/UI/server source delta between the two revisions. Read/reconnect/account-revocation/reauthentication/Device-revocation and owned cleanup evidence remains bounded to this real macOS debug local-provider/relay fixture. Existing document-specific contracts and release/mobile/ordinary-UI/fresh-relay-only limits remain accurate."
       ]
     },
     {
@@ -7848,12 +7850,12 @@
     },
     {
       "path": "docs/design/connection-broker.md",
-      "documentDigest": "36d4771999cd73aa18ba75c7ed2a746e5cd7aca0bcb11c332af9adc48e91c45c",
-      "sourceRevision": "7fcc0a65c4067afc51dfc094037b4275177177d8",
+      "documentDigest": "9cfbc1f0fdaafd55b6db99fb243a677dfcc2a46fd06284e5ff28aeb3125a2dc3",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "design",
       "state": "classified",
       "summary": "Dated requirements and local milestones mapped to broker/connector/protected dispatcher/Device enrollment owners; preserves production/native enablement boundary.",
-      "limits": "Not a complete signaling/encryption/key/trust/rotation/cookie/cancellation audit or fresh lab, remote internet, actual native-origin or external-provider qualification.",
+      "limits": "Bounded native pilot source review and inspected debug macOS frozen-harness receipt; not a complete signaling/encryption/key/trust/rotation/cookie/cancellation audit, release qualification, fresh relay-only enrollment, remote deployment or external-provider proof.",
       "sources": [
         {
           "path": "packages/connect/src/core/brokerRouteEnrollment.ts",
@@ -7954,6 +7956,30 @@
         {
           "path": "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
           "digest": "7111914934e5bdd2a236f497e695795402681ccd1ee4e7d9e54334c5a735574b"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-runtime-fixture.ts",
+          "digest": "9ca2c8b47bd89de9ae743875ce10a940df5e1be5dcf69ba8d81e1f855ef4a861"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-acceptance.e2e.ts",
+          "digest": "3c000df5ce38034fd4827a42b5dc6ef0930e65960253ebce6c62c588ddbab7e5"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-acceptance-webview.ts",
+          "digest": "fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-station.ts",
+          "digest": "94250f9184c8a4a45c434ba30ef119ce96c0981c4ec063a5c99773281b48b656"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-station-child.ts",
+          "digest": "dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3"
+        },
+        {
+          "path": "docs/guides/native-shell-verification.md",
+          "digest": "fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512"
         }
       ],
       "checks": [
@@ -7972,7 +7998,9 @@
         "Bounded self-receipt integration review at 7fc7da665: checked protected ordinary-Device self-receipt versus operator binding approval, coherent snapshot and future host reconciliation limits. the service adds one owner/Station-filtered sidecar snapshot for historical state and current binding/scope observation. Existing claims remain accurate; prior checks, dated receipts and limits remain retained evidence. This review establishes source composition only, not native host receipt consumption, signing, packaged/device behavior or fresh relay-only enrollment.",
         "Combined native receipt/Connect/backup delta review at 7abc84fcb: checked host receipt reconciliation and server versioned errors, per-peer request preparation, key retention and unbuilt signing/ordinary native composition. candidate custody adds restore-only lookup and durable tuple/epoch-bound observations; cached positive history cannot become fresh current and no failure deletes/replaces the key; the self-read router now versions its closed not_found/device_required/invalid_request/unavailable errors while preserving bearer ownership, read scope and confidentiality; mounted pilot fixtures assert the new versioned errors with existing ownership, refusal, revocation and corruption boundaries; this remains simulated peer/provider composition. Material prose corrections are confined to the owning references; prior checks/classifications/limits remain retained evidence. Live-lock composition is SOURCE/REASONED, not a helper-test race proof. Retained integrated logs show 527 Rust tests passed with 3 macOS Keychain tests ignored and 38 Connect tests passed across 2 files; these unit/loopback/framing checks establish no executed native IPC, packaged/physical journey, native signer/UI integration or fresh relay enrollment.",
         "Clarified the remaining host signing requirements as normative integration work; no Rust signing or peer-session IPC is registered in this frozen integration source. Existing implemented server verification claims and prior review limits remain unchanged.",
-        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked implemented hostpeer/Device/account source protocols, prebuilt account body, broker custody and qualified ordinary route/enrollment/actualIPC boundaries. Connect consumes host-prepared nonce/handle/open/read/sign/close, verifies transcript before remote SDP, adds one exact Device proof after open, forbids credential conflicts and only shortens polling expiry; Device key comment now names the bounded peer consumer; no raw signing input/private key is exposed by IPC; core comment now distinguishes Rust-private primitive signing from structured protocol IPC results; primitive behavior and namespaces are unchanged; candidate surface/public tuple fields are crate-visible for actual protocol consumers, while custody remains private and owner/epoch-bound; relay custody exposes a nonserialized comparable live-owner capture including approved trust and exact grant digest/expiry, and reuses existing bounded signal I/O for the peer owner; lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence."
+        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked implemented hostpeer/Device/account source protocols, prebuilt account body, broker custody and qualified ordinary route/enrollment/actualIPC boundaries. Connect consumes host-prepared nonce/handle/open/read/sign/close, verifies transcript before remote SDP, adds one exact Device proof after open, forbids credential conflicts and only shortens polling expiry; Device key comment now names the bounded peer consumer; no raw signing input/private key is exposed by IPC; core comment now distinguishes Rust-private primitive signing from structured protocol IPC results; primitive behavior and namespaces are unchanged; candidate surface/public tuple fields are crate-visible for actual protocol consumers, while custody remains private and owner/epoch-bound; relay custody exposes a nonserialized comparable live-owner capture including approved trust and exact grant digest/expiry, and reuses existing bounded signal I/O for the peer owner; lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence.",
+        "Source-scoped review at 0114a7cec: checked the explicit manual selector, actual StationRuntime/local-provider/Pion fixture, real invitation acceptance and operator-verified active Viewer membership, host-owned Device/account proof flow, strict 401/403/404 revocation assertions and exact-owner cleanup. Independently executed the isolated Node-child Runtime/membership/pairing/awaited-stop smoke at 1cf179593; post-stop listeners were absent. Directly inspected frozen-harness d468df795 final log: initial/reconnect 200, account-revoked 401, reauthenticated 200, Device-revoked 403, nine selected relay pairs, zero browser direct Project requests and verified grant cleanup. This is bounded debug macOS evidence, not release provenance, mobile/Windows/Linux, remote or production TURN/TLS, ordinary UI enablement or fresh relay-only enrollment. Prior checks are retained as historical evidence. Updated the evidence boundary from source-only registration to the separately dated debug-shell receipt; routing, Device and account/Project authority remain distinct.",
+        "Final receipt identity delta: recorded exercised debug executable SHA-256 baa3dee2f882354be1f55f2ffbcaaaf8163eb75bd2872e3cdc507eaff67d767b separately from embedded build/client d7f19eeda and frozen harness d468df795. Direct git comparison shows no production Rust/SDK/UI/server source delta between the two revisions. Read/reconnect/account-revocation/reauthentication/Device-revocation and owned cleanup evidence remains bounded to this real macOS debug local-provider/relay fixture. Existing document-specific contracts and release/mobile/ordinary-UI/fresh-relay-only limits remain accurate."
       ]
     },
     {
@@ -12436,7 +12464,7 @@
     {
       "path": "docs/guides/code-quality.md",
       "documentDigest": "c1561e1356529f776d9a4ee0728f3a15780417a527d9e8ea1931c5227e777564",
-      "sourceRevision": "3517d8f66db867fd982a8f9883ed85052c4e1fc1",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Contributor quality and publication requirements with current hook composition. Full 316-line baseline read. Hook ordering, readiness selection, lane composition, route-helper adoption and actual raw-parameter route inspected. Requirements distinguished from execution proof; historical cost observations not remeasured. Follow-up: Push & Monitor delta only: separates merge-queue arm/confirm/stop from following task-required CI evidence to its outcome.",
@@ -12500,7 +12528,7 @@
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "d462e697c9e3938f163df25ea737edbfe0f015de47f8ec51a3d73ac202120a07"
+          "digest": "b28091ef3b460a75b14b3770f6246e69fdcf4c144d16ad43b897c6372fe13b12"
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
@@ -12651,7 +12679,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
-        "Bounded dependency patch review at 3517d8f66db867fd982a8f9883ed85052c4e1fc1 checked Code Quality & Push Workflow documented commands, named pins and retained behavior/evidence boundaries. Captured-source comparisons across the selected records resolve to exactly two prior byte sets: root manifest changes only dompurify ^3.4.15 to ^3.4.16; lock changes only DOMPurify 3.4.16 and transitive grpc-js 1.14.5 plus matching integrity/references. Other commands, framework/native pins, exports, configuration, lifecycle/age permissions and authority contracts are unchanged, so existing prose remains accurate except the added dated dependency-security disposition. Directly executed managed frozen install/lifecycle/lock-sync, live audit failure before and pass after, 13 real sanitizer/shared-plugin consumer tests and SDK typecheck. First-party grpc server/getAuthContext and IN_PLACE after-sanitize hooks were not found; configurable plugin sanitizer exposure prevents a universal reachability claim. Prior reviews/classification/limits are retained; this does not prove a reproduced Station exploit, hosted closure or packaged/device acceptance."
+        "Bounded dependency patch review at 3517d8f66db867fd982a8f9883ed85052c4e1fc1 checked Code Quality & Push Workflow documented commands, named pins and retained behavior/evidence boundaries. Captured-source comparisons across the selected records resolve to exactly two prior byte sets: root manifest changes only dompurify ^3.4.15 to ^3.4.16; lock changes only DOMPurify 3.4.16 and transitive grpc-js 1.14.5 plus matching integrity/references. Other commands, framework/native pins, exports, configuration, lifecycle/age permissions and authority contracts are unchanged, so existing prose remains accurate except the added dated dependency-security disposition. Directly executed managed frozen install/lifecycle/lock-sync, live audit failure before and pass after, 13 real sanitizer/shared-plugin consumer tests and SDK typecheck. First-party grpc server/getAuthContext and IN_PLACE after-sanitize hooks were not found; configurable plugin sanitizer exposure prevents a universal reachability claim. Prior reviews/classification/limits are retained; this does not prove a reproduced Station exploit, hosted closure or packaged/device acceptance.",
+        "Source-scoped cross-dependency review at 0114a7cec: Reviewed the testing-guide addition: it names a manual real-runtime/native fixture and frozen-input evidence limits. Code-health new-versus-inherited rules, configured entrypoint limits, fixture effectiveness and verification schedules are unchanged. No additional analyzer or all-platform execution claim. Prior checks, classifications and dated evidence are retained; this is a delta review, not a fresh platform or release test."
       ]
     },
     {
@@ -15925,12 +15954,12 @@
     },
     {
       "path": "docs/guides/local-collaboration-lab.md",
-      "documentDigest": "23cebd66c9b548a70e1f3199e1212c52d89af935d8fd2da9c3c511d79658d748",
-      "sourceRevision": "3517d8f66db867fd982a8f9883ed85052c4e1fc1",
+      "documentDigest": "202df09f6d5170449a1eac71ce2050060e0452b9a8e9695c2b145400ab03d3dc",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented stage selection/exit/retention, TLS and signing trust, persistence/caller currentness, application framing, account/protocol versus UI profiles, cross-machine SSH fixture and native-v2 diagnostic boundaries. Historical receipts stay dated. Corrected the signing-command ownership statement and matching CLI help scope.",
-      "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
+      "limits": "Bounded source review and isolated Node Runtime/membership/pairing smoke, plus inspected debug macOS frozen-harness evidence. No release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external provider, two-person, ordinary native UI or fresh relay-only enrollment qualification. Prior dated lab receipts remain historical.",
       "sources": [
         {
           "path": "package.json",
@@ -16222,7 +16251,7 @@
         },
         {
           "path": "scripts/lib/local-collaboration-relay-account.ts",
-          "digest": "e03e49577d5fdd97eb9eaeed8430c24637cfbb3c966e15ce70da515ddb8e089b"
+          "digest": "e56a15010ac61143e57b63af5e8ecbfb3d192dcf50576a1a7d5fd6c2127ec5b0"
         },
         {
           "path": "scripts/lib/local-collaboration-process.mjs",
@@ -16239,6 +16268,34 @@
         {
           "path": "src-ui/src/platform/native/nativeRelaySignalingBridge.ts",
           "digest": "e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-runtime-fixture.ts",
+          "digest": "9ca2c8b47bd89de9ae743875ce10a940df5e1be5dcf69ba8d81e1f855ef4a861"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-acceptance.e2e.ts",
+          "digest": "3c000df5ce38034fd4827a42b5dc6ef0930e65960253ebce6c62c588ddbab7e5"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-acceptance-webview.ts",
+          "digest": "fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-station.ts",
+          "digest": "94250f9184c8a4a45c434ba30ef119ce96c0981c4ec063a5c99773281b48b656"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-station-child.ts",
+          "digest": "dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3"
+        },
+        {
+          "path": "docs/guides/native-shell-verification.md",
+          "digest": "fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512"
+        },
+        {
+          "path": "scripts/__tests__/local-collaboration-station-config.test.ts",
+          "digest": "486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55"
         }
       ],
       "checks": [
@@ -16282,7 +16339,9 @@
         "Combined native receipt/Connect/backup delta review at 7abc84fcb: checked dated account/Project/channel fixtures, current per-request authorization and separate native diagnostic evidence. ApplicationChannel gains public optional post-open prepareRequest with independent body/headers, frozen transmitted method/path/query/body, additive collision-checked headers and abortable post-open waits; no native consumer is installed; lib.rs adds the private two-consumer HTTP sink and receipt collector, main-window registration and receipt-only remaining global/body budgets; original IPC passes no such budgets and SSE behavior stays unchanged; the native relay owner adds fixed-target receipt capture, post-HTTP finalization under real profile-to-authority locks, nonblocking process singleflight and exact versioned error handling; host epoch and proof binding UUID remain distinct. Material prose corrections are confined to the owning references; prior checks/classifications/limits remain retained evidence. Live-lock composition is SOURCE/REASONED, not a helper-test race proof. Retained integrated logs show 527 Rust tests passed with 3 macOS Keychain tests ignored and 38 Connect tests passed across 2 files; these unit/loopback/framing checks establish no executed native IPC, packaged/physical journey, native signer/UI integration or fresh relay enrollment.",
         "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
         "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked dated account/Project/channel fixtures, current per-request authorization and separate native diagnostic evidence. lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate; relay custody exposes a nonserialized comparable live-owner capture including approved trust and exact grant digest/expiry, and reuses existing bounded signal I/O for the peer owner. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence.",
-        "Bounded dependency patch review at 3517d8f66db867fd982a8f9883ed85052c4e1fc1 checked Free local collaboration lab documented commands, named pins and retained behavior/evidence boundaries. Captured-source comparisons across the selected records resolve to exactly two prior byte sets: root manifest changes only dompurify ^3.4.15 to ^3.4.16; lock changes only DOMPurify 3.4.16 and transitive grpc-js 1.14.5 plus matching integrity/references. Other commands, framework/native pins, exports, configuration, lifecycle/age permissions and authority contracts are unchanged, so existing prose remains accurate except the added dated dependency-security disposition. Directly executed managed frozen install/lifecycle/lock-sync, live audit failure before and pass after, 13 real sanitizer/shared-plugin consumer tests and SDK typecheck. First-party grpc server/getAuthContext and IN_PLACE after-sanitize hooks were not found; configurable plugin sanitizer exposure prevents a universal reachability claim. Prior reviews/classification/limits are retained; this does not prove a reproduced Station exploit, hosted closure or packaged/device acceptance."
+        "Bounded dependency patch review at 3517d8f66db867fd982a8f9883ed85052c4e1fc1 checked Free local collaboration lab documented commands, named pins and retained behavior/evidence boundaries. Captured-source comparisons across the selected records resolve to exactly two prior byte sets: root manifest changes only dompurify ^3.4.15 to ^3.4.16; lock changes only DOMPurify 3.4.16 and transitive grpc-js 1.14.5 plus matching integrity/references. Other commands, framework/native pins, exports, configuration, lifecycle/age permissions and authority contracts are unchanged, so existing prose remains accurate except the added dated dependency-security disposition. Directly executed managed frozen install/lifecycle/lock-sync, live audit failure before and pass after, 13 real sanitizer/shared-plugin consumer tests and SDK typecheck. First-party grpc server/getAuthContext and IN_PLACE after-sanitize hooks were not found; configurable plugin sanitizer exposure prevents a universal reachability claim. Prior reviews/classification/limits are retained; this does not prove a reproduced Station exploit, hosted closure or packaged/device acceptance.",
+        "Source-scoped review at 0114a7cec: checked the explicit manual selector, actual StationRuntime/local-provider/Pion fixture, real invitation acceptance and operator-verified active Viewer membership, host-owned Device/account proof flow, strict 401/403/404 revocation assertions and exact-owner cleanup. Independently executed the isolated Node-child Runtime/membership/pairing/awaited-stop smoke at 1cf179593; post-stop listeners were absent. Directly inspected frozen-harness d468df795 final log: initial/reconnect 200, account-revoked 401, reauthenticated 200, Device-revoked 403, nine selected relay pairs, zero browser direct Project requests and verified grant cleanup. This is bounded debug macOS evidence, not release provenance, mobile/Windows/Linux, remote or production TURN/TLS, ordinary UI enablement or fresh relay-only enrollment. Prior checks are retained as historical evidence. Reviewed nativeDeviceProofPilot threading and fail-before-child prerequisites, byte-preserving Node child extraction and tracked-temp cleanup in the newly added config test. The Node/Chromium diagnostic remains separate from the actual Tauri protected-Project journey.",
+        "Final receipt identity delta: recorded exercised debug executable SHA-256 baa3dee2f882354be1f55f2ffbcaaaf8163eb75bd2872e3cdc507eaff67d767b separately from embedded build/client d7f19eeda and frozen harness d468df795. Direct git comparison shows no production Rust/SDK/UI/server source delta between the two revisions. Read/reconnect/account-revocation/reauthentication/Device-revocation and owned cleanup evidence remains bounded to this real macOS debug local-provider/relay fixture. Existing document-specific contracts and release/mobile/ordinary-UI/fresh-relay-only limits remain accurate."
       ]
     },
     {
@@ -17471,12 +17530,12 @@
     },
     {
       "path": "docs/guides/native-shell-verification.md",
-      "documentDigest": "432b7cd00cff49ed7b1722124d7258563d21442b97030022d9efec695d7d60de",
-      "sourceRevision": "7fcc0a65c4067afc51dfc094037b4275177177d8",
+      "documentDigest": "fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
-      "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
+      "limits": "Bounded source/delta review, independently executed isolated Node Runtime/membership/pairing smoke and inspected final frozen-harness macOS debug log. This is not release artifact provenance/signing, mobile or Windows/Linux qualification, remote internet or production TURN/TLS, external provider, two-person, ordinary UI enablement or fresh relay-only enrollment evidence.",
       "sources": [
         {
           "path": "packages/cli/src/cli.ts",
@@ -17536,7 +17595,7 @@
         },
         {
           "path": "scripts/run-tauri-shell-e2e.mjs",
-          "digest": "e0979a810d3197689cdbb3e10b690aa03bac5c9a38010eba8a0392691405f8ab"
+          "digest": "f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add"
         },
         {
           "path": "scripts/verify-windows-installer-upgrade.ps1",
@@ -17633,6 +17692,50 @@
         {
           "path": "tests/tauri-shell/native-chat-dispatch.e2e.ts",
           "digest": "cfe0f18ba9cbfb723a4e7ccebe99dfe28f2e83f2adad8728fb144222cad67766"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-runtime-fixture.ts",
+          "digest": "9ca2c8b47bd89de9ae743875ce10a940df5e1be5dcf69ba8d81e1f855ef4a861"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-acceptance.e2e.ts",
+          "digest": "3c000df5ce38034fd4827a42b5dc6ef0930e65960253ebce6c62c588ddbab7e5"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-acceptance-webview.ts",
+          "digest": "fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-station.ts",
+          "digest": "94250f9184c8a4a45c434ba30ef119ce96c0981c4ec063a5c99773281b48b656"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-station-child.ts",
+          "digest": "dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-relay-account.ts",
+          "digest": "e56a15010ac61143e57b63af5e8ecbfb3d192dcf50576a1a7d5fd6c2127ec5b0"
+        },
+        {
+          "path": "scripts/__tests__/local-collaboration-station-config.test.ts",
+          "digest": "486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55"
+        },
+        {
+          "path": "src-desktop/src/native_proof_key_core.rs",
+          "digest": "d66f1b0037e2bd3ba564cf56fed94cae48b52647817dcbf72ae025a79eacd968"
+        },
+        {
+          "path": "src-desktop/src/native_device_proof_key.rs",
+          "digest": "f209cb152047378666116d08bf220264b0a9ef569fbd0f5cde827e259ec0d5f6"
+        },
+        {
+          "path": "src-desktop/src/native_account_proof_key.rs",
+          "digest": "fb0830359c1b28f49429a1f837df81afe5af2d83e14fe7ad92aa5c54ec2e3e5c"
+        },
+        {
+          "path": "src-desktop/src/native_device_binding_candidate.rs",
+          "digest": "4ada0d91f7ff75f113043d149fb66b0588a71bdd9d7ea30690c4eb2df8251341"
         }
       ],
       "checks": [
@@ -17664,7 +17767,9 @@
         "Reviewed the candidate registration and main-window guard against verification boundaries. The source test/static registration is not an executed Tauri IPC, Keychain, packaged-shell, or physical-device receipt; those remain NOT_VERIFIED.",
         "Bounded integration delta review at 4e912f043: checked 60-second foreground chat header budget, ordinary 20-second headers, open-ended SSE bodies and fixture/manual proof limits. lib.rs captured digest ac2e5dabfbdf adds only the desktop public Device-candidate module/IPC and locked identity callback, plus the 60s foreground-chat response budget (ordinary headers remain 20s). The affected claims remain accurate; no prose change needed. Prior reviews/checks are retained as historical evidence. This source review adds no live provider, OS-keyring, packaged/native IPC, physical-device or fresh relay-enrollment receipt.",
         "Combined native receipt/Connect/backup delta review at 7abc84fcb: checked 60-second foreground chat header budget, ordinary 20-second headers, open-ended SSE bodies and fixture/manual proof limits. lib.rs adds the private two-consumer HTTP sink and receipt collector, main-window registration and receipt-only remaining global/body budgets; original IPC passes no such budgets and SSE behavior stays unchanged; the native relay owner adds fixed-target receipt capture, post-HTTP finalization under real profile-to-authority locks, nonblocking process singleflight and exact versioned error handling; host epoch and proof binding UUID remain distinct. Material prose corrections are confined to the owning references; prior checks/classifications/limits remain retained evidence. Live-lock composition is SOURCE/REASONED, not a helper-test race proof. Retained integrated logs show 527 Rust tests passed with 3 macOS Keychain tests ignored and 38 Connect tests passed across 2 files; these unit/loopback/framing checks establish no executed native IPC, packaged/physical journey, native signer/UI integration or fresh relay enrollment.",
-        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked 60-second foreground chat header budget, ordinary 20-second headers, open-ended SSE bodies and fixture/manual proof limits. lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate; relay custody exposes a nonserialized comparable live-owner capture including approved trust and exact grant digest/expiry, and reuses existing bounded signal I/O for the peer owner. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence."
+        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked 60-second foreground chat header budget, ordinary 20-second headers, open-ended SSE bodies and fixture/manual proof limits. lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate; relay custody exposes a nonserialized comparable live-owner capture including approved trust and exact grant digest/expiry, and reuses existing bounded signal I/O for the peer owner. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence.",
+        "Source-scoped review at 0114a7cec: checked the explicit manual selector, actual StationRuntime/local-provider/Pion fixture, real invitation acceptance and operator-verified active Viewer membership, host-owned Device/account proof flow, strict 401/403/404 revocation assertions and exact-owner cleanup. Independently executed the isolated Node-child Runtime/membership/pairing/awaited-stop smoke at 1cf179593; post-stop listeners were absent. Directly inspected frozen-harness d468df795 final log: initial/reconnect 200, account-revoked 401, reauthenticated 200, Device-revoked 403, nine selected relay pairs, zero browser direct Project requests and verified grant cleanup. This is bounded debug macOS evidence, not release provenance, mobile/Windows/Linux, remote or production TURN/TLS, ordinary UI enablement or fresh relay-only enrollment. Prior checks are retained as historical evidence. Compared candidate/string versus proof-key/raw UUID account hashes to Rust. Included the exact Node child entrypoint and the tracked configuration-test cleanup repair; neither changes runtime authority.",
+        "Final receipt identity delta: recorded exercised debug executable SHA-256 baa3dee2f882354be1f55f2ffbcaaaf8163eb75bd2872e3cdc507eaff67d767b separately from embedded build/client d7f19eeda and frozen harness d468df795. Direct git comparison shows no production Rust/SDK/UI/server source delta between the two revisions. Read/reconnect/account-revocation/reauthentication/Device-revocation and owned cleanup evidence remains bounded to this real macOS debug local-provider/relay fixture. Existing document-specific contracts and release/mobile/ordinary-UI/fresh-relay-only limits remain accurate."
       ]
     },
     {
@@ -19916,12 +20021,12 @@
     },
     {
       "path": "docs/guides/self-hosted-broker.md",
-      "documentDigest": "4e8da08fcfcf0f9dc703fc93569237ceccb062e1cf5a51456a61a59ca2e77157",
-      "sourceRevision": "7fcc0a65c4067afc51dfc094037b4275177177d8",
+      "documentDigest": "069254200af71e444c1ccb959c35cce1931b56db475ee74a63e3c1f73b37ffd8",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented broker schema/grant/proof/offer/renewal, connector lifecycle and private configuration claims through routes, service transactions, native signer/host command table and browser consumer. Corrected distinct browser/native header contracts and redemption exceptions, renewal window and conflict receipt wording. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; ordinary Desktop route activation remains unwired; the explicit native library/server application lane is now documented.",
-      "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
+      "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.",
       "sources": [
         {
           "path": "packages/connect/src/core/applicationChannel.ts",
@@ -20134,6 +20239,30 @@
         {
           "path": "src-ui/src/platform/native/nativeRelaySignalingBridge.ts",
           "digest": "e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-runtime-fixture.ts",
+          "digest": "9ca2c8b47bd89de9ae743875ce10a940df5e1be5dcf69ba8d81e1f855ef4a861"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-acceptance.e2e.ts",
+          "digest": "3c000df5ce38034fd4827a42b5dc6ef0930e65960253ebce6c62c588ddbab7e5"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-acceptance-webview.ts",
+          "digest": "fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619"
+        },
+        {
+          "path": "docs/guides/native-shell-verification.md",
+          "digest": "fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512"
+        },
+        {
+          "path": "src-desktop/src/native_application_peer.rs",
+          "digest": "c0f98feb2a760e041cad809551611526f6acdb324ec679702993bb06d7453991"
+        },
+        {
+          "path": "src-desktop/src/native_account_operations.rs",
+          "digest": "39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf"
         }
       ],
       "checks": [
@@ -20169,7 +20298,9 @@
         "Reviewed the native relay command table and broker lifecycle claims. Candidate production reads an existing selected route/grant but does not change broker endpoints, route activation, renewal, relay protocol, or operator approval; ordinary Desktop application composition remains unwired.",
         "Bounded integration delta review at 4e912f043: checked native route-key/grant maintenance, signaling-only commands and explicitly opt-in application composition. lib.rs captured digest ac2e5dabfbdf adds only the desktop public Device-candidate module/IPC and locked identity callback, plus the 60s foreground-chat response budget (ordinary headers remain 20s). The affected claims remain accurate; no prose change needed. Prior reviews/checks are retained as historical evidence. This source review adds no live provider, OS-keyring, packaged/native IPC, physical-device or fresh relay-enrollment receipt.",
         "Combined native receipt/Connect/backup delta review at 7abc84fcb: checked native route-key/grant maintenance, signaling-only commands and explicitly opt-in application composition. ApplicationChannel gains public optional post-open prepareRequest with independent body/headers, frozen transmitted method/path/query/body, additive collision-checked headers and abortable post-open waits; no native consumer is installed; lib.rs adds the private two-consumer HTTP sink and receipt collector, main-window registration and receipt-only remaining global/body budgets; original IPC passes no such budgets and SSE behavior stays unchanged; the native relay owner adds fixed-target receipt capture, post-HTTP finalization under real profile-to-authority locks, nonblocking process singleflight and exact versioned error handling; host epoch and proof binding UUID remain distinct. Material prose corrections are confined to the owning references; prior checks/classifications/limits remain retained evidence. Live-lock composition is SOURCE/REASONED, not a helper-test race proof. Retained integrated logs show 527 Rust tests passed with 3 macOS Keychain tests ignored and 38 Connect tests passed across 2 files; these unit/loopback/framing checks establish no executed native IPC, packaged/physical journey, native signer/UI integration or fresh relay enrollment.",
-        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked native route-key/grant maintenance, signaling-only commands and explicitly opt-in application composition. lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate; relay custody exposes a nonserialized comparable live-owner capture including approved trust and exact grant digest/expiry, and reuses existing bounded signal I/O for the peer owner; native adapter consumes the real opaque host lifecycle with bounded expiring handle leases, late/cancel/close cleanup and preserved trust rechecks; no default route selection is installed. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence."
+        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked native route-key/grant maintenance, signaling-only commands and explicitly opt-in application composition. lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate; relay custody exposes a nonserialized comparable live-owner capture including approved trust and exact grant digest/expiry, and reuses existing bounded signal I/O for the peer owner; native adapter consumes the real opaque host lifecycle with bounded expiring handle leases, late/cancel/close cleanup and preserved trust rechecks; no default route selection is installed. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence.",
+        "Source-scoped review at 0114a7cec: checked the explicit manual selector, actual StationRuntime/local-provider/Pion fixture, real invitation acceptance and operator-verified active Viewer membership, host-owned Device/account proof flow, strict 401/403/404 revocation assertions and exact-owner cleanup. Independently executed the isolated Node-child Runtime/membership/pairing/awaited-stop smoke at 1cf179593; post-stop listeners were absent. Directly inspected frozen-harness d468df795 final log: initial/reconnect 200, account-revoked 401, reauthenticated 200, Device-revoked 403, nine selected relay pairs, zero browser direct Project requests and verified grant cleanup. This is bounded debug macOS evidence, not release provenance, mobile/Windows/Linux, remote or production TURN/TLS, ordinary UI enablement or fresh relay-only enrollment. Prior checks are retained as historical evidence. Checked that the renderer consumes the host peer lifecycle and typed account operations while ordinary application route/sign-in UI stays gated; a signaling grant does not grant Device/account authority.",
+        "Final receipt identity delta: recorded exercised debug executable SHA-256 baa3dee2f882354be1f55f2ffbcaaaf8163eb75bd2872e3cdc507eaff67d767b separately from embedded build/client d7f19eeda and frozen harness d468df795. Direct git comparison shows no production Rust/SDK/UI/server source delta between the two revisions. Read/reconnect/account-revocation/reauthentication/Device-revocation and owned cleanup evidence remains bounded to this real macOS debug local-provider/relay fixture. Existing document-specific contracts and release/mobile/ordinary-UI/fresh-relay-only limits remain accurate."
       ]
     },
     {
@@ -20866,8 +20997,8 @@
     },
     {
       "path": "docs/guides/testing.md",
-      "documentDigest": "d462e697c9e3938f163df25ea737edbfe0f015de47f8ec51a3d73ac202120a07",
-      "sourceRevision": "3517d8f66db867fd982a8f9883ed85052c4e1fc1",
+      "documentDigest": "b28091ef3b460a75b14b3770f6246e69fdcf4c144d16ad43b897c6372fe13b12",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -21072,6 +21203,38 @@
         {
           "path": "scripts/__tests__/metric-reference.test.ts",
           "digest": "9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-runtime-fixture.ts",
+          "digest": "9ca2c8b47bd89de9ae743875ce10a940df5e1be5dcf69ba8d81e1f855ef4a861"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-acceptance.e2e.ts",
+          "digest": "3c000df5ce38034fd4827a42b5dc6ef0930e65960253ebce6c62c588ddbab7e5"
+        },
+        {
+          "path": "tests/tauri-shell/native-project-acceptance-webview.ts",
+          "digest": "fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-station.ts",
+          "digest": "94250f9184c8a4a45c434ba30ef119ce96c0981c4ec063a5c99773281b48b656"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-station-child.ts",
+          "digest": "dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3"
+        },
+        {
+          "path": "docs/guides/native-shell-verification.md",
+          "digest": "fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512"
+        },
+        {
+          "path": "scripts/run-tauri-shell-e2e.mjs",
+          "digest": "f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add"
+        },
+        {
+          "path": "scripts/__tests__/local-collaboration-station-config.test.ts",
+          "digest": "486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55"
         }
       ],
       "checks": [
@@ -21115,7 +21278,9 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph; ci-workflow-contract.test.ts only updates two comments naming the Playwright version. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The gallery section's lockstep rule and digest rationale are unchanged; both workflow images now pin v1.63.0 and the contract test compares the image version to the locked @playwright/test 1.63.0.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
-        "Bounded dependency patch review at 3517d8f66db867fd982a8f9883ed85052c4e1fc1 checked Testing Guide documented commands, named pins and retained behavior/evidence boundaries. Captured-source comparisons across the selected records resolve to exactly two prior byte sets: root manifest changes only dompurify ^3.4.15 to ^3.4.16; lock changes only DOMPurify 3.4.16 and transitive grpc-js 1.14.5 plus matching integrity/references. Other commands, framework/native pins, exports, configuration, lifecycle/age permissions and authority contracts are unchanged, so existing prose remains accurate except the added dated dependency-security disposition. Directly executed managed frozen install/lifecycle/lock-sync, live audit failure before and pass after, 13 real sanitizer/shared-plugin consumer tests and SDK typecheck. First-party grpc server/getAuthContext and IN_PLACE after-sanitize hooks were not found; configurable plugin sanitizer exposure prevents a universal reachability claim. Prior reviews/classification/limits are retained; this does not prove a reproduced Station exploit, hosted closure or packaged/device acceptance."
+        "Bounded dependency patch review at 3517d8f66db867fd982a8f9883ed85052c4e1fc1 checked Testing Guide documented commands, named pins and retained behavior/evidence boundaries. Captured-source comparisons across the selected records resolve to exactly two prior byte sets: root manifest changes only dompurify ^3.4.15 to ^3.4.16; lock changes only DOMPurify 3.4.16 and transitive grpc-js 1.14.5 plus matching integrity/references. Other commands, framework/native pins, exports, configuration, lifecycle/age permissions and authority contracts are unchanged, so existing prose remains accurate except the added dated dependency-security disposition. Directly executed managed frozen install/lifecycle/lock-sync, live audit failure before and pass after, 13 real sanitizer/shared-plugin consumer tests and SDK typecheck. First-party grpc server/getAuthContext and IN_PLACE after-sanitize hooks were not found; configurable plugin sanitizer exposure prevents a universal reachability claim. Prior reviews/classification/limits are retained; this does not prove a reproduced Station exploit, hosted closure or packaged/device acceptance.",
+        "Source-scoped review at 0114a7cec: checked the explicit manual selector, actual StationRuntime/local-provider/Pion fixture, real invitation acceptance and operator-verified active Viewer membership, host-owned Device/account proof flow, strict 401/403/404 revocation assertions and exact-owner cleanup. Independently executed the isolated Node-child Runtime/membership/pairing/awaited-stop smoke at 1cf179593; post-stop listeners were absent. Directly inspected frozen-harness d468df795 final log: initial/reconnect 200, account-revoked 401, reauthenticated 200, Device-revoked 403, nine selected relay pairs, zero browser direct Project requests and verified grant cleanup. This is bounded debug macOS evidence, not release provenance, mobile/Windows/Linux, remote or production TURN/TLS, ordinary UI enablement or fresh relay-only enrollment. Prior checks are retained as historical evidence. The added paragraph routes the manual native fixture and separates preliminary uncommitted-input evidence from frozen-harness results. Existing verification schedules, fixture rules and platform policy are unchanged.",
+        "Final receipt identity delta: recorded exercised debug executable SHA-256 baa3dee2f882354be1f55f2ffbcaaaf8163eb75bd2872e3cdc507eaff67d767b separately from embedded build/client d7f19eeda and frozen harness d468df795. Direct git comparison shows no production Rust/SDK/UI/server source delta between the two revisions. Read/reconnect/account-revocation/reauthentication/Device-revocation and owned cleanup evidence remains bounded to this real macOS debug local-provider/relay fixture. Existing document-specific contracts and release/mobile/ordinary-UI/fresh-relay-only limits remain accurate."
       ]
     },
     {
@@ -28896,7 +29061,7 @@
     {
       "path": "docs/user/native-recovery.md",
       "documentDigest": "0a1501079da1ca412c3eddec11a2c2f57cad82b201b5f90b7e6b68a98027c906",
-      "sourceRevision": "7fcc0a65c4067afc51dfc094037b4275177177d8",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all public recovery claims against native readiness and renderer-mount callers, 30-second epoch/activation handling, retry-before-restart, home-reset refusal, four-respawn limit, service-versus-sidecar controls and pinned log retention. Actual CLI dispatch distinguishes local checkout prerequisites from packaged target discovery/credential/service observations.",
@@ -28924,7 +29089,7 @@
         },
         {
           "path": "scripts/run-tauri-shell-e2e.mjs",
-          "digest": "e0979a810d3197689cdbb3e10b690aa03bac5c9a38010eba8a0392691405f8ab"
+          "digest": "f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add"
         },
         {
           "path": "src-desktop/Cargo.lock",
@@ -28994,7 +29159,8 @@
         "The candidate manager's provisional Keychain record is separate from startup sidecar readiness and recovery. The source change does not alter launch epochs, restart actions, home reset, or service recovery behavior.",
         "Bounded integration delta review at 4e912f043: checked startup readiness epochs, renderer mount, retry/respawn and service-versus-sidecar recovery. lib.rs captured digest ac2e5dabfbdf adds only the desktop public Device-candidate module/IPC and locked identity callback, plus the 60s foreground-chat response budget (ordinary headers remain 20s). The affected claims remain accurate; no prose change needed. Prior reviews/checks are retained as historical evidence. This source review adds no live provider, OS-keyring, packaged/native IPC, physical-device or fresh relay-enrollment receipt.",
         "Combined native receipt/Connect/backup delta review at 7abc84fcb: checked startup readiness epochs, renderer mount, retry/respawn and service-versus-sidecar recovery. lib.rs adds the private two-consumer HTTP sink and receipt collector, main-window registration and receipt-only remaining global/body budgets; original IPC passes no such budgets and SSE behavior stays unchanged. Material prose corrections are confined to the owning references; prior checks/classifications/limits remain retained evidence. Live-lock composition is SOURCE/REASONED, not a helper-test race proof. Retained integrated logs show 527 Rust tests passed with 3 macOS Keychain tests ignored and 38 Connect tests passed across 2 files; these unit/loopback/framing checks establish no executed native IPC, packaged/physical journey, native signer/UI integration or fresh relay enrollment.",
-        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked startup readiness epochs, renderer mount, retry/respawn and service-versus-sidecar recovery. lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence."
+        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked startup readiness epochs, renderer mount, retry/respawn and service-versus-sidecar recovery. lib.rs adds desktop-only managed peer/account state and main-window structured command registration; mobile and default UI route behavior remain separate. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence.",
+        "Source-scoped cross-dependency review at 0114a7cec: Reviewed the manual shell-selector delta: native-project-proof uses its separate WebDriver app identity and does not alter packaged readiness, ticket/retry/supervisor, service/sidecar recovery, log paths or the guide’s platform NOT_VERIFIED list. Protected Project debug evidence is a separate journey. Prior checks, classifications and dated evidence are retained; this is a delta review, not a fresh platform or release test."
       ]
     },
     {
@@ -32118,7 +32284,7 @@
     },
     {
       "path": "scripts/AGENTS.md",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "policy",
       "state": "classified",
       "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
@@ -32131,7 +32297,7 @@
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "d462e697c9e3938f163df25ea737edbfe0f015de47f8ec51a3d73ac202120a07"
+          "digest": "b28091ef3b460a75b14b3770f6246e69fdcf4c144d16ad43b897c6372fe13b12"
         },
         {
           "path": "scripts/code-health-gate.mjs",
@@ -32171,7 +32337,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "#2977 added one test entry to the child-process group of scripts/vitest-resource-manifest.mjs; the instruction that new child-process tests must be classified there is unchanged and still accurate.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Source-scoped cross-dependency review at 0114a7cec: Reviewed the added testing-guide native-fixture paragraph against this instruction route. Deterministic guards, owned processes, test-effectiveness, actual exit status and inherited-versus-new code-health rules remain accurate; no instruction or policy change. Prior checks, classifications and dated evidence are retained; this is a delta review, not a fresh platform or release test."
       ]
     },
     {
@@ -32359,7 +32526,7 @@
     },
     {
       "path": "src-desktop/AGENTS.md",
-      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes native changes to native-shell verification and platform guides; separates unit checks from physical device/runtime evidence and retains Windows process requirements.",
@@ -32368,7 +32535,7 @@
       "sources": [
         {
           "path": "docs/guides/native-shell-verification.md",
-          "digest": "432b7cd00cff49ed7b1722124d7258563d21442b97030022d9efec695d7d60de"
+          "digest": "fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512"
         },
         {
           "path": "scripts/gate-for.mjs",
@@ -32384,7 +32551,9 @@
         "Reviewed integration deltas: docs/guides/native-shell-verification.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits."
+        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits.",
+        "Source-scoped cross-dependency review at 0114a7cec: Reviewed the native-shell guide’s bounded debug macOS receipt and unchanged release/mobile/other-platform limits. This instruction still routes native changes to the guide and requires actual identity/listener/interaction evidence rather than unit-only claims. No native instruction change. Prior checks, classifications and dated evidence are retained; this is a delta review, not a fresh platform or release test.",
+        "Final receipt identity delta: recorded exercised debug executable SHA-256 baa3dee2f882354be1f55f2ffbcaaaf8163eb75bd2872e3cdc507eaff67d767b separately from embedded build/client d7f19eeda and frozen harness d468df795. Direct git comparison shows no production Rust/SDK/UI/server source delta between the two revisions. Read/reconnect/account-revocation/reauthentication/Device-revocation and owned cleanup evidence remains bounded to this real macOS debug local-provider/relay fixture. Existing document-specific contracts and release/mobile/ordinary-UI/fresh-relay-only limits remain accurate."
       ]
     },
     {
@@ -32504,7 +32673,7 @@
     },
     {
       "path": "src-server/AGENTS.md",
-      "sourceRevision": "7fcc0a65c4067afc51dfc094037b4275177177d8",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to module-map/development/testing owners. Preserves route/domain boundaries, logger and Windows launch requirements, request-local batching, and yielding installed-package integrity observations. The current integrity owner serializes scans and joins only a queued observation starting after arrival.",
@@ -32521,7 +32690,7 @@
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "d462e697c9e3938f163df25ea737edbfe0f015de47f8ec51a3d73ac202120a07"
+          "digest": "b28091ef3b460a75b14b3770f6246e69fdcf4c144d16ad43b897c6372fe13b12"
         },
         {
           "path": "src-server/services/evidence/workflow-sidecar-service.ts",
@@ -32561,7 +32730,8 @@
         "Combined native receipt/Connect/backup delta review at 7abc84fcb: checked normative module-map/development/test routing, logger and Windows launch conventions. the module map adds only the protected self-read/native observation consumer and retains unmounted signing/UI and source-only proof limits. Material prose corrections are confined to the owning references; prior checks/classifications/limits remain retained evidence. Live-lock composition is SOURCE/REASONED, not a helper-test race proof. Retained integrated logs show 527 Rust tests passed with 3 macOS Keychain tests ignored and 38 Connect tests passed across 2 files; these unit/loopback/framing checks establish no executed native IPC, packaged/physical journey, native signer/UI integration or fresh relay enrollment.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
         "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
-        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked normative module-map/development/test routing, logger and Windows launch conventions. module map corrects former foundation-only/no-consumer wording to actual peer and structured account callers, retaining source-only versus actual native/physical evidence. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence."
+        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked normative module-map/development/test routing, logger and Windows launch conventions. module map corrects former foundation-only/no-consumer wording to actual peer and structured account callers, retaining source-only versus actual native/physical evidence. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence.",
+        "Source-scoped cross-dependency review at 0114a7cec: Reviewed the testing-guide manual real-runtime addition: the fixture follows actual route/domain/provider/authority owners and separate browser/server measurements. Server logging, Windows process flags, request-local batching and installed-package integrity requirements are unchanged. Prior checks, classifications and dated evidence are retained; this is a delta review, not a fresh platform or release test."
       ]
     },
     {
@@ -32769,7 +32939,7 @@
     },
     {
       "path": "src-ui/AGENTS.md",
-      "sourceRevision": "7fcc0a65c4067afc51dfc094037b4275177177d8",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to canonical module/test guidance. The navigation store and useUnsavedGuard support the single route-guard ownership rule; shared controls and physical layout claims remain distinct from DOM tests.",
@@ -32782,7 +32952,7 @@
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "d462e697c9e3938f163df25ea737edbfe0f015de47f8ec51a3d73ac202120a07"
+          "digest": "b28091ef3b460a75b14b3770f6246e69fdcf4c144d16ad43b897c6372fe13b12"
         },
         {
           "path": "src-ui/src/components/Button.tsx",
@@ -32833,7 +33003,8 @@
         "Combined native receipt/Connect/backup delta review at 7abc84fcb: checked normative UI/state/navigation/authority and focused source/runtime evidence routing. the module map adds only the protected self-read/native observation consumer and retains unmounted signing/UI and source-only proof limits. Material prose corrections are confined to the owning references; prior checks/classifications/limits remain retained evidence. Live-lock composition is SOURCE/REASONED, not a helper-test race proof. Retained integrated logs show 527 Rust tests passed with 3 macOS Keychain tests ignored and 38 Connect tests passed across 2 files; these unit/loopback/framing checks establish no executed native IPC, packaged/physical journey, native signer/UI integration or fresh relay enrollment.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
         "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
-        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked normative UI/state/navigation/authority and focused source/runtime evidence routing. module map corrects former foundation-only/no-consumer wording to actual peer and structured account callers, retaining source-only versus actual native/physical evidence. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence."
+        "Final peer/account and latest-main merge delta review at 7fcc0a65c: checked normative UI/state/navigation/authority and focused source/runtime evidence routing. module map corrects former foundation-only/no-consumer wording to actual peer and structured account callers, retaining source-only versus actual native/physical evidence. Source comparisons use the recorded byte captures, not feature-to-main tip absence. Prior reviews/checks/classifications/limits are retained. Directly inspected integration logs:543Rust tests passed/3macOS Keychain tests ignored,17SDK tests and57client/bridge/framing tests passed. Crypto/unit/loopback/caller fixtures and SOURCE/REASONED live-lock composition do not establish actual native IPC, packaged/physical acceptance, default native UI or fresh relay enrollment; the separate acceptance harness is not cited as evidence.",
+        "Source-scoped cross-dependency review at 0114a7cec: Reviewed the testing-guide manual native fixture and evidence limits. It does not enable ordinary UI or change React Query/state/navigation/unsaved-guard, mounted geometry or design-system requirements. The scope instruction remains accurate. Prior checks, classifications and dated evidence are retained; this is a delta review, not a fresh platform or release test."
       ]
     },
     {
@@ -32865,7 +33036,7 @@
     },
     {
       "path": "tests/AGENTS.md",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "0114a7cecb46255b1a87068cbc76f2bf1bd1b720",
       "kind": "policy",
       "state": "classified",
       "summary": "All named fixture helpers and npm scripts resolve. buildExamplePlugin uses the supported scripts/station-cli.ts bootstrap with windowsHide; pairBrowser and fixture audit helpers exist. Conversation, navigation, dialog, bootstrap, and real-action requirements are preserved as policy.",
@@ -32874,7 +33045,7 @@
       "sources": [
         {
           "path": "docs/guides/testing.md",
-          "digest": "d462e697c9e3938f163df25ea737edbfe0f015de47f8ec51a3d73ac202120a07"
+          "digest": "b28091ef3b460a75b14b3770f6246e69fdcf4c144d16ad43b897c6372fe13b12"
         },
         {
           "path": "scripts/station-cli.ts",
@@ -32909,7 +33080,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
         "Reviewed landing deltas through 111744681: Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Source-scoped cross-dependency review at 0114a7cec: Reviewed the testing-guide manual runtime/native paragraph: real account invitation acceptance, Viewer verification, owned cleanup and frozen-input evidence agree with this file’s behavior/assertion and fixture-fidelity requirements. Existing focused/typecheck/profile/mutation commands and browser action rules remain unchanged. Prior checks, classifications and dated evidence are retained; this is a delta review, not a fresh platform or release test."
       ]
     },
     {

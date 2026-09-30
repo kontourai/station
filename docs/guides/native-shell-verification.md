@@ -117,22 +117,37 @@ membership. The native host owns the pairing bearer, routing grant and distinct
 Device/account keys; the WebView supplies no fabricated principal or Device
 metadata.
 
-The journey checks operator-approved Device binding and host self-receipt,
+The [driver](../../tests/tauri-shell/native-project-acceptance.e2e.ts) and
+[main-WebView runner](../../tests/tauri-shell/native-project-acceptance-webview.ts)
+check operator-approved Device binding and host self-receipt,
 host-owned peer preparation and signing, native account challenge/exchange,
 protected Project read and reconnect through the application channel, and
-subsequent account revocation. Selected relay pairs and a browser direct-Project
+subsequent account and Device revocation. Selected relay pairs and a browser direct-Project
 request counter distinguish the exercised transport. Direct loopback bootstrap
 is still used for trust, pairing and the host receipt; this is not fresh
 relay-only enrollment.
 
-An interim September 30, 2026 macOS debug run observed a current host receipt,
-native challenge/exchange responses and a protected shared-Project read with
-status 200, selected relay pairs and zero browser direct-Project requests. The
-driver and WebView files were still uncommitted, so that run is preliminary
-runtime evidence, not a final receipt bound to frozen source and binary bytes.
-**Final frozen journey receipt: NOT_VERIFIED. Device-revocation refusal:
-NOT_VERIFIED.** Record both only after the completed final run, including its
-source revision, binary identity and cleanup result.
+On September 30, 2026, the macOS debug lane completed against frozen harness
+revision `d468df79564510e9df72e3b19da7d36a89ac41e0`. The retained
+`tauri-shell-final-d468df795.txt` log records the current host self-receipt,
+real Keychain Device key, active Viewer membership and native challenge/exchange
+responses with status 200. The protected shared-Project read and reconnect
+returned 200; account revocation returned 401; reauthentication restored a 200
+read; revoking the paired Device returned 403 with no Project payload. The run
+observed nine selected relay pairs, fresh request peer handles and zero browser
+direct-Project requests, and completed its fixture-owned cleanup checks.
+
+The exercised debug executable has SHA-256
+`baa3dee2f882354be1f55f2ffbcaaaf8163eb75bd2872e3cdc507eaff67d767b`;
+its embedded build/client revision is `d7f19eeda`. The harness revision is
+recorded separately because its later changes were confined to the Node child
+launcher and fixture/driver files; production Rust, SDK, UI and proof sources
+were unchanged between those revisions.
+
+This is executed real WebView/IPC/Keychain and local-provider evidence for that
+development bundle and frozen harness. It does not establish signed release
+provenance or all-platform qualification. Later binaries and source changes need
+their own receipt.
 
 Cleanup targets only generated fixture homes, owned processes/containers and
 exact Keychain service/account owners. Device and account proof-key owner hashes
