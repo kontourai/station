@@ -139,6 +139,11 @@ export interface UseLiveSurfaceResult {
    * person's hold. Only the holder's release is accepted.
    */
   releaseControl: () => Promise<void>;
+  /**
+   * Keep this person's current hold alive while they are shown something
+   * that needs them (not input; the server caps it from their last input).
+   */
+  keepControlAlive: () => Promise<void>;
   retry: () => void;
 }
 
@@ -616,6 +621,30 @@ export function useLiveSurface(
     }
   }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
 
+  const keepControlAlive = useCallback(async () => {
+    const current = leaseRef.current;
+    if (!current) return;
+    try {
+      const response = await transportRef.current(
+        `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'keep-alive', epoch: current.epoch }),
+        },
+      );
+      const envelope = (await response.json().catch(() => null)) as {
+        data?: LiveSurfaceLeaseResult;
+      } | null;
+      const nextLease = envelope?.data
+        ? parseLiveSurfaceControlLease(envelope.data.lease)
+        : null;
+      if (nextLease) adoptLease(nextLease);
+    } catch {
+      // A missed keep-alive only lets the hold lapse as it would anyway.
+    }
+  }, [apiBase, surfaceId, projectSlug, adoptLease]);
+
   const retry = useCallback(() => setRetryToken((value) => value + 1), []);
 
   return {
@@ -631,6 +660,7 @@ export function useLiveSurface(
     sendInput,
     claimControl,
     releaseControl,
+    keepControlAlive,
     retry,
   };
 }

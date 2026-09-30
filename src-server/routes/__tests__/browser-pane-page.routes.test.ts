@@ -23,6 +23,7 @@ import {
 } from '../../services/browser/browser-host.js';
 import { BrowserLiveSurfaces } from '../../services/browser/browser-live-surfaces.js';
 import { BrowserSessionRegistry } from '../../services/browser/browser-session-registry.js';
+import { CdpProtocolError } from '../../services/browser/cdp-pipe-transport.js';
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import {
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
@@ -101,6 +102,8 @@ function harness(
     dispatchTimeoutMs?: number;
     /** The Project's `browserEvaluate` (D4); absent: no settings store. */
     browserEvaluate?: boolean;
+    /** The live-surface lease's clock and holds (test seam). */
+    lease?: { now: () => number; humanHoldMs?: number };
   } = {},
 ) {
   const stationHome = mkdtempSync(join(tmpdir(), 'station-browser-page-'));
@@ -121,7 +124,9 @@ function harness(
   });
   const authorizeProject: BrowserProjectAuthorizer = async (request) =>
     roleOf(request) === 'operator' ? { kind: 'operator' } : undefined;
-  const surfaces = new LiveSurfaceRegistry();
+  const surfaces = new LiveSurfaceRegistry(
+    options.lease ? { lease: options.lease } : {},
+  );
   const binder = new BrowserLiveSurfaces({
     sessions,
     surfaces,
@@ -250,6 +255,7 @@ function harness(
     browser,
     personClicks,
     clickResponse,
+    surfaceRoutes,
     open,
   };
 }
@@ -677,13 +683,35 @@ describe('Browser pane: review-round bounds', () => {
       message: 'x',
     });
     h.fake.handle('Page.handleJavaScriptDialog', () => {
-      throw new Error('No dialog is showing');
+      throw new CdpProtocolError(
+        'Page.handleJavaScriptDialog',
+        -32602,
+        'No dialog is showing',
+      );
     });
     const response = await h.browser('POST', `/sessions/${id}/dialog`, {
       body: { dialogId: 'd1', accept: true },
     });
     expect(response.status).toBe(409);
     expect((await response.json()).code).toBe('no-dialog');
+  });
+
+  test('an answer whose channel fails is 502, and the dialog stays answerable', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    await h.personClicks(id);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'alert',
+      message: 'x',
+    });
+    h.fake.handle('Page.handleJavaScriptDialog', () => {
+      throw new Error('CDP transport closed');
+    });
+    const response = await h.browser('POST', `/sessions/${id}/dialog`, {
+      body: { dialogId: 'd1', accept: true },
+    });
+    expect(response.status).toBe(502);
+    expect(h.binder.pendingDialogFor(id)).toMatchObject({ dialogId: 'd1' });
   });
 
   test('an answer the browser never acknowledges is 504 page-busy, and the dialog stays answerable', async () => {
@@ -700,5 +728,52 @@ describe('Browser pane: review-round bounds', () => {
     });
     expect(response.status).toBe(504);
     expect(h.binder.pendingDialogFor(id)).toMatchObject({ dialogId: 'd1' });
+  });
+});
+
+describe('Browser pane: the renewal cap end to end', () => {
+  test('a page looping alert() cannot hold control past the cap: keep-alives are refused, control lapses, the held dialog is dismissed, and the next dialog is not held', async () => {
+    const clock = { t: 1_000_000 };
+    const h = harness({ lease: { now: () => clock.t, humanHoldMs: 1_000 } });
+    const { browserSessionId: id } = await h.open();
+    await h.personClicks(id);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'alert',
+      message: 'again',
+    });
+    expect(h.binder.pendingDialogFor(id)).toBeDefined();
+    const surfaceId = h.binder.surfaceIdFor(id)!;
+    const keepAlive = () =>
+      h.surfaceRoutes.request(`http://station.test/${surfaceId}/lease`, {
+        method: 'POST',
+        headers: {
+          'x-test-role': 'operator',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'keep-alive',
+          epoch: h.surfaces.get(surfaceId)!.lease.snapshot().epoch,
+        }),
+      });
+    // The card renews every so often; the cap is 4 × the 1 s hold.
+    for (const step of [900, 900, 900, 900]) {
+      clock.t += step;
+      expect((await keepAlive()).status).toBe(200);
+    }
+    clock.t += 500;
+    // Past the cap the hold has lapsed: nothing is left to keep alive.
+    const refused = await keepAlive();
+    expect(refused.status).toBe(409);
+    expect(
+      ((await refused.json()) as { data: { ok: boolean } }).data.ok,
+    ).toBe(false);
+    expect(h.surfaces.get(surfaceId)!.lease.snapshot().holder).toBeNull();
+    expect(h.binder.pendingDialogFor(id)).toBeUndefined();
+    // With nobody in control, the page's next alert is answered at once.
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'alert',
+      message: 'again',
+    });
+    expect(h.binder.pendingDialogFor(id)).toBeUndefined();
   });
 });

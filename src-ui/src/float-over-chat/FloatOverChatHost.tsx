@@ -989,7 +989,7 @@ function BrowserFloat({
                   ? { onOpenInPane: () => void openInPanel() }
                   : {})}
                 {...(control?.tone === 'you'
-                  ? { onKeepAlive: () => void control.claimControl() }
+                  ? { onKeepAlive: () => void control.keepControlAlive() }
                   : {})}
               />
             </div>

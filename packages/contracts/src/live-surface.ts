@@ -540,7 +540,14 @@ export function parseLiveSurfaceInputBatch(
  */
 export type LiveSurfaceLeaseRequest =
   | { action: 'claim' }
-  | { action: 'release'; epoch: number };
+  | { action: 'release'; epoch: number }
+  /**
+   * Keep the caller's OWN current hold alive while a person is shown
+   * something that needs them (a page's held dialog). Not input: it never
+   * claims, never preempts anyone, and cannot extend a hold past the cap
+   * measured from the person's last real input.
+   */
+  | { action: 'keep-alive'; epoch: number };
 
 export function parseLiveSurfaceLeaseRequest(
   value: unknown,
@@ -555,6 +562,12 @@ export function parseLiveSurfaceLeaseRequest(
     isLiveSurfaceEpoch(record.epoch)
   )
     return { action: 'release', epoch: record.epoch as number };
+  if (
+    record.action === 'keep-alive' &&
+    onlyKeys(record, ['action', 'epoch']) &&
+    isLiveSurfaceEpoch(record.epoch)
+  )
+    return { action: 'keep-alive', epoch: record.epoch as number };
   return null;
 }
 

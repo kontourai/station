@@ -136,11 +136,17 @@ decides each JavaScript dialog when it opens:
   refused (`page-dialog-open`, said in the view) until it is answered. The
   same card appears in the float-over-chat, with **Open in pane**. A held
   dialog is dismissed automatically when the person's control ends
-  (released, lapsed or passed to an Agent) and after two minutes at most;
-  while the card is on a visible screen it renews the person's control, so
-  reading it does not dismiss it. An answer the browser never acknowledges
-  is `504 page-busy` and the dialog stays answerable; one it refuses (the
-  page navigated away) is `409 no-dialog`.
+  (released, lapsed or passed to an Agent) and after two minutes at most.
+  While the card is in view on a visible tab it sends a keep-alive: a
+  separate lease request, not input, that only extends the person's own
+  current hold (a stale one never takes control back from an Agent). The
+  server caps it at four times the 30-second hold, measured from the
+  person's last real input, so a page that keeps opening dialogs in an
+  unwatched tab cannot hold control past that; a real click or key resets
+  the cap. An answer the browser never acknowledges is `504 page-busy` and
+  one whose channel fails is `502`; both keep the dialog answerable. Only
+  Chromium's own "no dialog is showing" (the page navigated away) is
+  `409 no-dialog`.
 - A dialog that opens while an Agent holds control, or nobody does, is
   answered automatically as before (dismissed; `beforeunload` accepted), and
   the pane says so. `beforeunload` is never held.

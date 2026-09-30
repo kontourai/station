@@ -44,6 +44,7 @@ import {
   type LiveSurfaceProducer,
 } from '../live-surface/producer.js';
 import type { CdpTransport } from './browser-host.js';
+import { CdpProtocolError } from './cdp-pipe-transport.js';
 
 /** One JavaScript dialog the producer answered on the page's behalf. */
 export interface HandledJavaScriptDialog {
@@ -80,7 +81,7 @@ export interface PendingJavaScriptDialog {
 
 export type AnswerDialogResult =
   | { ok: true; dialog: PendingJavaScriptDialog }
-  | { ok: false; code: 'no-dialog' | 'page-busy' };
+  | { ok: false; code: 'no-dialog' | 'page-busy' | 'browser-error' };
 
 /**
  * Input refused because a held dialog is waiting for a person. A
@@ -287,6 +288,8 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
   private pending: PendingJavaScriptDialog | null = null;
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private dialogSeq = 0;
+  /** The person's answer in flight, and whether the page closed it meanwhile. */
+  private answering: { dialogId: string; closed: boolean } | null = null;
   /** Input calls waiting on CDP; a held dialog opening settles them. */
   private readonly dialogWaiters = new Set<() => void>();
   private offFrame: (() => void) | null = null;
@@ -321,7 +324,10 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     this.offDialogClosed = this.cdp.on(
       'Page.javascriptDialogClosed',
       (_params, sessionId) => {
-        if (sessionId !== this.session || !this.pending) return;
+        if (sessionId !== this.session) return;
+        // An answer in flight must not restore a dialog that is gone.
+        if (this.answering) this.answering.closed = true;
+        if (!this.pending) return;
         this.clearPending();
       },
     );
@@ -359,9 +365,13 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     const dialog = this.pending;
     if (!dialog || dialog.dialogId !== dialogId)
       return { ok: false, code: 'no-dialog' };
-    const timer = this.pendingTimer;
-    this.pending = null;
+    // While the answer is in flight the dialog is nobody's to auto-answer:
+    // its hold timer stops (a fresh one is armed if the answer fails).
+    if (this.pendingTimer) clearTimeout(this.pendingTimer);
     this.pendingTimer = null;
+    this.pending = null;
+    const answering = { dialogId, closed: false };
+    this.answering = answering;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     const sent = this.cdp.send(
       'Page.handleJavaScriptDialog',
@@ -376,33 +386,42 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     try {
       const outcome = await Promise.race([
         sent.then(
-          () => 'answered' as const,
-          () => 'gone' as const,
+          () => ({ kind: 'answered' as const }),
+          (error: unknown) => ({ kind: 'refused' as const, error }),
         ),
-        new Promise<'timeout'>((resolve) => {
+        new Promise<{ kind: 'timeout' }>((resolve) => {
           deadline = setTimeout(
-            () => resolve('timeout'),
+            () => resolve({ kind: 'timeout' }),
             this.dispatchTimeoutMs,
           );
         }),
       ]);
-      if (outcome === 'timeout') {
-        // The browser did not answer: the dialog may still be showing, so it
-        // stays held (with its own hold timer) and the person can try again.
-        if (!this.pending && !this.disposed) {
-          this.pending = dialog;
-          this.pendingTimer = timer;
-        }
-        return { ok: false, code: 'page-busy' };
+      if (outcome.kind === 'answered') {
+        this.reportPending(null);
+        return { ok: true, dialog };
       }
-      if (timer) clearTimeout(timer);
-      this.reportPending(null);
-      // Refused by the browser: the page navigated away or the dialog was
-      // already closed. There is nothing left to answer.
-      if (outcome === 'gone') return { ok: false, code: 'no-dialog' };
-      return { ok: true, dialog };
+      // The browser says there is no such dialog (the page navigated away,
+      // or it closed): nothing is left to answer.
+      if (outcome.kind === 'refused' && isNoDialogShowing(outcome.error)) {
+        this.reportPending(null);
+        return { ok: false, code: 'no-dialog' };
+      }
+      // No answer in time, or the channel itself failed: the dialog may
+      // still be showing, so it stays held (with a FRESH hold timer) unless
+      // the page closed it while the answer was in flight.
+      if (!answering.closed && !this.pending && !this.disposed) {
+        this.pending = dialog;
+        this.armHoldTimer(dialog);
+      } else {
+        this.reportPending(null);
+      }
+      return {
+        ok: false,
+        code: outcome.kind === 'timeout' ? 'page-busy' : 'browser-error',
+      };
     } finally {
       if (deadline) clearTimeout(deadline);
+      if (this.answering === answering) this.answering = null;
       sent.catch(() => {});
     }
   }
@@ -723,6 +742,22 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     }
   }
 
+  /** The held dialog's automatic answer, `dialogHoldMs` from now. */
+  private armHoldTimer(dialog: PendingJavaScriptDialog): void {
+    if (this.pendingTimer) clearTimeout(this.pendingTimer);
+    this.pendingTimer = setTimeout(() => {
+      if (this.pending?.dialogId !== dialog.dialogId) return;
+      this.pending = null;
+      this.pendingTimer = null;
+      this.reportPending(null);
+      this.answerAutomatically(
+        { type: dialog.type, message: dialog.message },
+        'unanswered',
+      );
+    }, this.dialogHoldMs);
+    this.pendingTimer.unref?.();
+  }
+
   private onDialogOpening(event: DialogOpeningEvent): void {
     const type = typeof event.type === 'string' ? event.type : 'unknown';
     let hold = false;
@@ -762,14 +797,7 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       openedAt: this.now(),
     };
     this.pending = dialog;
-    this.pendingTimer = setTimeout(() => {
-      if (this.pending?.dialogId !== dialog.dialogId) return;
-      this.pending = null;
-      this.pendingTimer = null;
-      this.reportPending(null);
-      this.answerAutomatically(event, 'unanswered');
-    }, this.dialogHoldMs);
-    this.pendingTimer.unref?.();
+    this.armHoldTimer(dialog);
     this.reportPending(dialog);
     // The input that opened it was delivered; it must not wait on a person.
     this.releaseDialogWaiters();
@@ -862,6 +890,17 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       this.options.onError?.('dialog report failed', error);
     }
   }
+}
+
+/**
+ * Chromium's own answer to handling a dialog that is not there ("No dialog
+ * is showing"), as opposed to the channel failing.
+ */
+function isNoDialogShowing(error: unknown): boolean {
+  return (
+    error instanceof CdpProtocolError &&
+    /no dialog is showing/i.test(error.protocolMessage)
+  );
 }
 
 function screencastParams(params: LiveSurfaceStreamParams) {

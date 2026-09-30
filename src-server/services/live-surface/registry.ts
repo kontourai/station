@@ -612,6 +612,18 @@ export function releaseHumanControl(
 }
 
 /**
+ * A person's keep-alive of their own current hold (see
+ * `LiveSurfaceControlLeaseState.keepHumanAlive`): capped, never a claim.
+ */
+export function keepHumanControlAlive(
+  entry: LiveSurfaceEntry,
+  human: HumanController,
+  epoch: number,
+): FencedLeaseResult {
+  return internalsOf(entry).lease.keepHumanAlive(human, epoch);
+}
+
+/**
  * An agent's explicit claim. `agent` must come from the VERIFIED calling
  * session; `actingFor` is the human principal the agent acts for, and the
  * surface's authorizer must grant it `control`. Never preempts a live human.

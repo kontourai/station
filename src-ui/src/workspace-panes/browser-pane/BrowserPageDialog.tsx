@@ -34,9 +34,9 @@ export function BrowserPageDialog({
   /** Offered where the card is shown outside the pane (the float). */
   onOpenInPane?: () => void;
   /**
-   * Renew the person's control while this card is on screen. The server
-   * dismisses a held dialog once the person's control ends; a person reading
-   * it has not left.
+   * Keep the person's hold alive while this card is on screen (the server
+   * dismisses a held dialog once their control ends). The server caps it
+   * from their last real input, so an unwatched page cannot hold forever.
    */
   onKeepAlive?: () => void;
   /** A small host (the float): tighter, with the page's text clamped. */
@@ -58,11 +58,27 @@ export function BrowserPageDialog({
 
   const keepAliveRef = useRef(onKeepAlive);
   keepAliveRef.current = onKeepAlive;
+  const cardRef = useRef<HTMLFormElement>(null);
+  /** The card is actually on screen (laid out and in view), not just mounted. */
+  const onScreenRef = useRef(typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry) onScreenRef.current = entry.isIntersecting;
+    });
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     const timer = setInterval(() => {
+      // Only while a person could be reading it: the tab is visible and the
+      // card is in view. The server caps how long this can hold control.
       if (
-        typeof document === 'undefined' ||
-        document.visibilityState === 'visible'
+        onScreenRef.current &&
+        (typeof document === 'undefined' ||
+          document.visibilityState === 'visible')
       )
         keepAliveRef.current?.();
     }, KEEP_ALIVE_MS);
@@ -80,6 +96,7 @@ export function BrowserPageDialog({
 
   return (
     <form
+      ref={cardRef}
       className={`browser-pane__page-dialog${compact ? ' browser-pane__page-dialog--compact' : ''}`}
       role="alertdialog"
       aria-labelledby={titleId}

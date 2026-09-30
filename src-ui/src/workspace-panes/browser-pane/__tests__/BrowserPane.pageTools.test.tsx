@@ -116,6 +116,7 @@ function control(
     tone: 'none',
     claimControl: vi.fn(async () => {}),
     releaseControl: vi.fn(async () => {}),
+    keepControlAlive: vi.fn(async () => {}),
     ...overrides,
   };
 }

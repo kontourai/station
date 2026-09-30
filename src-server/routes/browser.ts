@@ -105,7 +105,10 @@ export interface BrowserRoutesDeps {
     dialogId: string,
     answer: { accept: boolean; promptText?: string },
     actor: BrowserSessionActor,
-  ): Promise<{ ok: true } | { ok: false; code: 'no-dialog' | 'page-busy' }>;
+  ): Promise<
+    | { ok: true }
+    | { ok: false; code: 'no-dialog' | 'page-busy' | 'browser-error' }
+  >;
   /** A live session page's console entries newer than `after`. */
   consoleFor?(
     browserSessionId: string,
@@ -615,7 +618,11 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     if (!result.ok)
       return c.json(
         { success: false, code: result.code },
-        result.code === 'page-busy' ? 504 : 409,
+        result.code === 'page-busy'
+          ? 504
+          : result.code === 'browser-error'
+            ? 502
+            : 409,
       );
     const next = deps.registry.getSessionSummary(
       found.session.browserSessionId,

@@ -1327,6 +1327,41 @@ describe('LiveSurfaceCanvas: which input may take control', () => {
     expect(states.at(-1)?.tone).toBe('none');
   });
 
+  test('keepControlAlive posts a keep-alive (never a claim) at the held epoch', async () => {
+    const h = harness();
+    const bodies: unknown[] = [];
+    const transport = vi.fn(
+      async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        if (String(input).endsWith('/lease')) {
+          bodies.push(JSON.parse(String(init?.body)));
+          return Response.json({
+            success: true,
+            data: { ok: true, lease: lease(7, MY_HOLD) },
+          });
+        }
+        return h.transport(input, init);
+      },
+    );
+    const states: LiveSurfaceControlState[] = [];
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Browser: example.com"
+        transport={transport as never}
+        hostControls
+        onControlState={(state) => states.push(state)}
+      />,
+    );
+    await flush();
+    const stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(7, MY_HOLD)));
+    await stream.push(frameRecord(1, 7));
+    await flush();
+    await states.at(-1)!.keepControlAlive();
+    expect(bodies).toEqual([{ action: 'keep-alive', epoch: 7 }]);
+  });
+
   test('inputRequiresLease: nothing is sent — not a click, a key or text — until Take control, and the keyboard target is out of the tab order', async () => {
     const h = claimableHarness();
     await renderWith(h, lease(4, AGENT_HOLD), { inputRequiresLease: true });

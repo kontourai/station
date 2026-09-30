@@ -166,6 +166,8 @@ export interface LiveSurfaceControlState {
   claimControl: () => Promise<void>;
   /** Give control up explicitly (only meaningful while `tone` is `you`). */
   releaseControl: () => Promise<void>;
+  /** Keep this person's hold alive (capped by the server; not input). */
+  keepControlAlive: () => Promise<void>;
 }
 
 export type LiveSurfaceControllerTone = 'you' | 'agent' | 'other' | 'none';
@@ -676,11 +678,24 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
 
   const controller = controllerLine(surface);
   const { onControlState } = props;
-  const { status, claimControl, releaseControl } = surface;
+  const { status, claimControl, releaseControl, keepControlAlive } = surface;
   const tone = controller.tone;
   useEffect(() => {
-    onControlState?.({ status, tone, claimControl, releaseControl });
-  }, [onControlState, status, tone, claimControl, releaseControl]);
+    onControlState?.({
+      status,
+      tone,
+      claimControl,
+      releaseControl,
+      keepControlAlive,
+    });
+  }, [
+    onControlState,
+    status,
+    tone,
+    claimControl,
+    releaseControl,
+    keepControlAlive,
+  ]);
   const recordAge = secondsAgo(clock, surface.lastActivityAt);
   const frameAge = secondsAgo(clock, surface.lastFrameAt);
   let statusText: string | null = null;

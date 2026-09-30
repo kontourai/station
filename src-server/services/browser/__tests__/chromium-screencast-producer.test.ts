@@ -1,6 +1,7 @@
 import type { LiveSurfaceFrameHeader } from '@kontourai/station-contracts/live-surface';
 import { describe, expect, test, vi } from 'vitest';
 import type { CdpTransport } from '../browser-host.js';
+import { CdpProtocolError } from '../cdp-pipe-transport.js';
 import {
   ChromiumScreencastDialogPendingError,
   ChromiumScreencastDispatchTimeoutError,
@@ -838,5 +839,102 @@ describe('ChromiumScreencastProducer dialogs held for a person', () => {
     expect(p.pendingDialog()?.defaultPrompt).toHaveLength(
       PENDING_DIALOG_TEXT_MAX,
     );
+  });
+});
+
+describe("ChromiumScreencastProducer: a person's answer that does not land", () => {
+  /** A CDP whose dialog answers never settle (the browser is stuck). */
+  const stuckAnswers = () =>
+    fakeCdp((call) =>
+      call.method === 'Page.handleJavaScriptDialog'
+        ? new Promise(() => {})
+        : {},
+    );
+
+  test('the hold timer that would have fired during the answer is replaced: a fresh one still answers it automatically', async () => {
+    vi.useFakeTimers();
+    try {
+      const onDialog = vi.fn();
+      const { fake, producer: p } = producer(stuckAnswers(), {
+        holdDialog: () => true,
+        dialogHoldMs: 100,
+        dispatchTimeoutMs: 200,
+        onDialog,
+      });
+      fake.emit('Page.javascriptDialogOpening', {
+        type: 'confirm',
+        message: 'x',
+      });
+      const answer = p.answerDialog('d1', { accept: true });
+      // The original hold (100 ms) elapses while the answer is in flight.
+      await vi.advanceTimersByTimeAsync(200);
+      expect(await answer).toEqual({ ok: false, code: 'page-busy' });
+      // Still held, and still bounded: a fresh hold answers it.
+      expect(p.pendingDialog()).toMatchObject({ dialogId: 'd1' });
+      expect(onDialog).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(p.pendingDialog()).toBeNull();
+      expect(onDialog).toHaveBeenCalledWith(
+        expect.objectContaining({ unanswered: true }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a dialog the page closes while the answer is in flight is not resurrected', async () => {
+    vi.useFakeTimers();
+    try {
+      const { fake, producer: p } = producer(stuckAnswers(), {
+        holdDialog: () => true,
+        dispatchTimeoutMs: 200,
+      });
+      fake.emit('Page.javascriptDialogOpening', {
+        type: 'alert',
+        message: 'x',
+      });
+      const answer = p.answerDialog('d1', { accept: true });
+      fake.emit('Page.javascriptDialogClosed', { result: true });
+      await vi.advanceTimersByTimeAsync(200);
+      expect(await answer).toEqual({ ok: false, code: 'page-busy' });
+      expect(p.pendingDialog()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('only Chromium\'s own "No dialog is showing" means there is nothing to answer; a channel failure keeps the dialog held', async () => {
+    const noDialog = producer(
+      fakeCdp((call) => {
+        if (call.method === 'Page.handleJavaScriptDialog')
+          throw new CdpProtocolError(
+            'Page.handleJavaScriptDialog',
+            -32602,
+            'No dialog is showing',
+          );
+        return {};
+      }),
+      { holdDialog: () => true },
+    );
+    noDialog.fake.emit('Page.javascriptDialogOpening', { type: 'alert' });
+    expect(
+      await noDialog.producer.answerDialog('d1', { accept: true }),
+    ).toEqual({ ok: false, code: 'no-dialog' });
+    expect(noDialog.producer.pendingDialog()).toBeNull();
+
+    const broken = producer(
+      fakeCdp((call) => {
+        if (call.method === 'Page.handleJavaScriptDialog')
+          throw new Error('CDP transport closed');
+        return {};
+      }),
+      { holdDialog: () => true },
+    );
+    broken.fake.emit('Page.javascriptDialogOpening', { type: 'alert' });
+    expect(await broken.producer.answerDialog('d1', { accept: true })).toEqual({
+      ok: false,
+      code: 'browser-error',
+    });
+    expect(broken.producer.pendingDialog()).toMatchObject({ dialogId: 'd1' });
   });
 });
