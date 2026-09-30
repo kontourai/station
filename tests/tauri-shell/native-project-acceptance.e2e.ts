@@ -1007,7 +1007,7 @@ async function runNativeProjectAcceptance() {
       result: NativeProjectReadResult,
       label: string,
     ) => {
-      if (result.status < 400 || result.status >= 500)
+      if (![401, 403, 404].includes(result.status))
         throw new Error(
           `native_project_${label}_unexpected_http_${result.status}`,
         );
