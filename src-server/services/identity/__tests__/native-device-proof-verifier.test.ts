@@ -729,8 +729,8 @@ describe('verifyNativeDeviceRequestProof', () => {
         verifyNativeDeviceRequestProof(proof, request(), h.authority, {
           nowSeconds: () => clock,
           replayStore: {
-          async consume(jti) {
-            await h.store.consume(jti);
+            async consume(jti) {
+              await h.store.consume(jti);
               clock += advance;
             },
           },
