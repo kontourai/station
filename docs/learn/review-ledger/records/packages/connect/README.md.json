@@ -12,7 +12,7 @@
   "document": {"digest":"ad9c5fe804fe6d45843985d8afed0350ca9e482ef4d97e0fce0426e285cde3a4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
   "sources": [
-    {"path":"packages/connect/package.json","digest":"9f5a40c99d5f074ddd352e7f437b06c4f384fac9ad2652a83bed9c21025f0661","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
     {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 

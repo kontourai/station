@@ -16,13 +16,13 @@
 
     {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/connect/package.json","digest":"9f5a40c99d5f074ddd352e7f437b06c4f384fac9ad2652a83bed9c21025f0661","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
-    {"path":"packages/contracts/package.json","digest":"dc52a3f7a58b882c457c54ddfb1be70d9ab2aedf7909f0132995be57586fc2b0","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    {"path":"packages/contracts/package.json","digest":"38707b08db236194259725f9eba6790a784024963121d627df37bfd1678ba2c0","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
     {"path":"packages/contracts/src/tool.ts","digest":"5333089345f6d5bc620294d7eda8ca8b6a8e9f4f559abc7fb100207b87e633e3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/package.json","digest":"12e6f1e6e03061c656da6cfaa2dc70be1f60a70ee742bc458988452b77dd3040","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    {"path":"packages/sdk/package.json","digest":"6c47c9a39c8e5dd5ffc865fe9c32fcc79a956b227e982c159757ef5b752bec77","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
     {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
 

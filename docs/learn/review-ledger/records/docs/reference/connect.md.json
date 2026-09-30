@@ -16,7 +16,7 @@
 
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/connect/package.json","digest":"9f5a40c99d5f074ddd352e7f437b06c4f384fac9ad2652a83bed9c21025f0661","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
     {"path":"packages/connect/src/__tests__/ConnectionStore.broker-route.test.ts","digest":"989e74e1b45de8a6814ec51d6bec026eca90c816ce42e4c1b5ad0f07e0bf7deb","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 

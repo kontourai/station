@@ -12,7 +12,7 @@
   "document": {"digest":"4480def2cafbc901b67500e70198b8a8e5897784f0f33dc17fbdda12e3f5174e","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
 
   "sources": [
-    {"path":"packages/contracts/package.json","digest":"dc52a3f7a58b882c457c54ddfb1be70d9ab2aedf7909f0132995be57586fc2b0","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    {"path":"packages/contracts/package.json","digest":"38707b08db236194259725f9eba6790a784024963121d627df37bfd1678ba2c0","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
     {"path":"packages/contracts/src/child-work.ts","digest":"e93f1bc3b6089d4a118a62f59a75ba45f1980648b22a72176a2037fe1b92abd8","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
 

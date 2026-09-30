@@ -34,7 +34,7 @@
 
     {"path":"packages/contracts/src/task-basis.ts","digest":"9345de0dd369e4e9d5fae71c38261983385662c314c0cdbf77f9596cdd3d7834","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/package.json","digest":"12e6f1e6e03061c656da6cfaa2dc70be1f60a70ee742bc458988452b77dd3040","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    {"path":"packages/sdk/package.json","digest":"6c47c9a39c8e5dd5ffc865fe9c32fcc79a956b227e982c159757ef5b752bec77","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
     {"path":"packages/sdk/src/__tests__/application-session-native.test.ts","digest":"ec9fa4c51df95e0d6c96132779f6be8ea426aa6d165d6093de5a6ab15d776c4f","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
