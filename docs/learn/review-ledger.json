@@ -3883,7 +3883,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "8384fdd2685097c42593beb42a035c1292e3d882",
+      "sourceRevision": "5e564120522181c6fa726b474c138b229b00b95c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -4073,7 +4073,8 @@
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
         "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded docs-browser correction: module-title assertions now select the module h2, while a real browser explicitly verifies its h3 question subsection and content remain visible. The renderer already supports nested headings and the new documentation exposed the overly broad locator. Navigation/history, narrow reading and source evidence semantics remain unchanged. Hosted pre-fix failure was a strict locator collision, not a renderer failure."
+        "Bounded docs-browser correction: module-title assertions now select the module h2, while a real browser explicitly verifies its h3 question subsection and content remain visible. The renderer already supports nested headings and the new documentation exposed the overly broad locator. Navigation/history, narrow reading and source evidence semantics remain unchanged. Hosted pre-fix failure was a strict locator collision, not a renderer failure.",
+        "Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."
       ]
     },
     {
@@ -7549,7 +7550,7 @@
     {
       "path": "docs/design/conduit-runtime-integration.md",
       "documentDigest": "92b017dfab71e1bd1ed9c41545c8e5aab4373b8093c9246f80667d544a9f32f0",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "5e564120522181c6fa726b474c138b229b00b95c",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete Station-engine hook projection against actual VoltAgent and Strands callers, before/after-tool and completion forwarding, public Conduit adapter, capability classification, lockfile identity and generated conformance report. Clarified what the host-bound label and portable probes establish.",
@@ -7593,7 +7594,7 @@
         },
         {
           "path": "src-server/runtime/frameworks/voltagent-adapter.ts",
-          "digest": "fa8bf0806d17d96fb3154a6a60d72f720ea0a7d7e433321ae978a602e10a0be2"
+          "digest": "a13e00963cfbedbd5324014fe6ff50b5aa598347732452aacda342bffa9f0ac4"
         }
       ],
       "checks": [
@@ -7605,7 +7606,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read. | Cites station-runtime-conformance.json, whose only change is the station-strands hostVersion (1.15.0 to 1.18.0) from the #2599 dependency bump. Searched this page for 1.15.0, 1.18.0 and hostVersion and found none, and it states no capability or verdict that moved, so its statements still hold. Checked by search plus the generated diff, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."
       ]
     },
     {
@@ -10089,7 +10091,7 @@
     {
       "path": "docs/design/settings-architecture.md",
       "documentDigest": "eb80eac4602bdb8376220ce11f8f5dcd4155c90315b250fa45e0a777afc068ce",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "5e564120522181c6fa726b474c138b229b00b95c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the full design, separating the dated problem inventory/target slices from current implementation. Checked registry descriptors, three Project overrides, provenance-only GET scope, independent Save writes, device migration ownership and canonical reveal behavior. Corrected the inert Knowledge flag claim and replaced the obsolete example with an actual registry entry.",
@@ -10159,7 +10161,8 @@
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."
       ]
     },
     {
@@ -14965,7 +14968,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "128f59277de30d01ae972cfffd3701d63995b52d",
+      "sourceRevision": "5e564120522181c6fa726b474c138b229b00b95c",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -15001,7 +15004,7 @@
         },
         {
           "path": "docs/reference/api.md",
-          "digest": "d70a1a2a13fa37444c5981c025b29d719f1d6db26d0e751ac2dc231fc0ba1714"
+          "digest": "e9cac7db054232de716c1e5c792f04c0611255c70e5398acbfd4e991ae986f91"
         },
         {
           "path": "docs/reference/cli.md",
@@ -15067,7 +15070,8 @@
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
         "Bounded package-surface correction: orchestration.ts now imports HarnessQuestionAnswers from its package-local module instead of a self package specifier. The exported type and answer DTO are unchanged. Checked affected API/contract claims and source import convention; no runtime or authority behavior changes.",
         "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed.",
-        "Combined #3018/#3021 review: merged SDK prose keeps the scoped device-code hooks and exact question-answer batch API as separate actions; neither grants authority. Reviewed both new SDK sections against their existing callers and the two responsive inventory rows against retained 390px controlled-fixture evidence. Preserved both reviews and source bindings; updated only hashes of the actually merged SDK prose/inventory. No live vendor or physical-device qualification added."
+        "Combined #3018/#3021 review: merged SDK prose keeps the scoped device-code hooks and exact question-answer batch API as separate actions; neither grants authority. Reviewed both new SDK sections against their existing callers and the two responsive inventory rows against retained 390px controlled-fixture evidence. Preserved both reviews and source bindings; updated only hashes of the actually merged SDK prose/inventory. No live vendor or physical-device qualification added.",
+        "Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."
       ]
     },
     {
@@ -22368,12 +22372,12 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "5e564120522181c6fa726b474c138b229b00b95c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
       "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
-      "documentDigest": "d70a1a2a13fa37444c5981c025b29d719f1d6db26d0e751ac2dc231fc0ba1714",
+      "documentDigest": "e9cac7db054232de716c1e5c792f04c0611255c70e5398acbfd4e991ae986f91",
       "sources": [
         {
           "path": "packages/cli/src/commands/environment.ts",
@@ -23087,7 +23091,8 @@
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2954 keeps recorded ports when station upgrade re-runs install.sh (lifecycle.ts). This branch's side is the Claude session-grant and approval-authority work. Route shapes and the respond command are unchanged. Prose accurate.",
         "Branding theme paragraph checked against branding-theme.ts after the swap to @kontourai/ui/contrast validateBrandOverride: allowlist, hex values, all-or-nothing and flat-key expansion unchanged; added that Station's stricter text checks also apply. branding-theme.ts now expands a brand-only mode into the action role and rejects an invalid flat value a mode object shadows. This page's claims (allowlist, hex-only values, the package validator plus Station's stricter checks, all or nothing) are unchanged and still accurate; the detailed rules stay in examples/custom-branding.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
-        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery."
+        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
+        "Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."
       ]
     },
     {
@@ -23518,7 +23523,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "5e564120522181c6fa726b474c138b229b00b95c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23679,7 +23684,7 @@
         },
         {
           "path": "src-server/runtime/frameworks/voltagent-adapter.ts",
-          "digest": "fa8bf0806d17d96fb3154a6a60d72f720ea0a7d7e433321ae978a602e10a0be2"
+          "digest": "a13e00963cfbedbd5324014fe6ff50b5aa598347732452aacda342bffa9f0ac4"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -23805,7 +23810,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."
       ]
     },
     {
@@ -27320,7 +27326,7 @@
       "kind": "historical",
       "state": "classified",
       "documentDigest": "571987b194c5121dafd72b3657dc726b80c0d8d1cb036ccc766946505e5bcdde",
-      "sourceRevision": "92636a1751411426e2972236b7416e50b18daf32",
+      "sourceRevision": "5e564120522181c6fa726b474c138b229b00b95c",
       "summary": "Historical package assessments are separated from current dependency pins and current integration reading routes.",
       "limits": "Historical measurements and external incidents were not rerun; classification does not certify current behavior.",
       "sources": [
@@ -27346,7 +27352,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. Its '@kontourai/ui@^1.1.0' dependency line is inside a dated historical supersession note and is left as history.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Bounded package-surface correction: orchestration.ts now imports HarnessQuestionAnswers from its package-local module instead of a self package specifier. The exported type and answer DTO are unchanged. Checked affected API/contract claims and source import convention; no runtime or authority behavior changes."
+        "Bounded package-surface correction: orchestration.ts now imports HarnessQuestionAnswers from its package-local module instead of a self package specifier. The exported type and answer DTO are unchanged. Checked affected API/contract claims and source import convention; no runtime or authority behavior changes.",
+        "Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."
       ]
     },
     {
