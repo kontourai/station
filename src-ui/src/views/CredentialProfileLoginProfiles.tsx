@@ -3,7 +3,7 @@ import { useEngineLoginProfilesQuery } from '@kontourai/station-sdk/device-code-
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Button } from '../components/Button';
-import { SkeletonBlock } from '../components/state';
+import { Empty, SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { CredentialProfileDeviceCodeLogin } from './CredentialProfileDeviceCodeLogin';
 
@@ -81,7 +81,7 @@ function LoginProfiles({
     <section aria-label="Sign-in profiles">
       <h3>Sign-in profiles</h3>
       {query.data.profiles.length === 0 && (
-        <p>No profiles yet. Add one on the Station.</p>
+        <Empty label="Add a sign-in profile on the Station." variant="compact" />
       )}
       {query.data.profiles.map((profile) => (
         <div key={profile.ref}>
