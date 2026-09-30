@@ -53,12 +53,14 @@ const sourceAwareComponents: NonNullable<Options['components']> = {
   // A table scrolls sideways inside its own box instead of squeezing to the
   // message width. Squeezed, the message's `overflow-wrap: anywhere` let
   // every cell shrink to one character, so a phone showed "Dire / ctor / y".
-  // Chromium makes a scroll container keyboard-focusable itself when it
-  // overflows, so the wrapper needs no tabIndex of its own.
+  // Focusable and named explicitly: WKWebView does not make a scroll
+  // container keyboard-focusable on its own, and a region a keyboard cannot
+  // reach cannot be scrolled without a pointer.
   table: ({ node: _node, ...props }) => (
-    <div className="chat-markdown-table">
+    // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be focusable to be scrolled by keyboard
+    <section className="chat-markdown-table" aria-label="Table" tabIndex={0}>
       <table {...props} />
-    </div>
+    </section>
   ),
 };
 // After GFM, so a URL it autolinks is already a link and is not re-scanned

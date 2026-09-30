@@ -2196,6 +2196,24 @@ test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
     await page.setViewportSize({ width: 852, height: 393 });
     await mockChatShell(page);
     await openComposer(page, true);
+    // The app toolbar too: its phone rule once re-declared `padding` and
+    // dropped the side insets it had been given.
+    const toolbar = await page.locator('.app-toolbar').evaluate((element) => {
+      const style = getComputedStyle(element);
+      const controls = [...element.querySelectorAll('button')]
+        .map((button) => button.getBoundingClientRect())
+        .filter((rect) => rect.width > 0);
+      return {
+        paddingLeft: style.paddingLeft,
+        paddingRight: style.paddingRight,
+        firstLeft: Math.min(...controls.map((rect) => rect.left)),
+        lastRight: Math.max(...controls.map((rect) => rect.right)),
+      };
+    });
+    expect(toolbar.paddingLeft, JSON.stringify(toolbar)).toBe('59px');
+    expect(toolbar.paddingRight).toBe('59px');
+    expect(toolbar.firstLeft).toBeGreaterThanOrEqual(59);
+    expect(toolbar.lastRight).toBeLessThanOrEqual(852 - 59);
     await maximizeChat(page);
     const g = await chatGeometry(page);
     expect(g.leadingLeft, JSON.stringify(g)).toBeGreaterThanOrEqual(59);

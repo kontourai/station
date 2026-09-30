@@ -5462,6 +5462,68 @@ describe('EventStore', () => {
     expect(repairQueries[0]).not.toContain('NOT IN');
   });
 
+  test('backfill titles a history row with the shared derived title, not a raw prompt slice', () => {
+    store.close();
+    const databasePath = join(dir, 'title-history.sqlite');
+    const database = new DatabaseSync(databasePath);
+    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+    database
+      .prepare(
+        `INSERT INTO provider_session_state
+          (thread_id, provider, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        'thread-title',
+        'claude',
+        'ready',
+        '2026-08-08T11:00:00.000Z',
+        '2026-08-08T12:00:00.000Z',
+      );
+    const insertEvent = database.prepare(
+      `INSERT INTO orchestration_events
+        (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
+       VALUES (?, 'claude', 'thread-title', ?, ?, ?, ?, ?)`,
+    );
+    insertEvent.run(
+      'title-start',
+      'session.started',
+      JSON.stringify({
+        method: 'session.started',
+        metadata: { userId: 'owner-title', agentSlug: 'claude' },
+      }),
+      '2026-08-08T11:00:00.000Z',
+      1,
+      1,
+    );
+    insertEvent.run(
+      'title-turn',
+      'turn.started',
+      JSON.stringify({
+        method: 'turn.started',
+        prompt: 'Run `ls -la` for **me** and keep user_id',
+      }),
+      '2026-08-08T11:00:01.000Z',
+      2,
+      2,
+    );
+    database.close();
+
+    store = new EventStore(databasePath);
+    expect(
+      store.listConversationHistoryPage({
+        ownerUserId: 'owner-title',
+        agentSlug: 'claude',
+        limit: 1,
+      }).records,
+    ).toEqual([
+      expect.objectContaining({
+        threadId: 'thread-title',
+        title: 'Run ls -la for me and keep user_id',
+      }),
+    ]);
+  });
+
   test('backfill retains ownership metadata when later configuration events carry neither field', () => {
     store.close();
     const databasePath = join(dir, 'ownership-history.sqlite');

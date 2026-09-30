@@ -31,9 +31,17 @@ const TABLE = `| Check | Command | Result | Trusted |
 | Commit history | \`git log --oneline -5\` | Fails: the default branch has no commits yet | no |
 | Documentation completeness | \`README.md\` | One line only | no |`;
 
-function answerMarkup(): string {
+// Tokens no column can hold whole: a URL, a 64-character hash in prose, and
+// a 60-character backticked path.
+const LONG_TOKENS = `| Source | Detail |
+| --- | --- |
+| Manifest | https://github.com/kontourai/station/releases/download/nightly-2463/station-release-manifest.json |
+| Commit | ${'0123456789abcdef'.repeat(4)} |
+| Path | \`${'src-ui/src/components/'.repeat(3).slice(0, 60)}\` |`;
+
+function answerMarkup(markdown = TABLE): string {
   const { container, unmount } = render(
-    <MarkdownRenderer>{TABLE}</MarkdownRenderer>,
+    <MarkdownRenderer>{markdown}</MarkdownRenderer>,
   );
   const html = container.innerHTML;
   unmount();
@@ -144,6 +152,47 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
             expect(code.lines, JSON.stringify(code)).toBe(1);
           }
           expect(m.fourthAlign).toBe('left');
+        } finally {
+          await page.close();
+        }
+      },
+    );
+
+    test.each([
+      { label: 'a 412px phone', width: 412, desktop: false },
+      { label: 'a 1200px desktop', width: 1200, desktop: true },
+    ])(
+      '$label: a token longer than its cell breaks inside that cell',
+      async ({ width, desktop }) => {
+        const page = await browser.newPage({
+          viewport: { width, height: 915 },
+        });
+        try {
+          await page.setContent(
+            fixtureHtml(answerMarkup(LONG_TOKENS), desktop),
+          );
+          const cells = await page.evaluate(() =>
+            [...document.querySelectorAll('td')].map((cell) => ({
+              text: (cell.textContent ?? '').slice(0, 40),
+              client: cell.clientWidth,
+              scroll: cell.scrollWidth,
+            })),
+          );
+          expect(cells.length).toBe(6);
+          for (const cell of cells) {
+            expect(cell.scroll, JSON.stringify(cell)).toBeLessThanOrEqual(
+              cell.client + 1,
+            );
+          }
+          // The scroller is keyboard-reachable and named, whatever the engine.
+          const region = await page.evaluate(() => {
+            const wrap = document.querySelector('.chat-markdown-table');
+            return {
+              tabIndex: (wrap as HTMLElement | null)?.tabIndex,
+              label: wrap?.getAttribute('aria-label'),
+            };
+          });
+          expect(region).toEqual({ tabIndex: 0, label: 'Table' });
         } finally {
           await page.close();
         }

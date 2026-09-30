@@ -741,10 +741,18 @@ button:hover {
   gap: 14px;
   padding: 3px 14px;
   padding-top: var(--safe-top);
-  /* Landscape phones: keep the drawer and overflow controls clear of the
-     side insets; 14px wherever there are none. */
-  padding-left: max(14px, var(--safe-left));
-  padding-right: max(14px, var(--safe-right));
+  /* The side padding is composed HERE, once, from three inputs, so no later
+     rule can drop one by re-declaring `padding`: the gutter (14px, 12px on a
+     phone), the side safe-area insets (a landscape phone's notch and rounded
+     corner), and the macOS overlay title bar's traffic-light inset (set only
+     in the single-column layout). Breakpoints change the inputs, never the
+     property. */
+  padding-left: max(
+    var(--app-toolbar-gutter, 14px),
+    var(--safe-left),
+    var(--app-toolbar-inset-left, 0px)
+  );
+  padding-right: max(var(--app-toolbar-gutter, 14px), var(--safe-right));
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
 }
@@ -4059,8 +4067,7 @@ button:hover {
    least the message width and otherwise as wide as its words need, because
    the cells opt back out of the message's `overflow-wrap: anywhere` — that
    value lowers min-content to a single character, which is what split a
-   phone's first column letter by letter. Inline code in a cell stays on one
-   line (`ls -la` no longer breaks at its hyphen). The old column rules here
+   phone's first column letter by letter. The old column rules here
    (a 500px description column, a centred fourth column) were written for a
    slash-command listing that now renders its own inline-styled HTML, and
    applied to every answer's tables. */
@@ -4069,6 +4076,34 @@ button:hover {
   margin: 1em 0;
   overflow-x: auto;
   overscroll-behavior-x: contain;
+}
+
+/* The scroll cue: while a table can still scroll right, its right edge
+   fades out, and the fade is gone at the end of the scroll. A scroll-driven
+   animation on the scroller itself — no listener, no per-row work, and
+   inactive (so no fade at all) when the table fits. Engines without
+   scroll timelines simply show no cue. */
+@supports (animation-timeline: scroll()) {
+  .chat-markdown-table {
+    animation: chat-markdown-table-edge linear both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
+@keyframes chat-markdown-table-edge {
+  0%,
+  96% {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      #000 calc(100% - 28px),
+      transparent
+    );
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  100% {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
 }
 
 .chat-markdown-table:focus-visible {
@@ -4097,19 +4132,17 @@ button:hover {
   border: 1px solid var(--border-primary);
   text-align: left;
   vertical-align: top;
-  overflow-wrap: normal;
+  /* `break-word`, not the message's `anywhere`: it leaves min-content at
+     the longest word, so a squeezed column can never split words letter by
+     letter, but a token longer than the cell cap — a URL, a commit hash, a
+     long path, in code or not — still breaks inside its own cell instead of
+     painting over the next column. */
+  overflow-wrap: break-word;
   word-break: normal;
   /* A readable measure per column: at least 6rem, at most 20rem before a
      cell wraps. */
   min-width: 6rem;
   max-width: 20rem;
-}
-
-.message.assistant table td code,
-.message.assistant table th code,
-.message.assistant table a.chat-link-chip {
-  overflow-wrap: normal;
-  white-space: nowrap;
 }
 
 .message.assistant table th {
@@ -6599,7 +6632,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
      the corner the sidebar occupies instead. */
   .app-toolbar {
-    padding-left: max(14px, var(--titlebar-inset-left, 0px));
+    --app-toolbar-inset-left: var(--titlebar-inset-left, 0px);
   }
 
   .responsive-surface-overlay {
@@ -6725,7 +6758,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
   .app-toolbar {
     gap: 8px;
-    padding: 4px 12px;
+    --app-toolbar-gutter: 12px;
+    padding-bottom: 4px;
     padding-top: calc(4px + var(--safe-top, 0px));
     position: sticky;
     top: 0;
