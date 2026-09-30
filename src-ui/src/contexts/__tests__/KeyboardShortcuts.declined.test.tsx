@@ -5,13 +5,23 @@ import { expect, test, vi } from 'vitest';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 
-function Chord({ handler }: { handler: () => void | boolean }) {
+function Chord({
+  handler,
+  id = 'test.chord',
+  priority = 0,
+}: {
+  handler: () => void | boolean;
+  id?: string;
+  priority?: number;
+}) {
   useKeyboardShortcut(
-    'test.chord',
+    id,
     'ArrowLeft',
     ['alt'],
     'Test chord',
     handler,
+    true,
+    priority,
   );
   return null;
 }
@@ -49,4 +59,23 @@ test('a declining handler leaves the key unprevented; a handling one consumes it
   );
   expect(press().defaultPrevented).toBe(true);
   expect(handled).toHaveBeenCalledOnce();
+  view.unmount();
+});
+
+test('a declined key is offered to the next matching registration', () => {
+  const declined = vi.fn(() => false);
+  const next = vi.fn();
+  render(
+    <KeyboardShortcutsProvider>
+      <Chord id="test.first" priority={10} handler={declined} />
+      <Chord id="test.second" priority={0} handler={next} />
+    </KeyboardShortcutsProvider>,
+  );
+  const event = press();
+  expect(declined).toHaveBeenCalledOnce();
+  expect(next).toHaveBeenCalledOnce();
+  expect(declined.mock.invocationCallOrder[0]).toBeLessThan(
+    next.mock.invocationCallOrder[0]!,
+  );
+  expect(event.defaultPrevented).toBe(true);
 });

@@ -519,31 +519,38 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     expect(screen.getByRole('status').textContent).toMatch(/another tab/);
   });
 
-  test('the chords never fire from a text field or contenteditable, and decline when there is nowhere to go', async () => {
+  test('the chords stand down only in an editor that owns the keys, and decline when there is nowhere to go', async () => {
     renderStack();
     await drillInto('Diff');
     const index = navigationStore.getHistoryIndex();
-    const input = window.document.createElement('input');
     const editable = window.document.createElement('div');
     editable.setAttribute('contenteditable', 'true');
     editable.tabIndex = 0;
-    window.document.body.append(input, editable);
+    const input = window.document.createElement('input');
+    window.document.body.append(editable, input);
     try {
-      for (const field of [input, editable]) {
-        field.focus();
-        expect(window.document.activeElement).toBe(field);
-        let result: unknown;
-        act(() => {
-          result = harness.shortcuts.get('codingStack.back')?.handler();
-        });
-        // Declined: the key is left to the field (word motion, outdent).
-        expect(result).toBe(false);
-        expect(navigationStore.getHistoryIndex()).toBe(index);
-        expect(drillInPage().getAttribute('data-active')).toBe('true');
-      }
+      // A rich editor owns ⌘[ (outdent) and Alt+Arrow: the stack declines.
+      editable.focus();
+      expect(window.document.activeElement).toBe(editable);
+      let result: unknown;
+      act(() => {
+        result = harness.shortcuts.get('codingStack.back')?.handler();
+      });
+      expect(result).toBe(false);
+      expect(navigationStore.getHistoryIndex()).toBe(index);
+
+      // A plain field does not: off macOS Alt+← there is the browser's Back,
+      // which would leave the layout, so the stack takes the chord.
+      input.focus();
+      act(() => {
+        result = harness.shortcuts.get('codingStack.back')?.handler();
+      });
+      expect(result).toBe(true);
+      await historyBackSettled();
+      expect(chatPage().getAttribute('data-active')).toBe('true');
     } finally {
-      input.remove();
       editable.remove();
+      input.remove();
     }
     // On the Chat page with nothing behind it in the layout, Back has nothing
     // to do here, so the browser keeps its own Back.
@@ -561,6 +568,34 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
       result = harness.shortcuts.get('codingStack.forward')?.handler();
     });
     expect(result).toBe(false);
+  });
+
+  test('a move that did not change the page cannot steal focus on a later page change', async () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame'] });
+    try {
+      renderStack();
+      await drillInto('Diff');
+      // Drill-in to drill-in: a reader's move, but the same page kind.
+      await drillInto('Files');
+      const outside = window.document.createElement('input');
+      window.document.body.append(outside);
+      try {
+        outside.focus();
+        // A change the reader did not make (a sync, another writer).
+        act(() =>
+          navigationStore.updateParams({ pane: null, paneScope: null }),
+        );
+        act(() => {
+          vi.advanceTimersToNextFrame();
+        });
+        expect(chatPage().getAttribute('data-active')).toBe('true');
+        expect(window.document.activeElement).toBe(outside);
+      } finally {
+        outside.remove();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('clicking the drill-in already on screen is not a new entry', async () => {

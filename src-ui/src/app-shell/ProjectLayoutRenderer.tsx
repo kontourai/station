@@ -380,6 +380,25 @@ function sameWorkspacePaneInstanceIds(
  * identity.
  */
 const CHAT_PAGE = { page: 'chat', paneId: null } as const;
+
+/**
+ * Whether a `?paneScope=` names a Project host of this layout, before the
+ * Project's id is known (`workspacePaneHostScopeKey`'s project shape).
+ */
+function paneScopeNamesLayout(
+  paneScope: string | null,
+  layoutId: string,
+): boolean {
+  if (!paneScope) return false;
+  try {
+    const parsed: unknown = JSON.parse(paneScope);
+    return (
+      Array.isArray(parsed) && parsed[0] === 'project' && parsed[2] === layoutId
+    );
+  } catch {
+    return false;
+  }
+}
 const NO_INSTANCES: readonly WorkspacePaneInstance[] = [];
 
 function retainWorkspacePaneHostDocument(
@@ -884,12 +903,22 @@ function BuiltinCodingLayoutHost({
    * the built-in Coding one, so a state that rendered only its message would
    * leave the route with no Chat at all.
    */
-  const chatOnly = (notice: ReactNode) => (
+  const chatOnly = (notice: ReactNode, provisional = false) => (
     <CodingWorkbench
       projectId={projectId ?? ''}
       projectSlug={projectSlug}
       centerChat={centerChat}
-      location={CHAT_PAGE}
+      // While the catalog loads, a deep link's drill-in is the page it names
+      // (the pane arrives with the host); a state with no host to come is the
+      // Chat page.
+      location={
+        provisional &&
+        stackSelection.pane &&
+        paneScopeNamesLayout(stackSelection.paneScope, layout.id)
+          ? { page: 'drill-in', paneId: stackSelection.pane }
+          : CHAT_PAGE
+      }
+      provisional={provisional}
       scope={{
         kind: 'project',
         projectId: projectId ?? 'pending',
@@ -908,6 +937,7 @@ function BuiltinCodingLayoutHost({
   if (catalog.isLoading) {
     return chatOnly(
       <SkeletonList count={1} label="Loading coding workspace panes" />,
+      true,
     );
   }
   // #2319: a failed background revalidation keeps the answer it had; only a

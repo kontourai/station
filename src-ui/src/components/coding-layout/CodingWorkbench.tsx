@@ -74,22 +74,25 @@ import './CodingWorkbench.css';
  * (Alt+Arrow is word motion in both).
  */
 /** Whether keyboard focus is in something that edits text. */
-function focusEditsText(): boolean {
+/**
+ * Whether focus is in an editor that owns these keys itself — CodeMirror
+ * (⌘[ outdents), xterm, a contenteditable rich editor — whose own handler
+ * takes the key. There the stack declines. A plain input, textarea or the
+ * composer does not own ⌘[ or Alt+←: off macOS, Alt+← there is the browser's
+ * Back, which would leave the layout, so the stack handles the chord instead.
+ */
+function focusInKeyOwningEditor(): boolean {
   const focused = document.activeElement;
   if (!(focused instanceof Element)) return false;
   return Boolean(
-    focused.matches(
-      'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"]',
-    ) ||
-      focused.closest(
-        '[contenteditable=""], [contenteditable="true"], .cm-editor, .xterm',
-      ),
+    focused.closest(
+      '[contenteditable=""], [contenteditable="true"], .cm-editor, .xterm',
+    ),
   );
 }
 
-const STACK_CHORD_WHEN: ShortcutWhen = {
-  not: { or: ['composerFocused', 'terminalFocused'] },
-};
+const STACK_CHORD_WHEN: ShortcutWhen = { not: 'terminalFocused' };
+const USER_MOVE_WINDOW_MS = 1000;
 
 type StackTransition = 'push' | 'pop' | null;
 
@@ -148,6 +151,12 @@ export interface CodingWorkbenchProps {
   persistence?: 'owned' | 'contended' | 'unavailable';
   /** Whether the reader may close this drill-in (one they opened, not a built-in). */
   closable?(instance: WorkspacePaneInstance): boolean;
+  /**
+   * The location is not yet the layout's own (its catalog is still loading):
+   * the page shown now is a placeholder, so settling on the real page is
+   * arrival — no transition, no announcement, no focus move.
+   */
+  provisional?: boolean;
   /** The drill-in page: the layout's pane host (and its notices). */
   children: ReactNode;
 }
@@ -188,6 +197,7 @@ export function CodingWorkbench({
   onOpenCatalog,
   browserPreviewAvailability,
   badges = NO_BADGES,
+  provisional = false,
   popOut,
   persistence = 'owned',
   closable,
@@ -226,8 +236,14 @@ export function CodingWorkbench({
   const chatPageRef = useRef<HTMLElement>(null);
   const pageRef = useRef(page);
   pageRef.current = page;
-  /** Set by the reader's own moves, so only those move focus. */
-  const userMoveRef = useRef(false);
+  /**
+   * When the reader last moved the stack themselves (0: not pending). Only
+   * such a move, landing within `USER_MOVE_WINDOW_MS`, moves focus; any
+   * change the stack observes consumes it, so a move that did not change the
+   * page (a rail click between two drill-ins, a Back a guard cancelled)
+   * cannot steal focus on a later, unrelated page change.
+   */
+  const userMoveRef = useRef(0);
   const drillInPageRef = useRef<HTMLElement>(null);
   const [announcement, setAnnouncement] = useState('');
 
@@ -252,11 +268,18 @@ export function CodingWorkbench({
     page: 'chat' | 'drill-in';
     kind: StackTransition;
   }>({ page, kind: null });
-  const previous = useRef({ page, historyIndex });
+  const previous = useRef({ page, historyIndex, provisional });
   useLayoutEffect(() => {
     const last = previous.current;
-    previous.current = { page, historyIndex };
+    previous.current = { page, historyIndex, provisional };
+    const recentUserMove =
+      userMoveRef.current > 0 &&
+      performance.now() - userMoveRef.current < USER_MOVE_WINDOW_MS;
+    userMoveRef.current = 0;
     if (last.page === page) return;
+    // The first real resolution (a cold deep link resolving past the layout's
+    // loading state) is arrival, not a move: no slide, no focus change.
+    if (last.provisional) return;
     setTransition({
       page,
       kind: historyIndex < last.historyIndex ? 'pop' : 'push',
@@ -270,13 +293,11 @@ export function CodingWorkbench({
         document.activeElement &&
         leaving.contains(document.activeElement),
     );
-    const userMove = userMoveRef.current || focusWasLeft;
-    userMoveRef.current = false;
-    if (userMove) {
+    if (recentUserMove || focusWasLeft) {
       if (page === 'chat') setFocusRequest((request) => request + 1);
       else drillInPageRef.current?.focus();
     }
-  }, [page, historyIndex]);
+  }, [page, historyIndex, provisional]);
 
   // ── Back / Forward: browser history and the stack's chords.
   const goToChatPage = useCallback(() => {
@@ -294,14 +315,14 @@ export function CodingWorkbench({
   const goBack = useCallback((): boolean => {
     const entry = navigationStore.adjacentLocation(-1);
     if (entry?.pathname === window.location.pathname) {
-      userMoveRef.current = true;
+      userMoveRef.current = performance.now();
       window.history.back();
       return true;
     }
     // Arrived on a drill-in from elsewhere (a link, a reload): its parent is
     // the Chat page, reached forward rather than by leaving the layout.
     if (pageRef.current === 'drill-in') {
-      userMoveRef.current = true;
+      userMoveRef.current = performance.now();
       goToChatPage();
       return true;
     }
@@ -310,18 +331,17 @@ export function CodingWorkbench({
   const goForward = useCallback((): boolean => {
     const entry = navigationStore.adjacentLocation(1);
     if (entry?.pathname !== window.location.pathname) return false;
-    userMoveRef.current = true;
+    userMoveRef.current = performance.now();
     window.history.forward();
     return true;
   }, []);
-  // The chords never fire from a place that edits text: Alt+Arrow is word
-  // motion and ⌘[ is outdent there.
+  // The chords stand down only inside an editor that owns the keys.
   const backChord = useCallback(
-    () => (focusEditsText() ? false : goBack()),
+    () => (focusInKeyOwningEditor() ? false : goBack()),
     [goBack],
   );
   const forwardChord = useCallback(
-    () => (focusEditsText() ? false : goForward()),
+    () => (focusInKeyOwningEditor() ? false : goForward()),
     [goForward],
   );
   useKeyboardShortcut(
@@ -349,7 +369,7 @@ export function CodingWorkbench({
   // Chat page (the stack does not grow), else a push to it.
   const returnToChatPage = useCallback(() => {
     if (pageRef.current !== 'drill-in') return;
-    userMoveRef.current = true;
+    userMoveRef.current = performance.now();
     const entry = navigationStore.adjacentLocation(-1);
     if (
       entry?.pathname === window.location.pathname &&
@@ -420,9 +440,12 @@ export function CodingWorkbench({
   // Say where the reader landed, politely, when the page changes (not on
   // arrival, when the route itself is announced).
   const announcedPage = useRef<string | null>(null);
+  const wasProvisional = useRef(provisional);
   const pageKey = page === 'chat' ? 'chat' : `drill-in:${paneId}`;
   useEffect(() => {
-    if (announcedPage.current === null) {
+    const arriving = wasProvisional.current;
+    wasProvisional.current = provisional;
+    if (announcedPage.current === null || provisional || arriving) {
       announcedPage.current = pageKey;
       return;
     }
@@ -433,12 +456,12 @@ export function CodingWorkbench({
         ? `Conversation: ${chatTitle}`
         : `Showing ${drillInLabel}`,
     );
-  }, [chatTitle, drillInLabel, page, pageKey]);
+  }, [chatTitle, drillInLabel, page, pageKey, provisional]);
 
   const openView = (instance: WorkspacePaneInstance) => {
     // The drill-in already on screen is not a new page.
     if (page === 'drill-in' && instance.instanceId === paneId) return;
-    userMoveRef.current = true;
+    userMoveRef.current = performance.now();
     navigationStore.setActiveWorkspacePane(instance.instanceId, scopeKey);
   };
   const requestCatalog = () => {

@@ -1022,6 +1022,112 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.getByText(/Next: Select Git repository/)).toBeTruthy();
   });
 
+  function codingCatalog() {
+    const coding = paneAdaptationFromLayoutTab(
+      {
+        id: 'coding',
+        label: 'Coding',
+        component: { kind: 'builtin-component', name: 'coding' },
+      },
+      {
+        layoutSlug: 'coding',
+        instanceScope: 'project:project-uuid:source:builtin:coding',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: { projectId: 'project-uuid', sourceId: 'builtin:coding' },
+      },
+    )!;
+    return {
+      projectId: 'project-uuid',
+      projectSlug: 'project-route',
+      entries: [
+        {
+          instance: coding.instance,
+          availability: { state: 'available' },
+          descriptor: coding.descriptor,
+        },
+        {
+          instance:
+            createWorkspaceCodingFileBrowserPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceCodingDiffPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+        },
+      ],
+    };
+  }
+  const stackCrumbs = () =>
+    within(screen.getByRole('list', { name: 'Breadcrumb' }))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent);
+
+  test('a ?pane= the host does not hold shows, and names, the pane the host is showing', () => {
+    catalogMock.mockReturnValue(codingCatalog());
+    mobileMock.mockReturnValue(false);
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="coding" />,
+    );
+    const hostProps = hostMock.mock.lastCall?.[0];
+    const diffId =
+      createWorkspaceCodingDiffPaneInstance('project-uuid')!.instanceId;
+    // The host reports its live document: Diff is the pane it shows.
+    act(() =>
+      hostProps.onDocumentChange({
+        ...hostProps.document,
+        activeInstanceId: diffId,
+      }),
+    );
+    // A closed preview, or a stale link, names a pane the host lacks.
+    act(() =>
+      navigationStore.navigate('/', {
+        pane: 'file-preview:closed',
+        paneScope: workspacePaneHostScopeKey(hostProps.document.scope),
+      }),
+    );
+    expect(stackCrumbs()).toEqual(['Inbox', 'Chat', 'Diff']);
+    expect(
+      within(screen.getByRole('navigation', { name: 'Views' }))
+        .getByRole('button', { name: 'Diff' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+  });
+
+  test('a cold deep link to a drill-in arrives there directly: no slide from Chat, no announcement', () => {
+    mobileMock.mockReturnValue(false);
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+    const diffId =
+      createWorkspaceCodingDiffPaneInstance('project-uuid')!.instanceId;
+    navigationStore.navigate('/', {
+      pane: diffId,
+      paneScope: workspacePaneHostScopeKey({
+        kind: 'project',
+        projectId: 'project-uuid',
+        layoutId: 'layout:coding',
+      }),
+    });
+    catalogMock.mockReturnValue({ isLoading: true, entries: [] });
+    const view = render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="coding" />,
+    );
+    const drillIn = () =>
+      document.querySelector('.coding-workbench__page--drill-in')!;
+    expect(drillIn().getAttribute('data-active')).toBe('true');
+
+    catalogMock.mockReturnValue(codingCatalog());
+    view.rerender(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="coding" />,
+    );
+    expect(drillIn().getAttribute('data-active')).toBe('true');
+    expect(drillIn().hasAttribute('data-enter')).toBe(false);
+    expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe(
+      '',
+    );
+  });
+
   test('renders no pane behind the Chat page until the reader drills in, then keeps it', () => {
     const coding = paneAdaptationFromLayoutTab(
       {
