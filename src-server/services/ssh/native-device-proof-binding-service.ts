@@ -186,11 +186,11 @@ export interface NativeDeviceProofApprovalTuple {
   readonly operation: NativeDeviceProofApprovalOperation;
   readonly stationId: string;
   readonly deviceId: string;
-  /** Exact binding ID for `create`; optional target ID for `revoke`. */
-  readonly bindingId: string | null;
+  /** Exact reviewed binding ID for either operation. */
+  readonly bindingId: string;
   readonly surface: NativeDeviceClientSurface;
-  /** Canonical Device proof public key for `create`; null for `revoke`. */
-  readonly jwk: NativeDeviceProofPublicJwk | null;
+  /** Canonical reviewed Device proof public key for either operation. */
+  readonly jwk: NativeDeviceProofPublicJwk;
 }
 
 /**
@@ -211,30 +211,31 @@ export class NativeDeviceProofOperatorAuthority {
     if (input.operatorPrincipalId !== LOCAL_OPERATOR_PRINCIPAL_ID) {
       throw new NativeDeviceProofBindingError('operator_unauthorized');
     }
+    const tuple = input.tuple;
     if (
-      input.tuple.operation !== 'create' &&
-      input.tuple.operation !== 'revoke'
+      !tuple ||
+      typeof tuple !== 'object' ||
+      Object.keys(tuple).sort().join(',') !==
+        'bindingId,deviceId,jwk,operation,stationId,surface' ||
+      (tuple.operation !== 'create' && tuple.operation !== 'revoke') ||
+      typeof tuple.stationId !== 'string' ||
+      !tuple.stationId ||
+      tuple.stationId.length > 512 ||
+      typeof tuple.deviceId !== 'string' ||
+      !tuple.deviceId ||
+      tuple.deviceId.length > 512 ||
+      typeof tuple.bindingId !== 'string' ||
+      !CANONICAL_UUIDV4_PATTERN.test(tuple.bindingId) ||
+      !isValidNativeClientSurface(tuple.surface) ||
+      !isValidStoredJwk(tuple.jwk)
     ) {
       throw new NativeDeviceProofBindingError('invalid_operator_approval');
-    }
-    if (input.tuple.operation === 'create') {
-      if (
-        typeof input.tuple.bindingId !== 'string' ||
-        !CANONICAL_UUIDV4_PATTERN.test(input.tuple.bindingId) ||
-        !input.tuple.jwk
-      ) {
-        throw new NativeDeviceProofBindingError('invalid_operator_approval');
-      }
     }
     return new NativeDeviceProofOperatorApprovalContext({
       token: OPERATOR_AUTHORITY_TOKEN,
       operatorPrincipalId: input.operatorPrincipalId,
       approvalId: randomUUID(),
-      tuple: structuredClone({
-        ...input.tuple,
-        surface: { ...input.tuple.surface },
-        jwk: input.tuple.jwk ? { ...input.tuple.jwk } : null,
-      }),
+      tuple,
     });
   }
 }
@@ -256,7 +257,12 @@ class NativeDeviceProofOperatorApprovalContext {
     }
     this.operatorPrincipalId = init.operatorPrincipalId;
     this.approvalId = init.approvalId;
-    this.tuple = init.tuple;
+    this.tuple = Object.freeze({
+      ...init.tuple,
+      surface: Object.freeze({ ...init.tuple.surface }),
+      jwk: Object.freeze({ ...init.tuple.jwk }),
+    });
+    Object.freeze(this);
   }
 
   /** One approval authorizes exactly one service mutation. */
@@ -610,21 +616,30 @@ export class NativeDeviceProofBindingService {
   }
 
   revokeBinding(input: {
+    bindingId: string;
     deviceId: string;
     surface: NativeDeviceClientSurface;
+    jwk: NativeDeviceProofPublicJwk;
     approval: NativeDeviceProofOperatorApprovalContext;
     reason?: NativeDeviceProofBindingRevocationReason;
   }): NativeDeviceProofBinding[] {
     if (!(input.approval instanceof NativeDeviceProofOperatorApprovalContext)) {
       throw new NativeDeviceProofBindingError('invalid_operator_approval');
     }
+    if (
+      typeof input.bindingId !== 'string' ||
+      !CANONICAL_UUIDV4_PATTERN.test(input.bindingId)
+    ) {
+      throw new NativeDeviceProofBindingError('invalid_binding_id');
+    }
     const surface = this.#validatedSurface(input.surface);
+    const jwk = this.#validatedPublicJwk(input.jwk);
     this.#requireContextMatches(input.approval, {
       operation: 'revoke',
       deviceId: input.deviceId,
-      bindingId: input.approval.tuple.bindingId,
+      bindingId: input.bindingId,
       surface,
-      jwk: null,
+      jwk,
     });
     const stationId = this.#pairing.environmentId();
     if (
@@ -636,30 +651,25 @@ export class NativeDeviceProofBindingService {
     }
     // Revocation requires the Device to still be a current paired grant.
     this.#activeDevice(input.deviceId);
-    input.approval.consume();
     const bindings = structuredClone(this.#store.load());
-    const now = this.#now();
-    const revoked: NativeDeviceProofBinding[] = [];
-    for (const existing of bindings) {
-      if (
+    const target = bindings.find(
+      (existing) =>
         existing.state === 'active' &&
+        existing.bindingId === input.bindingId &&
         existing.stationId === stationId &&
         existing.deviceId === input.deviceId &&
         surfacesMatch(existing.surface, surface) &&
-        (input.approval.tuple.bindingId === null ||
-          existing.bindingId === input.approval.tuple.bindingId)
-      ) {
-        existing.state = 'revoked';
-        existing.revokedAt = now;
-        existing.revocationReason = input.reason ?? 'operator-revoked';
-        revoked.push(cloneBinding(existing));
-      }
-    }
-    if (revoked.length === 0) {
+        existing.deviceProof.thumbprint === p256Thumbprint(jwk),
+    );
+    if (!target) {
       throw new NativeDeviceProofBindingError('binding_not_found');
     }
+    input.approval.consume();
+    target.state = 'revoked';
+    target.revokedAt = this.#now();
+    target.revocationReason = input.reason ?? 'operator-revoked';
     this.#store.persist(bindings);
-    return revoked;
+    return [cloneBinding(target)];
   }
 
   /**
@@ -693,9 +703,9 @@ export class NativeDeviceProofBindingService {
     expected: {
       operation: NativeDeviceProofApprovalOperation;
       deviceId: string;
-      bindingId: string | null;
+      bindingId: string;
       surface: NativeDeviceClientSurface;
-      jwk: NativeDeviceProofPublicJwk | null;
+      jwk: NativeDeviceProofPublicJwk;
     },
   ): void {
     const tuple = approval.tuple;
@@ -705,17 +715,12 @@ export class NativeDeviceProofBindingService {
       if (tuple.bindingId !== expected.bindingId) return 'binding_id_mismatch';
       if (!tuple.surface || !surfacesMatch(tuple.surface, expected.surface))
         return 'approval_context_mismatch';
-      if (expected.operation === 'create') {
-        const approvedJwk = tuple.jwk;
-        if (!approvedJwk || !expected.jwk) return 'approval_context_mismatch';
-        const presented = Buffer.from(p256Thumbprint(expected.jwk));
-        const approved = Buffer.from(p256Thumbprint(approvedJwk));
-        if (
-          presented.length !== approved.length ||
-          !timingSafeEqual(presented, approved)
-        )
-          return 'approval_context_mismatch';
-      } else if (tuple.jwk) {
+      const presented = Buffer.from(p256Thumbprint(expected.jwk));
+      const approved = Buffer.from(p256Thumbprint(tuple.jwk));
+      if (
+        presented.length !== approved.length ||
+        !timingSafeEqual(presented, approved)
+      ) {
         return 'approval_context_mismatch';
       }
       return null;

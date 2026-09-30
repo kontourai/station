@@ -75,9 +75,9 @@ function mintApproval(tuple: {
   operation: NativeDeviceProofApprovalOperation;
   stationId?: string;
   deviceId: string;
-  bindingId: string | null;
+  bindingId: string;
   surface: NativeDeviceClientSurface;
-  jwk: NativeDeviceProofPublicJwk | null;
+  jwk: NativeDeviceProofPublicJwk;
 }) {
   const authority = new NativeDeviceProofOperatorAuthority();
   const frozen: NativeDeviceProofApprovalTuple = {
@@ -129,24 +129,29 @@ function createApproved(
 
 function revokeApproved(
   service: NativeDeviceProofBindingService,
-  deviceId: string,
+  target: NativeDeviceProofBinding,
   opts: {
     surface?: NativeDeviceClientSurface;
-    bindingId?: string | null;
+    bindingId?: string;
+    jwk?: NativeDeviceProofPublicJwk;
     stationId?: string;
   } = {},
 ) {
-  const approvedSurface = opts.surface ?? surface();
+  const approvedSurface = opts.surface ?? target.surface;
+  const bindingId = opts.bindingId ?? target.bindingId;
+  const jwk = opts.jwk ?? target.deviceProof.jwk;
   return service.revokeBinding({
-    deviceId,
+    bindingId,
+    deviceId: target.deviceId,
     surface: approvedSurface,
+    jwk,
     approval: mintApproval({
       operation: 'revoke',
       stationId: opts.stationId,
-      deviceId,
-      bindingId: opts.bindingId ?? null,
+      deviceId: target.deviceId,
+      bindingId,
       surface: approvedSurface,
-      jwk: null,
+      jwk,
     }),
   });
 }
@@ -201,6 +206,99 @@ function storedBindings(homeDir: string): unknown[] {
 }
 
 describe('native device proof binding service (station#2893)', () => {
+  test('minted approval cannot be rewritten to commit an unreviewed binding or key', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const bindingId = randomUUID();
+    const approvedSurface = surface();
+    const jwk = p256PublicJwk();
+    const approval = mintApproval({
+      operation: 'create',
+      deviceId,
+      bindingId,
+      surface: approvedSurface,
+      jwk,
+    });
+    const changedId = randomUUID();
+    const changedKey = p256PublicJwk();
+    expect(Reflect.set(approval.tuple, 'bindingId', changedId)).toBe(false);
+    expect(
+      Reflect.set(approval.tuple.surface, 'appIdentifier', 'other.app'),
+    ).toBe(false);
+    expect(Reflect.set(approval.tuple.jwk, 'x', changedKey.x)).toBe(false);
+    expect(
+      Reflect.set(approval, 'tuple', {
+        ...approval.tuple,
+        bindingId: changedId,
+      }),
+    ).toBe(false);
+    expect(Reflect.set(approval, 'consume', () => undefined)).toBe(false);
+    expect(() =>
+      bindingService.createBinding({
+        bindingId: changedId,
+        deviceId,
+        surface: approvedSurface,
+        jwk: changedKey,
+        approval,
+      }),
+    ).toThrow('binding_id_mismatch');
+    expect(bindingService.bindingById({ bindingId: changedId })).toBeNull();
+    const created = bindingService.createBinding({
+      bindingId,
+      deviceId,
+      surface: approvedSurface,
+      jwk,
+      approval,
+    });
+    expect(created.bindingId).toBe(bindingId);
+    expect(created.deviceProof.jwk).toEqual(jwk);
+    expect(bindingService.bindingById({ bindingId: changedId })).toBeNull();
+  });
+
+  test('revocation approval refuses a wildcard ID or missing reviewed key', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const created = createApproved(bindingService, deviceId);
+    for (const field of ['bindingId', 'jwk']) {
+      const malformed = {
+        operation: 'revoke' as const,
+        deviceId,
+        bindingId: created.bindingId,
+        surface: created.surface,
+        jwk: created.deviceProof.jwk,
+      };
+      Reflect.set(malformed, field, null);
+      expect(() => mintApproval(malformed)).toThrow(
+        'invalid_operator_approval',
+      );
+    }
+    expect(
+      bindingService.bindingById({ bindingId: created.bindingId })?.state,
+    ).toBe('active');
+  });
+
+  test('approval minting refuses noncanonical surfaces and keys for either operation', () => {
+    const { pairing } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const tuple = {
+      deviceId,
+      bindingId: randomUUID(),
+      surface: surface(),
+      jwk: p256PublicJwk(),
+    };
+    for (const operation of ['create', 'revoke'] as const) {
+      for (const changed of [
+        { surface: { ...tuple.surface, extra: 'unreviewed' } },
+        { jwk: p256PrivateJwk() },
+        { jwk: { ...tuple.jwk, x: 'not-a-coordinate' } },
+      ]) {
+        expect(() => mintApproval({ ...tuple, operation, ...changed })).toThrow(
+          'invalid_operator_approval',
+        );
+      }
+    }
+  });
+
   test('create persists a full-surface binding tied to the approved device, station, and surface', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
@@ -368,6 +466,8 @@ describe('native device proof binding service (station#2893)', () => {
       if (operation === 'revoke') {
         expect(() =>
           bindingService.revokeBinding({
+            bindingId: presentedBindingId,
+            jwk: presentedJwk,
             deviceId: presentedDeviceId,
             surface: presentedSurface,
             approval: originalContext,
@@ -415,8 +515,10 @@ describe('native device proof binding service (station#2893)', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const revokedId = randomUUID();
-    createApproved(bindingService, deviceId, { bindingId: revokedId });
-    revokeApproved(bindingService, deviceId, { bindingId: revokedId });
+    const historical = createApproved(bindingService, deviceId, {
+      bindingId: revokedId,
+    });
+    revokeApproved(bindingService, historical);
 
     // A revoked historical ID can never be reused, even with a fresh key.
     expect(() =>
@@ -474,7 +576,7 @@ describe('native device proof binding service (station#2893)', () => {
       },
     });
     expect(() =>
-      revokeApproved(otherStationBindings, deviceId, {
+      revokeApproved(otherStationBindings, created, {
         stationId: OTHER_ENVIRONMENT_ID,
       }),
     ).toThrow('binding_not_found');
@@ -494,11 +596,11 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     expect(bindingService.bindingById({ bindingId: randomUUID() })).toBeNull();
     const bindingId = randomUUID();
-    createApproved(bindingService, deviceId, { bindingId });
+    const created = createApproved(bindingService, deviceId, { bindingId });
     const active = bindingService.bindingById({ bindingId });
     expect(active?.state).toBe('active');
     expect(active?.bindingId).toBe(bindingId);
-    revokeApproved(bindingService, deviceId, { bindingId });
+    revokeApproved(bindingService, created);
     const revoked = bindingService.bindingById({ bindingId });
     expect(revoked?.state).toBe('revoked');
     expect(revoked?.revocationReason).toBe('operator-revoked');
@@ -518,9 +620,9 @@ describe('native device proof binding service (station#2893)', () => {
   test('revocation against a non-current device refuses', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    createApproved(bindingService, deviceId);
+    const created = createApproved(bindingService, deviceId);
     pairing.revokeDevice(deviceId, 'operator-credential');
-    expect(() => revokeApproved(bindingService, deviceId)).toThrow(
+    expect(() => revokeApproved(bindingService, created)).toThrow(
       'device_not_active',
     );
   });
@@ -609,10 +711,23 @@ describe('native device proof binding service (station#2893)', () => {
       surface({ clientInstanceId: 'not-a-uuid' }),
       { ...surface(), extra: 'field' },
     ];
+    const bindingId = randomUUID();
+    const jwk = p256PublicJwk();
+    const approval = mintApproval({
+      operation: 'create',
+      deviceId,
+      bindingId,
+      surface: surface(),
+      jwk,
+    });
     for (const bad of badSurfaces) {
       expect(() =>
-        createApproved(bindingService, deviceId, {
+        bindingService.createBinding({
+          bindingId,
+          deviceId,
           surface: bad as NativeDeviceClientSurface,
+          jwk,
+          approval,
         }),
       ).toThrow('invalid_native_surface');
     }
@@ -719,8 +834,8 @@ describe('native device proof binding service (station#2893)', () => {
   test('revoke fails closed on later queries and refuses double revoke', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    createApproved(bindingService, deviceId);
-    const [revoked] = revokeApproved(bindingService, deviceId);
+    const created = createApproved(bindingService, deviceId);
+    const [revoked] = revokeApproved(bindingService, created);
     expect(revoked.state).toBe('revoked');
     expect(revoked.revocationReason).toBe('operator-revoked');
     expect(
@@ -732,7 +847,7 @@ describe('native device proof binding service (station#2893)', () => {
         surface: surface(),
       }),
     ).toThrow('binding_unavailable');
-    expect(() => revokeApproved(bindingService, deviceId)).toThrow(
+    expect(() => revokeApproved(bindingService, created)).toThrow(
       'binding_not_found',
     );
   });
@@ -745,7 +860,7 @@ describe('native device proof binding service (station#2893)', () => {
       surface: approved,
     });
     expect(() =>
-      revokeApproved(bindingService, deviceId, {
+      revokeApproved(bindingService, binding, {
         surface: surface({ keyThumbprint: thumbprintOf(p256PublicJwk()) }),
       }),
     ).toThrow('binding_not_found');
@@ -763,7 +878,7 @@ describe('native device proof binding service (station#2893)', () => {
       surface: surface({ clientInstanceId: randomUUID() }),
     });
     const other = createApproved(bindingService, deviceId);
-    const [revoked] = revokeApproved(bindingService, deviceId, {
+    const [revoked] = revokeApproved(bindingService, target, {
       bindingId: target.bindingId,
       surface: target.surface,
     });
@@ -776,17 +891,66 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBe('revoked');
     // Naming a missing ID finds nothing to revoke.
     expect(() =>
-      revokeApproved(bindingService, deviceId, { bindingId: randomUUID() }),
+      revokeApproved(bindingService, other, { bindingId: randomUUID() }),
     ).toThrow('binding_not_found');
+    expect(() =>
+      revokeApproved(bindingService, other, { jwk: p256PublicJwk() }),
+    ).toThrow('binding_not_found');
+    expect(
+      bindingService.bindingById({ bindingId: other.bindingId })?.state,
+    ).toBe('active');
+  });
+
+  test('a delayed revocation of the reviewed binding cannot revoke its same-surface replacement', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const reviewed = createApproved(bindingService, deviceId);
+    const approval = mintApproval({
+      operation: 'revoke',
+      deviceId,
+      bindingId: reviewed.bindingId,
+      surface: reviewed.surface,
+      jwk: reviewed.deviceProof.jwk,
+    });
+    const replacement = createApproved(bindingService, deviceId);
+    const snapshot = readFileSync(
+      join(homeDir, 'security', BINDINGS_FILE),
+      'utf8',
+    );
+    expect(() =>
+      bindingService.revokeBinding({
+        bindingId: reviewed.bindingId,
+        deviceId,
+        surface: reviewed.surface,
+        jwk: reviewed.deviceProof.jwk,
+        approval,
+      }),
+    ).toThrow('binding_not_found');
+    expect(readFileSync(join(homeDir, 'security', BINDINGS_FILE), 'utf8')).toBe(
+      snapshot,
+    );
+    expect(
+      bindingService.requireCurrentBinding({
+        deviceId,
+        surface: replacement.surface,
+      }).binding.bindingId,
+    ).toBe(replacement.bindingId);
+    expect(() => approval.consume()).not.toThrow();
+    revokeApproved(bindingService, replacement);
+    expect(
+      bindingService.currentBinding({ deviceId, surface: replacement.surface }),
+    ).toBeNull();
   });
 
   test('independent service handles observe revocation and cannot resurrect it on another write', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
-    createApproved(bindingService, deviceId, { surface: approved });
+    const created = createApproved(bindingService, deviceId, {
+      surface: approved,
+    });
     const other = new NativeDeviceProofBindingService({ homeDir, pairing });
-    revokeApproved(other, deviceId, { surface: approved });
+    revokeApproved(other, created);
     expect(
       bindingService.currentBinding({ deviceId, surface: approved }),
     ).toBeNull();
@@ -871,17 +1035,31 @@ describe('native device proof binding service (station#2893)', () => {
   test('wrong or malformed proof keys are refused', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    expect(() =>
-      createApproved(bindingService, deviceId, { jwk: p256PrivateJwk() }),
-    ).toThrow('invalid_proof_jwk');
     const truncated = p256PublicJwk();
     const bad = {
       ...truncated,
       x: `${truncated.x.slice(0, 42)}${truncated.x.endsWith('A') ? 'B' : 'A'}`,
     };
-    expect(() =>
-      createApproved(bindingService, deviceId, { jwk: bad }),
-    ).toThrow('invalid_proof_jwk');
+    const bindingId = randomUUID();
+    const approvedSurface = surface();
+    const approval = mintApproval({
+      operation: 'create',
+      deviceId,
+      bindingId,
+      surface: approvedSurface,
+      jwk: truncated,
+    });
+    for (const jwk of [p256PrivateJwk(), bad]) {
+      expect(() =>
+        bindingService.createBinding({
+          bindingId,
+          deviceId,
+          surface: approvedSurface,
+          jwk,
+          approval,
+        }),
+      ).toThrow('invalid_proof_jwk');
+    }
   });
 
   test('corrupt or wrong-version sidecar fails closed instead of reading empty', () => {
@@ -982,8 +1160,10 @@ describe('native device proof binding service (station#2893)', () => {
     ).toThrow(NativeDeviceProofBindingError);
     expect(() =>
       bindingService.revokeBinding({
+        bindingId: forged.bindingId,
         deviceId,
         surface: surface(),
+        jwk: forged.jwk,
         approval: forged as never,
       }),
     ).toThrow(NativeDeviceProofBindingError);
@@ -1025,31 +1205,36 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBeNull();
   });
 
-  test('a consumed approval cannot authorize a second mutation', () => {
+  test('a completed revocation cannot mutate its historical record again', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     // Creation consumes its approval; an exact matching retry is an
     // idempotent readback, so the one-use rule is observable on revocation.
-    createApproved(bindingService, deviceId);
+    const created = createApproved(bindingService, deviceId);
     const revokeApproval = mintApproval({
       operation: 'revoke',
       deviceId,
-      bindingId: null,
-      surface: surface(),
-      jwk: null,
+      bindingId: created.bindingId,
+      surface: created.surface,
+      jwk: created.deviceProof.jwk,
     });
     bindingService.revokeBinding({
+      bindingId: created.bindingId,
       deviceId,
-      surface: surface(),
+      surface: created.surface,
+      jwk: created.deviceProof.jwk,
       approval: revokeApproval,
     });
+    expect(() => revokeApproval.consume()).toThrow('operator_approval_reused');
     expect(() =>
       bindingService.revokeBinding({
+        bindingId: created.bindingId,
         deviceId,
-        surface: surface(),
+        surface: created.surface,
+        jwk: created.deviceProof.jwk,
         approval: revokeApproval,
       }),
-    ).toThrow('operator_approval_reused');
+    ).toThrow('binding_not_found');
   });
 
   test('public projections omit key material and scope internals', () => {
