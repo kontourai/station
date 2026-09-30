@@ -173,13 +173,13 @@ function encode(value: unknown): string {
 
 function decodeHostSegment(value: string): Uint8Array<ArrayBuffer> {
   if (!/^[A-Za-z0-9_-]+$/.test(value))
-    throw new Error('Native host account proof encoding is invalid.');
+    throw new Error('Native host account proof base64url data is invalid.');
   const bytes = Uint8Array.from(
     atob(value.replace(/-/g, '+').replace(/_/g, '/')),
     (character) => character.charCodeAt(0),
   );
   if (base64url(bytes) !== value)
-    throw new Error('Native host account proof encoding is invalid.');
+    throw new Error('Native host account proof base64url data is invalid.');
   return bytes;
 }
 
