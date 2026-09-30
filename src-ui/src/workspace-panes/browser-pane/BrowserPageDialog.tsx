@@ -1,6 +1,7 @@
 import type { BrowserPendingDialogView } from '@kontourai/station-contracts/workspace-browser-pane';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { MonitorGlyph } from '../../components/icons/Glyph';
 import './BrowserPageDialog.css';
 
 /**
@@ -23,6 +24,7 @@ export function BrowserPageDialog({
   onAnswer,
   onOpenInPane,
   onKeepAlive,
+  compact = false,
 }: {
   dialog: BrowserPendingDialogView;
   pageHost: string;
@@ -37,6 +39,8 @@ export function BrowserPageDialog({
    * it has not left.
    */
   onKeepAlive?: () => void;
+  /** A small host (the float): tighter, with the page's text clamped. */
+  compact?: boolean;
 }) {
   const titleId = useId();
   const messageId = useId();
@@ -76,7 +80,7 @@ export function BrowserPageDialog({
 
   return (
     <form
-      className="browser-pane__page-dialog"
+      className={`browser-pane__page-dialog${compact ? ' browser-pane__page-dialog--compact' : ''}`}
       role="alertdialog"
       aria-labelledby={titleId}
       aria-describedby={messageId}
@@ -94,7 +98,11 @@ export function BrowserPageDialog({
       <p className="browser-pane__page-dialog-title" id={titleId}>
         {`${pageHost} says`}
       </p>
-      <p className="browser-pane__page-dialog-message" id={messageId}>
+      <p
+        className="browser-pane__page-dialog-message"
+        id={messageId}
+        title={compact ? dialog.message : undefined}
+      >
         {dialog.message || '(The page gave no message.)'}
       </p>
       {dialog.type === 'prompt' ? (
@@ -118,15 +126,28 @@ export function BrowserPageDialog({
       ) : null}
       <div className="browser-pane__page-dialog-actions">
         {onOpenInPane ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="browser-pane__control browser-pane__page-dialog-open"
-            onClick={onOpenInPane}
-          >
-            Open in pane
-          </Button>
+          compact ? (
+            <Button
+              type="button"
+              variant="icon"
+              className="browser-pane__page-dialog-open"
+              aria-label="Open in pane"
+              title="Open in pane"
+              onClick={onOpenInPane}
+            >
+              <MonitorGlyph />
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="browser-pane__control browser-pane__page-dialog-open"
+              onClick={onOpenInPane}
+            >
+              Open in pane
+            </Button>
+          )
         ) : null}
         {dialog.type === 'alert' ? null : (
           <Button

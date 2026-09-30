@@ -72,3 +72,55 @@
   top: 8px;
   z-index: 2;
 }
+
+/* Compact (the float): the card fills the float and scrolls if it must;
+   the page's text is clamped to two lines (its full text is the tooltip). */
+.browser-pane__page-dialog--compact {
+  gap: 4px;
+  max-height: 100%;
+  max-width: none;
+  padding: 6px 8px;
+}
+
+.browser-pane__page-dialog--compact .browser-pane__page-dialog-title,
+.browser-pane__page-dialog--compact .browser-pane__page-dialog-message {
+  font-size: 0.75rem;
+}
+
+.browser-pane__page-dialog.browser-pane__page-dialog--compact
+  .browser-pane__page-dialog-message {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  flex: 0 0 auto;
+  overflow: hidden;
+  white-space: normal;
+}
+
+.browser-pane__page-dialog--compact .browser-pane__page-dialog-actions {
+  align-items: center;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.browser-pane__page-dialog--compact .browser-pane__page-dialog-actions > * {
+  white-space: nowrap;
+}
+
+@media (pointer: fine) {
+  .browser-pane__page-dialog--compact .browser-pane__control,
+  .browser-pane__page-dialog--compact .browser-pane__page-dialog-input {
+    font-size: 0.75rem;
+    min-height: 26px;
+    min-width: 0;
+    padding: 0 8px;
+  }
+}
+
+.float-over-chat__dialog-layer--compact {
+  bottom: 4px;
+  left: 4px;
+  right: 4px;
+  top: 4px;
+}

@@ -972,8 +972,9 @@ function BrowserFloat({
             onControlState={reportControl(onControlState)}
           />
           {pendingDialog ? (
-            <div className="float-over-chat__dialog-layer">
+            <div className="float-over-chat__dialog-layer float-over-chat__dialog-layer--compact">
               <BrowserPageDialog
+                compact
                 key={pendingDialog.dialogId}
                 dialog={pendingDialog}
                 pageHost={host}
