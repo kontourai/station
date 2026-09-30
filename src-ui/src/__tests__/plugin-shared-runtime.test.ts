@@ -149,6 +149,9 @@ describe('plugin shared-module bridge', () => {
     expect((requireShim('dompurify') as any).sanitize).toBeTypeOf('function');
     const sdkClient = await import('@kontourai/station-sdk/client');
     expect(requireShim('@kontourai/station-sdk/client')).toBe(sdkClient);
+    const agentSdk = await import('@kontourai/station-sdk/agent');
+    expect(requireShim('@kontourai/station-sdk/agent')).toBe(agentSdk);
+    expect(agentSdk.delegateTask).toBe(sdkClient.delegateTask);
     const voiceSdk = await import('@kontourai/station-sdk/voice');
     expect(requireShim('@kontourai/station-sdk/voice')).toBe(voiceSdk);
 
