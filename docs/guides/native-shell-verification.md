@@ -32,6 +32,28 @@ device, TestFlight, or App Store package. The command prints the resulting
 `.app` path. Archive that app only for a workspace or service that accepts iOS
 simulator artifacts; it cannot be installed on a physical iPhone or iPad.
 
+## Native foreground dispatch deadlines
+
+The native HTTP broker waits up to 60 seconds for response headers on
+foreground chat POSTs: `/api/orchestration/chat`, its `delegated` and
+`background` variants, and `/api/orchestration/chat/:conversationId/continue`.
+These routes wait for provider-turn acceptance before responding. Ordinary
+requests retain their 20-second header deadline; SSE response bodies remain
+open-ended. Cancellation still fences late responses and uses the existing
+bounded orphan allowances. SDK deadlines remain a separate boundary.
+
+The explicit desktop proof uses the real WebView, IPC and native HTTP transport
+against an authenticated fixture that delays the chat receipt for 26 seconds:
+
+```sh
+npm run test:tauri-shell -- --build --lane=native-chat-dispatch
+```
+
+The fixture uses the WebDriver credential store and a synthetic provider-turn
+receipt. It proves transport timing on the exercised macOS debug shell, not
+real provider dispatch, OS keyring custody, mobile behavior or release signing.
+The Rust suite separately checks delayed foreground and ordinary exchanges.
+
 ## What can run today
 
 For the native relay-key approval ceremony on macOS, run the explicit shell
