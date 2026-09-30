@@ -3461,3 +3461,107 @@ for (const width of [320, 431]) {
     );
   });
 }
+
+// After a refused send the half dock holds the attachment chips, the block
+// line and the draft. The controls row used to paint over the draft (0px
+// visible at 375x667). The draft keeps a two-line floor and nothing overlaps
+// it; the banner and the transcript give way instead.
+test('a refused send keeps a two-line draft clear of every row in a 375x667 half dock', async ({
+  page,
+}) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  await page.route('**/api/orchestration/chat', (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: false,
+        error: 'This engine did not advertise image attachment support.',
+        code: 'attachment_input_unsupported',
+        retryable: false,
+      }),
+    }),
+  );
+
+  const textarea = await openComposer(page, false, 'station');
+  await textarea.fill(
+    'Terrible styling also after I accepted one the approval was still showing up.\nSecond line of the draft here.\nThird line should stay visible.',
+  );
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+Q5q9WQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page.locator('.attachment-input').setInputFiles([
+    { name: 'shot-one.png', mimeType: 'image/png', buffer: png },
+    { name: 'shot-two.png', mimeType: 'image/png', buffer: png },
+  ]);
+  await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  // The refusal is recorded (the send notice). In a half dock too short for
+  // transcript + composer, the transcript steps aside instead of the draft
+  // being squeezed under the controls.
+  await expect(
+    page.getByText("This engine can't take these attachments"),
+  ).toHaveCount(1);
+  await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
+
+  const geometry = await textarea.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const line =
+      Number.parseFloat(style.lineHeight) ||
+      Number.parseFloat(style.fontSize) * 1.2;
+    const chrome =
+      Number.parseFloat(style.paddingTop) +
+      Number.parseFloat(style.paddingBottom);
+    const others = [
+      ...document.querySelectorAll(
+        '.composer-attachments__chip, .chat-input__attachment-error, .chat-input__attachment-notice, .chat-controls-row, [data-testid="chat-dock-session-failure"], .chat-input__meta',
+      ),
+    ].map((other) => {
+      const rect = other.getBoundingClientRect();
+      return {
+        name: other.className || other.getAttribute('data-testid'),
+        overlaps:
+          rect.height > 0 &&
+          rect.top < box.bottom - 0.5 &&
+          rect.bottom > box.top + 0.5 &&
+          rect.left < box.right &&
+          rect.right > box.left,
+      };
+    });
+    const root = element.closest('.chat-input') as HTMLElement;
+    const body = root?.parentElement as HTMLElement;
+    const debug = {
+      ta: [box.top, box.bottom, element.style.height, element.style.minHeight],
+      root: [
+        root.getBoundingClientRect().top,
+        root.getBoundingClientRect().bottom,
+        root.style.minHeight,
+        root.scrollHeight,
+        getComputedStyle(root).maxHeight,
+      ],
+      body: [
+        body.className,
+        body.getBoundingClientRect().top,
+        body.getBoundingClientRect().bottom,
+      ],
+      kids: [...body.children].map(
+        (k) => `${k.className}:${Math.round(k.getBoundingClientRect().height)}`,
+      ),
+    };
+    return {
+      debug,
+      visibleContent: box.height - chrome,
+      twoLines: 2 * line,
+      inViewport: box.top >= 0 && box.bottom <= innerHeight,
+      overlapping: others.filter((other) => other.overlaps).map((o) => o.name),
+    };
+  });
+  expect(geometry.overlapping, JSON.stringify(geometry.debug)).toEqual([]);
+  expect(geometry.inViewport, JSON.stringify(geometry.debug)).toBe(true);
+  expect(geometry.visibleContent).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+});

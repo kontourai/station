@@ -529,22 +529,129 @@ export function ChatInputArea({
     mentionQuery && mentionAutocompleteAvailable,
   );
 
+  const composerRootRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     // Value changes are a resize trigger even though the measurement reads DOM.
     void input;
+    // So are the rows around the draft: they change what the composer needs.
+    void attachments.length;
+    void attachmentStages.length;
+    void sendBlockedReason;
+    void attachmentError;
+    void attachmentNotice;
     const textarea = textareaRef.current;
     if (!textarea) return;
-    const resize = () => {
-      textarea.style.height = 'auto';
-      const availableHeight = visualViewport.height || dockHeight;
-      const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
-      const height = Math.min(textarea.scrollHeight, maxHeight);
-      textarea.style.height = `${height}px`;
-      textarea.style.overflowY =
-        textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    textarea.style.height = 'auto';
+    const availableHeight = visualViewport.height || dockHeight;
+    const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
+    const height = Math.min(textarea.scrollHeight, maxHeight);
+    textarea.style.height = `${height}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    // The draft's floor: two lines (or its whole content, when shorter). In
+    // a short dock the draft may shrink to this and scroll, never below it.
+    const style = getComputedStyle(textarea);
+    const fontSize = Number.parseFloat(style.fontSize) || 16;
+    const line = Number.parseFloat(style.lineHeight) || fontSize * 1.2;
+    const chrome =
+      (Number.parseFloat(style.paddingTop) || 0) +
+      (Number.parseFloat(style.paddingBottom) || 0) +
+      (Number.parseFloat(style.borderTopWidth) || 0) +
+      (Number.parseFloat(style.borderBottomWidth) || 0);
+    const floor = Math.min(height, Math.ceil(2 * line + chrome));
+    textarea.style.minHeight = `${floor}px`;
+    // …and the composer as a whole reserves room for that floor plus every
+    // row that does not shrink (chips, messages, controls). Without this the
+    // dock squeezed the composer itself and the controls row painted over
+    // the draft; with it, the banner and the transcript give way instead.
+    const root = composerRootRef.current;
+    if (!root) return;
+    const reserve = () => {
+      // Measure the composer's natural height with the draft at its floor:
+      // unsqueezed (no shrink, no cap) so overlapping rows cannot hide
+      // height, then restore and reserve exactly that.
+      const saved = [
+        root.style.minHeight,
+        root.style.flexShrink,
+        root.style.maxHeight,
+        textarea.style.height,
+      ] as const;
+      root.style.minHeight = '';
+      root.style.flexShrink = '0';
+      root.style.maxHeight = 'none';
+      textarea.style.height = `${floor}px`;
+      const needed = Math.ceil(root.getBoundingClientRect().height);
+      root.style.flexShrink = saved[1];
+      root.style.maxHeight = saved[2];
+      textarea.style.height = saved[3];
+      const next = `${needed}px`;
+      root.style.minHeight = saved[0] === next ? saved[0] : next;
+      // In a dock too short for the transcript's and banner's own padding on
+      // top of that, they step aside entirely (data-composer-priority) rather
+      // than the composer overflowing its dock.
+      const body = root.parentElement;
+      if (!body?.classList.contains('chat-dock__body')) return;
+      let fixed = needed;
+      for (const child of body.children) {
+        if (child === root || !(child instanceof HTMLElement)) continue;
+        const style = getComputedStyle(child);
+        const edge = (name: string) =>
+          Number.parseFloat(style.getPropertyValue(name)) || 0;
+        const margins = edge('margin-top') + edge('margin-bottom');
+        if (
+          child.classList.contains('chat-messages') ||
+          child.classList.contains('chat-dock__session-failure')
+        ) {
+          fixed +=
+            margins +
+            edge('padding-top') +
+            edge('padding-bottom') +
+            edge('border-top-width') +
+            edge('border-bottom-width');
+        } else if (style.display !== 'none') {
+          fixed += child.getBoundingClientRect().height + margins;
+        }
+      }
+      body.toggleAttribute(
+        'data-composer-priority',
+        fixed > body.clientHeight + 0.5,
+      );
     };
-    resize();
-  }, [dockHeight, input, textareaRef, visualViewport.height]);
+    reserve();
+    // Rows around the draft mount late (the lazy chip strip) or change size
+    // on their own (wrapping chips); re-reserve whenever any of them does.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => reserve());
+    if (root.parentElement) observer.observe(root.parentElement);
+    for (const row of root.querySelectorAll(
+      '.chat-input__meta, .chat-controls-row, .chat-input__textarea-wrapper > :not(textarea)',
+    ))
+      observer.observe(row);
+    const mutations = new MutationObserver(() => {
+      observer.disconnect();
+      if (root.parentElement) observer.observe(root.parentElement);
+      for (const row of root.querySelectorAll(
+        '.chat-input__meta, .chat-controls-row, .chat-input__textarea-wrapper > :not(textarea)',
+      ))
+        observer.observe(row);
+      reserve();
+    });
+    mutations.observe(root, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      mutations.disconnect();
+    };
+  }, [
+    attachmentError,
+    attachmentNotice,
+    attachmentStages.length,
+    attachments.length,
+    dockHeight,
+    input,
+    sendBlockedReason,
+    textareaRef,
+    visualViewport.height,
+  ]);
 
   // A producer that unmounts while focused never fires blur; without this
   // the context stays true globally and every {not:'composerFocused'}
@@ -552,7 +659,7 @@ export function ChatInputArea({
   useEffect(() => () => setShortcutContext('composerFocused', false), []);
 
   return (
-    <div className="chat-input">
+    <div className="chat-input" ref={composerRootRef}>
       {modelQuery !== null && !input.startsWith('/model ') && (
         <ResponsiveDialogSurface
           layer="popover"

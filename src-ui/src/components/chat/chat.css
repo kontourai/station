@@ -1213,11 +1213,23 @@
   background: var(--bg-primary);
 }
 
-/* In a short dock the failed-session banner yields (and scrolls) before the
-   composer's draft does; the composer is where the user acts on it. */
-.chat-dock__session-failure {
+/* In a short dock everything above the composer yields before its draft:
+   the failed-session banner (it scrolls; the send notice carries the same
+   failure in full) and the transcript, down to zero. (The stream status line
+   keeps its size: it can hold Stop.)
+   The composer keeps the room `ChatInputArea` reserves for a two-line draft. */
+.chat-dock__body > .chat-dock__session-failure,
+.chat-dock__body > .chat-messages {
+  flex-shrink: 1000;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* Too short even for their padding: they step aside until the dock grows
+   (the composer's block line and the chat title still say what failed). */
+.chat-dock__body[data-composer-priority] > .chat-dock__session-failure,
+.chat-dock__body[data-composer-priority] > .chat-messages {
+  display: none;
 }
 
 /* Composer validation and attach-time notes sit in the fieldset's normal
