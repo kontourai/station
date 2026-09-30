@@ -30171,7 +30171,7 @@
     },
     {
       "path": "packages/sdk/AGENTS.md",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "776b5c00861cd2331539638b4c8caa7a17a8a48c",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to the SDK reference, forbids app-internal imports by plugins, and requires both cache and waiting-caller observations for cancellation/authority races.",
@@ -30180,11 +30180,11 @@
       "sources": [
         {
           "path": "docs/reference/sdk.md",
-          "digest": "a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf"
+          "digest": "61d973e04ef204b9e979d51524d1c036ae6eae0c2dc1e781cb1d5a5e5281d949"
         },
         {
           "path": "packages/sdk/package.json",
-          "digest": "84912ccd0d5ca9b824954d208f7f950435b02e984a251f4f2d380c527fec7084"
+          "digest": "117284d5c75b85c661c3801784c2da475e05285189a2fbb289cdb49995972f74"
         },
         {
           "path": "packages/sdk/src/query-core.ts",
@@ -30208,7 +30208,8 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Linked sdk.md gained only the useBrandingQuery entry. Classification unchanged. Source review is separate from executed test evidence.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate."
+        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Read scoped SDK instructions against the new device-code-login subpath: uses authenticated public transport with explicit request authority, documents the API in SDK reference and covers caller/cache outcomes. No instruction change."
       ]
     },
     {
