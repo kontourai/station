@@ -3833,7 +3833,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -3865,7 +3865,7 @@
         },
         {
           "path": "docs/guides/keyboard-shortcuts.md",
-          "digest": "ea0091f679507ccc61de0724d1fa57af4ca2eea954ee7502d5f1033b64d3f131"
+          "digest": "663f84eafdc712738e549ca807fee9ef3d1c6afee7a7dc17e5a3f76d6fb6aaee"
         },
         {
           "path": "docs/guides/monitoring.md",
@@ -4012,13 +4012,14 @@
         "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); orchestration-decomposition-map.md (branch prose edit (T7 wiring-test note)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "Re-read 'Abstraction review' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
-        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Re-checked after keyboard-shortcuts.md gained the declining-handler rule: this review's findings do not depend on shortcut dispatch details; no prose change."
       ]
     },
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -5450,7 +5451,7 @@
         },
         {
           "path": "src-ui/src/components/CommandPalette.tsx",
-          "digest": "721cba920da20e4f1cfd31b595e4bcb0c024f45a7763284c26bc3bb1c1dfb7f8"
+          "digest": "0241fb9c1909662dace6b8054477c4340bde4838fe05b9f924253a5f075ca686"
         },
         {
           "path": "src-ui/src/components/home/StarterWorkCard.tsx",
@@ -5486,7 +5487,7 @@
         },
         {
           "path": "src-ui/src/contexts/KeyboardShortcutsContext.tsx",
-          "digest": "939eb7cbf2c2bbcb15679950a08f02f0e16190c4f69851e5e9022a6be2ba74f2"
+          "digest": "f245dcc79cecb5b79bc5b05a96d61167632a6ff054fb15b9bfbb17732a478fc7"
         },
         {
           "path": "src-ui/src/contexts/MonitoringContext.tsx",
@@ -5769,7 +5770,9 @@
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked StationControlDispatchScope (scope decided before contacting another Station, which C2b's route refusals reinforce) and the SDK/http module rows; no claim names the removed caller-delegation route or the tool-side peer path. After merging main 91472e665, re-read main's edit here (the scheduler paragraph drops addProvider and the legacy-provider receipt wording); it names no station-control forwarding, caller-delegation or SDK body-read behaviour, so the above still holds.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Fix round on the coding stack: KeyboardShortcutsContext dispatch now lets a handler return false to decline (no preventDefault, next match tried); documented that and the stack chords' use of it. Executed KeyboardShortcuts.declined and CodingWorkbench vitest. Fix round on the coding stack reviewed against this document's claims: CommandPalette's 'Open chat dock', turnAttentionNotifications, useShareToConversation and useActiveChatSessionLifecycle now open Chat through showChatPageOrDock (the Coding centre's Chat page when it owns Chat, the dock otherwise); ChatDock no longer closes the dock from a full-screen Chat; workspacePaneHostNavigation gains replaceWorkspacePaneHostSelection. No route, API, SDK, config or shortcut contract cited here changed; no prose change.",
+        "Fix round on the coding stack: KeyboardShortcutsContext dispatch now lets a handler return false to decline its key; this map's dispatch summary stays accurate at its level and the user guide (keyboard-shortcuts.md) carries the decline rule. CommandPalette now opens Chat through showChatPageOrDock. No prose change."
       ]
     },
     {
@@ -6258,7 +6261,7 @@
     {
       "path": "docs/contexts/workspace-surfaces/CONTEXT.md",
       "documentDigest": "4857d7c6b89854ba2a9f4d135bead55a3f5a9428b50d845f08bbb87ff7c13522",
-      "sourceRevision": "adcb57024f39f6b546a2589d81e68dc526a85b29",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full context vocabulary and relationships; added actual composition routing, ambient/mode/region semantics, Task declaration vs real owner view, UI availability merge and persistence/rollback boundaries, authorized Session-directory previews and separately composed coding panes.",
@@ -6358,7 +6361,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/workspacePaneHostNavigation.ts",
-          "digest": "959ec0e4253f400118565eb8f22d571ccaffc9dc74b9dc4aff286f8c394e3523"
+          "digest": "a0ac283e6893aaab5e382e1910f498fb7bd98585379f3920ed5fbca75bf4094b"
         },
         {
           "path": "src-ui/src/workspace-panes/workspacePaneHostRuntime.ts",
@@ -6378,7 +6381,8 @@
         "Integration source review through e0314c727: the document's own delta repoints the module-map link from #collaborativeeditorpane to #projecttaskroom and records that the unmounted editor controller was deleted. The anchor resolves to '## ProjectTaskRoom' and src-shared/collaborative-editor-pane.ts is gone, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) made FilePreviewPane helpers module-private and made AMBIENT_CHAT_DOCK_DOCUMENT_ID private. It also removed createAmbientChatDockPaneDocument and dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry. There is no behavior change, the linked files still exist, and the doc names none of the removed exports. Prose accurate. Source review is separate from executed test evidence.",
         "Rewrote the Coding pane entry and the coding-workspace composition bullet for the coding stack: the Coding occurrence gates the host but is the stack's Chat page; CodingChatPane keeps useCodingChatPositionEffects (phone dock, File Preview intent) run by CodingWorkbench on its Chat page; the drill-in host is chromeless with navigationSelection='explicit'. Checked navigation-store (adjacentLocation is additive; selection still written only through the store), region-model suspension (read view only), workspacePaneHostNavigation (workspacePaneHostSelectionIsNamed). Executed CodingWorkbench, ProjectLayoutRenderer and WorkspacePaneHost vitest suites.",
-        "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change."
+        "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change.",
+        "Fix round on the coding stack reviewed against this document's claims: CommandPalette's 'Open chat dock', turnAttentionNotifications, useShareToConversation and useActiveChatSessionLifecycle now open Chat through showChatPageOrDock (the Coding centre's Chat page when it owns Chat, the dock otherwise); ChatDock no longer closes the dock from a full-screen Chat; workspacePaneHostNavigation gains replaceWorkspacePaneHostSelection. No route, API, SDK, config or shortcut contract cited here changed; no prose change."
       ]
     },
     {
@@ -7699,7 +7703,7 @@
     {
       "path": "docs/design/developer-surface.md",
       "documentDigest": "3e059dd4826272938ae5312a05969db0217074a7592bba4c2edd8586ed35b616",
-      "sourceRevision": "adcb57024f39f6b546a2589d81e68dc526a85b29",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the full route/tab/redirect and shortcut note against routing, App registrations, DeveloperView and the Telemetry wrapper.",
@@ -7715,7 +7719,7 @@
         },
         {
           "path": "src-ui/src/contexts/KeyboardShortcutsContext.tsx",
-          "digest": "939eb7cbf2c2bbcb15679950a08f02f0e16190c4f69851e5e9022a6be2ba74f2"
+          "digest": "f245dcc79cecb5b79bc5b05a96d61167632a6ff054fb15b9bfbb17732a478fc7"
         },
         {
           "path": "src-ui/src/views/DeveloperView.tsx",
@@ -7736,7 +7740,8 @@
         "154 Developer view/body and routing tests passed.",
         "Reviewed integration deltas: src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged.",
         "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended.",
-        "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change."
+        "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change.",
+        "Fix round on the coding stack reviewed against this document's claims: CommandPalette's 'Open chat dock', turnAttentionNotifications, useShareToConversation and useActiveChatSessionLifecycle now open Chat through showChatPageOrDock (the Coding centre's Chat page when it owns Chat, the dock otherwise); ChatDock no longer closes the dock from a full-screen Chat; workspacePaneHostNavigation gains replaceWorkspacePaneHostSelection. No route, API, SDK, config or shortcut contract cited here changed; no prose change."
       ]
     },
     {
@@ -8921,8 +8926,8 @@
     },
     {
       "path": "docs/design/placement.md",
-      "documentDigest": "4505edecd02c3ebbbffe60e7dba03086386938a0cfcd0de0d79c7c12a9ecb55b",
-      "sourceRevision": "adcb57024f39f6b546a2589d81e68dc526a85b29",
+      "documentDigest": "f83981b23d8c0f5a769cc7a9339205b9e2f5f4aded9ad563daab1bc7ffd8a29f",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8970,7 +8975,7 @@
         },
         {
           "path": "src-ui/src/app-shell/ProjectLayoutRenderer.tsx",
-          "digest": "ff74ad068e05d7a510537ec17283dbdd9f02cbf52394402069cec1967b0ab510"
+          "digest": "b340e614d5909ad504b03f5ba8fe13cc5688dabca8ed0f88429288708f72173e"
         },
         {
           "path": "src-ui/src/app-shell/RegionShells.tsx",
@@ -8986,7 +8991,7 @@
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDock.tsx",
-          "digest": "69b87aed0f9d074240a0f333e5cb4370a03611fb83ad33a8730547dbee5cb095"
+          "digest": "3c424a624a485b680e8bdb76bbed9c3c3dfb6f39b237556fb6e32fa772b92ee3"
         },
         {
           "path": "src-ui/src/components/chat-dock/DockShell.tsx",
@@ -9014,11 +9019,11 @@
         },
         {
           "path": "src-ui/src/components/header/RegionToolbarControls.tsx",
-          "digest": "35c20732eafa59a6809be32b09b8fb7ecaf070a7d74d823942b8c856c5d178f4"
+          "digest": "1c97058bfab1e930795e2807b2b20f00d7536bf91c09e53d221505be630c7d08"
         },
         {
           "path": "src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx",
-          "digest": "20ac29aaa45741a37706c81a7531675a23bdcbe9e82f61e92ddd46a47e6d1877"
+          "digest": "470ea53ccefa5a886d452dc8220efbd61980d55325e84fa5288420595923dab0"
         },
         {
           "path": "src-ui/src/components/header/useRegionSurfaceMenu.ts",
@@ -9078,7 +9083,7 @@
         },
         {
           "path": "src-ui/src/contexts/useShowSurface.ts",
-          "digest": "daaef1feade493609a108b05caceca894e81ca8bb2633cdbff7ab94565162cd7"
+          "digest": "653773c140b74a6a7575438b7a56f0f6d9671eeabd63186d6506886e95a1be92"
         },
         {
           "path": "src-ui/src/hooks/useDockShellChrome.ts",
@@ -9194,7 +9199,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/workspacePaneHostController.ts",
-          "digest": "7211478190a50176c0fe93ea693a217260a9482af29c6fa3a9c9c81cee8a1172"
+          "digest": "7c6dc6af073f74e6c856baa433bd7ffa220baab87f0cc80002cf721e0225974e"
         },
         {
           "path": "src-ui/src/workspace-panes/workspacePaneHostStorage.ts",
@@ -9226,7 +9231,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
         "Added the dated coding-stack amendment (2026-09-29) and traced each claim to source: resolveLayoutChatPlacement (project-layout-kind.ts) and App's LayoutChatPlacementContext; SuspendRegionSurfaces/useSuspendedRegionModel/withSuspendedSurfaces/restoreSuspendedPanes (RegionModelContext.tsx, region-model.ts) as used by RegionShells and RegionToolbarControls; requestCenterChatPage/deliverSurfaceIntent in useShowSurface and the toolbar chord; ChatWorkspacePane conversationScope/onScreen/ownsDockShortcuts; CodingWorkbench + codingStackPage page derivation, explicit selection mode in workspacePaneHostController, chromeless host, rail/breadcrumb/chords, navigation-store adjacentLocation bound; persisted-document restore via restoreWorkspacePaneHostDocument. Executed: vitest suites RegionShells.centerChat, CodingWorkbench, ProjectLayoutRenderer, WorkspacePaneHost, codingStackPersistedDocument, navigation-store-adjacent-entries, AppHomeRoute, RegionToolbarControls; Playwright coding-stack-navigation (1280/390). Earlier sections left as dated history; the amendment states its supersession. Limits: bottom-only devices and session-bound docks unchanged; not re-measured on physical devices.",
-        "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change."
+        "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change.",
+        "Fix round on the coding stack: added the early-state Chat page (ProjectLayoutRenderer chatOnly), the no-fallback chord/showSurface and showChatPageOrDock writers (CommandPalette, turnAttentionNotifications, useShareToConversation, useActiveChatSessionLifecycle; ChatDock no longer closes the dock from a full-screen Chat), declining shortcut handlers and the stack chords' editable/no-history decline, replaceWorkspacePaneHostSelection and shown-pane resolution, focus/announcement on page change, and the 768px remount limit. Executed: CodingWorkbench, ProjectLayoutRenderer, WorkspacePaneHost, KeyboardShortcuts.declined, RegionToolbarControls vitest; coding-stack-navigation (12) and render-storm e2e."
       ]
     },
     {
@@ -14809,8 +14815,8 @@
     },
     {
       "path": "docs/guides/keyboard-shortcuts.md",
-      "documentDigest": "ea0091f679507ccc61de0724d1fa57af4ca2eea954ee7502d5f1033b64d3f131",
-      "sourceRevision": "5bc39d324d26c7d17fc8ee142408ff36d6f80f7b",
+      "documentDigest": "663f84eafdc712738e549ca807fee9ef3d1c6afee7a7dc17e5a3f76d6fb6aaee",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide checked against capture, local settings, dispatch, current registered defaults, limited warning/conflict hints and mobile layout. Known Space mismatch and hint derivation are explicit, with backlog links.",
@@ -14826,7 +14832,7 @@
         },
         {
           "path": "src-ui/src/contexts/KeyboardShortcutsContext.tsx",
-          "digest": "939eb7cbf2c2bbcb15679950a08f02f0e16190c4f69851e5e9022a6be2ba74f2"
+          "digest": "f245dcc79cecb5b79bc5b05a96d61167632a6ff054fb15b9bfbb17732a478fc7"
         },
         {
           "path": "src-ui/src/hooks/useIsMobile.ts",
@@ -14854,7 +14860,8 @@
         "Independent mounted Space probe: baseline 4/4 passed, 4 passed and one intended assertion failed under the probe, exact restoration 4/4 passed.",
         "65 lines of registry commentary removed while retaining regression rationale; independent TSX comparison confirmed identical executable output.",
         "Independent final guide/module/README delta accepted. Public Pages external source-route link preserved; learning reader maps it locally.",
-        "Reviewed source changes: Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser."
+        "Reviewed source changes: Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
+        "Fix round on the coding stack: KeyboardShortcutsContext dispatch now lets a handler return false to decline (no preventDefault, next match tried); documented that and the stack chords' use of it. Executed KeyboardShortcuts.declined and CodingWorkbench vitest."
       ]
     },
     {
@@ -21921,7 +21928,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "adcb57024f39f6b546a2589d81e68dc526a85b29",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -22542,7 +22549,7 @@
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDock.tsx",
-          "digest": "69b87aed0f9d074240a0f333e5cb4370a03611fb83ad33a8730547dbee5cb095"
+          "digest": "3c424a624a485b680e8bdb76bbed9c3c3dfb6f39b237556fb6e32fa772b92ee3"
         },
         {
           "path": "src-ui/src/components/chat-dock/retry-attachments.ts",
@@ -22634,7 +22641,8 @@
         "Rechecked the continuation-caller paragraph (it still rebuilds the target from the binding and forwards the model choice, now via this Station's route for a saved Environment) and the pairing-scope and deadline statements; none lists the removed credential or caller-delegation routes. After merging main 91472e665, re-read main's edits (the /api/branding theme override surface, and dropping the legacy scheduler provider sentence); neither touches the continuation-caller, pairing-scope or deadline statements checked above.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended.",
-        "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change."
+        "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change.",
+        "Fix round on the coding stack reviewed against this document's claims: CommandPalette's 'Open chat dock', turnAttentionNotifications, useShareToConversation and useActiveChatSessionLifecycle now open Chat through showChatPageOrDock (the Coding centre's Chat page when it owns Chat, the dock otherwise); ChatDock no longer closes the dock from a full-screen Chat; workspacePaneHostNavigation gains replaceWorkspacePaneHostSelection. No route, API, SDK, config or shortcut contract cited here changed; no prose change."
       ]
     },
     {
@@ -23062,7 +23070,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "adcb57024f39f6b546a2589d81e68dc526a85b29",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23307,7 +23315,7 @@
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDock.tsx",
-          "digest": "69b87aed0f9d074240a0f333e5cb4370a03611fb83ad33a8730547dbee5cb095"
+          "digest": "3c424a624a485b680e8bdb76bbed9c3c3dfb6f39b237556fb6e32fa772b92ee3"
         },
         {
           "path": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
@@ -23342,7 +23350,8 @@
         "Re-read 'config reference' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route; pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended.",
-        "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change."
+        "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change.",
+        "Fix round on the coding stack reviewed against this document's claims: CommandPalette's 'Open chat dock', turnAttentionNotifications, useShareToConversation and useActiveChatSessionLifecycle now open Chat through showChatPageOrDock (the Coding centre's Chat page when it owns Chat, the dock otherwise); ChatDock no longer closes the dock from a full-screen Chat; workspacePaneHostNavigation gains replaceWorkspacePaneHostSelection. No route, API, SDK, config or shortcut contract cited here changed; no prose change."
       ]
     },
     {
@@ -24366,7 +24375,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25123,7 +25132,7 @@
         },
         {
           "path": "src-ui/src/components/CommandPalette.tsx",
-          "digest": "721cba920da20e4f1cfd31b595e4bcb0c024f45a7763284c26bc3bb1c1dfb7f8"
+          "digest": "0241fb9c1909662dace6b8054477c4340bde4838fe05b9f924253a5f075ca686"
         },
         {
           "path": "src-ui/src/components/EnvironmentPicker.tsx",
@@ -25203,7 +25212,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
-          "digest": "5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61"
+          "digest": "2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349"
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
@@ -25368,7 +25377,8 @@
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Rechecked the SDK reference against the body-read deadline change: it documents no unreadable-body message for a timeout, and the typed error surfaces it names are unchanged; the changeset carries the new behaviour. After merging main 91472e665, re-read main's new useBrandingQuery and usePullRequestMergeabilityQuery entries. useBrandingQuery's 'an error answer rejects rather than resolving as no branding' still holds; on the combined tree fetchBranding's body-read catch now uses unlessDeadline, so a mid-body deadline rejects as StationRequestTimeoutError rather than 'Branding request was not successful' (the changeset's every-.catch claim now covers it).",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Fix round on the coding stack reviewed against this document's claims: CommandPalette's 'Open chat dock', turnAttentionNotifications, useShareToConversation and useActiveChatSessionLifecycle now open Chat through showChatPageOrDock (the Coding centre's Chat page when it owns Chat, the dock otherwise); ChatDock no longer closes the dock from a full-screen Chat; workspacePaneHostNavigation gains replaceWorkspacePaneHostSelection. No route, API, SDK, config or shortcut contract cited here changed; no prose change."
       ]
     },
     {
@@ -25788,7 +25798,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -26004,7 +26014,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
-          "digest": "5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61"
+          "digest": "2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349"
         }
       ],
       "checks": [
@@ -26036,7 +26046,8 @@
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); session-agent-resolution.ts (never-read provider input removed); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); station-docs-content.ts (regenerated module-map scheduler paragraph); claims unaffected. 2026-09-28 test-audit follow-up: removed the sentence 'Other scheduler providers have their own capabilities.' because addProvider was deleted and only the built-in provider can exist; station-docs-content.ts regenerated with npm run docs:mcp:generate. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). station-control still needs an instance credential over reviewed channels and remains subject to caller authority; the prose remains accurate. Source review only.",
-        "Re-read 'Station shipped documentation' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit (drops 'Other scheduler providers have their own capabilities'); no claim about SDK body-read deadlines."
+        "Re-read 'Station shipped documentation' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit (drops 'Other scheduler providers have their own capabilities'); no claim about SDK body-read deadlines.",
+        "Fix round on the coding stack reviewed against this document's claims: CommandPalette's 'Open chat dock', turnAttentionNotifications, useShareToConversation and useActiveChatSessionLifecycle now open Chat through showChatPageOrDock (the Coding centre's Chat page when it owns Chat, the dock otherwise); ChatDock no longer closes the dock from a full-screen Chat; workspacePaneHostNavigation gains replaceWorkspacePaneHostSelection. No route, API, SDK, config or shortcut contract cited here changed; no prose change."
       ]
     },
     {
@@ -29918,7 +29929,7 @@
     },
     {
       "path": "packages/sdk/README.md",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "580664464f709bc97483a6c6a1743ef654ddc400",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements. Follow-up: Directory-source paragraph traced through install helper and actual target-source resolver. Final wording explicitly names automatic source categories and refuses explicit/saved localhost targets.",
@@ -30011,7 +30022,7 @@
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
-          "digest": "5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61"
+          "digest": "2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349"
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
@@ -30041,7 +30052,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read '@kontourai/station-sdk' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Fix round on the coding stack reviewed against this document's claims: CommandPalette's 'Open chat dock', turnAttentionNotifications, useShareToConversation and useActiveChatSessionLifecycle now open Chat through showChatPageOrDock (the Coding centre's Chat page when it owns Chat, the dock otherwise); ChatDock no longer closes the dock from a full-screen Chat; workspacePaneHostNavigation gains replaceWorkspacePaneHostSelection. No route, API, SDK, config or shortcut contract cited here changed; no prose change."
       ]
     },
     {

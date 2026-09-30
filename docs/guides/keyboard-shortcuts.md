@@ -30,6 +30,10 @@ It checks the registered `when` expression and current input/modal state before
 running a handler. An active modal suppresses global registry shortcuts;
 Escape and chat shortcuts have additional input-ownership rules. A visible
 row or saved binding does not bypass those conditions or a browser-reserved key.
+A handler that returns `false` declines the key: it is not prevented, the next
+matching shortcut is tried, and otherwise the browser keeps it (the Coding
+stack's Back/Forward chords decline in text fields and when there is nowhere
+to go).
 
 The editor's replacement dialog considers the first matching enabled command.
 It does not analyze all conditional overlaps or guarantee that restoring a

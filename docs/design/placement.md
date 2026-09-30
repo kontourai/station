@@ -1470,10 +1470,36 @@ into from it.
   pane and its state, and a first load lands on the Chat page with no drill-in
   open.
 
+- **Chat never goes missing, and the dock is left as the reader had it.**
+  Every Coding host state before its pane host mounts (the catalog loading or
+  failing, an unavailable Coding occurrence, a composition that cannot be
+  admitted) still renders the Chat page, with that state as a notice. While
+  the centre owns Chat, the Chat chord and `showSurface('chat')` never toggle
+  or reveal the dock, even before the workbench mounts, and the other writers
+  that open the dock (the palette's "Open chat dock", a turn notification, a
+  share, a new session) go through `showChatPageOrDock`. The persisted dock
+  region is unchanged by a visit to the layout.
+- **The chords stay out of text.** A shortcut handler may return `false` to
+  decline its key (`KeyboardShortcutsContext`), which is then neither
+  prevented nor consumed. The stack's chords decline in a text field,
+  contenteditable, CodeMirror or xterm, and when there is nothing to go back
+  or forward to in the layout, so the browser keeps its own Back.
+- **A pane the host lacks is not a ghost page.** A close in explicit
+  selection mode corrects the URL in place (`replaceWorkspacePaneHostSelection`)
+  rather than pushing, and a `?pane=` naming a pane the host does not hold
+  resolves to the pane the host is showing, which the breadcrumb and the rail
+  then name.
+- **Focus follows the reader's move.** A page change the reader made (or one
+  that left focus on the page going inert) moves focus to the composer or to
+  the drill-in page, and a polite live region names the new page.
+
 Limits: bottom-only devices keep the dock (the narrow inbox-root stack is a
 later slice), session-bound docks are not part of this slice, and a layout
 whose catalog issues no drill-in pane mounts no host (the rail then offers no
-"Add pane").
+"Add pane"). Crossing the 768px fold remounts Chat between the centre and the
+dock, so state the Chat pane keeps locally (an unsent draft not yet saved to
+the session, scroll position, an open panel) is not carried across; the
+session and its saved draft are.
 
 ## Failure shapes this design is meant to prevent
 
