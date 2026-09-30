@@ -15,7 +15,15 @@ import {
   within,
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from 'vitest';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -71,6 +79,25 @@ vi.mock('../../highlight/highlight-client', async (importOriginal) => {
 afterEach(() => {
   tokenizeOverride.current = undefined;
 });
+beforeEach(() => {
+  // The Changes toggle's pip reads this on every textual preview; a test that
+  // is not about changes sees "no answer yet".
+  changesQuery.mockReturnValue({
+    isLoading: true,
+    isError: false,
+    data: undefined,
+    refetch: vi.fn(),
+  });
+});
+
+/** Choose one row of the header's ⋯ menu, by its role and name. */
+function chooseMenuAction(
+  name: string | RegExp,
+  role: 'menuitem' | 'menuitemcheckbox' = 'menuitem',
+) {
+  fireEvent.click(screen.getByRole('button', { name: 'More file actions' }));
+  fireEvent.click(screen.getByRole(role, { name }));
+}
 
 /** Shiki is real and cold on first use; allow its first grammar load. */
 const HIGHLIGHT_TIMEOUT_MS = 10_000;
@@ -525,7 +552,11 @@ describe('FilePreviewPane', () => {
   });
 
   test('removes the exact ranged attachment without removing other same-path context', () => {
-    hasFileMock.mockReturnValueOnce(true);
+    // Attached for every render of this test: the menu reads it when opened.
+    hasFileMock.mockReturnValue(true);
+    onTestFinished(() => {
+      hasFileMock.mockReturnValue(false);
+    });
     previewQuery.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -551,9 +582,7 @@ describe('FilePreviewPane', () => {
       }),
     );
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Remove from conversation' }),
-    );
+    chooseMenuAction('Remove from conversation');
     expect(removeFileMock).toHaveBeenCalledWith({
       projectSlug: 'demo',
       path: 'src/example.ts',
@@ -588,9 +617,7 @@ describe('FilePreviewPane', () => {
       }),
     );
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Add to conversation' }),
-    );
+    chooseMenuAction('Add to conversation');
     expect(addFileMock).toHaveBeenCalledWith(
       {
         projectSlug: 'demo',
@@ -921,7 +948,7 @@ describe('FilePreviewPane', () => {
 
     renderPaneAt('README.md');
     fireEvent.click(screen.getByRole('button', { name: 'Source' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Wrap lines' }));
+    chooseMenuAction('Wrap lines', 'menuitemcheckbox');
 
     expect(
       screen
@@ -1035,7 +1062,7 @@ describe('FilePreviewPane', () => {
         content: 'first\nsecond\nthird',
       },
     });
-    render(
+    const { container } = render(
       pane({
         projectSlug: 'demo',
         stateKey: 'file-preview:range',
@@ -1053,12 +1080,24 @@ describe('FilePreviewPane', () => {
       document.getElementById('file-preview-file-preview:range-line-100'),
     ).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Link to line 102' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Wrap lines' }));
+    fireEvent.click(screen.getByRole('button', { name: 'More file actions' }));
+    expect(
+      screen
+        .getByRole('menuitemcheckbox', { name: 'Wrap lines' })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
+    fireEvent.click(
+      screen.getByRole('menuitemcheckbox', { name: 'Wrap lines' }),
+    );
     expect(
       localStorage.getItem(
         'station:file-preview-pane-state:v1:file-preview%3Arange',
       ),
     ).toContain('"wrap":false');
+    // The code block follows the menu, not only the stored preference.
+    expect(
+      (container.querySelector('pre') as HTMLElement).style.whiteSpace,
+    ).toBe('pre');
   });
 
   test('reveals the response-owned first line, not the requested one', () => {
@@ -1381,19 +1420,34 @@ describe('FilePreviewPane', () => {
         },
       });
       renderPaneAt('notes/short.txt');
-      const input = screen.getByLabelText('Go to line');
+      // Closed until asked for: no line input in the pane's chrome.
+      expect(screen.queryByRole('form', { name: 'Go to line' })).toBeNull();
+      chooseMenuAction('Go to line…');
+      const input = screen.getByLabelText('Line');
+      expect(document.activeElement).toBe(input);
+      fireEvent.change(input, { target: { value: '41' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+      expect(
+        screen.getByText('Line 41 is not among the rendered lines 1–40.'),
+      ).toBeTruthy();
+      expect(scrolled).toEqual([]);
       fireEvent.change(input, { target: { value: '37' } });
       fireEvent.click(screen.getByRole('button', { name: 'Go' }));
       expect(scrolled.at(-1)).toBe('file-preview-file-preview:test-line-37');
       expect(document.activeElement).toBe(
         screen.getByRole('link', { name: 'Link to line 37' }),
       );
-      fireEvent.change(input, { target: { value: '41' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Go' }));
-      expect(
-        screen.getByText('Line 41 is not among the rendered lines 1–40.'),
-      ).toBeTruthy();
-      expect(scrolled.at(-1)).toBe('file-preview-file-preview:test-line-37');
+      // A successful jump closes the popover.
+      expect(screen.queryByRole('form', { name: 'Go to line' })).toBeNull();
+
+      // ⌘G / Ctrl+G from inside the pane opens it again; Escape closes it.
+      fireEvent.keyDown(screen.getByRole('link', { name: 'Link to line 37' }), {
+        key: 'g',
+        ctrlKey: true,
+      });
+      const reopened = screen.getByRole('form', { name: 'Go to line' });
+      fireEvent.keyDown(screen.getByLabelText('Line'), { key: 'Escape' });
+      expect(reopened.isConnected).toBe(false);
     } finally {
       delete (HTMLElement.prototype as { scrollIntoView?: unknown })
         .scrollIntoView;
@@ -1414,16 +1468,22 @@ describe('FilePreviewPane', () => {
     const writeText = vi.fn(async () => undefined);
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
     renderPane();
-    fireEvent.click(screen.getByRole('button', { name: 'Copy path' }));
-    expect(await screen.findByText('Copied src/example.ts.')).toBeTruthy();
+    const copy = screen.getByRole('button', { name: 'Copy path' });
+    expect(copy.getAttribute('title')).toBe('Copy path (src/example.ts)');
+    fireEvent.click(copy);
+    // The icon itself confirms: a ✓ and a changed name, only after the write.
+    expect(
+      await screen.findByRole('button', { name: 'Path copied' }),
+    ).toBeTruthy();
     expect(writeText).toHaveBeenCalledWith('src/example.ts');
     writeText.mockRejectedValueOnce(new Error('denied'));
-    fireEvent.click(screen.getByRole('button', { name: 'Copy path' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Path copied' }));
     expect(
       await screen.findByText(
-        'This browser refused clipboard access. Select the path above to copy it.',
+        'This browser refused clipboard access. Select the path to copy it.',
       ),
     ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy path' })).toBeTruthy();
   });
 
   describe('Changes vs HEAD', () => {
@@ -1478,7 +1538,7 @@ index 3b18e51..a0423896 100644
       );
     }
 
-    test('reads nothing until opened, then renders this file patch in the diff surface', async () => {
+    test('marks Changes with the changed-line count, then renders this file patch in the diff surface', async () => {
       readySource();
       changesQuery.mockReset();
       changesQuery.mockReturnValue({
@@ -1487,21 +1547,26 @@ index 3b18e51..a0423896 100644
         data: { state: 'changed', base: 'HEAD', patch: PATCH },
       });
       renderWithClient();
-      expect(changesQuery).not.toHaveBeenCalled();
+      // Same path and session as the preview (a worktree session's file is
+      // diffed in that worktree), read for the pip before the view opens.
+      expect(changesQuery).toHaveBeenCalledWith(
+        'demo',
+        { path: 'src/example.ts', thread: 'thread-7' },
+        expect.objectContaining({ enabled: true }),
+      );
       expect(
         screen
           .getByRole('button', { name: 'File' })
           .getAttribute('aria-pressed'),
       ).toBe('true');
-
-      fireEvent.click(screen.getByRole('button', { name: 'Changes vs HEAD' }));
-
-      // Same path and session as the preview: a worktree session's file is
-      // diffed in that worktree.
-      expect(changesQuery).toHaveBeenCalledWith('demo', {
-        path: 'src/example.ts',
-        thread: 'thread-7',
+      // One line out, one line in: the pip counts both, and says so by name.
+      const changes = screen.getByRole('button', {
+        name: 'Changes vs HEAD, 2 changed lines',
       });
+      expect(changes.textContent).toBe('Changes2');
+
+      fireEvent.click(changes);
+
       const region = await screen.findByRole('region', {
         name: 'src/example.ts changes against HEAD',
       });
@@ -1552,7 +1617,7 @@ index 3b18e51..a0423896 100644
         });
         renderWithClient();
         fireEvent.click(
-          screen.getByRole('button', { name: 'Changes vs HEAD' }),
+          screen.getByRole('button', { name: /^Changes vs HEAD/ }),
         );
         expect(await screen.findByText(text)).toBeTruthy();
         expect(screen.queryByText('No changes')).toBeNull();
@@ -1569,7 +1634,7 @@ index 3b18e51..a0423896 100644
         refetch,
       });
       renderWithClient();
-      fireEvent.click(screen.getByRole('button', { name: 'Changes vs HEAD' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Changes vs HEAD/ }));
       expect(screen.getByRole('alert').textContent).toContain(
         "could not read this file's changes",
       );
@@ -1585,8 +1650,14 @@ index 3b18e51..a0423896 100644
       });
       renderWithClient();
       expect(
-        screen.queryByRole('button', { name: 'Changes vs HEAD' }),
+        screen.queryByRole('button', { name: /^Changes vs HEAD/ }),
       ).toBeNull();
+      // And nothing runs git for it.
+      expect(changesQuery).toHaveBeenCalledWith(
+        'demo',
+        expect.anything(),
+        expect.objectContaining({ enabled: false }),
+      );
     });
   });
 });

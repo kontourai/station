@@ -136,7 +136,7 @@ function base(
   };
 }
 
-function mount() {
+function mount(onBack?: () => void) {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <PullRequestReviewPanel
@@ -148,6 +148,7 @@ function mount() {
           ref: '2049',
           project: 'station',
         }}
+        onBack={onBack}
       />
     </QueryClientProvider>,
   );
@@ -290,5 +291,34 @@ describe('pull request status', () => {
     );
     expect(unplaced.closest('details')?.textContent).toContain('This moved.');
     expect(unplaced.closest('details')?.textContent).toContain('(outdated)');
+  });
+
+  test('one quiet row: icon back, the title, icon refresh and forge link', async () => {
+    snapshot.current = base();
+    const onBack = vi.fn();
+    mount(onBack);
+    const title = await screen.findByRole('heading', {
+      level: 2,
+      name: 'Open panes over Chat',
+    });
+    const bar = title.parentElement as HTMLElement;
+    const controls = within(bar).getAllByRole('button');
+    expect(controls.map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Back to pull requests',
+      'Refresh',
+      'Open on GitHub',
+    ]);
+    for (const control of controls) {
+      // Icon-only, named and tooltipped: no visible words on the bar.
+      expect(control.textContent).toBe('');
+      expect(control.getAttribute('title')).toBeTruthy();
+      expect(control.querySelector('svg')).toBeTruthy();
+    }
+    fireEvent.click(controls[0]);
+    expect(onBack).toHaveBeenCalledTimes(1);
+    fireEvent.click(controls[2]);
+    expect(openExternalLink).toHaveBeenCalledWith(
+      'https://github.com/kontourai/station/pull/2049',
+    );
   });
 });

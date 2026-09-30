@@ -101,13 +101,50 @@
   align-items: center;
   cursor: pointer;
 }
-.pull-request-review__checks .button {
-  min-height: 44px;
-  min-width: 44px;
-}
 .pull-request-review__settled summary {
   min-height: 44px;
   display: flex;
   align-items: center;
   cursor: pointer;
+}
+/* One row: back, title, refresh, open on the forge. */
+.pull-request-review__bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pull-request-review__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+/* 30px icons with a 44px hit area at every width, without a page-local
+   breakpoint (mobile-css-ratchet). */
+.pull-request-review__icon {
+  position: relative;
+  flex-shrink: 0;
+}
+.pull-request-review__icon::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+.pull-request-review__check-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pull-request-review__check-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
 }

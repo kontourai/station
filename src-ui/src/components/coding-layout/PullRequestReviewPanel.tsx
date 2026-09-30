@@ -26,6 +26,11 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { Button } from '../Button';
+import {
+  ArrowLeftGlyph,
+  ExternalLinkGlyph,
+  RefreshGlyph,
+} from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
@@ -104,6 +109,10 @@ function CheckList({ checks }: { checks: readonly PullRequestCheck[] }) {
           <span
             className={`pull-request-review__check-state pull-request-review__check-state--${check.state}`}
           >
+            <span
+              className="pull-request-review__check-dot"
+              aria-hidden="true"
+            />
             {CHECK_STATE_LABEL[check.state]}
           </span>
           <span className="pull-request-review__check-name">
@@ -117,12 +126,13 @@ function CheckList({ checks }: { checks: readonly PullRequestCheck[] }) {
           </span>
           {check.url ? (
             <Button
-              variant="ghost"
-              size="sm"
+              variant="icon"
+              className="pull-request-review__icon"
               aria-label={`Open ${check.name} details`}
+              title={`Open ${check.name} details`}
               onClick={() => void openExternalLink(check.url!)}
             >
-              Details
+              <ExternalLinkGlyph />
             </Button>
           ) : null}
         </li>
@@ -426,27 +436,46 @@ function ReviewOwner({
   };
   return (
     <section className="pull-request-review" aria-label="Pull request review">
-      <ResponsiveSurfaceActions className="pull-request-review__actions">
+      <div className="pull-request-review__bar">
         {onBack && (
-          <Button onClick={() => guard(onBack)}>Back to pull requests</Button>
+          <Button
+            variant="icon"
+            className="pull-request-review__icon"
+            aria-label="Back to pull requests"
+            title="Back to pull requests"
+            onClick={() => guard(onBack)}
+          >
+            <ArrowLeftGlyph />
+          </Button>
         )}
+        <h2 className="pull-request-review__title">
+          {data?.pullRequest.title ?? `#${target.ref}`}
+        </h2>
         <Button
+          variant="icon"
+          className="pull-request-review__icon"
+          aria-label="Refresh"
+          title="Refresh the review from the provider"
           disabled={review.isFetching || pending || !scope?.isCurrent()}
           onClick={() => void review.refetch()}
         >
-          Refresh
+          <RefreshGlyph />
         </Button>
         {data?.pullRequest.url ? (
-          // Beside Refresh rather than in the body, so the way to the forge
-          // is the first thing on screen. On the web it opens a new tab. In
-          // the Station app the host opens what its policy admits (#2480:
-          // any https link, once that widening lands), and any refusal shows
-          // the link with a Copy action rather than nothing.
-          <Button onClick={() => void openExternalLink(data.pullRequest.url)}>
-            {pullRequestExternalLabel(data.pullRequest.url)}
+          // The way to the forge stays on the bar. In the Station app the host
+          // opens what its policy admits (#2480), and any refusal shows the
+          // link with a Copy action rather than nothing.
+          <Button
+            variant="icon"
+            className="pull-request-review__icon"
+            aria-label={pullRequestExternalLabel(data.pullRequest.url)}
+            title={pullRequestExternalLabel(data.pullRequest.url)}
+            onClick={() => void openExternalLink(data.pullRequest.url)}
+          >
+            <ExternalLinkGlyph />
           </Button>
         ) : null}
-      </ResponsiveSurfaceActions>
+      </div>
       {!scope?.isCurrent() ? (
         <ErrorState
           variant="compact"
@@ -472,7 +501,6 @@ function ReviewOwner({
         />
       ) : (
         <>
-          <h2>{data.pullRequest.title}</h2>
           <p>
             {target.host}/{target.owner}/{target.repository} · #{target.ref} ·{' '}
             {data.pullRequest.state}

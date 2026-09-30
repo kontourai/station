@@ -12,10 +12,13 @@ import {
   type WorkspaceFilePreviewStatus,
 } from '@kontourai/station-sdk/workspace-file-preview';
 import {
+  createContext,
   type FormEvent,
   lazy,
+  type KeyboardEvent as ReactKeyboardEvent,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -24,7 +27,9 @@ import {
 } from 'react';
 import { Button } from '../components/Button';
 import { ImageInspector } from '../components/ImageInspector';
+import { CheckGlyph, CopyGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
+import { OverflowMenu } from '../components/OverflowMenu';
 import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { langFromFilePath } from '../highlight/langFromFilePath';
@@ -50,6 +55,10 @@ import { workspacePaneDirectRoute } from './workspacePaneDirectRoute';
 import './FilePreviewPane.css';
 
 const MAX_RENDERED_LINES = 2_000;
+const GO_TO_LINE_SHORTCUT =
+  typeof navigator !== 'undefined' && /Mac|iP(hone|ad)/.test(navigator.platform)
+    ? '⌘G'
+    : 'Ctrl+G';
 const MAX_RENDERED_MARKDOWN_CHARACTERS = 64 * 1024;
 const MAX_RENDERED_MARKDOWN_LINES = 1_000;
 const MAX_RENDERED_MARKDOWN_SYNTAX_TOKENS = 4_096;
@@ -531,44 +540,35 @@ function useFilePreviewMarkdownModeController(
   } as const;
 }
 
-function FilePreviewToolbar({
+/** The line-range status, when a range was asked for or returned. */
+function FilePreviewRangeLine({
   preview,
   state,
-  wrap,
-  updateWrap,
 }: {
   preview: WorkspaceFilePreview;
   state: WorkspaceFilePreviewPaneState;
-  wrap: boolean;
-  updateWrap(next: boolean): void;
 }) {
+  if (!preview.lineRange && !state.lineRange) return null;
   return (
-    <div
-      className="workspace-file-preview__toolbar"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '8px',
-        marginBottom: '6px',
-        fontSize: '11px',
-      }}
-    >
-      <label>
-        <input
-          type="checkbox"
-          checked={wrap}
-          onChange={(event) => updateWrap(event.target.checked)}
-        />{' '}
-        Wrap lines
-      </label>
+    <p className="workspace-file-preview__notice">
       <PreviewRangeStatus
         previewRange={preview.lineRange}
         requestedRange={state.lineRange}
       />
-    </div>
+    </p>
   );
 }
+
+/**
+ * Go to line lives in the header's overflow menu (and ⌘G / Ctrl+G), but only
+ * the source view knows which lines are rendered. The source view says it is
+ * mounted; the header opens the popover it renders.
+ */
+const GoToLineContext = createContext<{
+  open: boolean;
+  close(): void;
+  setAvailable(available: boolean): void;
+}>({ open: false, close() {}, setAvailable() {} });
 
 /**
  * The rendered-line cap, stated before the code rather than after it: a
@@ -598,9 +598,11 @@ function RenderedLineCapNotice({
 function FilePreviewGoToLine({
   lines,
   stateKey,
+  onClose,
 }: {
   lines: readonly FilePreviewLineProjection[];
   stateKey: string;
+  onClose(): void;
 }) {
   const [value, setValue] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -628,24 +630,46 @@ function FilePreviewGoToLine({
     target
       .querySelector<HTMLAnchorElement>('a')
       ?.focus({ preventScroll: true });
+    onClose();
   };
   return (
     // noValidate: the refusal below names the rendered range; the browser's
     // own range bubble would pre-empt it with a message that does not.
-    <form className="workspace-file-preview__goto" onSubmit={submit} noValidate>
+    <form
+      className="workspace-file-preview__goto"
+      aria-label="Go to line"
+      onSubmit={submit}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        onClose();
+      }}
+      noValidate
+    >
       <label>
-        Go to line
+        Line
         <input
           type="number"
           inputMode="numeric"
           min={first}
           max={last}
           value={value}
+          placeholder={`${first}–${last}`}
+          // biome-ignore lint/a11y/noAutofocus: the popover exists to take this one input; the shortcut that opened it expects to type.
+          autoFocus
           onChange={(event) => setValue(event.target.value)}
         />
       </label>
       <Button type="submit" size="sm" disabled={!value}>
         Go
+      </Button>
+      <Button
+        variant="icon"
+        aria-label="Close go to line"
+        title="Close (Esc)"
+        onClick={onClose}
+      >
+        ×
       </Button>
       {notice && <span role="status">{notice}</span>}
     </form>
@@ -684,6 +708,12 @@ function FilePreviewSourceLines({
     if (typeof target?.scrollIntoView === 'function')
       target.scrollIntoView({ block: 'center' });
   }, [revealLine, stateKey]);
+  const goTo = useContext(GoToLineContext);
+  const { setAvailable } = goTo;
+  useEffect(() => {
+    setAvailable(true);
+    return () => setAvailable(false);
+  }, [setAvailable]);
 
   return (
     <>
@@ -693,7 +723,13 @@ function FilePreviewSourceLines({
           {syntax.reason}
         </p>
       )}
-      <FilePreviewGoToLine lines={lines} stateKey={stateKey} />
+      {goTo.open && (
+        <FilePreviewGoToLine
+          lines={lines}
+          stateKey={stateKey}
+          onClose={goTo.close}
+        />
+      )}
       <section
         aria-label={`${state.path} source`}
         aria-busy={syntax.status === 'pending' || undefined}
@@ -725,20 +761,12 @@ function ReadyPreview(props: {
   preview: WorkspaceFilePreview;
   state: WorkspaceFilePreviewPaneState;
   stateKey: string;
+  wrap: boolean;
 }) {
-  const { wrap, updateWrap } = useFilePreviewWrapController(
-    props.stateKey,
-    props.state,
-  );
   return (
     <>
-      <FilePreviewToolbar
-        preview={props.preview}
-        state={props.state}
-        wrap={wrap}
-        updateWrap={updateWrap}
-      />
-      <FilePreviewSourceLines {...props} wrap={wrap} />
+      <FilePreviewRangeLine preview={props.preview} state={props.state} />
+      <FilePreviewSourceLines {...props} />
     </>
   );
 }
@@ -748,47 +776,18 @@ function MarkdownPreviewToolbar({
   state,
   mode,
   forcedSource,
-  wrap,
   updateMode,
-  updateWrap,
 }: {
   preview: WorkspaceFilePreview;
   state: WorkspaceFilePreviewPaneState;
   mode: 'rendered' | 'source';
   forcedSource: boolean;
-  wrap: boolean;
   updateMode(next: 'rendered' | 'source'): void;
-  updateWrap(next: boolean): void;
 }) {
   return (
-    <div
-      className="workspace-file-preview__toolbar"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '8px',
-        marginBottom: '8px',
-        fontSize: '11px',
-      }}
-    >
-      <fieldset
-        style={{
-          border: 0,
-          padding: 0,
-          margin: 0,
-          display: 'inline-flex',
-        }}
-      >
-        <legend
-          style={{
-            position: 'absolute',
-            width: '1px',
-            height: '1px',
-            overflow: 'hidden',
-            clip: 'rect(0 0 0 0)',
-          }}
-        >
+    <div className="workspace-file-preview__toolbar">
+      <fieldset className="workspace-file-preview__segmented">
+        <legend className="workspace-file-preview__visually-hidden">
           Markdown preview mode
         </legend>
         <button
@@ -807,16 +806,6 @@ function MarkdownPreviewToolbar({
           Source
         </button>
       </fieldset>
-      {mode === 'source' && (
-        <label>
-          <input
-            type="checkbox"
-            checked={wrap}
-            onChange={(event) => updateWrap(event.target.checked)}
-          />{' '}
-          Wrap lines
-        </label>
-      )}
       <PreviewRangeStatus
         previewRange={preview.lineRange}
         requestedRange={state.lineRange}
@@ -909,11 +898,8 @@ function ReadyMarkdownPreview(props: {
   preview: WorkspaceFilePreview;
   state: WorkspaceFilePreviewPaneState;
   stateKey: string;
+  wrap: boolean;
 }) {
-  const { wrap, updateWrap } = useFilePreviewWrapController(
-    props.stateKey,
-    props.state,
-  );
   const { mode, forcedSource, updateMode } =
     useFilePreviewMarkdownModeController(props.stateKey, props.state);
   return (
@@ -923,12 +909,10 @@ function ReadyMarkdownPreview(props: {
         state={props.state}
         mode={mode}
         forcedSource={forcedSource}
-        wrap={wrap}
         updateMode={updateMode}
-        updateWrap={updateWrap}
       />
       {mode === 'source' ? (
-        <FilePreviewSourceLines {...props} wrap={wrap} />
+        <FilePreviewSourceLines {...props} />
       ) : (
         <InertRenderedMarkdown content={props.preview.content ?? ''} />
       )}
@@ -996,6 +980,7 @@ function PreviewContent(props: {
   preview: WorkspaceFilePreview;
   state: WorkspaceFilePreviewPaneState;
   stateKey: string;
+  wrap: boolean;
 }) {
   const status = <PreviewStatus preview={props.preview} />;
   return props.preview.status === 'ready' &&
@@ -1120,6 +1105,59 @@ function FilePreviewChanges({
 
 type FilePreviewView = 'file' | 'changes';
 
+/** Lines a patch adds or removes, excluding its file headers. */
+export function changedLineCount(patch: string): number {
+  let count = 0;
+  for (const line of patch.split('\n'))
+    if (
+      (line.startsWith('+') && !line.startsWith('+++')) ||
+      (line.startsWith('-') && !line.startsWith('---'))
+    )
+      count += 1;
+  return count;
+}
+
+/**
+ * The path as a quiet breadcrumb: project and folders muted and allowed to
+ * truncate, the file name bold and always whole. The full path and its type
+ * are the tooltip.
+ */
+function FilePreviewBreadcrumb({
+  projectSlug,
+  path,
+  detail,
+}: {
+  projectSlug: string;
+  path: string;
+  detail: string;
+}) {
+  const segments = path.split('/');
+  const file = segments.pop() || path;
+  return (
+    <nav
+      className="workspace-file-preview__crumbs"
+      aria-label="File path"
+      title={`${projectSlug} / ${path} · ${detail}`}
+    >
+      <span className="workspace-file-preview__crumbs-lead">
+        {[projectSlug, ...segments].map((segment, index) => (
+          // Positional: the same folder name can repeat along one path.
+          <span key={index}>
+            {segment}
+            <span
+              className="workspace-file-preview__crumb-sep"
+              aria-hidden="true"
+            >
+              {' / '}
+            </span>
+          </span>
+        ))}
+      </span>
+      <strong className="workspace-file-preview__crumb-file">{file}</strong>
+    </nav>
+  );
+}
+
 /** A data-only, project-bound source/text renderer. Host chrome owns close and tabs. */
 export function FilePreviewPane({
   projectSlug,
@@ -1142,6 +1180,20 @@ export function FilePreviewPane({
   const { addFile, has, removeFile } = useCodingFilesContext();
   const catalog = useResolvedWorkspacePaneCatalog(projectSlug);
   const [contextNotice, setContextNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
+  const { wrap, updateWrap } = useFilePreviewWrapController(stateKey, state);
+  const [gotoOpen, setGotoOpen] = useState(false);
+  const [gotoAvailable, setGotoAvailable] = useState(false);
+  const goToLine = useMemo(
+    () => ({
+      open: gotoOpen && gotoAvailable,
+      close: () => setGotoOpen(false),
+      setAvailable: setGotoAvailable,
+    }),
+    [gotoAvailable, gotoOpen],
+  );
   // Per path: a different file opens on its content, not a stale Changes view.
   const [viewFor, setViewFor] = useState<{
     path: string;
@@ -1161,7 +1213,20 @@ export function FilePreviewPane({
     (import.meta.env.MODE === 'test' ||
       import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1') &&
     query.isFetching;
-  const fileName = state.path.split('/').pop() || state.path;
+  const textual =
+    query.data?.status === 'ready' &&
+    ['source', 'text', 'markdown'].includes(query.data.renderKind);
+  // The Changes toggle's pip needs the answer before the view is opened; the
+  // Changes view reads the same cached query.
+  const changesQuery = useProjectWorkspaceFileChangesQuery(
+    projectSlug,
+    { path: state.path, ...(state.thread ? { thread: state.thread } : {}) },
+    { enabled: textual, staleTime: 15_000 },
+  );
+  const changedLines =
+    changesQuery.data?.state === 'changed'
+      ? changedLineCount(changesQuery.data.patch)
+      : 0;
   const intent = parseWorkspaceOpenFilePreviewIntent({
     projectSlug: state.projectSlug,
     path: state.path,
@@ -1245,13 +1310,19 @@ export function FilePreviewPane({
   ]);
 
   const copyPath = () => {
-    void copyToClipboard(state.path).then((copied) =>
-      setContextNotice(
-        copied
-          ? `Copied ${state.path}.`
-          : 'This browser refused clipboard access. Select the path above to copy it.',
-      ),
-    );
+    void copyToClipboard(state.path).then((ok) => {
+      window.clearTimeout(copiedTimer.current);
+      if (!ok) {
+        setCopied(false);
+        setContextNotice(
+          'This browser refused clipboard access. Select the path to copy it.',
+        );
+        return;
+      }
+      setContextNotice(null);
+      setCopied(true);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1500);
+    });
   };
 
   const copyDirectLink = () => {
@@ -1268,7 +1339,22 @@ export function FilePreviewPane({
   };
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: a scoped keyboard shortcut (⌘G / Ctrl+G) for the pane's focused content, not a control.
+    <div
+      className="workspace-file-preview"
+      onKeyDown={(event: ReactKeyboardEvent) => {
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
+          event.key.toLowerCase() === 'g' &&
+          gotoAvailable &&
+          view === 'file'
+        ) {
+          event.preventDefault();
+          setGotoOpen(true);
+        }
+      }}
+    >
       {import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE ===
       '1' ? (
         <ReferenceFilePreviewRefresh
@@ -1278,70 +1364,112 @@ export function FilePreviewPane({
           completed={setCompletedRefresh}
         />
       ) : null}
-      <div className="workspace-file-preview__header">
-        <div className="workspace-file-preview__path">
-          {state.projectSlug} / {state.path}
-        </div>
-        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-          {fileName} ·{' '}
-          {query.data?.mimeType ?? langFromFilePath(state.path) ?? 'text'}
-        </div>
-        <div className="workspace-file-preview__actions">
-          <Button
-            size="sm"
-            onClick={() => {
-              if (!revealRoute || !intent) return;
-              const params = serializeOpenFilePreviewIntent(intent);
-              if (params) navigate(revealRoute, params);
-            }}
-            disabled={!revealRoute}
-          >
-            Reveal in Files
-          </Button>
-          <Button size="sm" onClick={copyPath}>
-            Copy path
-          </Button>
-          <Button size="sm" onClick={copyDirectLink} disabled={!directLink}>
-            Copy preview link
-          </Button>
-          <Button
-            size="sm"
-            onClick={
-              attachedToConversation
-                ? removeFromConversation
-                : addToConversation
-            }
-            disabled={
-              !intent ||
-              (!attachedToConversation && query.data?.status !== 'ready')
-            }
-          >
-            {attachedToConversation
-              ? 'Remove from conversation'
-              : 'Add to conversation'}
-          </Button>
-        </div>
-        {contextNotice && <p role="status">{contextNotice}</p>}
-        {query.data?.status === 'ready' &&
-          ['source', 'text', 'markdown'].includes(query.data.renderKind) && (
-            <fieldset className="workspace-file-preview__view">
-              <legend className="workspace-file-preview__visually-hidden">
-                Preview view
-              </legend>
-              {(['file', 'changes'] as const).map((option) => (
-                <Button
-                  key={option}
-                  size="sm"
-                  variant={view === option ? 'primary' : 'secondary'}
-                  aria-pressed={view === option}
-                  onClick={() => setViewFor({ path: state.path, view: option })}
+      <div className="workspace-file-preview__bar">
+        <FilePreviewBreadcrumb
+          projectSlug={state.projectSlug}
+          path={state.path}
+          detail={
+            query.data?.mimeType ?? langFromFilePath(state.path) ?? 'text'
+          }
+        />
+        {textual && (
+          <fieldset className="workspace-file-preview__segmented">
+            <legend className="workspace-file-preview__visually-hidden">
+              Preview view
+            </legend>
+            <button
+              type="button"
+              aria-pressed={view === 'file'}
+              title="The file as it is now"
+              onClick={() => setViewFor({ path: state.path, view: 'file' })}
+            >
+              File
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === 'changes'}
+              aria-label={
+                changedLines > 0
+                  ? `Changes vs HEAD, ${changedLines} changed line${changedLines === 1 ? '' : 's'}`
+                  : 'Changes vs HEAD'
+              }
+              title="Changes against the last commit (HEAD)"
+              onClick={() => setViewFor({ path: state.path, view: 'changes' })}
+            >
+              Changes
+              {changedLines > 0 && (
+                <span
+                  className="workspace-file-preview__pip"
+                  aria-hidden="true"
                 >
-                  {option === 'file' ? 'File' : 'Changes vs HEAD'}
-                </Button>
-              ))}
-            </fieldset>
-          )}
+                  {changedLines > 99 ? '99+' : changedLines}
+                </span>
+              )}
+            </button>
+          </fieldset>
+        )}
+        <Button
+          variant="icon"
+          className="workspace-file-preview__icon"
+          aria-label={copied ? 'Path copied' : 'Copy path'}
+          title={copied ? 'Copied' : `Copy path (${state.path})`}
+          onClick={copyPath}
+        >
+          {copied ? <CheckGlyph /> : <CopyGlyph />}
+        </Button>
+        <OverflowMenu
+          label="More file actions"
+          className="workspace-file-preview__icon"
+          items={[
+            {
+              key: 'reveal',
+              label: 'Reveal in Files',
+              disabled: !revealRoute,
+              onSelect: () => {
+                if (!revealRoute || !intent) return;
+                const params = serializeOpenFilePreviewIntent(intent);
+                if (params) navigate(revealRoute, params);
+              },
+            },
+            {
+              key: 'link',
+              label: 'Copy preview link',
+              disabled: !directLink,
+              onSelect: copyDirectLink,
+            },
+            {
+              key: 'conversation',
+              label: attachedToConversation
+                ? 'Remove from conversation'
+                : 'Add to conversation',
+              disabled:
+                !intent ||
+                (!attachedToConversation && query.data?.status !== 'ready'),
+              onSelect: attachedToConversation
+                ? removeFromConversation
+                : addToConversation,
+            },
+            {
+              key: 'wrap',
+              label: 'Wrap lines',
+              checked: wrap,
+              onSelect: () => updateWrap(!wrap),
+            },
+            {
+              key: 'goto',
+              label: 'Go to line…',
+              shortcut: GO_TO_LINE_SHORTCUT,
+              disabled: !gotoAvailable || view !== 'file',
+              onSelect: () => setGotoOpen(true),
+            },
+          ]}
+        />
       </div>
+      {contextNotice && (
+        <p role="status" className="workspace-file-preview__status">
+          {contextNotice}
+        </p>
+      )}
       <div
         ref={performanceSurfaceRef}
         data-station-performance-surface="workspace-file-preview"
@@ -1399,11 +1527,14 @@ export function FilePreviewPane({
             thread={state.thread}
           />
         ) : query.data ? (
-          <PreviewContent
-            preview={query.data}
-            state={state}
-            stateKey={stateKey}
-          />
+          <GoToLineContext.Provider value={goToLine}>
+            <PreviewContent
+              preview={query.data}
+              state={state}
+              stateKey={stateKey}
+              wrap={wrap}
+            />
+          </GoToLineContext.Provider>
         ) : (
           <div role="status">
             <Empty

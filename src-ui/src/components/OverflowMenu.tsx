@@ -133,12 +133,12 @@ export function OverflowMenu({
                     </span>
                     {item.label}
                     {item.shortcut ? (
-                      <kbd
+                      <span
                         className="overflow-menu__shortcut"
                         aria-hidden="true"
                       >
                         {item.shortcut}
-                      </kbd>
+                      </span>
                     ) : null}
                   </button>
                 ))}
