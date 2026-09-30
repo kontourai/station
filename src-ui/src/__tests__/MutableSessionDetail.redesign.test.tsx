@@ -553,6 +553,47 @@ describe('fix round', () => {
     );
   });
 
+  test.each([
+    ['a heading in another pane', 'outside'],
+    ["this detail's evidence region (deep link)", 'evidence'],
+  ])(
+    'when a turn ends, focus deliberately on %s is left where it is',
+    (_label, where) => {
+      const queryClient = new QueryClient();
+      const tree = (session: any) => (
+        <QueryClientProvider client={queryClient}>
+          <MutableSessionDetail
+            apiBase="http://station.test"
+            session={session}
+            onTaskChanged={vi.fn()}
+            events={[]}
+            connected
+            visualViewport={{ style: {}, height: 900 } as any}
+          />
+        </QueryClientProvider>
+      );
+      const view = render(tree(baseSession()));
+      const outside = document.createElement('h2');
+      outside.tabIndex = -1;
+      outside.textContent = 'Another pane';
+      document.body.append(outside);
+      try {
+        const target =
+          where === 'outside'
+            ? outside
+            : screen.getByTestId('session-evidence-region');
+        target.focus();
+        expect(document.activeElement).toBe(target);
+        view.rerender(
+          tree(baseSession({ lifecycleState: 'idle', hasActiveTurn: false })),
+        );
+        expect(document.activeElement).toBe(target);
+      } finally {
+        outside.remove();
+      }
+    },
+  );
+
   test('when Stop… goes away with focus on nothing, focus lands on Open in chat, not <body>', () => {
     const queryClient = new QueryClient();
     const tree = (session: any) => (

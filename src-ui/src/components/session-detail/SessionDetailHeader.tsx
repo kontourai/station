@@ -68,20 +68,30 @@ export function SessionDetailHeader({
     const lost = stopWasShown.current && !showStop;
     stopWasShown.current = showStop;
     if (!lost) return;
-    // Focus is stranded when it sits on nothing a user can operate: <body>, a
-    // detached node, or a container that only took programmatic focus (the
-    // return-focus walk climbs to one when the Stop… it would restore is
-    // gone). Checked now and again after a closing dialog has run its own
-    // restore (it defers to the next frame), so the "turn ended while the
-    // confirmation was open" path lands here too.
+    // Focus is stranded only when it sits on nothing: <body>, a node that
+    // has been detached (the Stop… button, a closed dialog's panel), or this
+    // detail's own header/section container, which the return-focus walk
+    // climbs to when the Stop… it would restore is gone. Focus anywhere else
+    // was put there on purpose — another pane's heading, this detail's
+    // evidence region after a deep link — and is left alone. Checked now and
+    // again after a closing dialog has run its own restore (it defers to the
+    // next frame), so the "turn ended while the confirmation was open" path
+    // lands here too.
     const land = () => {
       const active = document.activeElement;
+      const detail = headerRef.current?.closest(
+        '[data-testid="session-detail"]',
+      );
       const stranded =
         !active ||
         active === document.body ||
         !active.isConnected ||
+        active === detail ||
+        // The walk makes a surviving ancestor focusable to land on it — here
+        // the header or its action row. A real control in the header is not
+        // stranded.
         (active instanceof HTMLElement &&
-          active.tabIndex < 0 &&
+          Boolean(headerRef.current?.contains(active)) &&
           !active.matches('button, a[href], input, textarea, select'));
       if (!stranded) return;
       (openInChatRef.current ?? headerRef.current)?.focus({

@@ -204,6 +204,25 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
       expect(disconnect).toHaveBeenCalled();
       view.unmount();
 
+      // A scrollbar drag (pointerdown on the region) and a key pressed
+      // anywhere in the document end it too.
+      for (const takeOver of [
+        (scroll: HTMLElement) => fireEvent.pointerDown(scroll),
+        () => fireEvent.keyDown(document.body, { key: 'ArrowDown' }),
+      ]) {
+        disconnect.mockClear();
+        transcript.settled = false;
+        const next = renderDetail({ threadId: 'station:thread-1', token: 3 });
+        act(() => transcript.set(true));
+        takeOver(
+          next.container.querySelector(
+            '.sessions-detail__scroll',
+          ) as HTMLElement,
+        );
+        expect(disconnect).toHaveBeenCalled();
+        next.unmount();
+      }
+
       // Bounded in time too.
       disconnect.mockClear();
       transcript.settled = false;

@@ -206,7 +206,7 @@ export function MutableSessionDetail({
     region.scrollIntoView({ block: 'start' });
     // Rendered markdown and tool rows load lazily and can grow the
     // conversation again just after it settles. For at most one second, and
-    // only until the reader scrolls, touches or types, follow that growth —
+    // only until the reader scrolls, drags, touches or types, follow that growth —
     // scroll only, never focus. Bounded on purpose: after that the reader
     // owns the scroll position.
     const transcript = region
@@ -219,17 +219,22 @@ export function MutableSessionDetail({
     const observer = new ResizeObserver(() =>
       region.scrollIntoView({ block: 'start' }),
     );
-    const readerMoved = ['wheel', 'touchstart', 'keydown'] as const;
+    // The reader taking over: wheel, touch or a scrollbar drag (pointerdown)
+    // on the scroll region, or any key anywhere in the document.
+    const scrollerMoves = ['wheel', 'touchstart', 'pointerdown'] as const;
     const stop = () => {
       observer.disconnect();
       clearTimeout(timer);
-      for (const type of readerMoved) scroller.removeEventListener(type, stop);
+      for (const type of scrollerMoves)
+        scroller.removeEventListener(type, stop);
+      document.removeEventListener('keydown', stop, true);
       if (stopFollowingRevealRef.current === stop)
         stopFollowingRevealRef.current = null;
     };
     const timer = setTimeout(stop, 1_000);
-    for (const type of readerMoved)
+    for (const type of scrollerMoves)
       scroller.addEventListener(type, stop, { passive: true });
+    document.addEventListener('keydown', stop, true);
     observer.observe(transcript);
     stopFollowingRevealRef.current = stop;
   }, []);
