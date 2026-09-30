@@ -6323,7 +6323,7 @@
     {
       "path": "docs/contexts/workspace-surfaces/CONTEXT.md",
       "documentDigest": "11a615f37cdd68bcdfb351232884c851a4fd7356057eaad39547973009593473",
-      "sourceRevision": "83c07adde15043587564a144ea9499643e378d21",
+      "sourceRevision": "cf3684fcdc358bfa09343279057954bd519ecd9c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full context vocabulary and relationships; added actual composition routing, ambient/mode/region semantics, Task declaration vs real owner view, UI availability merge and persistence/rollback boundaries, authorized Session-directory previews and separately composed coding panes.",
@@ -6395,7 +6395,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/FilePreviewPane.tsx",
-          "digest": "3cc10355e1345c95432112108ad460822b500b9fe4e7ce52997766d644d5aadd"
+          "digest": "a073090ebf7ec02c305d8eddeabbf4bbaacb777f5c87aa6141023edc45138410"
         },
         {
           "path": "src-ui/src/workspace-panes/InertRenderedMarkdown.tsx",
@@ -6442,7 +6442,8 @@
         "775 focused tests across 44 files passed; local source/caller and controlled UI/runtime evidence.",
         "Integration source review through e0314c727: the document's own delta repoints the module-map link from #collaborativeeditorpane to #projecttaskroom and records that the unmounted editor controller was deleted. The anchor resolves to '## ProjectTaskRoom' and src-shared/collaborative-editor-pane.ts is gone, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) made FilePreviewPane helpers module-private and made AMBIENT_CHAT_DOCK_DOCUMENT_ID private. It also removed createAmbientChatDockPaneDocument and dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry. There is no behavior change, the linked files still exist, and the doc names none of the removed exports. Prose accurate. Source review is separate from executed test evidence.",
-        "File Preview: grammar highlighting (shared highlight worker, rendered as text, stated render cap and colour refusals) and the Changes view (file-preview/changes: preview path and Session rules, #2363 read refusal, oversized refused). Rechecked after the quiet-chrome header (one row, File|Changes with a changed-line pip, ⋯ menu): the stated behaviour is unchanged. Checked against FilePreviewPane.tsx, workspace-pane-previews.ts, workspace-file-changes-service.ts and the preview service's changesTarget."
+        "File Preview: grammar highlighting (shared highlight worker, rendered as text, stated render cap and colour refusals) and the Changes view (file-preview/changes: preview path and Session rules, #2363 read refusal, oversized refused). Rechecked after the quiet-chrome header (one row, File|Changes with a changed-line pip, ⋯ menu): the stated behaviour is unchanged. Checked against FilePreviewPane.tsx, workspace-pane-previews.ts, workspace-file-changes-service.ts and the preview service's changesTarget.",
+        "Reviewed the FilePreviewPane.tsx delta (breadcrumb separator spacing; the body fills the pane instead of a 60vh cap); the pane behaviour this context states is unchanged."
       ]
     },
     {
