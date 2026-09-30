@@ -46,6 +46,7 @@ vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
   },
 }));
 
+import { mergeConsoleRead } from '../BrowserConsoleDrawer';
 import BrowserPane from '../BrowserPane';
 
 const SESSION = 'bs_0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77';
@@ -582,5 +583,73 @@ describe('the toolbar', () => {
     expect(reads).toBe(1);
     fireEvent.click(badged);
     expect(await screen.findByRole('button', { name: 'Console' })).toBeTruthy();
+  }, 15_000);
+});
+
+describe('the console across a reopen (a new browser generation)', () => {
+  const read = (
+    generation: number,
+    seqs: number[],
+    level: 'error' | 'info' = 'info',
+  ): BrowserConsoleView => ({
+    entries: seqs.map((seq) => ({
+      seq,
+      at: seq,
+      level,
+      source: 'console' as const,
+      text: `g${generation}#${seq}`,
+    })),
+    dropped: 0,
+    latestSeq: seqs.at(-1) ?? 0,
+    generation,
+    capturing: true,
+  });
+
+  test('entries of two generations never mix: a read from a new one replaces what is held', () => {
+    const held = read(1, [4, 5]);
+    expect(
+      mergeConsoleRead(held, read(1, [6])).entries.map((e) => e.text),
+    ).toEqual(['g1#4', 'g1#5', 'g1#6']);
+    expect(
+      mergeConsoleRead(held, read(2, [1])).entries.map((e) => e.text),
+    ).toEqual(['g2#1']);
+  });
+
+  test('after a reopen, every error the new browser logs is unseen, and old ones are gone', async () => {
+    controlHolder.state = control();
+    let fullReads = 0;
+    renderPane({
+      [SUMMARY]: ok(sessionView()),
+      // The first full read is generation 1; after the reopen, generation 2.
+      [`GET /api/browser/sessions/${SESSION}/console`]: () => {
+        fullReads += 1;
+        return {
+          body: {
+            success: true,
+            data:
+              fullReads === 1
+                ? read(1, [1, 2, 3], 'error')
+                : read(2, [1], 'error'),
+          },
+        };
+      },
+      // The cursor belonged to generation 1; the server answers with 2.
+      [`GET /api/browser/sessions/${SESSION}/console?after=3`]: ok(
+        read(2, [1], 'error'),
+      ),
+      [`GET /api/browser/sessions/${SESSION}/console?after=1`]: ok(
+        read(2, [], 'error'),
+      ),
+    });
+    // Generation 2's one error is new, although its seq (1) is below the old
+    // baseline (3).
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: 'Console, 1 unseen error' },
+        { timeout: 8_000 },
+      ),
+    ).toBeTruthy();
+    expect(fullReads).toBe(2);
   }, 15_000);
 });

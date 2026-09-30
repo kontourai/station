@@ -133,8 +133,14 @@ decides each JavaScript dialog when it opens:
   standing and refuses Agent-originated requests. The answer is recorded as
   `dialog-answered`; a prompt's typed text is not recorded. The input that
   opened the dialog settles immediately, and further clicks, keys and text are
-  refused until it is answered. A held dialog nobody answers is dismissed
-  automatically after two minutes.
+  refused (`page-dialog-open`, said in the view) until it is answered. The
+  same card appears in the float-over-chat, with **Open in pane**. A held
+  dialog is dismissed automatically when the person's control ends
+  (released, lapsed or passed to an Agent) and after two minutes at most;
+  while the card is on a visible screen it renews the person's control, so
+  reading it does not dismiss it. An answer the browser never acknowledges
+  is `504 page-busy` and the dialog stays answerable; one it refuses (the
+  page navigated away) is `409 no-dialog`.
 - A dialog that opens while an Agent holds control, or nobody does, is
   answered automatically as before (dismissed; `beforeunload` accepted), and
   the pane says so. `beforeunload` is never held.
@@ -147,12 +153,17 @@ generation ([BrowserConsoleLog](../../src-server/services/browser/browser-consol
 console API calls, uncaught exceptions and the browser's own log entries. It
 keeps the latest 500 entries, cuts each to 2,000 characters, and counts what
 it evicted; the pane's **Console** drawer reads it incrementally, filters by
-level and shows the dropped count; it can be resized and scrolls on its own. Reading it needs view standing. Agents do
-not have a console tool.
+level and shows the dropped count; it can be resized and scrolls on its own.
+Reading it needs view standing. Console text can carry what the pixels never
+showed (a token a page logs), so a request that may be an Agent's (Station's
+internal principal, an Agent-tool marker, a delegation device) reads it only
+where the Project allows **Let agents run JavaScript in this Project's pages**;
+otherwise it is refused `403`. Agents have no console tool.
 
-**Screenshot** (in **⋯**) captures the page's viewport as PNG (JPEG over 16 MiB, refused
-beyond that) with view standing, and offers **Save image** and, where the
-viewer's clipboard accepts PNGs, **Copy image**.
+**Screenshot** (in **⋯**) captures the page's viewport as PNG (JPEG over
+16 MiB, refused beyond that) with view standing, one capture at a time per
+session (a second request joins the one in flight), and offers **Save image**
+and, where the viewer's clipboard accepts PNGs, **Copy image**.
 
 The session has one tab. A `target=_blank` link or `window.open` loads in
 the same tab and the popup target is closed by the

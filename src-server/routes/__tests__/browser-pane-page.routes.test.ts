@@ -94,7 +94,15 @@ type Role = 'operator' | 'nobody';
 const roleOf = (request: Request) =>
   (request.headers.get('x-test-role') ?? 'nobody') as Role;
 
-function harness() {
+function harness(
+  options: {
+    screenshotMaxBytes?: number;
+    screenshotDeadlineMs?: number;
+    dispatchTimeoutMs?: number;
+    /** The Project's `browserEvaluate` (D4); absent: no settings store. */
+    browserEvaluate?: boolean;
+  } = {},
+) {
   const stationHome = mkdtempSync(join(tmpdir(), 'station-browser-page-'));
   homes.push(stationHome);
   const fake = fakeHost();
@@ -104,6 +112,12 @@ function harness() {
     hostResolver: createLocalBrowserHostResolver(() => fake.host),
     newId: () =>
       `bs_00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
+    ...(options.screenshotMaxBytes !== undefined
+      ? { screenshotMaxBytes: options.screenshotMaxBytes }
+      : {}),
+    ...(options.screenshotDeadlineMs !== undefined
+      ? { screenshotDeadlineMs: options.screenshotDeadlineMs }
+      : {}),
   });
   const authorizeProject: BrowserProjectAuthorizer = async (request) =>
     roleOf(request) === 'operator' ? { kind: 'operator' } : undefined;
@@ -112,6 +126,9 @@ function harness() {
     sessions,
     surfaces,
     authorizeProject,
+    ...(options.dispatchTimeoutMs !== undefined
+      ? { dispatchTimeoutMs: options.dispatchTimeoutMs }
+      : {}),
   });
   const surfaceRoutes = createLiveSurfaceRoutes(surfaces, {
     isRequestPrincipalCurrent: () => true,
@@ -136,6 +153,14 @@ function harness() {
     answerDialog: (id, dialogId, answer, actor) =>
       binder.answerDialog(id, dialogId, answer, actor),
     consoleFor: (id, after) => binder.consoleFor(id, after),
+    ...(options.browserEvaluate !== undefined
+      ? {
+          projectSettings: {
+            get: () => ({ browserEvaluate: options.browserEvaluate === true }),
+            setBrowserEvaluate: vi.fn(),
+          } as never,
+        }
+      : {}),
     // The production predicate's agent-tool arm (the rest needs a runtime).
     isAgentRequest: isAgentOriginatedRequest,
     isStationInternalRequest: () => false,
@@ -170,6 +195,24 @@ function harness() {
           : { body: JSON.stringify(options.body) }),
       }),
     ) as Promise<Omit<Response, 'json'> & { json(): Promise<any> }>;
+  /** A person's click through the live-surface input route; its response. */
+  const clickResponse = (browserSessionId: string) => {
+    const surfaceId = binder.surfaceIdFor(browserSessionId)!;
+    return surfaceRoutes.request(`http://station.test/${surfaceId}/input`, {
+      method: 'POST',
+      headers: {
+        'x-test-role': 'operator',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        epoch: surfaces.get(surfaceId)!.lease.snapshot().epoch,
+        events: [
+          { kind: 'pointer', type: 'down', x: 5, y: 5, button: 'left' },
+          { kind: 'pointer', type: 'up', x: 5, y: 5, button: 'left' },
+        ],
+      }),
+    });
+  };
   /** A person's click through the live-surface input route (claims control). */
   const personClicks = async (browserSessionId: string) => {
     const surfaceId = binder.surfaceIdFor(browserSessionId)!;
@@ -199,7 +242,16 @@ function harness() {
       url: 'https://example.com/',
       actor: { kind: 'operator' },
     });
-  return { fake, sessions, surfaces, binder, browser, personClicks, open };
+  return {
+    fake,
+    sessions,
+    surfaces,
+    binder,
+    browser,
+    personClicks,
+    clickResponse,
+    open,
+  };
 }
 
 describe('Browser pane: page dialogs a person answers', () => {
@@ -265,6 +317,21 @@ describe('Browser pane: page dialogs a person answers', () => {
     expect(JSON.stringify(h.sessions.getSession(id)!.history)).not.toContain(
       'secret-launch',
     );
+  });
+
+  test('while the held dialog waits, a click on the page is refused page-dialog-open, not a generic failure', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    await h.personClicks(id);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'confirm',
+      message: 'Sure?',
+    });
+    const response = await h.clickResponse(id);
+    expect(response.status).toBe(409);
+    expect(
+      ((await response.json()) as { data: { code: string } }).data.code,
+    ).toBe('page-dialog-open');
   });
 
   test('an agent-originated request may not answer a dialog shown to a person', async () => {
@@ -498,5 +565,140 @@ describe('Browser pane: screenshots', () => {
     expect((await h.browser('GET', `/sessions/${id}/screenshot`)).status).toBe(
       409,
     );
+  });
+});
+
+describe('Browser pane: review-round bounds', () => {
+  const pngOf = (bytes: number) => Buffer.alloc(bytes, 1).toString('base64');
+
+  test('two screenshot requests at once share one capture of the page', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.fake.handle('Page.captureScreenshot', async () => {
+      await gate;
+      return { data: PNG_1X1 };
+    });
+    const first = h.browser('GET', `/sessions/${id}/screenshot`);
+    const second = h.browser('GET', `/sessions/${id}/screenshot`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release();
+    const [a, b] = await Promise.all([first, second]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(
+      h.fake.sent.filter((call) => call.method === 'Page.captureScreenshot'),
+    ).toHaveLength(1);
+    // Once it settles, the next request captures afresh.
+    await h.browser('GET', `/sessions/${id}/screenshot`);
+    expect(
+      h.fake.sent.filter((call) => call.method === 'Page.captureScreenshot'),
+    ).toHaveLength(2);
+  });
+
+  test('a PNG over the byte bound is retaken as JPEG', async () => {
+    const h = harness({ screenshotMaxBytes: 10 });
+    const { browserSessionId: id } = await h.open();
+    h.fake.handle('Page.captureScreenshot', (params) => ({
+      data: pngOf(params.format === 'png' ? 11 : 10),
+    }));
+    const response = await h.browser('GET', `/sessions/${id}/screenshot`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/jpeg');
+    expect(
+      h.fake.sent
+        .filter((call) => call.method === 'Page.captureScreenshot')
+        .map((call) => call.params?.format),
+    ).toEqual(['png', 'jpeg']);
+  });
+
+  test('a screenshot over the bound as JPEG too is refused 413, never cut', async () => {
+    const h = harness({ screenshotMaxBytes: 10 });
+    const { browserSessionId: id } = await h.open();
+    h.fake.handle('Page.captureScreenshot', () => ({ data: pngOf(11) }));
+    const response = await h.browser('GET', `/sessions/${id}/screenshot`);
+    expect(response.status).toBe(413);
+    expect((await response.json()).code).toBe('screenshot-too-large');
+  });
+
+  test('a page that does not answer the capture is 504 page-busy', async () => {
+    const h = harness({ screenshotDeadlineMs: 30 });
+    const { browserSessionId: id } = await h.open();
+    h.fake.handle('Page.captureScreenshot', () => new Promise(() => {}));
+    const response = await h.browser('GET', `/sessions/${id}/screenshot`);
+    expect(response.status).toBe(504);
+    expect((await response.json()).code).toBe('page-busy');
+  });
+
+  test("a request that may be an agent's reads the console only where the Project lets agents read page output", async () => {
+    const off = harness({ browserEvaluate: false });
+    const a = await off.open();
+    const refused = await off.browser(
+      'GET',
+      `/sessions/${a.browserSessionId}/console`,
+      {
+        agent: true,
+      },
+    );
+    expect(refused.status).toBe(403);
+    // A person's request is unaffected.
+    expect(
+      (await off.browser('GET', `/sessions/${a.browserSessionId}/console`))
+        .status,
+    ).toBe(200);
+    const on = harness({ browserEvaluate: true });
+    const b = await on.open();
+    expect(
+      (
+        await on.browser('GET', `/sessions/${b.browserSessionId}/console`, {
+          agent: true,
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  test('the console names the browser generation its entries came from', async () => {
+    const h = harness();
+    const { browserSessionId: id, generation } = await h.open();
+    const { data } = await (
+      await h.browser('GET', `/sessions/${id}/console`)
+    ).json();
+    expect(data.generation).toBe(generation);
+  });
+
+  test('an answer the browser refuses (the page navigated away) is 409 no-dialog, not a server error', async () => {
+    const h = harness();
+    const { browserSessionId: id } = await h.open();
+    await h.personClicks(id);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'confirm',
+      message: 'x',
+    });
+    h.fake.handle('Page.handleJavaScriptDialog', () => {
+      throw new Error('No dialog is showing');
+    });
+    const response = await h.browser('POST', `/sessions/${id}/dialog`, {
+      body: { dialogId: 'd1', accept: true },
+    });
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe('no-dialog');
+  });
+
+  test('an answer the browser never acknowledges is 504 page-busy, and the dialog stays answerable', async () => {
+    const h = harness({ dispatchTimeoutMs: 30 });
+    const { browserSessionId: id } = await h.open();
+    await h.personClicks(id);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'alert',
+      message: 'x',
+    });
+    h.fake.handle('Page.handleJavaScriptDialog', () => new Promise(() => {}));
+    const response = await h.browser('POST', `/sessions/${id}/dialog`, {
+      body: { dialogId: 'd1', accept: true },
+    });
+    expect(response.status).toBe(504);
+    expect(h.binder.pendingDialogFor(id)).toMatchObject({ dialogId: 'd1' });
   });
 });

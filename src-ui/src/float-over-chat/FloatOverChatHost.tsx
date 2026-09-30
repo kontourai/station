@@ -891,6 +891,28 @@ function BrowserFloat({
   const queryClient = useQueryClient();
   const [control, setControl] = useState<LiveSurfaceControlState | null>(null);
   const pendingDialog = session.pendingDialog;
+  // One stable reporter per upstream callback: the canvas re-reports its
+  // control state whenever this prop changes, so a fresh closure per render
+  // would loop (report → state → render → new closure → report).
+  const reporters = useRef(
+    new WeakMap<
+      (state: LiveSurfaceControlState) => void,
+      (state: LiveSurfaceControlState) => void
+    >(),
+  );
+  const reportControl = (
+    upstream: (state: LiveSurfaceControlState) => void,
+  ) => {
+    let reporter = reporters.current.get(upstream);
+    if (!reporter) {
+      reporter = (state) => {
+        upstream(state);
+        setControl(state);
+      };
+      reporters.current.set(upstream, reporter);
+    }
+    return reporter;
+  };
   const answer = useMutation({
     mutationFn: (reply: {
       dialogId: string;
@@ -947,10 +969,7 @@ function BrowserFloat({
             transport={transport}
             hostControls
             inputRequiresLease
-            onControlState={(state) => {
-              onControlState(state);
-              setControl(state);
-            }}
+            onControlState={reportControl(onControlState)}
           />
           {pendingDialog ? (
             <div className="float-over-chat__dialog-layer">
