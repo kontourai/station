@@ -3860,7 +3860,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -3916,7 +3916,7 @@
         },
         {
           "path": "docs/reference/config.md",
-          "digest": "4a1ddfbce2dc29ae26566475e56793ecdab5aa208d803f7a6c4ceaef1c41105a"
+          "digest": "f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9"
         },
         {
           "path": "docs/reference/metrics.md",
@@ -4047,7 +4047,8 @@
         "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b and #2918; this branch changed only config.md's autoApprove row. No prose change.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2954 keeps recorded ports when station upgrade re-runs install.sh (lifecycle.ts). This branch's side is the Claude session-grant and approval-authority work. Its findings cite neither the upgrade port handling nor the respond path. Prose accurate.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. Main re-recorded for #2942/#2599; this branch changed only config.md's autoApprove row. No prose change."
       ]
     },
     {
@@ -5843,12 +5844,12 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical. Follow-up (#2915/#2916): added the session-grant scope section (tool, edit-mode with its mode sync, read-folder/folder, none), traced from the shared toolRequestSessionGrant through the Claude adapter's canUseTool/respondToRequest and the toast, inline card and inbox card.",
       "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
-      "documentDigest": "9e0994f005b3c571eccc1767b813ca19cd488393f107d9ba5997eb97b03ef39e",
+      "documentDigest": "aa8bd66f0b8524e306bb3d9753c6aa6d925ad3b6c5e19956eb4c9aa82fed36d7",
       "sources": [
         {
           "path": "package.json",
@@ -5860,7 +5861,7 @@
         },
         {
           "path": "packages/shared/src/__tests__/tool-request-preview.test.ts",
-          "digest": "ab251cd862e821122d30655014fe205ea95b77c09ce8cc33771c0112cad755a2"
+          "digest": "83fa6ba966f39e2dc5f80eff5f27f37cb5043d200a949ed38a9fe8b790f8433b"
         },
         {
           "path": "packages/shared/src/redaction.ts",
@@ -5872,7 +5873,7 @@
         },
         {
           "path": "packages/shared/src/tool-request-preview.ts",
-          "digest": "1d769e63b51766e35ef26ac3e833e1929318d1bf2c2e6c7197f629c74366cffc"
+          "digest": "80bc7cc32928ef0ec75b4eb0c21997b8795f82ee48b35faa290692da7c40e348"
         },
         {
           "path": "pnpm-lock.yaml",
@@ -5880,7 +5881,7 @@
         },
         {
           "path": "src-server/providers/__tests__/claude-adapter.test.ts",
-          "digest": "1b2d0a77fa35206c395dd028c288a0308617ad59d4b2acec5f4f3e1cb090e8cf"
+          "digest": "56ca1c9bc55bd0ed1fb476d236ca48b60ec46c08dd3c757eff4724475e8909da"
         },
         {
           "path": "src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts",
@@ -5888,7 +5889,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter-events.ts",
@@ -5896,7 +5897,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "47bde4822cc1b2e0dd84bb6ec43c8df9dccabc655e40ebd53f34266d60be5e5f"
         },
         {
           "path": "src-server/providers/adapters/claude-approval-mode.ts",
@@ -5904,7 +5905,7 @@
         },
         {
           "path": "src-server/runtime/agents/__tests__/pre-tool-policy.test.ts",
-          "digest": "663454b035659a85aaad7dadfc6e92b316b22390c09822a13ccbf7c4efc10d43"
+          "digest": "049653b403ecca1bcc94c90431b8baa72f03d31b45213aa04c40867d229d0541"
         },
         {
           "path": "src-server/runtime/agents/agent-hooks.ts",
@@ -5912,7 +5913,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
@@ -5964,7 +5965,8 @@
         "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base changed only the Discord continue forwarder composition (C2b) that this page makes no claim about; this branch's autoApprove plain-call gate, toolGrant hook pass-through, ACP plan-exit and delegated-child paragraphs re-read against the merged claude-adapter/acp-adapter/pre-tool-policy: still accurate.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Updated the locked Agent SDK version from 0.3.261 to 0.3.278 and confirmed the installed 0.3.278 sdk.d.ts still documents that omitted settingSources loads all filesystem settings; the 0.3.224 experiment references stay historical. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2599 refreshed dependency versions (package manifests and pnpm-lock.yaml; Agent SDK 0.3.261 to 0.3.278, bundling Claude Code 2.1.278), with no script, export or workspace change. This branch's side is the Claude session-grant and approval-authority work. Re-checked this branch's engine-shape claims against the installed 2.1.278 binary: the outside-directory Read ask (workingDir reason, no blockedPath), the Read(//dir/**) rule builder, zSt's acceptEdits and addDirectories suggestions gated on IUe (default mode, or plan without a bypass/acceptEdits/dontAsk/auto pre-plan mode), the Bash path check's Read rule or addDirectories, the file-edit safety check before the plan-mode refusal, and the status permissionMode report. All hold. Updated the grant section's version sentence to SDK 0.3.278 / Claude Code 2.1.278 (first read in 2.1.261); main already updated the opening lockfile sentence. Adapter, lifecycle and shared tests pass on 0.3.278. Prose accurate.",
-        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate."
+        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. Re-read the bundled Claude Code 2.1.278 binary: after a hook allow the post-hook check (bT) still returns an ask only for deny/ask rules, requiresUserInteraction, safety checks, MCP max-ask and sandbox overrides, not for a working-directory ask; a hook result with no decision still runs the full permission pipeline; main sessions do not force requireCanUseTool. Updated the #2933 paragraph's engine reference to 2.1.278 (first read in 2.1.261); main had already moved the lockfile references to 0.3.278/2.1.278."
       ]
     },
     {
@@ -7625,7 +7627,7 @@
     {
       "path": "docs/design/connections-onboarding.md",
       "documentDigest": "dc33fe48b286ac9111bfb09c095a1c85ac62665eb89ec9e77a8637d28c3126ed",
-      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7641,7 +7643,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "47bde4822cc1b2e0dd84bb6ec43c8df9dccabc655e40ebd53f34266d60be5e5f"
         },
         {
           "path": "src-server/providers/adapters/claude-skills-materialization.ts",
@@ -7757,7 +7759,8 @@
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its app-home and session-start claims hold: session start's agent resolution and its unavailable reasons are unchanged in behaviour. Prose accurate.",
         "Re-read 'Design: Connections onboarding & capability passthrough' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its app-home claim holds; main's change is the Discord continue path's forwarder wiring. Prose accurate.",
-        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b's forwarder composition; this branch's claude-adapter approval gating affects no onboarding claim. No prose change."
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b's forwarder composition; this branch's claude-adapter approval gating affects no onboarding claim. No prose change.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. claude-adapter.ts changed only a comment's engine version. No prose change."
       ]
     },
     {
@@ -10044,7 +10047,7 @@
     {
       "path": "docs/design/settings-architecture.md",
       "documentDigest": "eb80eac4602bdb8376220ce11f8f5dcd4155c90315b250fa45e0a777afc068ce",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the full design, separating the dated problem inventory/target slices from current implementation. Checked registry descriptors, three Project overrides, provenance-only GET scope, independent Save writes, device migration ownership and canonical reveal behavior. Corrected the inert Knowledge flag claim and replaced the obsolete example with an actual registry entry.",
@@ -10052,7 +10055,7 @@
       "sources": [
         {
           "path": "docs/reference/config.md",
-          "digest": "4a1ddfbce2dc29ae26566475e56793ecdab5aa208d803f7a6c4ceaef1c41105a"
+          "digest": "f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9"
         },
         {
           "path": "docs/reference/settings-deep-links.md",
@@ -10113,7 +10116,8 @@
         "Re-read 'Settings Architecture: scope-first settings for Station' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
         "#2933: config.md changed only the autoApprove row wording; settings ownership and layering claims unaffected. No prose change.",
         "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b's SDK deadline change; this branch changed only config.md's autoApprove row. No prose change.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. Main re-recorded for #2942/#2599; this branch changed only config.md's autoApprove row. No prose change."
       ]
     },
     {
@@ -10870,8 +10874,8 @@
     },
     {
       "path": "docs/guides/agents.md",
-      "documentDigest": "ee6196c23ebd9c2966111532d696506c448a90827eb2e2e21dfd5d43f877ecae",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "documentDigest": "d2ce5635b9c818550c5215ad19409d79a9a285cb589a7ae209741dbe9feab54c",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10927,11 +10931,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "47bde4822cc1b2e0dd84bb6ec43c8df9dccabc655e40ebd53f34266d60be5e5f"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -11003,7 +11007,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/request-delegation.ts",
@@ -11210,7 +11214,8 @@
         "#2933 round 2: moved 'What autoApprove never covers' ahead of 'Unattended runs' (it had split that section), added the ACP one-exit session answer, and added the Unattended runs sentence: on Claude/ACP a broad pattern no longer covers escalations, so a headless run waits on an approval request and a denyApprovals child is denied at once. Checked no Discord approval channel exists, so the approval inbox is named instead.",
         "#2933 round 3: comment-only change in claude-adapter.ts and acp-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Reworded the external-engine paragraph in Unattended runs as current behaviour, scoped to Claude Code and ACP against the preceding Station-engine paragraph.",
         "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base rewrote Theming & Colors (#2946) and the respond_to_task_request saved-Environment sentence (C2b); this branch's 'What autoApprove never covers' and Unattended runs paragraph are disjoint and still match the merged adapters.",
-        "Replaced the '1.12.0 defines none of them' token sentence: installed ui 1.16.0 defines --k-status-contrast, --k-trust-* (ink, fill, line) and the --k-action/--k-focus roles, verified in node_modules/@kontourai/ui/tokens/tokens.css."
+        "Replaced the '1.12.0 defines none of them' token sentence: installed ui 1.16.0 defines --k-status-contrast, --k-trust-* (ink, fill, line) and the --k-action/--k-focus roles, verified in node_modules/@kontourai/ui/tokens/tokens.css.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. Main's side changed this record for #2942 (landed) and later UI work; this branch's 'What autoApprove never covers' and Unattended runs paragraphs are unchanged and still match the merged adapters. Re-read the bundled Claude Code 2.1.278 binary: after a hook allow the post-hook check (bT) still returns an ask only for deny/ask rules, requiresUserInteraction, safety checks, MCP max-ask and sandbox overrides, not for a working-directory ask; a hook result with no decision still runs the full permission pipeline; main sessions do not force requireCanUseTool."
       ]
     },
     {
@@ -12132,7 +12137,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12256,11 +12261,11 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "47bde4822cc1b2e0dd84bb6ec43c8df9dccabc655e40ebd53f34266d60be5e5f"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -12328,7 +12333,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/request-delegation.ts",
@@ -12661,7 +12666,8 @@
         "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base recorded C2b, #2917/#2944 CSS and audit follow-ups; this branch's adapter approval changes affect no connection claim. No prose change.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. Main recorded #2952 UI 1.16.0 and #2942; this branch's adapter approval changes affect no connection claim. No prose change."
       ]
     },
     {
@@ -18749,7 +18755,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "618c04635531af10ce95cda65be2bd40e5b361f98b0fde1a8ae999b125bfb6a0",
-      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18805,7 +18811,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "47bde4822cc1b2e0dd84bb6ec43c8df9dccabc655e40ebd53f34266d60be5e5f"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -19052,7 +19058,8 @@
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. respond_to_task_request still answers a delegated worker's open request (a one-call accept for an edit-mode session answer). Prose accurate.",
         "Corrected: forwarding to a saved Environment now says the tool never contacts the other Station, it names the Environment to this Station's route, and remote task listings share the bound-operator restriction (C2b added it on GET /delegations).",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main corrected the forwarding text; respond_to_task_request still answers an open request from a delegated worker (a one-call accept for an edit-mode session answer on this Station). Prose accurate.",
-        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base corrected saved-Environment forwarding prose (C2b); this branch's adapter changes leave the station-control_* autoApprove examples accurate (MCP calls are plain calls). No prose change here."
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base corrected saved-Environment forwarding prose (C2b); this branch's adapter changes leave the station-control_* autoApprove examples accurate (MCP calls are plain calls). No prose change here.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. claude-adapter.ts changed only a comment's engine version; station-control_* examples still accurate. No prose change."
       ]
     },
     {
@@ -19306,7 +19313,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -19342,7 +19349,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
+          "digest": "47bde4822cc1b2e0dd84bb6ec43c8df9dccabc655e40ebd53f34266d60be5e5f"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
@@ -19567,7 +19574,8 @@
         "#2933 round 3: comment-only change in claude-adapter.ts (the delegated-child deny comments now list every route there, including nameless ACP requests, and note the ACP call is for the toolDenials metric); no behaviour changed. Starter work claims unaffected. No prose change.",
         "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base recorded C2b and CSS changes; this branch's Claude canUseTool changes affect no starter-work claim. No prose change.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
-        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. Main recorded later UI and #2942 changes; claude-adapter.ts here changed only a comment's engine version. No prose change."
       ]
     },
     {
@@ -21808,7 +21816,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
       "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
       "sources": [
@@ -21818,7 +21826,7 @@
         },
         {
           "path": "docs/guides/agents.md",
-          "digest": "ee6196c23ebd9c2966111532d696506c448a90827eb2e2e21dfd5d43f877ecae"
+          "digest": "d2ce5635b9c818550c5215ad19409d79a9a285cb589a7ae209741dbe9feab54c"
         },
         {
           "path": "packages/contracts/src/agent-identity.ts",
@@ -21845,7 +21853,8 @@
         "#2933 round 3: agents.md reworded the Unattended runs external-engine paragraph only; no identity surface claim affected. No prose change.",
         "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base changed agents.md Theming; this branch added autoApprove scope sections. Neither adds identity-surface text. No prose change.",
         "Only change among its sources is the token sentence in agents.md (ui 1.16.0 token list); this plan does not rely on that sentence.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. agents.md changes on both sides (theming on main, autoApprove scope here) add no identity-surface text. No prose change."
       ]
     },
     {
@@ -22221,7 +22230,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -22398,7 +22407,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/providers/adapters/bedrock-adapter.ts",
@@ -22943,7 +22952,8 @@
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2954 keeps recorded ports when station upgrade re-runs install.sh (lifecycle.ts). This branch's side is the Claude session-grant and approval-authority work. Route shapes and the respond command are unchanged. Prose accurate.",
         "Branding theme paragraph checked against branding-theme.ts after the swap to @kontourai/ui/contrast validateBrandOverride: allowlist, hex values, all-or-nothing and flat-key expansion unchanged; added that Station's stricter text checks also apply. branding-theme.ts now expands a brand-only mode into the action role and rejects an invalid flat value a mode object shadows. This page's claims (allowlist, hex-only values, the package validator plus Station's stricter checks, all or nothing) are unchanged and still accurate; the detailed rules stay in examples/custom-branding.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. Main recorded later route work; this branch adds only an optional toolKind to ACP request.opened payloads. No prose change."
       ]
     },
     {
@@ -22975,7 +22985,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951",
-      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -23275,7 +23285,7 @@
         },
         {
           "path": "src-server/providers/adapters/acp-adapter.ts",
-          "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
+          "digest": "28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198"
         },
         {
           "path": "src-server/routes/evidence/flow-runs.ts",
@@ -23373,17 +23383,18 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/cli/package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/publish-release.yml, .github/workflows/release.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
         "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
-        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. Main recorded later CLI work (#2954); this branch's ACP approval changes touch no CLI behaviour. No prose change."
       ]
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
       "limits": "Source trace plus actual schema/template checks and existing focused fixtures. No live model, MCP server, AWS account, native/Windows ACL, external engine bounded loop, deployment or provider/network outcome was exercised. Strands configured step caps, guardrails.maxSteps admission, retained quick prompts and template-format admission are documented limitations/draft recommendations, not repaired runtime behavior. Source hashes indicate later drift only.",
-      "documentDigest": "4a1ddfbce2dc29ae26566475e56793ecdab5aa208d803f7a6c4ceaef1c41105a",
+      "documentDigest": "f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9",
       "sources": [
         {
           "path": "packages/contracts/src/agent.ts",
@@ -23495,7 +23506,7 @@
         },
         {
           "path": "src-server/runtime/agents/pre-tool-policy.ts",
-          "digest": "7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a"
+          "digest": "40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484"
         },
         {
           "path": "src-server/runtime/agents/runtime-agent-builder.ts",
@@ -23666,7 +23677,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2599 refreshed dependency versions (package manifests and pnpm-lock.yaml; Agent SDK 0.3.261 to 0.3.278, bundling Claude Code 2.1.278), with no script, export or workspace change. This branch's side is the Claude session-grant and approval-authority work. defaultApprovalMode still applies at session start below a recorded pick; no config key changed. Prose accurate.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. Main changed this record for #2942/#2599; this branch's autoApprove row and pre-tool-policy delegatedApprovalDenial export still hold on the merged tree."
       ]
     },
     {
@@ -25727,7 +25739,7 @@
     {
       "path": "docs/reference/session-api.md",
       "documentDigest": "59b1f051bacf4b82c05e0f0ab9c0fc3039df5d98ef38f324c9479b00a35b38e3",
-      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection. Follow-up (#2915/#2916): respondToRequest now states what acceptForSession grants in a Claude Session, including the session.configured mode report after an edit-mode answer.",
@@ -25751,7 +25763,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "47bde4822cc1b2e0dd84bb6ec43c8df9dccabc655e40ebd53f34266d60be5e5f"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -25867,7 +25879,8 @@
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Re-read 'Session API: the programmatic chat surface' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. This branch refined the respondToRequest paragraph: the delegated-task respond route records nothing for a task on this Station, and a delegated answer for a task on a saved Environment reaches that Station as this command. Main's route refusals concern delegation listings, not respondToRequest. Prose accurate.",
-        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base added that a delegated answer for a saved-Environment task reaches that Station's command route (C2b); this branch's ACP plan-exit acceptForSession sentence sits after it and still matches acp-adapter respondToRequest. The remote Station's adapter applies the same rule."
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base added that a delegated answer for a saved-Environment task reaches that Station's command route (C2b); this branch's ACP plan-exit acceptForSession sentence sits after it and still matches acp-adapter respondToRequest. The remote Station's adapter applies the same rule.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. claude-adapter.ts changed only its hook comment's engine version (2.1.278); the ACP plan-exit sentence and #2942's text are unchanged. No prose change."
       ]
     },
     {
@@ -29251,7 +29264,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "b87423df8139b23dd7be42fd55b5a26fc608f36c",
+      "sourceRevision": "c57e96ebf21a7805b2b235a3b3db592d5f3dd248",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -29307,7 +29320,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "4477decdd751a60d2ec036dc56bc1467bd73c0426b975b28c6b4ccb3301ec797"
+          "digest": "47bde4822cc1b2e0dd84bb6ec43c8df9dccabc655e40ebd53f34266d60be5e5f"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -29554,7 +29567,8 @@
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its statement that non-metadata calls remain subject to approval and the caller's authority still holds. Prose accurate.",
         "Re-read 'Self-Configuring Agent Example' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Non-metadata calls remain subject to approval and the caller's authority, with both changes. Prose accurate.",
-        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b; this branch's changes do not touch Station's engine, which runs the example. No prose change."
+        "Merge review (origin/fix/claude-session-grants-2915 3e59d3824 into #2933): both sides changed this record; checks from both kept. Base re-read against C2b; this branch's changes do not touch Station's engine, which runs the example. No prose change.",
+        "Merge review (origin/main e27600d1f into #2933, carrying #2942 as ae258f0e4 and the Agent SDK 0.3.278 bump from #2599); checks from both sides kept. claude-adapter.ts changed only a comment's engine version; the Station-engine example is unaffected. No prose change."
       ]
     },
     {

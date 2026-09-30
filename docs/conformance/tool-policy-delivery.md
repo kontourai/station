@@ -19,9 +19,10 @@ for plain calls only (#2933). A pattern never answers an escalation or a plan
 exit, even `*`: it is allowed only where `toolRequestIsPlainCall` holds, the
 `tool` or `edit-mode` case of the session-grant computation below. An
 autoApprove match in the staged evaluator (`toolGrant`) is therefore not
-returned as a `PreToolUse` allow. Claude Code 2.1.261 re-checks only deny
-rules, ask rules, safety checks and user-interaction tools after a hook allow,
-so the allow would have skipped its working-directory check. The hook states no
+returned as a `PreToolUse` allow. After a hook allow, Claude Code 2.1.278
+(read in its bundled binary, as 2.1.261 was first) re-checks only deny rules,
+ask rules, safety checks and user-interaction tools, so the allow would have
+skipped its working-directory check. The hook states no
 opinion, and the engine asks `canUseTool` for anything it does not allow
 itself. On ACP, a `toolGrant` allow or pattern match never answers a plan exit
 (`switch_mode` kind or `ExitPlanMode`). A session answer to an ACP plan exit is
