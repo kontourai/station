@@ -23,9 +23,10 @@ mod notification_feed;
 // routing proof key; no Tauri IPC is registered for it yet.
 #[cfg(not(mobile))]
 pub(crate) mod native_account_proof_key;
+#[cfg(not(mobile))]
+mod native_application_peer;
 // Desktop-only Device identity custody metadata (station#2893): the versioned
-// keyring companion for paired credentials and the current-identity resolver
-// consumed by the narrow public candidate descriptor IPC.
+// keyring companion for paired credentials and the current-identity resolver.
 #[cfg(not(mobile))]
 pub(crate) mod native_device_binding_candidate;
 #[cfg(not(mobile))]
@@ -11713,6 +11714,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     let builder = builder
         .manage(NativeStartupBootstrap::default())
         .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
+        .manage(native_application_peer::NativeApplicationPeers::default())
         .manage(desktop_companion::DesktopCompanion::default())
         .menu(desktop_companion::desktop_menu)
         .on_menu_event(|app, event| {
@@ -11735,6 +11737,11 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_capability_report,
         native_relay_redemption::station_native_device_binding_candidate,
         native_relay_redemption::station_native_device_binding_self_receipt,
+        native_application_peer::station_native_application_peer_prepare,
+        native_application_peer::station_native_application_peer_open,
+        native_application_peer::station_native_application_peer_read,
+        native_application_peer::station_native_application_peer_sign,
+        native_application_peer::station_native_application_peer_close,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,

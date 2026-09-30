@@ -182,8 +182,8 @@ impl NativeDeviceProofKeyVault {
 
     /// ES256 signature over the exact JWS `header.payload` bytes in P1363
     /// (fixed-width r||s) form. The native Device proof type is inside that
-    /// signed header. Rust-internal only: no Tauri command reaches this
-    /// method, and no accessor returns the private key.
+    /// signed header. The bounded native peer owner constructs these bytes;
+    /// renderer IPC cannot supply raw signing input or retrieve a private key.
     pub(crate) fn sign_es256_p1363(
         &self,
         owner: &NativeDeviceProofKeyOwner,

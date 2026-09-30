@@ -7219,13 +7219,18 @@ fn exact_native_self_receipt_error(body: &[u8]) -> Option<NativeDeviceSelfReceip
         .then_some(envelope.error.code)
 }
 
-struct NativeDeviceReceiptCapture {
-    authority: crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority,
-    candidate: crate::native_device_binding_candidate::NativeDeviceBindingCandidateV1,
-    station_origin: String,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NativeDeviceReceiptCapture {
+    pub(crate) authority:
+        crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority,
+    pub(crate) candidate: crate::native_device_binding_candidate::NativeDeviceBindingCandidateV1,
+    pub(crate) station_origin: String,
+    pub(crate) context: NativeRedemptionContext,
+    pub(crate) grant_digest: String,
+    pub(crate) grant_expires_at: u64,
 }
 
-fn with_existing_native_device_candidate<T>(
+pub(crate) fn with_existing_native_device_candidate<T>(
     app: &AppHandle,
     profile_name: &str,
     expected_profile_revision: u64,
@@ -7303,6 +7308,12 @@ fn with_existing_native_device_candidate<T>(
                         authority,
                         candidate,
                         station_origin: profile.station_endpoint.clone(),
+                        context: context.clone(),
+                        grant_digest: URL_SAFE_NO_PAD.encode(ring::digest::digest(
+                            &ring::digest::SHA256,
+                            &Zeroizing::new(serde_json::to_vec(&grant).map_err(|_| "The current route is unavailable".to_owned())?),
+                        )),
+                        grant_expires_at: grant.expires_at,
                     }))
                 },
             )
@@ -7877,35 +7888,55 @@ fn run_native_relay_signal_open_request(
     app: AppHandle,
     request: NativeRelaySignalDiagnosticOpenInput,
 ) -> Result<NativeRelaySignalOpened, String> {
+    native_application_signal_open(
+        app,
+        NativeRelaySignalOpenRequest {
+            profile_name: request.profile_name,
+            expected_profile_revision: request.expected_profile_revision,
+            nonce: request.nonce,
+            offer_sdp: request.offer_sdp,
+        },
+    )
+    .map_err(map_signal_diagnostic_error)
+}
+
+pub(crate) fn native_application_signal_open(
+    app: AppHandle,
+    request: NativeRelaySignalOpenRequest,
+) -> RedemptionResult<NativeRelaySignalOpened> {
     let context = AppNativeRedemptionContextProvider::new(app);
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport::new();
     let grants = native_relay_grant_vault();
     NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
-        .open(&NativeRelaySignalOpenRequest {
-            profile_name: request.profile_name,
-            expected_profile_revision: request.expected_profile_revision,
-            nonce: request.nonce,
-            offer_sdp: request.offer_sdp,
-        })
-        .map_err(map_signal_diagnostic_error)
+        .open(&request)
 }
 
 fn run_native_relay_signal_read_request(
     app: AppHandle,
     request: NativeRelaySignalDiagnosticReadInput,
 ) -> Result<NativeRelaySignalAnswer, String> {
+    native_application_signal_read(
+        app,
+        NativeRelaySignalReadRequest {
+            profile_name: request.profile_name,
+            expected_profile_revision: request.expected_profile_revision,
+            nonce: request.nonce,
+        },
+    )
+    .map_err(map_signal_diagnostic_error)
+}
+
+pub(crate) fn native_application_signal_read(
+    app: AppHandle,
+    request: NativeRelaySignalReadRequest,
+) -> RedemptionResult<NativeRelaySignalAnswer> {
     let context = AppNativeRedemptionContextProvider::new(app);
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport::new();
     let grants = native_relay_grant_vault();
     NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
-        .read(&NativeRelaySignalReadRequest {
-            profile_name: request.profile_name,
-            expected_profile_revision: request.expected_profile_revision,
-            nonce: request.nonce,
-        })
-        .map_err(map_signal_diagnostic_error)
+        .read(&request)
 }
 
 /// Validates the shared signaling-command input envelope and binds it to the

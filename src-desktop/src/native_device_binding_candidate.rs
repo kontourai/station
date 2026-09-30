@@ -34,13 +34,13 @@ static CANDIDATE_OPERATION: Mutex<()> = Mutex::new(());
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct NativeDeviceBindingCandidateV1 {
-    version: String,
-    station_id: String,
-    device_id: String,
-    binding_id: String,
-    surface: NativeDeviceBindingSurfaceV1,
-    device_proof_jwk: P256PublicJwk,
-    device_proof_key_thumbprint: String,
+    pub(crate) version: String,
+    pub(crate) station_id: String,
+    pub(crate) device_id: String,
+    pub(crate) binding_id: String,
+    pub(crate) surface: NativeDeviceBindingSurfaceV1,
+    pub(crate) device_proof_jwk: P256PublicJwk,
+    pub(crate) device_proof_key_thumbprint: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -148,6 +148,23 @@ impl NativeDeviceBindingCandidateAuthority {
 
     pub(crate) fn device_authorization_epoch(&self) -> &str {
         &self.device_authorization_epoch
+    }
+
+    pub(crate) fn proof_key_owner(
+        &self,
+        candidate: &NativeDeviceBindingCandidateV1,
+    ) -> Result<NativeDeviceProofKeyOwner, String> {
+        validate_authority(self)?;
+        validate_candidate_for_authority(self, candidate)?;
+        NativeDeviceProofKeyOwner::with_binding_id(
+            &self.app_identifier,
+            self.channel,
+            &self.client_instance_id,
+            &self.station_id,
+            &self.device_id,
+            &candidate.binding_id,
+        )
+        .map_err(|_| "The current Device proof owner is invalid".to_owned())
     }
 }
 

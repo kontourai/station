@@ -234,7 +234,8 @@ impl<B: ProofKeySecretBackend> ProofKeyVaultCore<B> {
 
     /// ES256 signature over the exact message bytes in P1363 (fixed-width
     /// r||s) form. Callers sign the exact compact-JWS `header.payload` bytes.
-    /// Rust-internal only: no Tauri command reaches this method.
+    /// Rust-internal only; protocol owners construct signing input before IPC
+    /// results can return a bounded proof. Raw signing input is never an IPC API.
     pub(crate) fn sign_es256_p1363<O: ProofKeyOwner>(
         &self,
         owner: &O,
