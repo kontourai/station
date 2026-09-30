@@ -441,7 +441,7 @@ those acceptance requirements.
 
 ### Native Device proof on the application channel (#2893)
 
-**Decision for the first native pilot; implementation pending.** The Tauri host
+**Decision for the first native pilot; runtime admission pending.** The Tauri host
 keeps a paired Device bearer in its OS keyring and attaches it to host-owned
 HTTP requests in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs). The
 native WebRTC application client in [#2856](https://github.com/kontourai/station/pull/2856)
@@ -454,8 +454,8 @@ For relay-only protected requests, bind a **separate P-256 Device proof key**
 at explicit operator Device approval. The account key in
 [`native_account_proof_key.rs`](../../src-desktop/src/native_account_proof_key.rs)
 is a custody pattern, not the Device key. Station stores the Device public key,
-its random binding ID, the approved native surface and grant scope with the
-Device record. The host stores its private key in a distinct keyring namespace
+its random binding ID, the approved native surface and grant scope in a private
+sidecar that rechecks the current paired Device. The host stores its private key in a distinct keyring namespace
 bound to the selected Station, Device and binding ID. An existing bearer Device
 needs an explicit operator-approved binding ceremony; a saved profile or broker
 grant cannot upgrade it silently. Local solo use still needs no person account.
@@ -490,6 +490,17 @@ no such desktop client today; it remains an alternative if the proof protocol
 cannot satisfy the packaged acceptance. Source and SDK proof tests, real Tauri
 IPC, a packaged Project read/reconnect/revoke, and physical two-person evidence
 are distinct proof layers.
+
+The current foundations are the [Device binding service](../../src-server/services/ssh/native-device-proof-binding-service.ts),
+[request verifier](../../src-server/services/identity/native-device-proof-verifier.ts),
+[durable replay store](../../src-server/services/identity/native-device-replay-store.ts),
+and the credential-free Request principal in [runtime request security](../../src-server/security/runtime-request-security.ts).
+The binding service requires an exact approved app, channel, client instance and
+route-key thumbprint, with a separate Device key. Private Pion Request facts
+carry the offer nonce through bounded-body replacement. These components have
+no production admission caller yet. The approval-context factory does not
+authenticate an operator; the operator route and host signing IPC still need
+to establish and consume the reviewed binding.
 
 ### Transport qualification
 

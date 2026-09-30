@@ -122,6 +122,18 @@ not establish mobile custody or hardware-backed non-exportability. Follow
 [native capability boundaries](../design/native-capabilities.md) before wiring
 this owner into an application flow.
 
+The [Device proof key vault](../../src-desktop/src/native_device_proof_key.rs)
+uses a separate keyring namespace and adds the Device binding ID to its owner.
+Both vaults share a [private custody core](../../src-desktop/src/native_proof_key_core.rs)
+while preserving the account vault's stored format. The proposed native Device
+path also has a [binding sidecar](../../src-server/services/ssh/native-device-proof-binding-service.ts),
+[JWS verifier](../../src-server/services/identity/native-device-proof-verifier.ts),
+[replay store](../../src-server/services/identity/native-device-replay-store.ts)
+and a separate credential-free Request principal. These foundations remain
+unmounted: they do not authenticate an operator or authorize Project requests.
+The [broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)
+owns the remaining approval, host-signing and runtime composition requirements.
+
 **Intent and Interface.** The public `deployment-authentication` contract lets an
 operator supply a versioned authentication module at startup. Its factory receives the
 selected Station identity, public origin, fixed authentication base path and private

@@ -139,6 +139,22 @@ They were not run for this documentation review. IPC, account continuation,
 mobile custody and packaged/device behavior require separate integration and
 platform evidence.
 
+### Desktop Device proof-key foundation
+
+The [Device proof-key vault](../../src-desktop/src/native_device_proof_key.rs)
+is also desktop-only and Rust-internal. Its keyring service and record prefix
+are separate from the account and routing vaults. Its exact owner adds a random
+Device binding UUID to the app, channel, client instance, Station and Device
+IDs. A shared [private custody core](../../src-desktop/src/native_proof_key_core.rs)
+preserves the account record format and implements both vaults' storage and
+ES256 operations.
+
+The Device vault registers no Tauri command or renderer capability and has no
+production signing caller. A key and owner tuple do not establish operator
+approval. Bounded signing IPC, runtime Device authorization and a packaged
+Project journey remain integration requirements. The software key is decoded
+inside Rust for signing; this is not hardware-backed non-exportability.
+
 ### Pairing deep-link threat review (station#1957)
 
 The `tauri-plugin-deep-link` association uses the custom channel-specific scheme
