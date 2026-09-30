@@ -2745,7 +2745,7 @@
     },
     {
       "path": "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
-      "sourceRevision": "e9e828f46c92819a2e8d56397494839d09a115e4",
+      "sourceRevision": "dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44",
       "kind": "design",
       "state": "classified",
       "summary": "Decision text unchanged. A dated #2957 addendum records packaged-build runs of nightly 0.1.11-nightly.2463.2 against the NOT_VERIFIED list: signed and notarized macOS items executed, unsigned Windows NSIS partly executed, MSI/Linux/AppImage and real reboot NOT_VERIFIED. It also records findings: Windows readiness and watchdog timings, stale sidecar entries after abrupt death, and shared roots without saved metadata refusing first launch.",
@@ -2758,11 +2758,11 @@
         },
         {
           "path": "docs/guides/native-shell-verification.md",
-          "digest": "d7e005e24651c4609ce268807590dfaa26c7f22f7c70f1b7cd84c3e3b8df4b25"
+          "digest": "432b7cd00cff49ed7b1722124d7258563d21442b97030022d9efec695d7d60de"
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b"
+          "digest": "a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d"
         },
         {
           "path": "src-desktop/src/service_state.rs",
@@ -2787,7 +2787,8 @@
         "Integration source review through e0314c727: lib.rs removed the dormant notification_watch commands and state and added a rustls TLS test. service_action in service_state.rs is still checkout/tsx-bound and the sidecar/watchdog decisions are untouched; ADR accurate. Source review is separate from executed test evidence.",
         "Added the #2957 packaged-build evidence addendum. Checked each NOT_VERIFIED item against runs of nightly 0.1.11-nightly.2463.2 (macOS signed+notarized; Windows NSIS unsigned) plus source: build_sidecar_command/command_station_script_path and resolve_login_shell_path (lib.rs), resolve_station_home_for_channel/station_root_from_env (service_state.rs), exit_desktop_home_preparation_failure dialog, tray_backend_snapshot trusted-manifest gate (tray.rs). Decision text unchanged; addendum reports observed divergences (tray service-owner report, Windows watchdog exit latency, Windows readiness timeout) as findings, and MSI/Linux/AppImage/reboot as NOT_VERIFIED.",
         "Review fix round: corrected tray-owner claim (unbound profile, owner status NOT_VERIFIED), Windows first launch to NOT_VERIFIED with log detail, scrubbed-env scope, Finder/Explorer proxies, port-injection evidence (app process env), stale registry entries after abrupt death; updated summary and limits.",
-        "Delta-review fix: withdraws the earlier 'tray service-owner report' divergence (unbound profile, not a tray defect). Windows first-launch timing split into pairing (~51 s) and streams/focus (~68 s) with unattributed origin; abrupt-death clocks stated. Windows stale-entry and reboot-proxy port claims rest on transcribed session output retained with the run logs."
+        "Delta-review fix: withdraws the earlier 'tray service-owner report' divergence (unbound profile, not a tray defect). Windows first-launch timing split into pairing (~51 s) and streams/focus (~68 s) with unattributed origin; abrupt-death clocks stated. Windows stale-entry and reboot-proxy port claims rest on transcribed session output retained with the run logs.",
+        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits."
       ]
     },
     {
@@ -8473,7 +8474,7 @@
     },
     {
       "path": "docs/design/mobile-credential-authority.md",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "sourceRevision": "dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44",
       "kind": "historical",
       "state": "classified",
       "summary": "Historical blocker superseded at source level. Current owner pointers identify mobile host credential registration, OS keyring selection, iOS device-only accessibility, Android resolver and generated backup exclusions.",
@@ -8490,7 +8491,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b"
+          "digest": "a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d"
         },
         {
           "path": "src-ui/src/platform/native/stationProfileStorage.ts",
@@ -8507,7 +8508,8 @@
         "Reviewed integration deltas: src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta.",
         "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
-        "Integration source review through e0314c727: lib.rs removed the dormant notification_watch commands and state, and added a native HTTP TLS-backend test. The historical record and its current-owner pointers (mobile broker registration, keyring selection, Android resolver) are unaffected, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through e0314c727: lib.rs removed the dormant notification_watch commands and state, and added a native HTTP TLS-backend test. The historical record and its current-owner pointers (mobile broker registration, keyring selection, Android resolver) are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits."
       ]
     },
     {
@@ -10220,7 +10222,7 @@
     {
       "path": "docs/design/ssh-launched-environments.md",
       "documentDigest": "2590a6e3c1723f7c66b04ce9333756755f25750762b271480dcffe17d1d04b69",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "sourceRevision": "dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44",
       "kind": "historical",
       "state": "classified",
       "summary": "Retained native implementation separated from removed launch/pairing UI; actual Add computer path creates server-owned SSH environment, while saved-forward rows retain status and SHA warning behavior.",
@@ -10232,7 +10234,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b"
+          "digest": "a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d"
         },
         {
           "path": "src-desktop/src/ssh_launcher.rs",
@@ -10278,7 +10280,8 @@
         "Reviewed integration deltas: src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta.",
         "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
-        "Integration source review through e0314c727: the only lib.rs change is removal of the dormant notification_watch commands and state. The retained native SSH implementation and Add computer path descriptions are unaffected and accurate. Classification review only."
+        "Integration source review through e0314c727: the only lib.rs change is removal of the dormant notification_watch commands and state. The retained native SSH implementation and Add computer path descriptions are unaffected and accurate. Classification review only.",
+        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits."
       ]
     },
     {
@@ -16683,7 +16686,7 @@
     {
       "path": "docs/guides/native-shell-verification.md",
       "documentDigest": "432b7cd00cff49ed7b1722124d7258563d21442b97030022d9efec695d7d60de",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "sourceRevision": "dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
@@ -16840,6 +16843,10 @@
         {
           "path": "tests/tauri-shell/plugin-host-security.e2e.ts",
           "digest": "963d8b6cd74e474a5fd2c7891e564e51ddc16dc0562a2aef6a04ef07c76618bd"
+        },
+        {
+          "path": "tests/tauri-shell/native-chat-dispatch.e2e.ts",
+          "digest": "cfe0f18ba9cbfb723a4e7ccebe99dfe28f2e83f2adad8728fb144222cad67766"
         }
       ],
       "checks": [
@@ -16863,7 +16870,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919/#2914) startup-readiness-static.test.ts still pins the single main-window reveal authority and now pins maybe_reveal waiting for identity and renderer mount. rendererLiveness.test.tsx adds per-desktop-platform mount-commit cases. #2881 adds an `update` field to service status and the launcher env to lifecycle start. 'station service status --json checks a durable installed service, not a Desktop-owned sidecar' still holds; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Startup epoch, supervisor and ApiBaseProvider wiring are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Bound the newly executed native-chat-dispatch manual lane to its source owner; WebView, IPC and authenticated HTTP fixture proof passed after a 26-second header delay, with no provider/mobile/keyring claim."
       ]
     },
     {
@@ -30964,7 +30972,7 @@
     },
     {
       "path": "src-desktop/AGENTS.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes native changes to native-shell verification and platform guides; separates unit checks from physical device/runtime evidence and retains Windows process requirements.",
@@ -30973,7 +30981,7 @@
       "sources": [
         {
           "path": "docs/guides/native-shell-verification.md",
-          "digest": "d7e005e24651c4609ce268807590dfaa26c7f22f7c70f1b7cd84c3e3b8df4b25"
+          "digest": "432b7cd00cff49ed7b1722124d7258563d21442b97030022d9efec695d7d60de"
         },
         {
           "path": "scripts/gate-for.mjs",
@@ -30986,7 +30994,8 @@
         "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
         "Normative route still requires native guide and focused gate selection. Native guide source corrections and new gate-for documentation-impact briefing preserve that policy; independent actual gate CLI proved explicit-path/no-Git and unknown-scope exit2 fallback. No policy activation or physical proof.",
         "2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
-        "Reviewed integration deltas: docs/guides/native-shell-verification.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits."
+        "Reviewed integration deltas: docs/guides/native-shell-verification.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
+        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits."
       ]
     },
     {
