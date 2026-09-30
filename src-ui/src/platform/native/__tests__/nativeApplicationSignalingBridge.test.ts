@@ -374,6 +374,119 @@ describe('native application peer Tauri bridge', () => {
     ]);
   });
 
+  it('prunes failed-close bookkeeping only after the host peer expiry', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date());
+    try {
+      let prepareCount = 0;
+      let closeCount = 0;
+      const invoke = vi.fn(
+        async (command: string, args?: Record<string, unknown>) => {
+          if (command === 'station_native_relay_application_binding') {
+            requestGuard(args);
+            return binding;
+          }
+          if (command === 'station_native_application_peer_prepare') {
+            expect(args).toEqual(bindingRequest);
+            const peerHandle = String(prepareCount++).padStart(43, '0');
+            return {
+              ...peer,
+              peerHandle,
+              expiresAt: Date.now() + 120_000,
+            };
+          }
+          if (command === 'station_native_application_peer_close') {
+            closeCount++;
+            throw new Error('fixture close unavailable');
+          }
+          throw new Error(`unexpected command ${command}`);
+        },
+      );
+      const bridge = await createNativeApplicationSignalingBridge(
+        'Workstation',
+        12,
+        { invoke },
+      );
+      const signal = new AbortController().signal;
+      const issuedHandles: string[] = [];
+      for (let index = 0; index < 16; index++) {
+        const prepared = await bridge.signaling.prepare(signal);
+        issuedHandles.push(prepared.peerHandle);
+      }
+      expect(new Set(issuedHandles).size).toBe(16);
+      for (const handle of issuedHandles) {
+        await expect(bridge.signaling.close(handle)).rejects.toThrow(
+          'native_application_peer_close_failed',
+        );
+        await expect(bridge.signaling.close(handle)).rejects.toThrow(
+          'native_application_peer_close_failed',
+        );
+      }
+      expect(closeCount).toBe(32);
+      await expect(bridge.signaling.prepare(signal)).rejects.toThrow(
+        'native_application_peer_invalid',
+      );
+      expect(prepareCount).toBe(16);
+
+      vi.advanceTimersByTime(121_000);
+      const recovered = await bridge.signaling.prepare(signal);
+      expect(recovered.peerHandle).toBe(
+        String(prepareCount - 1).padStart(43, '0'),
+      );
+      expect(prepareCount).toBe(17);
+      expect(closeCount).toBe(32);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reserves the bounded host peer pool across concurrent prepares', async () => {
+    const pending: Array<(value: unknown) => void> = [];
+    let prepareCount = 0;
+    const invoke = vi.fn(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === 'station_native_relay_application_binding') {
+          requestGuard(args);
+          return binding;
+        }
+        if (command === 'station_native_application_peer_prepare') {
+          prepareCount++;
+          return await new Promise<unknown>((resolve) => pending.push(resolve));
+        }
+        throw new Error(`unexpected command ${command}`);
+      },
+    );
+    const bridge = await createNativeApplicationSignalingBridge(
+      'Workstation',
+      12,
+      { invoke },
+    );
+    const signal = new AbortController().signal;
+    const attempts = Array.from({ length: 17 }, () =>
+      bridge.signaling.prepare(signal).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      ),
+    );
+    expect(prepareCount).toBe(16);
+    expect(pending).toHaveLength(16);
+    for (let index = 0; index < pending.length; index++)
+      pending[index]!({
+        ...peer,
+        peerHandle: String(index).padStart(43, '0'),
+        expiresAt: Date.now() + 90_000,
+      });
+    const results = await Promise.all(attempts);
+    expect(results.filter((result) => 'value' in result)).toHaveLength(16);
+    expect(results.filter((result) => 'error' in result)).toHaveLength(1);
+    const refusal = results.find((result) => 'error' in result);
+    expect(
+      refusal && 'error' in refusal ? refusal.error : undefined,
+    ).toMatchObject({
+      message: 'native_application_peer_invalid',
+    });
+  });
+
   it('keeps the diagnostic bridge on its own diagnostic commands', async () => {
     const invoke = vi.fn(
       async (command: string, args?: Record<string, unknown>) => {

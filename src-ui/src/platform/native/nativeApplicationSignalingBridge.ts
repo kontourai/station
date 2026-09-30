@@ -18,6 +18,7 @@ const MAX_STATION_PROOF_BYTES = STATION_CONNECTION_PROOF_MAX_BYTES;
 const MAX_PATH_BYTES = 2048;
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
 const PEER_TTL_MS = 120_000;
+const MAX_PEERS = 16;
 
 const defaultInvoker: TauriInvoker = {
   invoke: (command, args) => invokeTauri<unknown>(command, args),
@@ -38,6 +39,16 @@ function handleOf(value: unknown): string | undefined {
   return typeof peerHandle === 'string' && PEER_HANDLE.test(peerHandle)
     ? peerHandle
     : undefined;
+}
+
+function peerExpiryForTracking(value: unknown, now: number): number {
+  if (typeof value !== 'object' || value === null) return now + PEER_TTL_MS;
+  const expiresAt = (value as { expiresAt?: unknown }).expiresAt;
+  if (!Number.isSafeInteger(expiresAt)) return now + PEER_TTL_MS;
+  if ((expiresAt as number) <= now) return now;
+  return (expiresAt as number) <= now + PEER_TTL_MS
+    ? (expiresAt as number)
+    : now + PEER_TTL_MS;
 }
 
 function validatePeer(
@@ -170,8 +181,17 @@ export async function createNativeApplicationSignalingBridge(
   const surface = Object.freeze({ ...binding.signaling.surface });
   const handles = new Map<string, NativeApplicationPeer>();
   const closing = new Map<string, Promise<void>>();
+  let pendingPrepares = 0;
+
+  const pruneExpiredHandles = () => {
+    const now = Date.now();
+    for (const [peerHandle, peer] of handles) {
+      if (peer.expiresAt <= now) handles.delete(peerHandle);
+    }
+  };
 
   const closePeer = (peerHandle: string): Promise<void> => {
+    pruneExpiredHandles();
     const existing = closing.get(peerHandle);
     if (existing) return existing;
     if (!handles.has(peerHandle)) return Promise.resolve();
@@ -195,42 +215,52 @@ export async function createNativeApplicationSignalingBridge(
     surface,
     async prepare(signal: AbortSignal) {
       signal.throwIfAborted();
-      const raw = await invoke.invoke(
-        'station_native_application_peer_prepare',
-        {
-          profileName,
-          expectedProfileRevision: profileRevision,
-        },
-      );
-      const rawHandle = handleOf(raw);
-      try {
-        const peer = validatePeer(raw, surface.clientInstanceId);
-        if (signal.aborted) signal.throwIfAborted();
-        if (!rawHandle || handles.has(rawHandle) || handles.size >= 16)
-          throw new Error('native_application_peer_invalid');
-        handles.set(rawHandle, peer);
-        return peer;
-      } catch (error) {
-        if (rawHandle && !handles.has(rawHandle))
-          handles.set(rawHandle, {
-            version: 'station-native-application-peer/v1',
-            peerHandle: rawHandle,
-            nonce: '',
-            connectionId: surface.clientInstanceId,
-            expiresAt: Date.now() + PEER_TTL_MS,
-          });
-        if (rawHandle) await closePeer(rawHandle).catch(() => {});
-        if (signal.aborted) signal.throwIfAborted();
-        if (
-          error instanceof Error &&
-          error.message.startsWith('native_application_')
-        )
-          throw error;
+      pruneExpiredHandles();
+      if (handles.size + pendingPrepares >= MAX_PEERS)
         throw new Error('native_application_peer_invalid');
+      pendingPrepares++;
+      try {
+        const raw = await invoke.invoke(
+          'station_native_application_peer_prepare',
+          {
+            profileName,
+            expectedProfileRevision: profileRevision,
+          },
+        );
+        const rawHandle = handleOf(raw);
+        try {
+          const peer = validatePeer(raw, surface.clientInstanceId);
+          if (signal.aborted) signal.throwIfAborted();
+          if (!rawHandle || handles.has(rawHandle))
+            throw new Error('native_application_peer_invalid');
+          handles.set(rawHandle, peer);
+          return peer;
+        } catch (error) {
+          if (rawHandle && !handles.has(rawHandle)) {
+            handles.set(rawHandle, {
+              version: 'station-native-application-peer/v1',
+              peerHandle: rawHandle,
+              nonce: '',
+              connectionId: surface.clientInstanceId,
+              expiresAt: peerExpiryForTracking(raw, Date.now()),
+            });
+            await closePeer(rawHandle).catch(() => {});
+          }
+          if (signal.aborted) signal.throwIfAborted();
+          if (
+            error instanceof Error &&
+            error.message.startsWith('native_application_')
+          )
+            throw error;
+          throw new Error('native_application_peer_invalid');
+        }
+      } finally {
+        pendingPrepares--;
       }
     },
     async open(peerHandle: string, offerSdp: string, signal: AbortSignal) {
       signal.throwIfAborted();
+      pruneExpiredHandles();
       const peer = handles.get(peerHandle);
       if (!peer || !PEER_HANDLE.test(peerHandle))
         throw new Error('native_application_peer_invalid');
@@ -264,6 +294,7 @@ export async function createNativeApplicationSignalingBridge(
     },
     async read(peerHandle: string, signal: AbortSignal) {
       signal.throwIfAborted();
+      pruneExpiredHandles();
       const peer = handles.get(peerHandle);
       if (!peer || !PEER_HANDLE.test(peerHandle))
         throw new Error('native_application_peer_invalid');
@@ -294,6 +325,7 @@ export async function createNativeApplicationSignalingBridge(
       signal: AbortSignal,
     ) {
       signal.throwIfAborted();
+      pruneExpiredHandles();
       if (!handles.has(peerHandle) || !PEER_HANDLE.test(peerHandle))
         throw new Error('native_application_peer_invalid');
       if (
