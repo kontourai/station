@@ -273,13 +273,16 @@ function isRawErrorValue(value: unknown): boolean {
 
 /**
  * The rule for every chunk written to a `/chat` client: no raw error object
- * crosses. A top-level field holding an `Error` (a `tool-error` part's
+ * crosses, and step frames carry only their type. A top-level field holding an `Error` (a `tool-error` part's
  * `error`, or any future part that carries one) is replaced by the fixed
  * outward text, since serializing it exposes whatever the error holds.
  * Chunks without such a field are returned as the same object.
  */
 function outwardStreamChunk(chunk: unknown): unknown {
   if (!chunk || typeof chunk !== 'object' || Array.isArray(chunk)) return chunk;
+  // Step payloads are provider diagnostics; no Station client consumes them.
+  const type = (chunk as { type?: unknown }).type;
+  if (type === 'start-step' || type === 'finish-step') return { type };
   let next: Record<string, unknown> | undefined;
   for (const [key, value] of Object.entries(chunk)) {
     if (!isRawErrorValue(value)) continue;

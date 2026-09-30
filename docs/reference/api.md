@@ -163,6 +163,15 @@ not create an arbitrary model binding. The response is SSE; failures before
 stream creation use HTTP errors, while failures during a stream must be handled
 as stream outcomes.
 
+`start-step` and `finish-step` frames carry only their type. Provider request
+and response bodies, headers, metadata and nested errors are not sent in these
+frames. Text and tool frames keep their existing contracts.
+
+The framework compatibility route `POST /agents/:slug/chat` remains behind
+Station authentication. Its HTTP 5xx responses contain fixed failure text and
+a correlation ID, never the provider's raw error message. Successful streams
+and client-side 4xx refusals keep the framework's response contract.
+
 <a id="agent-management-1"></a>
 
 ### Default Agent
@@ -1453,7 +1462,8 @@ every key is one of `--k-brand`, `--k-brand-contrast`, `--k-action`,
 `--k-action-contrast` or `--k-focus`, every value is `#rgb`/`#rrggbb`, and
 every check from the "White-label overrides" section in
 [`@kontourai/ui`'s DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md#white-label-overrides)
-passes in both modes; otherwise it applies none of it and keeps the default.
+(the package's `validateBrandOverride`) and Station's stricter text checks
+pass in both modes; otherwise it applies none of it and keeps the default.
 The rules and a worked provider are in
 [examples/custom-branding](../../examples/custom-branding/README.md).
 

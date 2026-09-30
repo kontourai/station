@@ -101,6 +101,11 @@ const inlineFocus = (page: Page) =>
     document.documentElement.style.getPropertyValue('--k-focus'),
   );
 
+const brandFocusMarked = (page: Page) =>
+  page.evaluate(() =>
+    document.documentElement.hasAttribute('data-brand-focus'),
+  );
+
 const inlineHistory = (page: Page) =>
   page.evaluate(
     () =>
@@ -121,6 +126,9 @@ test('applies the cached branding theme before the server answers, then the live
   await expect.poll(branding.requested).toBe(true);
   await expect.poll(branding.bootStripped).toBe(true);
   expect(await inlineFocus(page)).toBe('#93c5fd');
+  // The pre-render path also marks the root, so the theme's focus colour
+  // (not the device accent) paints the ring from first paint.
+  expect(await brandFocusMarked(page)).toBe(true);
 
   await branding.release({ dark: { '--k-focus': '#fbbf24' } });
   await expect.poll(() => inlineFocus(page)).toBe('#fbbf24');
@@ -144,5 +152,6 @@ test('re-validates the cache and applies nothing from a hostile one', async ({
   await expect.poll(branding.bootStripped).toBe(true);
   // The pre-render path ran before the app mounted; nothing was ever written.
   expect(await inlineHistory(page)).toEqual([]);
+  expect(await brandFocusMarked(page)).toBe(false);
   await branding.release(null);
 });

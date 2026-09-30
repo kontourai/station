@@ -536,6 +536,23 @@ A session spawned before this change has nothing recorded.
 - **Who can reach a session at all.** Command authorization
   (`canReadSessionForCommand`) admits only the session owner's own
   principals. There is no multi-user shared session to decide for.
+- **Later addition (#2915, owner decision 2026-09-28).** A Claude approval
+  answered "Auto-accept file edits for this session" is also a posture
+  decision, recorded only for a caller holding `setApprovalMode` authority:
+  an answer sent through `POST /api/orchestration/commands`, the route and
+  session authorization an Auto pick needs. Once the engine has taken the
+  answer, the service records an `auto` `session.approval-mode-set` for the
+  conversation, based on the decision that stood before the answer was sent.
+  If any decision was recorded after the answer was sent, that decision stands
+  and nothing is recorded. The compare-and-set alone would admit Auto over a
+  newer `never`, so the service also checks that the standing decision is
+  unchanged. It is not recorded over a standing Auto or `never`. On the
+  delegated `respond_to_task_request` path for a task on this Station (a
+  bound Project approver) and the approval inbox, the answer is sent as a
+  one-call `accept` and nothing is recorded, so no engine is left in
+  acceptEdits with no decision to undo it. A delegated answer for a task on
+  a saved Environment reaches that Station's command route with this
+  Station's enrolled credential and is judged there by the same rule.
 
 ### 4.9 An Agent's default posture (owner request)
 
