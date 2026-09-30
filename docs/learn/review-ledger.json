@@ -3514,7 +3514,7 @@
     {
       "path": "docs/architecture.md",
       "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
-      "sourceRevision": "81549f91dee0a56fc74994a73e5b99396eca8c28",
+      "sourceRevision": "aa05786e0d134711f0b787403db0632c4069bc19",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
@@ -3618,7 +3618,7 @@
         },
         {
           "path": "src-server/runtime/conversation/stream-orchestrator.ts",
-          "digest": "c75d50699573fe65705fede30056287f2bb052a8bf4bb65e64b3f89e8265d1ed"
+          "digest": "0c5907d6b5073d300b2b37ce9e9e107d654fc90934c89cda17196143f6027111"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -3705,7 +3705,8 @@
         "Reviewed against the station-agent failure-reason change: writeSSEError now forwards only a 4xx/5xx provider HTTP status beside the fixed outward text, and the station-agent relay composes its runtime.error message from that status (code/retriable unchanged). This document makes no claim about the /chat error frame, the relay's runtime.error wording, or provider-text exposure; its pipeline, adapter and module-ownership claims remain accurate.",
         "Reviewed against the failure-reason follow-up: a zero-output /chat turn's persisted [SYSTEM_EVENT] [CHAT_ERROR] marker now carries outwardTurnFailureText (provider status sentence, Station's abort constant, or the fixed outward generic) instead of the thrown error's message; writeSSEError and the station-agent relay share the status wording in providers/model-provider-failure.ts, credential-shaped 401 precedence unchanged. This document makes no claim about the marker text, the /chat error frame or runtime.error wording; its cost-tracking, env-var, agent, pipeline, adapter and ownership claims remain accurate.",
         "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract.",
-        "Reviewed against failure-reason round 4: /chat now fails a turn on a mid-stream provider error part through the thrown-error path (outward frame, reload-safe marker, no dedup success) and writeSSEChunk replaces any top-level Error-valued field; a real provider status wins over a credential-shaped message and only an ai-sdk APICallError status is worded as a provider status; chat.ts preparation and model-override creation return a provider error as its outward sentence while Station-authored errors keep their message; a direct Strands conversation excludes the failed-turn marker from model history. This document makes no claim contradicted by these changes; api.md states the marker contract and the scrubbing/excluding seams."
+        "Reviewed against failure-reason round 4: /chat now fails a turn on a mid-stream provider error part through the thrown-error path (outward frame, reload-safe marker, no dedup success) and writeSSEChunk replaces any top-level Error-valued field; a real provider status wins over a credential-shaped message and only an ai-sdk APICallError status is worded as a provider status; chat.ts preparation and model-override creation return a provider error as its outward sentence while Station-authored errors keep their message; a direct Strands conversation excludes the failed-turn marker from model history. This document makes no claim contradicted by these changes; api.md states the marker contract and the scrubbing/excluding seams.",
+        "Reviewed against failure-reason round 6: the summary source now reads a marker-free transcript (both the summary messages and the rendered transcriptOverride exclude the [CHAT_ERROR] marker), so api.md's 'the marker never reaches a model' remains true; the provider-error search walks AggregateError and treats an inconclusive walk as outward generic; the /chat stream path finds a provider status through wrappers; marker exclusion reads the same shapes as the scrubber. No claim in this document is contradicted."
       ]
     },
     {
@@ -21659,7 +21660,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "8031ad9a6ccb18dfe9ca4b897202ac8e24fbefb3",
+      "sourceRevision": "aa05786e0d134711f0b787403db0632c4069bc19",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -21904,7 +21905,7 @@
         },
         {
           "path": "src-server/routes/chat/conversations.ts",
-          "digest": "8c811e68d196799f84c11aefeaa9e943831b5d3fd26db95feb8134d41a9f1bff"
+          "digest": "d96099cd4787a5dc4f5707cc66b1dbe723dcedbd76991a4f81ec0cad64b333f4"
         },
         {
           "path": "src-server/routes/connections/bedrock.ts",
@@ -22371,7 +22372,8 @@
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract.",
         "Reviewed against failure-reason round 4: /chat now fails a turn on a mid-stream provider error part through the thrown-error path (outward frame, reload-safe marker, no dedup success) and writeSSEChunk replaces any top-level Error-valued field; a real provider status wins over a credential-shaped message and only an ai-sdk APICallError status is worded as a provider status; chat.ts preparation and model-override creation return a provider error as its outward sentence while Station-authored errors keep their message; a direct Strands conversation excludes the failed-turn marker from model history. This document makes no claim contradicted by these changes; api.md states the marker contract and the scrubbing/excluding seams.",
-        "Reviewed against failure-reason round 5: title regeneration and summary generation exclude the [CHAT_ERROR] marker from their model inputs (served /messages and /export keep it scrubbed); /chat preparation and model-override creation find a provider error through RetryError/cause chains and answer a statusless credential-shaped provider error as 401 with the unnumbered credentials sentence; the station-agent relay's statusless runtime.error now reads 'The response stream failed.' (matching the persisted marker). No claim in this document is contradicted; api.md's statement that the marker never reaches a model is now true for title and summary too."
+        "Reviewed against failure-reason round 5: title regeneration and summary generation exclude the [CHAT_ERROR] marker from their model inputs (served /messages and /export keep it scrubbed); /chat preparation and model-override creation find a provider error through RetryError/cause chains and answer a statusless credential-shaped provider error as 401 with the unnumbered credentials sentence; the station-agent relay's statusless runtime.error now reads 'The response stream failed.' (matching the persisted marker). No claim in this document is contradicted; api.md's statement that the marker never reaches a model is now true for title and summary too.",
+        "Reviewed against failure-reason round 6: the summary source now reads a marker-free transcript (both the summary messages and the rendered transcriptOverride exclude the [CHAT_ERROR] marker), so api.md's 'the marker never reaches a model' remains true; the provider-error search walks AggregateError and treats an inconclusive walk as outward generic; the /chat stream path finds a provider status through wrappers; marker exclusion reads the same shapes as the scrubber. No claim in this document is contradicted."
       ]
     },
     {
@@ -26845,7 +26847,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "8031ad9a6ccb18dfe9ca4b897202ac8e24fbefb3",
+      "sourceRevision": "aa05786e0d134711f0b787403db0632c4069bc19",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26898,7 +26900,7 @@
         },
         {
           "path": "src-server/routes/chat/conversations.ts",
-          "digest": "8c811e68d196799f84c11aefeaa9e943831b5d3fd26db95feb8134d41a9f1bff"
+          "digest": "d96099cd4787a5dc4f5707cc66b1dbe723dcedbd76991a4f81ec0cad64b333f4"
         },
         {
           "path": "src-server/routes/knowledge/knowledge-source-routes.ts",
@@ -27045,7 +27047,8 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
         "Reviewed against failure-reason round 3: persisted [SYSTEM_EVENT] [CHAT_ERROR] markers holding pre-fix provider text are scrubbed to the outward generic by one shared scrubber (runtime/conversation/chat-error-marker.ts) at the conversation read seam (messages/export/fork/summary), title regeneration, knowledge-store conversation records and a direct Strands conversation's replayed history; an inferred credential refusal is worded without an HTTP status (SSE frame keeps statusCode 401 plus statusInferred). Stored data is unchanged. This document's claims about routes, stores, runtime integration, monitoring and SDK remain accurate; the API reference now states the marker contract.",
-        "Reviewed against failure-reason round 5: title regeneration and summary generation exclude the [CHAT_ERROR] marker from their model inputs (served /messages and /export keep it scrubbed); /chat preparation and model-override creation find a provider error through RetryError/cause chains and answer a statusless credential-shaped provider error as 401 with the unnumbered credentials sentence; the station-agent relay's statusless runtime.error now reads 'The response stream failed.' (matching the persisted marker). No claim in this document is contradicted; api.md's statement that the marker never reaches a model is now true for title and summary too."
+        "Reviewed against failure-reason round 5: title regeneration and summary generation exclude the [CHAT_ERROR] marker from their model inputs (served /messages and /export keep it scrubbed); /chat preparation and model-override creation find a provider error through RetryError/cause chains and answer a statusless credential-shaped provider error as 401 with the unnumbered credentials sentence; the station-agent relay's statusless runtime.error now reads 'The response stream failed.' (matching the persisted marker). No claim in this document is contradicted; api.md's statement that the marker never reaches a model is now true for title and summary too.",
+        "Reviewed against failure-reason round 6: the summary source now reads a marker-free transcript (both the summary messages and the rendered transcriptOverride exclude the [CHAT_ERROR] marker), so api.md's 'the marker never reaches a model' remains true; the provider-error search walks AggregateError and treats an inconclusive walk as outward generic; the /chat stream path finds a provider status through wrappers; marker exclusion reads the same shapes as the scrubber. No claim in this document is contradicted."
       ]
     },
     {
