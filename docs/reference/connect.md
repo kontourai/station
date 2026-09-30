@@ -16,6 +16,37 @@ where — see
 
 ---
 
+## Application channel request preparation
+
+The `/application-channel` entry exports `ApplicationChannel`,
+`ApplicationChannelRequestPreparation` and `ApplicationChannelPreparedHeaders`.
+A channel owner can implement optional `prepareRequest(request)` to add headers
+after its peer opens and before the request is sent. This permits per-peer
+preparation without changing the broker or application-frame protocol.
+
+`createApplicationChannelFetch` first reads and validates the bounded request
+body. The callback receives immutable method and path fields (including the
+query), independent body bytes of at most 16 KiB, copied original headers and
+the owned request signal. Mutating these copies cannot change the transmitted
+target, body or original headers. The callback returns additional header pairs;
+case-insensitive collisions with original headers or previous additions are
+refused, including attempts to replace caller-supplied proof or credential
+headers. Existing header-count, byte and frame limits still apply.
+
+The adapter checks endpoint trust, cancellation and caller authority before
+preparation and after its asynchronous result. Cancellation settles a hanging
+callback and closes the channel; a late result cannot dispatch. Preparation or
+framing failure after opening also closes without sending a request. Channels
+without the method keep their existing request behavior. No operation retries
+automatically.
+
+This is an opt-in transport contract. It exposes no native peer handles,
+signing keys or proof claims, and installs no signer. The native host signer
+and ordinary UI composition require separate integration and verification.
+The [application-channel tests](../../packages/connect/src/__tests__/applicationChannel.test.ts)
+exercise the Fetch adapter through frames and the server request boundary;
+they do not establish physical native-client or relay-only acceptance.
+
 ## Optional native application transport
 
 The `/native-application` source entry exports

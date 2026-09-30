@@ -128,6 +128,13 @@ Requests retain the application channel's 16 KiB pilot body limit; responses use
 its bounded, backpressured streaming protocol. This interface is Fetch, not an
 arbitrary WebSocket or terminal proxy.
 
+An admitted channel owner may supply optional `prepareRequest` to add headers
+for that peer's exact request. The adapter keeps the original target/body,
+refuses header replacement and closes on cancellation or failed preparation.
+See the [Connect reference](../../docs/reference/connect.md#application-channel-request-preparation)
+for the copied inputs, bounds and lifetime rules. This does not install a
+native signer or enable ordinary UI transport selection.
+
 The [self-hosted broker guide](../../docs/guides/self-hosted-broker.md) documents
 operator setup. The [free collaboration lab](../../docs/guides/local-collaboration-lab.md)
 exercises real browser, broker, Pion and Station application behavior. Fresh
