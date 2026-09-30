@@ -2,7 +2,10 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { startAccountLabStation } from '../lib/local-collaboration-station.js';
+
+const makeTempDir = trackTempDirs();
 
 it('does not launch the Station child when private broker config preparation fails', async () => {
   const root = mkdtempSync(join(tmpdir(), 'station-config-before-launch-'));
@@ -36,7 +39,7 @@ it('does not launch the Station child when private broker config preparation fai
 });
 
 it('refuses native Device proof pilot startup without virtual broker ingress', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'station-native-proof-config-'));
+  const root = makeTempDir('station-native-proof-config-');
   const directory = join(root, 'station');
   try {
     await expect(
