@@ -959,7 +959,7 @@ The [builder](../../packages/shared/src/build.ts) owns containment and dependenc
 preparation. Managed workspace builds require the managed dependency setup;
 standalone plugins use the helper's constrained npm preparation. This can write
 dependencies and outputs. Its exact external allowlist includes root SDK and
-the SDK client/voice entries, not every SDK subpath. A build does not install,
+the SDK agent/client/voice entries, not every SDK subpath. A build does not install,
 authorize or activate a plugin. `--dev` in the example build file selects one
 build; it is not a watcher.
 
