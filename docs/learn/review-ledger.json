@@ -12096,7 +12096,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4f50af953fbe2b0e6b2d4951a3d10478ca3919df39fe357f66edf81cf8dea141",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "sourceRevision": "b344807fd085298b757bae057d264c5cf91ac40a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12569,6 +12569,10 @@
         {
           "path": "tests/connections-crud.spec.ts",
           "digest": "b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5"
+        },
+        {
+          "path": "src-ui/src/views/CredentialProfileDeviceCodeLogin.tsx",
+          "digest": "c929fd3b638cd33197362e5b079b01514a3930a2e17062939a2fa048feeb519a"
         }
       ],
       "checks": [
@@ -12621,7 +12625,8 @@
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main re-read it for C2b; its approval mentions are signing-key approval, unaffected by this branch. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
-        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed.",
+        "Reviewed the shared SkeletonBlock loading state and registered 390px action-row proof after static gate feedback; sign-in behavior is unchanged and 12 focused UI tests passed."
       ]
     },
     {
@@ -24634,7 +24639,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "sourceRevision": "b344807fd085298b757bae057d264c5cf91ac40a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25592,6 +25597,10 @@
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx",
           "digest": "2d83cf6470cd354426b7923a2a87eb8b0fc58872578fc99d01ca51c45c56b7c4"
+        },
+        {
+          "path": "packages/sdk/src/device-code-login.ts",
+          "digest": "9738c9067cb02012c72eccfd88d0bb92bda54fe118879b45779867778fb4ce14"
         }
       ],
       "checks": [
@@ -25643,7 +25652,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2599 refreshed dependency versions (package manifests and pnpm-lock.yaml; Agent SDK 0.3.261 to 0.3.278, bundling Claude Code 2.1.278), with no script, export or workspace change. This branch's side is the Claude session-grant and approval-authority work. The SDK package's own exports and the respondToRequest example are unchanged. Prose accurate.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed.",
+        "Added the new device-code-login module as the owner of the documented scoped query/mutation contract; checked exports and response validation."
       ]
     },
     {

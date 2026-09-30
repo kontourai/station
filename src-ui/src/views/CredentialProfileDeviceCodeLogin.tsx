@@ -10,6 +10,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { Button } from '../components/Button';
+import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 
 export function CredentialProfileDeviceCodeLogin({
@@ -93,7 +94,7 @@ function DeviceCodeLoginSurface({
   const actionError = cancel.error ?? start.error;
 
   if (authority.isPending)
-    return <p role="status">Checking engine sign-in access…</p>;
+    return <SkeletonBlock count={1} label="Checking engine sign-in access" />;
   if (authority.isError)
     return (
       <div>
