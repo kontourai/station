@@ -18,7 +18,7 @@
 
     {"path":"src-server/generated/settings-registry.json","digest":"49c10e15cc0774927a5191781af93e14231145efe08861f2b72281d7fcd6b191","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"5692bc623df1f878f5cbe2396b6d4e5f7825c6b66b3d668cbcf89226e0b33c57","revision":"e56b7b6bf847135adcce152d99112d104542d029"},
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"2f09efa4ae7974700bdbe901a4492a34329aafb2b1fa97a98f28edd3c8645167","revision":"f0f20e6125e5e41bbb691d806ea3cf866ac15769"},
 
     {"path":"src-ui/src/views/settings/settings-deep-link.ts","digest":"48c9f6d2dfc21babff6ff3e8839b1cd3bf2781347f0aa622ae740613148c3990","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
