@@ -1454,7 +1454,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2",
-      "sourceRevision": "2f3085a2920085f2283c41a1b0431a6ded12a480",
+      "sourceRevision": "ec83b822f1a70d5c7e708a49d9c04aa88ea2c662",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1515,7 +1515,8 @@
         "Glossary wording refined for Needs you; this page only links the glossary, no lane claim, no prose change.",
         "Re-checked after the workspace-surfaces context's Coding pane entry changed for the coding stack: this document only routes to that context (Workspace Surfaces: coding surfaces, navigation) and its summary still holds; no prose change.",
         "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change.",
-        "Merge of origin/main e27600d1f into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. Of these documents origin/main changed only docs/reference/api.md, and its own notes cover that; its delta (the @kontourai/ui 1.16 bump, Claude session grants, chat diagnostics, release assets) does not touch the coding-stack claims recorded here. No prose change."
+        "Merge of origin/main e27600d1f into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. Of these documents origin/main changed only docs/reference/api.md, and its own notes cover that; its delta (the @kontourai/ui 1.16 bump, Claude session grants, chat diagnostics, release assets) does not touch the coding-stack claims recorded here. No prose change.",
+        "Merge of origin/main 185c6b072 (#2984 inbox lanes) into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents (its docs change is docs/glossary.md, and its own notes cover it); the inbox-lane change does not touch the coding-stack claims recorded here. No prose change."
       ]
     },
     {
@@ -1523,7 +1524,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce",
-      "sourceRevision": "2f3085a2920085f2283c41a1b0431a6ded12a480",
+      "sourceRevision": "ec83b822f1a70d5c7e708a49d9c04aa88ea2c662",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1584,7 +1585,8 @@
         "Glossary wording refined for Needs you; this page only links the glossary, no lane claim, no prose change.",
         "Re-checked after the workspace-surfaces context's Coding pane entry changed for the coding stack: this document only routes to that context (Workspace Surfaces: coding surfaces, navigation) and its summary still holds; no prose change.",
         "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change.",
-        "Merge of origin/main e27600d1f into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. Of these documents origin/main changed only docs/reference/api.md, and its own notes cover that; its delta (the @kontourai/ui 1.16 bump, Claude session grants, chat diagnostics, release assets) does not touch the coding-stack claims recorded here. No prose change."
+        "Merge of origin/main e27600d1f into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. Of these documents origin/main changed only docs/reference/api.md, and its own notes cover that; its delta (the @kontourai/ui 1.16 bump, Claude session grants, chat diagnostics, release assets) does not touch the coding-stack claims recorded here. No prose change.",
+        "Merge of origin/main 185c6b072 (#2984 inbox lanes) into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents (its docs change is docs/glossary.md, and its own notes cover it); the inbox-lane change does not touch the coding-stack claims recorded here. No prose change."
       ]
     },
     {
@@ -14356,7 +14358,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "2f3085a2920085f2283c41a1b0431a6ded12a480",
+      "sourceRevision": "ec83b822f1a70d5c7e708a49d9c04aa88ea2c662",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14535,7 +14537,8 @@
         "mobile-chat-composer.spec.ts only changed the chip word it filters rows by (Active -> Running); journeys and coverage are unchanged, so the matrix entry stays accurate.",
         "Coding-stack change reviewed against this document's claims: App.tsx now derives resolveLayoutChatPlacement and provides it by context (no route, redirect or shortcut in this document changed); navigation-store gains a bounded adjacentLocation/getHistoryIndex and keeps navigate/updateParams/guard semantics; ChatDock's ChatWorkspacePane gains optional full-screen props (conversationScope, onScreen, ownsDockShortcuts, onPresentationTitleChange) without changing the chat stream, attachment or API contracts cited here; the edited specs (coding-layout-plan-panel, agents-pane, orchestration-chat-flow, plugin-pane-sdk-context) keep their named journeys and now drill in from the Coding rail or use Home for dock-only assertions. No prose change needed; executed the edited specs via test:e2e:product/extended.",
         "Merge of origin/main 62a39b083 into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents; this branch's coding-stack claims are unaffected by main's delta, which covers deps, relay, CLI, ADR and docs-build changes. No prose change.",
-        "Merge of origin/main e27600d1f into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. Of these documents origin/main changed only docs/reference/api.md, and its own notes cover that; its delta (the @kontourai/ui 1.16 bump, Claude session grants, chat diagnostics, release assets) does not touch the coding-stack claims recorded here. No prose change."
+        "Merge of origin/main e27600d1f into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. Of these documents origin/main changed only docs/reference/api.md, and its own notes cover that; its delta (the @kontourai/ui 1.16 bump, Claude session grants, chat diagnostics, release assets) does not touch the coding-stack claims recorded here. No prose change.",
+        "Merge of origin/main 185c6b072 (#2984 inbox lanes) into feat/coding-chat-main: the ledger conflicted only in scalar review fields and in the checks arrays of records both sides refreshed. Resolved by keeping origin/main's notes and this branch's coding-stack notes, then recomputing digests on the merged tree. origin/main changed none of these documents (its docs change is docs/glossary.md, and its own notes cover it); the inbox-lane change does not touch the coding-stack claims recorded here. No prose change."
       ]
     },
     {
