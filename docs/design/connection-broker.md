@@ -453,8 +453,26 @@ continuation remain separate; none can substitute for another.
 For relay-only protected requests, bind a **separate P-256 Device proof key**
 at explicit operator Device approval. The account key in
 [`native_account_proof_key.rs`](../../src-desktop/src/native_account_proof_key.rs)
-is a custody pattern, not the Device key. Station stores the Device public key,
-its random binding ID, the approved native surface and grant scope in a private
+is a custody pattern, not the Device key. Before creating its Device proof key,
+the host mints a **provisional canonical UUIDv4 candidate binding ID** and
+includes it — with the exact Station ID, the approved Device ID, the full native
+surface, and the Device public JWK plus its RFC 7638 thumbprint — in the
+binding candidate it presents for approval ([contract shape](../../packages/contracts/src/native-device-proof.ts)).
+The candidate carries no secret: the UUID itself grants nothing. The Station
+operator explicitly approves that exact tuple for the create or revoke
+operation, the server freezes the tuple, recomputes the thumbprint, and accepts
+the host-proposed ID instead of minting its own random one. This removes the
+previous independent-random mismatch where the host and server each generated a
+different binding ID for the same binding. The binding ID must be unique
+across active AND revoked historical records before any previous binding is
+replaced; retrying the exact active candidate returns its recorded state
+without re-approving or recreating. Host-side reconciliation is bounded: if a
+transport failure leaves the commit outcome unknown, or an exact-ID readback is
+absent, the host MUST retain its provisional proof key — a binding may have
+committed even when no readback confirms it. Key cleanup requires a
+definitive terminal outcome or a confirmed cancellation; there is no unsafe
+cleanup path. Station stores the Device public key,
+the approved binding ID, the approved native surface and grant scope in a private
 sidecar that rechecks the current paired Device. The host stores its private key in a distinct keyring namespace
 bound to the selected Station, Device and binding ID. An existing bearer Device
 needs an explicit operator-approved binding ceremony; a saved profile or broker

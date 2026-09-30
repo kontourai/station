@@ -18,6 +18,9 @@ import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.j
 import { DevicePairingService } from '../device-pairing-service.js';
 import {
   type NativeDeviceClientSurface,
+  type NativeDeviceProofApprovalOperation,
+  type NativeDeviceProofApprovalTuple,
+  type NativeDeviceProofBinding,
   NativeDeviceProofBindingError,
   NativeDeviceProofBindingService,
   NativeDeviceProofOperatorAuthority,
@@ -68,10 +71,83 @@ function pairForBindings(service: DevicePairingService) {
   return { deviceId: device.id };
 }
 
-function mintApproval() {
+function mintApproval(tuple: {
+  operation: NativeDeviceProofApprovalOperation;
+  stationId?: string;
+  deviceId: string;
+  bindingId: string | null;
+  surface: NativeDeviceClientSurface;
+  jwk: NativeDeviceProofPublicJwk | null;
+}) {
   const authority = new NativeDeviceProofOperatorAuthority();
+  const frozen: NativeDeviceProofApprovalTuple = {
+    operation: tuple.operation,
+    stationId: tuple.stationId ?? ENVIRONMENT_ID,
+    deviceId: tuple.deviceId,
+    bindingId: tuple.bindingId,
+    surface: tuple.surface,
+    jwk: tuple.jwk,
+  };
   return authority.approve({
     operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    tuple: frozen,
+  });
+}
+
+/**
+ * Shared create harness: proposes one fresh canonical UUIDv4 candidate ID and
+ * mints a matching create approval, exactly like the reviewed host flow.
+ */
+function createApproved(
+  service: NativeDeviceProofBindingService,
+  deviceId: string,
+  opts: {
+    bindingId?: string;
+    surface?: NativeDeviceClientSurface;
+    jwk?: NativeDeviceProofPublicJwk;
+    stationId?: string;
+  } = {},
+): NativeDeviceProofBinding {
+  const bindingId = opts.bindingId ?? randomUUID();
+  const approvedSurface = opts.surface ?? surface();
+  const jwk = opts.jwk ?? p256PublicJwk();
+  return service.createBinding({
+    bindingId,
+    deviceId,
+    surface: approvedSurface,
+    jwk,
+    approval: mintApproval({
+      operation: 'create',
+      stationId: opts.stationId,
+      deviceId,
+      bindingId,
+      surface: approvedSurface,
+      jwk,
+    }),
+  });
+}
+
+function revokeApproved(
+  service: NativeDeviceProofBindingService,
+  deviceId: string,
+  opts: {
+    surface?: NativeDeviceClientSurface;
+    bindingId?: string | null;
+    stationId?: string;
+  } = {},
+) {
+  const approvedSurface = opts.surface ?? surface();
+  return service.revokeBinding({
+    deviceId,
+    surface: approvedSurface,
+    approval: mintApproval({
+      operation: 'revoke',
+      stationId: opts.stationId,
+      deviceId,
+      bindingId: opts.bindingId ?? null,
+      surface: approvedSurface,
+      jwk: null,
+    }),
   });
 }
 
@@ -117,17 +193,22 @@ function surface(
   };
 }
 
+function storedBindings(homeDir: string): unknown[] {
+  const stored = JSON.parse(
+    readFileSync(join(homeDir, 'security', BINDINGS_FILE), 'utf8'),
+  ) as { bindings: unknown[] };
+  return stored.bindings;
+}
+
 describe('native device proof binding service (station#2893)', () => {
   test('create persists a full-surface binding tied to the approved device, station, and surface', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const jwk = p256PublicJwk();
     const approved = surface({ keyThumbprint: thumbprintOf(p256PublicJwk()) });
-    const binding = bindingService.createBinding({
-      deviceId,
+    const binding = createApproved(bindingService, deviceId, {
       surface: approved,
       jwk,
-      approval: mintApproval(),
     });
     expect(binding.state).toBe('active');
     expect(binding.deviceId).toBe(deviceId);
@@ -145,22 +226,22 @@ describe('native device proof binding service (station#2893)', () => {
     expect(JSON.stringify(stored)).not.toContain('peerNonce');
   });
 
-  test('reopen loads the same full-surface binding and answers exact requireCurrentBinding', () => {
+  test('returned binding ID equals the host-proposed candidate ID and survives reopen', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
+    const proposed = randomUUID();
     const approved = surface();
-    const created = bindingService.createBinding({
-      deviceId,
+    const created = createApproved(bindingService, deviceId, {
+      bindingId: proposed,
       surface: approved,
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
     });
+    expect(created.bindingId).toBe(proposed);
     const reopened = new NativeDeviceProofBindingService({ homeDir, pairing });
     const current = reopened.requireCurrentBinding({
       deviceId,
       surface: approved,
     });
-    expect(current.binding.bindingId).toBe(created.bindingId);
+    expect(current.binding.bindingId).toBe(proposed);
     expect(current.binding.surface).toEqual(approved);
     expect(current.binding.deviceProof.thumbprint).toBe(
       created.deviceProof.thumbprint,
@@ -169,16 +250,286 @@ describe('native device proof binding service (station#2893)', () => {
     expect(current.device.scope).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
   });
 
+  test('noncanonical binding IDs are refused before any state changes', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const badIds = [
+      randomUUID().toUpperCase(),
+      'not-a-uuid',
+      '11111111-1111-1111-8111-111111111111',
+      '11111111-1111-4111-4111-111111111111',
+      '11111111-1111-4111-8111-1111111111110',
+      '',
+    ];
+    for (const bindingId of badIds) {
+      // The approval factory refuses to bind a noncanonical candidate ID.
+      expect(() =>
+        createApproved(bindingService, deviceId, { bindingId }),
+      ).toThrow('invalid_operator_approval');
+      expect(() => bindingService.bindingById({ bindingId })).toThrow(
+        'invalid_binding_id',
+      );
+    }
+    // A valid context presented with a noncanonical input ID still fails at
+    // the service seam before any state changes.
+    expect(() =>
+      bindingService.createBinding({
+        bindingId: randomUUID().toUpperCase(),
+        deviceId,
+        surface: surface(),
+        jwk: p256PublicJwk(),
+        approval: mintApproval({
+          operation: 'create',
+          deviceId,
+          bindingId: randomUUID(),
+          surface: surface(),
+          jwk: p256PublicJwk(),
+        }),
+      }),
+    ).toThrow('invalid_binding_id');
+    expect(
+      bindingService.currentBinding({ deviceId, surface: surface() }),
+    ).toBeNull();
+    expect(() =>
+      new NativeDeviceProofOperatorAuthority().approve({
+        operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        tuple: {
+          operation: 'create',
+          stationId: ENVIRONMENT_ID,
+          deviceId,
+          bindingId: randomUUID().toUpperCase(),
+          surface: surface(),
+          jwk: p256PublicJwk(),
+        },
+      }),
+    ).toThrow('invalid_operator_approval');
+  });
+
+  test('an altered tuple or operation presented against the original approval context refuses without changing state', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const bindingId = randomUUID();
+    const approved = surface();
+    const jwk = p256PublicJwk();
+    const created = createApproved(bindingService, deviceId, {
+      bindingId,
+      surface: approved,
+      jwk,
+    });
+    // One fresh context frozen to the exact originally approved tuple.
+    const originalContext = mintApproval({
+      operation: 'create',
+      deviceId,
+      bindingId,
+      surface: approved,
+      jwk,
+    });
+    const alteredCases: Array<{
+      name: string;
+      input: {
+        bindingId?: string;
+        deviceId?: string;
+        surface?: NativeDeviceClientSurface;
+        jwk?: NativeDeviceProofPublicJwk;
+      };
+      operation?: 'create' | 'revoke';
+    }> = [
+      {
+        name: 'changed binding ID',
+        input: { bindingId: randomUUID() },
+      },
+      {
+        name: 'changed device',
+        input: { deviceId: randomUUID() },
+      },
+      {
+        name: 'changed surface appIdentifier',
+        input: { surface: surface({ appIdentifier: 'other.app' }) },
+      },
+      {
+        name: 'changed surface client instance',
+        input: { surface: surface({ clientInstanceId: randomUUID() }) },
+      },
+      {
+        name: 'changed proof key with the approved thumbprint re-derived',
+        input: { jwk: p256PublicJwk() },
+      },
+      {
+        name: 'revocation presented against a create context',
+        input: {},
+        operation: 'revoke',
+      },
+    ];
+    for (const { input, operation } of alteredCases) {
+      const presentedBindingId = input.bindingId ?? bindingId;
+      const presentedDeviceId = input.deviceId ?? deviceId;
+      const presentedSurface = input.surface ?? approved;
+      const presentedJwk = input.jwk ?? jwk;
+      if (operation === 'revoke') {
+        expect(() =>
+          bindingService.revokeBinding({
+            deviceId: presentedDeviceId,
+            surface: presentedSurface,
+            approval: originalContext,
+          }),
+        ).toThrow('operation_mismatch');
+      } else {
+        expect(() =>
+          bindingService.createBinding({
+            bindingId: presentedBindingId,
+            deviceId: presentedDeviceId,
+            surface: presentedSurface,
+            jwk: presentedJwk,
+            approval: originalContext,
+          }),
+        ).toThrow(NativeDeviceProofBindingError);
+      }
+    }
+    // A context approved on another station refuses this station entirely.
+    expect(() =>
+      bindingService.createBinding({
+        bindingId,
+        deviceId,
+        surface: approved,
+        jwk,
+        approval: mintApproval({
+          operation: 'create',
+          stationId: OTHER_ENVIRONMENT_ID,
+          deviceId,
+          bindingId,
+          surface: approved,
+          jwk,
+        }),
+      }),
+    ).toThrow('station_mismatch');
+    // Nothing changed: the original binding is still the single active record.
+    const reopened = new NativeDeviceProofBindingService({ homeDir, pairing });
+    expect(
+      reopened.requireCurrentBinding({ deviceId, surface: approved }).binding
+        .bindingId,
+    ).toBe(created.bindingId);
+    expect(storedBindings(homeDir)).toHaveLength(1);
+  });
+
+  test('binding ID reuse across active and revoked records is refused; exact active retry returns recorded state without re-approval', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const revokedId = randomUUID();
+    createApproved(bindingService, deviceId, { bindingId: revokedId });
+    revokeApproved(bindingService, deviceId, { bindingId: revokedId });
+
+    // A revoked historical ID can never be reused, even with a fresh key.
+    expect(() =>
+      createApproved(bindingService, deviceId, { bindingId: revokedId }),
+    ).toThrow('binding_id_conflict');
+
+    // The exact active candidate readback returns its recorded state and
+    // consumes nothing: the retry approval stays usable afterwards.
+    const activeId = randomUUID();
+    const activeJwk = p256PublicJwk();
+    const activeSurface = surface();
+    const created = createApproved(bindingService, deviceId, {
+      bindingId: activeId,
+      surface: activeSurface,
+      jwk: activeJwk,
+    });
+    const retryApproval = mintApproval({
+      operation: 'create',
+      deviceId,
+      bindingId: activeId,
+      surface: activeSurface,
+      jwk: activeJwk,
+    });
+    const retried = bindingService.createBinding({
+      bindingId: activeId,
+      deviceId,
+      surface: activeSurface,
+      jwk: activeJwk,
+      approval: retryApproval,
+    });
+    expect(retried).toEqual(created);
+    expect(storedBindings(homeDir)).toHaveLength(2);
+    // The exact retry consumed nothing: the context is still intact.
+    expect(() => retryApproval.consume()).not.toThrow();
+
+    // Same ID but any changed tuple member conflicts with the active record.
+    expect(() =>
+      createApproved(bindingService, deviceId, {
+        bindingId: activeId,
+        jwk: p256PublicJwk(),
+      }),
+    ).toThrow('binding_id_conflict');
+    expect(storedBindings(homeDir)).toHaveLength(2);
+  });
+
+  test('wrong station refuses create and revocation without touching stored state', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const created = createApproved(bindingService, deviceId);
+    const otherStationBindings = new NativeDeviceProofBindingService({
+      homeDir,
+      pairing: {
+        environmentId: () => OTHER_ENVIRONMENT_ID,
+        listDevices: () => pairing.listDevices(),
+      },
+    });
+    expect(() =>
+      revokeApproved(otherStationBindings, deviceId, {
+        stationId: OTHER_ENVIRONMENT_ID,
+      }),
+    ).toThrow('binding_not_found');
+    // A create approval naming the original station is also refused elsewhere.
+    expect(() => createApproved(otherStationBindings, deviceId)).toThrow(
+      'station_mismatch',
+    );
+    expect(
+      bindingService.requireCurrentBinding({ deviceId, surface: surface() })
+        .binding.bindingId,
+    ).toBe(created.bindingId);
+    expect(storedBindings(homeDir)).toHaveLength(1);
+  });
+
+  test('exact readback by binding ID distinguishes active, revoked and absent without mutations', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    expect(bindingService.bindingById({ bindingId: randomUUID() })).toBeNull();
+    const bindingId = randomUUID();
+    createApproved(bindingService, deviceId, { bindingId });
+    const active = bindingService.bindingById({ bindingId });
+    expect(active?.state).toBe('active');
+    expect(active?.bindingId).toBe(bindingId);
+    revokeApproved(bindingService, deviceId, { bindingId });
+    const revoked = bindingService.bindingById({ bindingId });
+    expect(revoked?.state).toBe('revoked');
+    expect(revoked?.revocationReason).toBe('operator-revoked');
+    expect(revoked?.revokedAt).toBeTypeOf('number');
+    // Readback is a pure query: the store bytes are identical throughout.
+    const snapshot = readFileSync(
+      join(homeDir, 'security', BINDINGS_FILE),
+      'utf8',
+    );
+    expect(bindingService.bindingById({ bindingId })).toEqual(revoked);
+    expect(bindingService.bindingById({ bindingId: randomUUID() })).toBeNull();
+    expect(readFileSync(join(homeDir, 'security', BINDINGS_FILE), 'utf8')).toBe(
+      snapshot,
+    );
+  });
+
+  test('revocation against a non-current device refuses', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    createApproved(bindingService, deviceId);
+    pairing.revokeDevice(deviceId, 'operator-credential');
+    expect(() => revokeApproved(bindingService, deviceId)).toThrow(
+      'device_not_active',
+    );
+  });
+
   test('any full-surface mismatch fails closed: wrong route-key thumbprint, appIdentifier, channel, client instance', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
-    bindingService.createBinding({
-      deviceId,
-      surface: approved,
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    createApproved(bindingService, deviceId, { surface: approved });
     const mismatches: NativeDeviceClientSurface[] = [
       surface({ keyThumbprint: thumbprintOf(p256PublicJwk()) }),
       surface({ appIdentifier: 'other.app' }),
@@ -202,12 +553,7 @@ describe('native device proof binding service (station#2893)', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
-    bindingService.createBinding({
-      deviceId,
-      surface: approved,
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    createApproved(bindingService, deviceId, { surface: approved });
     const current = bindingService.requireCurrentBinding({
       deviceId,
       surface: approved,
@@ -222,11 +568,9 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     const routeKeyJwk = p256PublicJwk();
     const approved = surface({ keyThumbprint: thumbprintOf(routeKeyJwk) });
-    bindingService.createBinding({
-      deviceId,
+    createApproved(bindingService, deviceId, {
       surface: approved,
       jwk: p256PublicJwk(),
-      approval: mintApproval(),
     });
     const current = bindingService.requireCurrentBinding({
       deviceId,
@@ -243,11 +587,9 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     const routeKeyJwk = p256PublicJwk();
     expect(() =>
-      bindingService.createBinding({
-        deviceId,
+      createApproved(bindingService, deviceId, {
         surface: surface({ keyThumbprint: thumbprintOf(routeKeyJwk) }),
         jwk: routeKeyJwk,
-        approval: mintApproval(),
       }),
     ).toThrow('device_key_matches_route_key');
     expect(
@@ -269,11 +611,8 @@ describe('native device proof binding service (station#2893)', () => {
     ];
     for (const bad of badSurfaces) {
       expect(() =>
-        bindingService.createBinding({
-          deviceId,
+        createApproved(bindingService, deviceId, {
           surface: bad as NativeDeviceClientSurface,
-          jwk: p256PublicJwk(),
-          approval: mintApproval(),
         }),
       ).toThrow('invalid_native_surface');
     }
@@ -285,25 +624,13 @@ describe('native device proof binding service (station#2893)', () => {
   test('a failed replacement write leaves the last committed binding current', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    const first = bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    const first = createApproved(bindingService, deviceId);
     const path = join(homeDir, 'security', BINDINGS_FILE);
     const backup = join(homeDir, 'security', 'binding-backup.json');
     renameSync(path, backup);
     mkdirSync(path);
     try {
-      expect(() =>
-        bindingService.createBinding({
-          deviceId,
-          surface: surface(),
-          jwk: p256PublicJwk(),
-          approval: mintApproval(),
-        }),
-      ).toThrow();
+      expect(() => createApproved(bindingService, deviceId)).toThrow();
     } finally {
       rmSync(path, { recursive: true });
       renameSync(backup, path);
@@ -317,14 +644,9 @@ describe('native device proof binding service (station#2893)', () => {
   test('reopen refuses a symlinked sidecar even when its target is valid', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    createApproved(bindingService, deviceId);
     const path = join(homeDir, 'security', BINDINGS_FILE);
-    const backup = join(homeDir, 'sidecar-target.json');
+    const backup = join(homeDir, 'security', 'sidecar-target.json');
     renameSync(path, backup);
     symlinkSync(backup, path);
     expect(() =>
@@ -341,12 +663,7 @@ describe('native device proof binding service (station#2893)', () => {
   test('reopen refuses a substituted thumbprint or two active bindings for one Device and client', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    createApproved(bindingService, deviceId);
     const path = join(homeDir, 'security', BINDINGS_FILE);
     const original = JSON.parse(readFileSync(path, 'utf8'));
     const tampered = structuredClone(original);
@@ -381,12 +698,7 @@ describe('native device proof binding service (station#2893)', () => {
   test('an old client-only sidecar without the approved surface fails closed on reload', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    createApproved(bindingService, deviceId);
     const path = join(homeDir, 'security', BINDINGS_FILE);
     const legacy = JSON.parse(readFileSync(path, 'utf8'));
     const stored = legacy.bindings[0];
@@ -407,17 +719,8 @@ describe('native device proof binding service (station#2893)', () => {
   test('revoke fails closed on later queries and refuses double revoke', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
-    const [revoked] = bindingService.revokeBinding({
-      deviceId,
-      surface: surface(),
-      approval: mintApproval(),
-    });
+    createApproved(bindingService, deviceId);
+    const [revoked] = revokeApproved(bindingService, deviceId);
     expect(revoked.state).toBe('revoked');
     expect(revoked.revocationReason).toBe('operator-revoked');
     expect(
@@ -429,30 +732,21 @@ describe('native device proof binding service (station#2893)', () => {
         surface: surface(),
       }),
     ).toThrow('binding_unavailable');
-    expect(() =>
-      bindingService.revokeBinding({
-        deviceId,
-        surface: surface(),
-        approval: mintApproval(),
-      }),
-    ).toThrow('binding_not_found');
+    expect(() => revokeApproved(bindingService, deviceId)).toThrow(
+      'binding_not_found',
+    );
   });
 
-  test('revocation cannot target an approved binding through a different native surface', () => {
+  test('revocation bound to one full surface cannot target the binding through a different surface', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
-    const binding = bindingService.createBinding({
-      deviceId,
+    const binding = createApproved(bindingService, deviceId, {
       surface: approved,
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
     });
     expect(() =>
-      bindingService.revokeBinding({
-        deviceId,
+      revokeApproved(bindingService, deviceId, {
         surface: surface({ keyThumbprint: thumbprintOf(p256PublicJwk()) }),
-        approval: mintApproval(),
       }),
     ).toThrow('binding_not_found');
     expect(
@@ -461,30 +755,43 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBe(binding.bindingId);
   });
 
+  test('a revocation approval naming an exact binding ID only revokes that record', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const target = createApproved(bindingService, deviceId, {
+      bindingId: randomUUID(),
+      surface: surface({ clientInstanceId: randomUUID() }),
+    });
+    const other = createApproved(bindingService, deviceId);
+    const [revoked] = revokeApproved(bindingService, deviceId, {
+      bindingId: target.bindingId,
+      surface: target.surface,
+    });
+    expect(revoked.bindingId).toBe(target.bindingId);
+    expect(
+      bindingService.bindingById({ bindingId: other.bindingId })?.state,
+    ).toBe('active');
+    expect(
+      bindingService.bindingById({ bindingId: target.bindingId })?.state,
+    ).toBe('revoked');
+    // Naming a missing ID finds nothing to revoke.
+    expect(() =>
+      revokeApproved(bindingService, deviceId, { bindingId: randomUUID() }),
+    ).toThrow('binding_not_found');
+  });
+
   test('independent service handles observe revocation and cannot resurrect it on another write', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
-    bindingService.createBinding({
-      deviceId,
-      surface: approved,
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    createApproved(bindingService, deviceId, { surface: approved });
     const other = new NativeDeviceProofBindingService({ homeDir, pairing });
-    other.revokeBinding({
-      deviceId,
-      surface: approved,
-      approval: mintApproval(),
-    });
+    revokeApproved(other, deviceId, { surface: approved });
     expect(
       bindingService.currentBinding({ deviceId, surface: approved }),
     ).toBeNull();
-    bindingService.createBinding({
-      deviceId,
+    createApproved(bindingService, deviceId, {
       surface: surface({ clientInstanceId: randomUUID() }),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
     });
     expect(
       new NativeDeviceProofBindingService({ homeDir, pairing }).currentBinding({
@@ -494,22 +801,17 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBeNull();
   });
 
-  test('key replacement revokes the prior binding and rebinds the new key', () => {
+  test('key replacement revokes the prior binding and rebinds the new key under a new candidate ID', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    const first = bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    const first = createApproved(bindingService, deviceId);
     const secondJwk = p256PublicJwk();
-    const second = bindingService.createBinding({
-      deviceId,
-      surface: surface(),
+    const secondId = randomUUID();
+    const second = createApproved(bindingService, deviceId, {
+      bindingId: secondId,
       jwk: secondJwk,
-      approval: mintApproval(),
     });
+    expect(second.bindingId).toBe(secondId);
     expect(second.bindingId).not.toBe(first.bindingId);
     expect(second.deviceProof.thumbprint).not.toBe(
       first.deviceProof.thumbprint,
@@ -522,6 +824,9 @@ describe('native device proof binding service (station#2893)', () => {
     expect(current.binding.deviceProof.thumbprint).toBe(
       thumbprintOf(secondJwk),
     );
+    expect(
+      bindingService.bindingById({ bindingId: first.bindingId })?.state,
+    ).toBe('revoked');
     const reopened = new NativeDeviceProofBindingService({
       homeDir,
       pairing,
@@ -536,73 +841,23 @@ describe('native device proof binding service (station#2893)', () => {
   test('wrong device, revoked device, and legacy-unbound device all fail closed', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    createApproved(bindingService, deviceId);
     pairing.revokeDevice(deviceId, 'operator-credential');
     expect(
       bindingService.currentBinding({ deviceId, surface: surface() }),
     ).toBeNull();
-    expect(() =>
-      bindingService.createBinding({
-        deviceId,
-        surface: surface(),
-        jwk: p256PublicJwk(),
-        approval: mintApproval(),
-      }),
-    ).toThrow('device_not_active');
-    expect(() =>
-      bindingService.createBinding({
-        deviceId: randomUUID(),
-        surface: surface(),
-        jwk: p256PublicJwk(),
-        approval: mintApproval(),
-      }),
-    ).toThrow('device_not_active');
-  });
-
-  test('wrong station refuses the binding without touching stored state', () => {
-    const { homeDir, pairing, bindingService } = harness();
-    const { deviceId } = pairForBindings(pairing);
-    bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
-    const otherStationBindings = new NativeDeviceProofBindingService({
-      homeDir,
-      pairing: {
-        environmentId: () => OTHER_ENVIRONMENT_ID,
-        listDevices: () => pairing.listDevices(),
-      },
-    });
-    expect(
-      otherStationBindings.currentBinding({
-        deviceId,
-        surface: surface(),
-      }),
-    ).toBeNull();
-    expect(() =>
-      otherStationBindings.requireCurrentBinding({
-        deviceId,
-        surface: surface(),
-      }),
-    ).toThrow('binding_unavailable');
+    expect(() => createApproved(bindingService, deviceId)).toThrow(
+      'device_not_active',
+    );
+    expect(() => createApproved(bindingService, randomUUID())).toThrow(
+      'device_not_active',
+    );
   });
 
   test('changed device scope fails closed until the binding is re-approved', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    createApproved(bindingService, deviceId);
     pairing.setDeviceScope(
       deviceId,
       parsePairingScope(DEFAULT_GRANT_PAIRING_SCOPE)!.slice(0, 1),
@@ -617,12 +872,7 @@ describe('native device proof binding service (station#2893)', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     expect(() =>
-      bindingService.createBinding({
-        deviceId,
-        surface: surface(),
-        jwk: p256PrivateJwk(),
-        approval: mintApproval(),
-      }),
+      createApproved(bindingService, deviceId, { jwk: p256PrivateJwk() }),
     ).toThrow('invalid_proof_jwk');
     const truncated = p256PublicJwk();
     const bad = {
@@ -630,24 +880,14 @@ describe('native device proof binding service (station#2893)', () => {
       x: `${truncated.x.slice(0, 42)}${truncated.x.endsWith('A') ? 'B' : 'A'}`,
     };
     expect(() =>
-      bindingService.createBinding({
-        deviceId,
-        surface: surface(),
-        jwk: bad,
-        approval: mintApproval(),
-      }),
+      createApproved(bindingService, deviceId, { jwk: bad }),
     ).toThrow('invalid_proof_jwk');
   });
 
   test('corrupt or wrong-version sidecar fails closed instead of reading empty', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    createApproved(bindingService, deviceId);
     const path = join(homeDir, 'security', BINDINGS_FILE);
     writeFileSync(path, '{not json');
     expect(() =>
@@ -674,12 +914,8 @@ describe('native device proof binding service (station#2893)', () => {
   test('a tampered stored surface fails closed on reload', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    bindingService.createBinding({
-      deviceId,
-      surface: surface(),
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
+    const approved = surface();
+    createApproved(bindingService, deviceId, { surface: approved });
     const path = join(homeDir, 'security', BINDINGS_FILE);
     const tampered = JSON.parse(readFileSync(path, 'utf8'));
     tampered.bindings[0].surface.channel = 'nightly';
@@ -691,7 +927,7 @@ describe('native device proof binding service (station#2893)', () => {
         pairing,
       }).requireCurrentBinding({
         deviceId,
-        surface: surface(),
+        surface: approved,
       }),
     ).toThrow('binding_unavailable');
     // A noncanonical stored surface poisons the whole store.
@@ -704,7 +940,7 @@ describe('native device proof binding service (station#2893)', () => {
         pairing,
       }).requireCurrentBinding({
         deviceId,
-        surface: surface(),
+        surface: approved,
       }),
     ).toThrow('store_unavailable');
   });
@@ -727,12 +963,17 @@ describe('native device proof binding service (station#2893)', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const forged = {
+      operation: 'create',
       operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
-      approvalId: randomUUID(),
-      approvedAt: Date.now(),
+      stationId: ENVIRONMENT_ID,
+      deviceId,
+      bindingId: randomUUID(),
+      surface: surface(),
+      jwk: p256PublicJwk(),
     };
     expect(() =>
       bindingService.createBinding({
+        bindingId: forged.bindingId,
         deviceId,
         surface: surface(),
         jwk: p256PublicJwk(),
@@ -749,16 +990,33 @@ describe('native device proof binding service (station#2893)', () => {
     expect(() =>
       new NativeDeviceProofOperatorAuthority().approve({
         operatorPrincipalId: 'human:someone-else:attacker',
+        tuple: {
+          operation: 'create',
+          stationId: ENVIRONMENT_ID,
+          deviceId,
+          bindingId: randomUUID(),
+          surface: surface(),
+          jwk: p256PublicJwk(),
+        },
       }),
     ).toThrow('operator_unauthorized');
     const foreignAuthority = new NativeDeviceProofOperatorAuthority();
     expect(() =>
       bindingService.createBinding({
+        bindingId: randomUUID(),
         deviceId,
         surface: surface(),
         jwk: p256PublicJwk(),
         approval: foreignAuthority.approve({
           operatorPrincipalId: 'human:attacker:x',
+          tuple: {
+            operation: 'create',
+            stationId: ENVIRONMENT_ID,
+            deviceId,
+            bindingId: randomUUID(),
+            surface: surface(),
+            jwk: p256PublicJwk(),
+          },
         }),
       }),
     ).toThrow('operator_unauthorized');
@@ -770,18 +1028,26 @@ describe('native device proof binding service (station#2893)', () => {
   test('a consumed approval cannot authorize a second mutation', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
-    const approval = mintApproval();
-    bindingService.createBinding({
+    // Creation consumes its approval; an exact matching retry is an
+    // idempotent readback, so the one-use rule is observable on revocation.
+    createApproved(bindingService, deviceId);
+    const revokeApproval = mintApproval({
+      operation: 'revoke',
+      deviceId,
+      bindingId: null,
+      surface: surface(),
+      jwk: null,
+    });
+    bindingService.revokeBinding({
       deviceId,
       surface: surface(),
-      jwk: p256PublicJwk(),
-      approval,
+      approval: revokeApproval,
     });
     expect(() =>
       bindingService.revokeBinding({
         deviceId,
         surface: surface(),
-        approval,
+        approval: revokeApproval,
       }),
     ).toThrow('operator_approval_reused');
   });
@@ -790,11 +1056,8 @@ describe('native device proof binding service (station#2893)', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
-    const created = bindingService.createBinding({
-      deviceId,
+    const created = createApproved(bindingService, deviceId, {
       surface: approved,
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
     });
     const projection = bindingService.projectionOf(created);
     expect(projection).toEqual({

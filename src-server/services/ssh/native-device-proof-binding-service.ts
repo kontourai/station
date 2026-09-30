@@ -171,25 +171,70 @@ const OPERATOR_AUTHORITY_TOKEN = Symbol(
 );
 
 /**
+ * Canonical lowercase UUIDv4. A host-proposed binding ID must be exactly this;
+ * uppercase or non-v4 identifiers are refused so the stored ID is byte-stable
+ * across host, server and proof claims.
+ */
+const CANONICAL_UUIDV4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** The one operation an approval context authorizes. */
+export type NativeDeviceProofApprovalOperation = 'create' | 'revoke';
+
+/** Frozen candidate tuple an approval context authorizes, copied on mint. */
+export interface NativeDeviceProofApprovalTuple {
+  readonly operation: NativeDeviceProofApprovalOperation;
+  readonly stationId: string;
+  readonly deviceId: string;
+  /** Exact binding ID for `create`; optional target ID for `revoke`. */
+  readonly bindingId: string | null;
+  readonly surface: NativeDeviceClientSurface;
+  /** Canonical Device proof public key for `create`; null for `revoke`. */
+  readonly jwk: NativeDeviceProofPublicJwk | null;
+}
+
+/**
  * In-process approval context factory for a future trusted operator seam.
  * The factory checks the operator principal ID and rejects raw request data;
  * it does not authenticate a caller. The route must verify a current operator
- * credential and an explicit approval action before calling this method.
+ * credential and an explicit approval action before calling this method. The
+ * minted context is bound to one frozen candidate tuple; the service
+ * recomputes the key thumbprint and re-derives the current Station at mutation
+ * time, so any changed ID, Device, Station, surface, key or operation is
+ * refused without touching stored state.
  */
 export class NativeDeviceProofOperatorAuthority {
   approve(input: {
     operatorPrincipalId: string;
-    approvalId?: string;
-    approvedAt?: number;
+    tuple: NativeDeviceProofApprovalTuple;
   }): NativeDeviceProofOperatorApprovalContext {
     if (input.operatorPrincipalId !== LOCAL_OPERATOR_PRINCIPAL_ID) {
       throw new NativeDeviceProofBindingError('operator_unauthorized');
     }
+    if (
+      input.tuple.operation !== 'create' &&
+      input.tuple.operation !== 'revoke'
+    ) {
+      throw new NativeDeviceProofBindingError('invalid_operator_approval');
+    }
+    if (input.tuple.operation === 'create') {
+      if (
+        typeof input.tuple.bindingId !== 'string' ||
+        !CANONICAL_UUIDV4_PATTERN.test(input.tuple.bindingId) ||
+        !input.tuple.jwk
+      ) {
+        throw new NativeDeviceProofBindingError('invalid_operator_approval');
+      }
+    }
     return new NativeDeviceProofOperatorApprovalContext({
       token: OPERATOR_AUTHORITY_TOKEN,
       operatorPrincipalId: input.operatorPrincipalId,
-      approvalId: input.approvalId ?? randomUUID(),
-      approvedAt: input.approvedAt ?? Date.now(),
+      approvalId: randomUUID(),
+      tuple: structuredClone({
+        ...input.tuple,
+        surface: { ...input.tuple.surface },
+        jwk: input.tuple.jwk ? { ...input.tuple.jwk } : null,
+      }),
     });
   }
 }
@@ -197,21 +242,21 @@ export class NativeDeviceProofOperatorAuthority {
 class NativeDeviceProofOperatorApprovalContext {
   readonly operatorPrincipalId: string;
   readonly approvalId: string;
-  readonly approvedAt: number;
+  readonly tuple: NativeDeviceProofApprovalTuple;
   #intact = true;
 
   constructor(init: {
     token: symbol;
     operatorPrincipalId: string;
     approvalId: string;
-    approvedAt: number;
+    tuple: NativeDeviceProofApprovalTuple;
   }) {
     if (init.token !== OPERATOR_AUTHORITY_TOKEN) {
       throw new NativeDeviceProofBindingError('invalid_operator_approval');
     }
     this.operatorPrincipalId = init.operatorPrincipalId;
     this.approvalId = init.approvalId;
-    this.approvedAt = init.approvedAt;
+    this.tuple = init.tuple;
   }
 
   /** One approval authorizes exactly one service mutation. */
@@ -460,15 +505,23 @@ export class NativeDeviceProofBindingService {
 
   /**
    * Create (or replace) the native Device proof binding for one approved
-   * native installation surface on an already-approved Device grant. The
-   * full surface (kind, appIdentifier, channel, clientInstanceId, route-key
-   * thumbprint) is the approved identity; the Device proof key must be
-   * distinct from that surface's route key. Requires an explicit operator
-   * approval context minted by {@link NativeDeviceProofOperatorAuthority}.
-   * The future route must establish that authority independently of a saved
-   * profile, broker route grant, account session, or legacy Device bearer.
+   * native installation surface on an already-approved Device grant, under
+   * the host-proposed candidate `bindingId`. The host mints that canonical
+   * UUIDv4 ID before creating its Device key, so host and server observe the
+   * same ID; the server grants nothing to the ID itself. The ID must be
+   * unique across active AND revoked historical records before any previous
+   * binding is replaced. Retrying the exact active candidate returns its
+   * recorded state without re-approving, recreating or mutating anything.
+   * The full surface (kind, appIdentifier, channel, clientInstanceId,
+   * route-key thumbprint) is the approved identity; the Device proof key must
+   * be distinct from that surface's route key. Requires an explicit operator
+   * approval context minted by {@link NativeDeviceProofOperatorAuthority} and
+   * bound to this exact tuple. The future route must establish that authority
+   * independently of a saved profile, broker route grant, account session, or
+   * legacy Device bearer.
    */
   createBinding(input: {
+    bindingId: string;
     deviceId: string;
     surface: NativeDeviceClientSurface;
     jwk: NativeDeviceProofPublicJwk;
@@ -477,7 +530,12 @@ export class NativeDeviceProofBindingService {
     if (!(input.approval instanceof NativeDeviceProofOperatorApprovalContext)) {
       throw new NativeDeviceProofBindingError('invalid_operator_approval');
     }
-    input.approval.consume();
+    if (
+      typeof input.bindingId !== 'string' ||
+      !CANONICAL_UUIDV4_PATTERN.test(input.bindingId)
+    ) {
+      throw new NativeDeviceProofBindingError('invalid_binding_id');
+    }
     const surface = this.#validatedSurface(input.surface);
     const jwk = this.#validatedPublicJwk(input.jwk);
     if (
@@ -488,12 +546,40 @@ export class NativeDeviceProofBindingService {
     ) {
       throw new NativeDeviceProofBindingError('device_key_matches_route_key');
     }
-    const device = this.#activeDevice(input.deviceId);
+    this.#requireContextMatches(input.approval, {
+      operation: 'create',
+      deviceId: input.deviceId,
+      bindingId: input.bindingId,
+      surface,
+      jwk,
+    });
     const stationId = this.#pairing.environmentId();
     if (typeof stationId !== 'string' || stationId.length === 0) {
       throw new NativeDeviceProofBindingError('station_unavailable');
     }
+    if (input.approval.tuple.stationId !== stationId) {
+      throw new NativeDeviceProofBindingError('station_mismatch');
+    }
     const bindings = structuredClone(this.#store.load());
+    const existingById = bindings.find(
+      (existing) => existing.bindingId === input.bindingId,
+    );
+    if (existingById) {
+      const sameTuple =
+        existingById.state === 'active' &&
+        existingById.deviceId === input.deviceId &&
+        existingById.stationId === stationId &&
+        existingById.deviceProof.thumbprint === p256Thumbprint(jwk) &&
+        surfacesMatch(existingById.surface, surface);
+      if (!sameTuple) {
+        throw new NativeDeviceProofBindingError('binding_id_conflict');
+      }
+      // Exact active candidate retry: recorded state only, no re-approval,
+      // no recreation, no mutation of any stored record.
+      return cloneBinding(existingById);
+    }
+    input.approval.consume();
+    const device = this.#activeDevice(input.deviceId);
     const now = this.#now();
     for (const existing of bindings) {
       if (
@@ -507,13 +593,13 @@ export class NativeDeviceProofBindingService {
       }
     }
     const binding: StoredBinding = {
-      bindingId: randomUUID(),
+      bindingId: input.bindingId,
       deviceProof: { jwk, thumbprint: p256Thumbprint(jwk) },
       deviceId: input.deviceId,
       stationId,
       surface,
       createdAt: now,
-      approvedAt: input.approval.approvedAt,
+      approvedAt: now,
       approvedBy: input.approval.operatorPrincipalId,
       deviceScopeAtApproval: device.scope,
       state: 'active',
@@ -532,16 +618,36 @@ export class NativeDeviceProofBindingService {
     if (!(input.approval instanceof NativeDeviceProofOperatorApprovalContext)) {
       throw new NativeDeviceProofBindingError('invalid_operator_approval');
     }
-    input.approval.consume();
     const surface = this.#validatedSurface(input.surface);
+    this.#requireContextMatches(input.approval, {
+      operation: 'revoke',
+      deviceId: input.deviceId,
+      bindingId: input.approval.tuple.bindingId,
+      surface,
+      jwk: null,
+    });
+    const stationId = this.#pairing.environmentId();
+    if (
+      typeof stationId !== 'string' ||
+      stationId.length === 0 ||
+      input.approval.tuple.stationId !== stationId
+    ) {
+      throw new NativeDeviceProofBindingError('station_mismatch');
+    }
+    // Revocation requires the Device to still be a current paired grant.
+    this.#activeDevice(input.deviceId);
+    input.approval.consume();
     const bindings = structuredClone(this.#store.load());
     const now = this.#now();
     const revoked: NativeDeviceProofBinding[] = [];
     for (const existing of bindings) {
       if (
         existing.state === 'active' &&
+        existing.stationId === stationId &&
         existing.deviceId === input.deviceId &&
-        surfacesMatch(existing.surface, surface)
+        surfacesMatch(existing.surface, surface) &&
+        (input.approval.tuple.bindingId === null ||
+          existing.bindingId === input.approval.tuple.bindingId)
       ) {
         existing.state = 'revoked';
         existing.revokedAt = now;
@@ -554,6 +660,69 @@ export class NativeDeviceProofBindingService {
     }
     this.#store.persist(bindings);
     return revoked;
+  }
+
+  /**
+   * Exact readback of one stored binding record by its binding ID, for future
+   * host-side reconciliation. Distinguishes active, revoked and absent
+   * without mutating anything; revoked records are historical state, never a
+   * current answer. No HTTP endpoint exposes this.
+   */
+  bindingById(input: { bindingId: string }): NativeDeviceProofBinding | null {
+    if (
+      typeof input.bindingId !== 'string' ||
+      !CANONICAL_UUIDV4_PATTERN.test(input.bindingId)
+    ) {
+      throw new NativeDeviceProofBindingError('invalid_binding_id');
+    }
+    const binding = this.#store
+      .load()
+      .find((candidate) => candidate.bindingId === input.bindingId);
+    return binding ? cloneBinding(binding) : null;
+  }
+
+  /**
+   * Refuse any approval context whose frozen tuple does not match the exact
+   * mutation being attempted. Compares the operation, Device ID, binding ID
+   * and full surface field-wise, and the Device proof key by recomputed
+   * thumbprint, so a caller-supplied thumbprint can never launder a changed
+   * key. Throws before any stored state changes.
+   */
+  #requireContextMatches(
+    approval: NativeDeviceProofOperatorApprovalContext,
+    expected: {
+      operation: NativeDeviceProofApprovalOperation;
+      deviceId: string;
+      bindingId: string | null;
+      surface: NativeDeviceClientSurface;
+      jwk: NativeDeviceProofPublicJwk | null;
+    },
+  ): void {
+    const tuple = approval.tuple;
+    const mismatch = (() => {
+      if (tuple.operation !== expected.operation) return 'operation_mismatch';
+      if (tuple.deviceId !== expected.deviceId) return 'device_mismatch';
+      if (tuple.bindingId !== expected.bindingId) return 'binding_id_mismatch';
+      if (!tuple.surface || !surfacesMatch(tuple.surface, expected.surface))
+        return 'approval_context_mismatch';
+      if (expected.operation === 'create') {
+        const approvedJwk = tuple.jwk;
+        if (!approvedJwk || !expected.jwk) return 'approval_context_mismatch';
+        const presented = Buffer.from(p256Thumbprint(expected.jwk));
+        const approved = Buffer.from(p256Thumbprint(approvedJwk));
+        if (
+          presented.length !== approved.length ||
+          !timingSafeEqual(presented, approved)
+        )
+          return 'approval_context_mismatch';
+      } else if (tuple.jwk) {
+        return 'approval_context_mismatch';
+      }
+      return null;
+    })();
+    if (mismatch) {
+      throw new NativeDeviceProofBindingError(mismatch);
+    }
   }
 
   /**

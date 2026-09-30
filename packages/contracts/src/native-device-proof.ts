@@ -38,7 +38,7 @@ export interface NativeDeviceBindingSnapshot {
   readonly stationAudience: string;
   /** The approved Device ID on that Station. */
   readonly deviceId: string;
-  /** Random binding ID minted when this binding was approved. */
+  /** Host-proposed canonical UUIDv4 binding ID approved at binding creation. */
   readonly bindingId: string;
   /** Approved Device proof key, independent of the route key in `surface`. */
   readonly deviceProofKeyThumbprint: string;
@@ -46,6 +46,37 @@ export interface NativeDeviceBindingSnapshot {
   readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
   /** Unique Pion peer nonce this binding is scoped to. */
   readonly peerNonce: string;
+}
+
+/**
+ * Strict version identity for the host-proposed binding candidate. The
+ * candidate is protocol data only: it carries the Device public key, never a
+ * private scalar, route secret or Device credential, and approves nothing by
+ * itself.
+ */
+export const NATIVE_DEVICE_BINDING_CANDIDATE_VERSION =
+  'station-native-device-binding-candidate/v1' as const;
+
+/**
+ * Host-proposed binding candidate for the shared host/server boundary. The
+ * native host mints a provisional canonical UUIDv4 `bindingId` before creating
+ * its Device proof key so both sides observe the same ID; the Station operator
+ * explicitly approves this exact tuple. The UUID itself grants nothing.
+ */
+export interface NativeDeviceBindingCandidateV1 {
+  readonly version: typeof NATIVE_DEVICE_BINDING_CANDIDATE_VERSION;
+  /** Exact Station this candidate is presented to. */
+  readonly stationId: string;
+  /** The approved Device ID on that Station. */
+  readonly deviceId: string;
+  /** Host-minted provisional canonical UUIDv4 binding ID. */
+  readonly bindingId: string;
+  /** Full native installation surface of the requesting installation. */
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  /** Device proof public JWK; private key material never appears here. */
+  readonly deviceProofJwk: NativeDeviceProofPublicKey;
+  /** RFC 7638 thumbprint of `deviceProofJwk`; the server recomputes it. */
+  readonly deviceProofKeyThumbprint: string;
 }
 
 /**
