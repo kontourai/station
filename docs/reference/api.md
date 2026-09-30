@@ -165,7 +165,10 @@ as stream outcomes.
 
 `start-step` and `finish-step` frames carry only their type. Provider request
 and response bodies, headers, metadata and nested errors are not sent in these
-frames. Text and tool frames keep their existing contracts.
+frames. Text and successful tool frames retain their contracts. Failed VoltAgent
+tool-result frames omit the raw `output`, including error messages, stack traces
+and other error properties. Their `error` carries a safe Station-composed denial
+reason or the fixed `Tool call failed.` message; policy-denial badges remain.
 
 The framework compatibility route `POST /agents/:slug/chat` remains behind
 Station authentication. Its HTTP 5xx responses contain fixed failure text and

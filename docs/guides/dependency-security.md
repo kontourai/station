@@ -247,6 +247,29 @@ scheduled scan always covers all scopes. A single registry request serves all
 selected views, avoiding repeated registry-bound npm processes while retaining
 each importer's exact full and production closure.
 
+## 2026-09 Axios floor
+
+The Station workspace override requires Axios 1.20.0 or newer compatible 1.x,
+and its lockfile selects 1.20.0. This fixes the new high-severity advisory floor
+that blocked the Agent SDK merge candidate. The existing advisory policy and
+its accepted residuals are unchanged.
+
+The threat models include an untrusted server returning a crafted redirect
+under Node environment-proxy/NO_PROXY handling (availability), and existing
+same-process prototype pollution changing form serialization or transport
+options. Fully privileged malicious code can already control its process;
+this update does not isolate it or grant new request authority. See the
+[redirect advisory](https://github.com/advisories/GHSA-mghh-pgcx-3jjj) and
+[form-options advisory](https://github.com/advisories/GHSA-x97p-jq2g-jp4f).
+
+A network-free public `axios.toFormData` probe with an inherited `maxDepth: 1`
+failed on 1.18.1 with `ERR_FORM_DATA_DEPTH_EXCEEDED`; 1.20.0 retained the clean
+nested serialization. The live full/production audit views for root, SDK, and
+Shared passed after the update. These are dependency-level evidence, not a
+reproduced remote exploit against Station. Runtime Axios consumers include
+transitive SAP HTTP clients, localtunnel, and PostHog; their configuration and
+network reachability determine which advisory conditions apply.
+
 ## 2026-07 critical/high disposition
 
 This dated matrix records the intake snapshot. One package row can contain
