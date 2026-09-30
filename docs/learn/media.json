@@ -198,7 +198,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "reviewedRevision": "1ba3762af0c435e9098bcc32b75d65e6ba8761bb",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -206,7 +206,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -254,7 +254,10 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: Notifications Inspect request dialog (Deny / Approve once). That dialog is not ToolCallDisplay and uses none of the changed selectors.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
-        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged."
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. The capture shows a request inspected and closed without a decision, so neither the answer path nor session start is exercised; main's index.css change was recorded by main.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): #2917 changed .tool-call__row/.tool-call__line/.tool-call__actions to wrap and restyled .tool-call__approve-btn states; this branch changes which session button ToolCallDisplay renders and its label (none for a plan exit or when nothing can be forwarded; 'Allow reading this folder\u2026', 'Allow access to this folder\u2026', 'Auto-accept file edits\u2026'). Checked together: the #2917 e2e spec passes on the merged tree, and a render of the longest labels at 360px and 720px shows the actions wrapping below the label with no horizontal overflow. The capture shows the request inspector (Approve once and Deny), which neither change alters; both sides' review notes are kept.",
+        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
+        "Merge review (origin/main e8cbb9412 into #2915/#2916): Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. The capture shows the request inspector (Approve once and Deny); neither the channel text colours nor the session button appears in it. Both sides' review notes are kept."
       ]
     },
     {
@@ -266,7 +269,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
+      "reviewedRevision": "1ba3762af0c435e9098bcc32b75d65e6ba8761bb",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -274,7 +277,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
+          "digest": "ef7c10964d0fbf9b294e414b1da2022c870bae15745b9efe23b987d815dedcfa"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -321,7 +324,10 @@
         "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Sampled frames every 3s with ffmpeg: Notifications list and Inspect request dialog only; no ToolCallDisplay row or .tool-call__approve-btn appears.",
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
-        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged."
+        "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. The recording inspects, expands and closes a request without a decision, so neither the answer path nor session start is exercised; main's index.css change was recorded by main.",
+        "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): #2917 changed .tool-call__row/.tool-call__line/.tool-call__actions to wrap and restyled .tool-call__approve-btn states; this branch changes which session button ToolCallDisplay renders and its label (none for a plan exit or when nothing can be forwarded; 'Allow reading this folder\u2026', 'Allow access to this folder\u2026', 'Auto-accept file edits\u2026'). Checked together: the #2917 e2e spec passes on the merged tree, and a render of the longest labels at 360px and 720px shows the actions wrapping below the label with no horizontal overflow. The recording inspects and closes a request without a decision, so neither change alters it; both sides' review notes are kept.",
+        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
+        "Merge review (origin/main e8cbb9412 into #2915/#2916): Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. The recording inspects and closes a request without a decision; neither change appears in it. Both sides' review notes are kept."
       ]
     },
     {
