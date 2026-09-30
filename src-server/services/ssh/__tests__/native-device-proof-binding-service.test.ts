@@ -461,6 +461,39 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBe(binding.bindingId);
   });
 
+  test('independent service handles observe revocation and cannot resurrect it on another write', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const approved = surface();
+    bindingService.createBinding({
+      deviceId,
+      surface: approved,
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    const other = new NativeDeviceProofBindingService({ homeDir, pairing });
+    other.revokeBinding({
+      deviceId,
+      surface: approved,
+      approval: mintApproval(),
+    });
+    expect(
+      bindingService.currentBinding({ deviceId, surface: approved }),
+    ).toBeNull();
+    bindingService.createBinding({
+      deviceId,
+      surface: surface({ clientInstanceId: randomUUID() }),
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    expect(
+      new NativeDeviceProofBindingService({ homeDir, pairing }).currentBinding({
+        deviceId,
+        surface: approved,
+      }),
+    ).toBeNull();
+  });
+
   test('key replacement revokes the prior binding and rebinds the new key', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);

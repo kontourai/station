@@ -656,6 +656,25 @@ describe('verifyNativeDeviceRequestProof', () => {
     expect(h.store.consumed).toHaveLength(0);
   });
 
+  test('requires the approved binding nonce to match the verified peer and signed proof', async () => {
+    const h = await harness();
+    await expect(
+      verifyNativeDeviceRequestProof(
+        await h.buildProof(),
+        request(),
+        {
+          ...h.authority,
+          binding: async () => ({
+            ...(await h.makeBinding()),
+            snapshot: { ...h.snapshot, peerNonce: 'b'.repeat(43) },
+          }),
+        },
+        { replayStore: h.store, nowSeconds: h.nowSeconds },
+      ),
+    ).rejects.toMatchObject({ reason: 'binding_mismatch' });
+    expect(h.store.consumed).toHaveLength(0);
+  });
+
   test.each([
     { advance: 31, reason: 'expired' },
     { advance: Number.NaN, reason: 'invalid_claims' },

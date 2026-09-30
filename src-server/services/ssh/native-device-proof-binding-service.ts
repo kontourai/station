@@ -312,19 +312,15 @@ function p256Thumbprint(jwk: NativeDeviceProofPublicJwk): string {
 
 class NativeDeviceProofBindingStore {
   readonly #filePath: string;
-  #bindings: StoredBinding[] | null;
 
   constructor(homeDir: string) {
     this.#filePath = join(homeDir, 'security', BINDINGS_FILE);
-    this.#bindings = null;
   }
 
   /** Strict load: corruption and version drift fail closed, never to empty. */
   load(): StoredBinding[] {
-    if (this.#bindings) return this.#bindings;
     if (privateSidecarStatus(this.#filePath) === 'missing') {
-      this.#bindings = [];
-      return this.#bindings;
+      return [];
     }
     let parsed: unknown;
     try {
@@ -364,7 +360,6 @@ class NativeDeviceProofBindingStore {
       }
       bindings.push(raw);
     }
-    this.#bindings = bindings;
     return bindings;
   }
 
@@ -403,7 +398,6 @@ class NativeDeviceProofBindingStore {
       closeSync(fd);
       fd = undefined;
       renameFileSyncRetrying(tempPath, this.#filePath);
-      this.#bindings = bindings;
     } finally {
       if (fd !== undefined) closeSync(fd);
       rmSync(tempPath, { force: true });

@@ -600,6 +600,7 @@ export async function verifyNativeDeviceRequestProof(
     validated.stationId !== binding.stationId ||
     validated.deviceId !== binding.deviceId ||
     validated.bindingId !== binding.bindingId ||
+    validated.peerNonce !== binding.peerNonce ||
     validated.deviceProofKeyThumbprint !== binding.deviceProofKeyThumbprint ||
     !surfacesEqual(validated.surface, binding.surface)
   )
