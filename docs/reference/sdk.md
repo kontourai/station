@@ -1471,7 +1471,7 @@ consumes the `station.application-session-native/v1` contract and a
 (`NativeApplicationSessionTransportV1`); the client itself never opens an HTTP
 connection, never touches cookies, and never holds a broker bearer. The account
 proof key must be independent of the native broker route proof key. The client
-accepts `ApplicationSessionSigner`, including a host-owned signing facade;
+accepts the portable `ApplicationSessionSigner`;
 `createApplicationSessionKey()` supplies a non-extractable WebCrypto P-256 key.
 Signer custody is a caller responsibility, not attested by the facade. The
 caller owns the trust snapshot: exact Station ID, canonical HTTPS Station
@@ -1486,6 +1486,27 @@ proofs bind method, path, audience, surface, device, continuation nonce and
 credential hash with a one-use JTI. Provider, Device, and Project authority
 remain separate: the continuation is not a bearer or Device grant, and this
 client implements no provider/Device/Project authority.
+
+The constructor also accepts `NativeApplicationSessionProofProvider`, identified
+by `kind: station-native-host-proof-provider/v1`. Its `prepareExchange` operation
+takes only opaque challenge data and local username/password credentials and
+returns the complete host-prepared exchange body plus matching proof header.
+`requestHeaders` takes opaque continuation data and a canonical GET/HEAD Project
+target. The client checks the returned signature, public key, target, nonce,
+hashes, body order and headers before dispatch. The ordered host credentials
+body is retained: its hash must match Node's `JSON.stringify` of the credentials
+the server parses, including Unicode. Other provider credential shapes are
+unsupported by this native provider path.
+
+Prepare the account exchange body before application-channel body freezing;
+the later Device proof binds that complete body, including the account proof.
+Native IPC uses these structured operations, never an adapter for `sign(bytes)`.
+The Desktop account operation handle is bounded, owner/epoch-fenced and allows
+one exchange. An unknown exchange outcome requires an explicit new context and
+challenge; it is not retried automatically. Expiry hints cannot extend host
+lifetimes. Provider sessions, replay, Device binding and Project membership are
+still verified by the server. This source interface does not enable ordinary
+native sign-in or qualify a packaged/native IPC journey.
 
 ```ts
 import { NativeApplicationSessionClient } from '@kontourai/station-sdk/application-session-native';
@@ -1532,6 +1553,29 @@ expect the same secret bundle to be returned: Station discards that inert
 attempt and the client starts a fresh enrollment. Activation ACK may be retried
 only with the same signed proof; Station returns the stored receipt only when
 its digest matches the committed ACK.
+
+### Native Device request proof (protocol foundation)
+
+`@kontourai/station-sdk/native-device-proof` exports
+`createNativeDeviceRequestProof`. It accepts a caller-supplied signer whose
+private P-256 Device key remains in native host custody, a trusted approved
+Device binding, and the exact method, path with query, and transmitted body
+bytes. Its compact ES256 JWS binds that request to the Station audience, Device
+and binding IDs, native route surface, **separate** Device-key thumbprint,
+unique Pion peer nonce, one-use JTI and a 30-second expiry. The route key in
+`surface.keyThumbprint` is not the Device key. The 16 KiB body limit matches
+the current application-channel pilot. The helper never receives a Device
+bearer, account continuation, broker secret or provider credential.
+The canonical path may contain up to 2,048 characters, but the complete compact
+JWS must fit 4,096 characters. A combination of long path and surface fields
+can exceed that aggregate bound; the helper refuses it before invoking the signer.
+
+The source-opt-in server pilot under #2893 stores operator-approved bindings,
+verifies the JWS and exact body against private native peer provenance, consumes
+replay state before dispatch, and applies independent current Device, account
+and Project authorization. Its protected surface is limited to native account
+challenge/exchange and Project reads. No product UI or Tauri signing command
+consumes this helper yet; it does not establish a packaged native journey.
 
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project

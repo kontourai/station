@@ -20,7 +20,7 @@
 
     {"path":"examples/repository-knowledge-graph/ingest.mjs","digest":"ecc5cf0ae31dc269b62525c2e6a99bbc996c1329c634ec77c94ca1823a2966a9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"93fd2602f701684ddbe9743dffddc8d4855b3fc80de7db7a8b2716b11a05be31","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"package.json","digest":"088bb39e956453e408b5c8ccee5e2784a0b33c8ce7487e2ef722755b54f14b1a","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
     {"path":"packages/contracts/src/knowledge-store.ts","digest":"681a068bbd122d766068a39934873ff9bdf071033753317a380af8023a4335b3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

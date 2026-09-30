@@ -212,6 +212,7 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     ['authentication', 'local-account-authority.sqlite'],
     ['authentication', 'relay-enrollment.sqlite'],
     ['security', 'project-membership.sqlite'],
+    ['security', 'native-device-proof-replay.sqlite'],
     // sqlite-vec knowledge index; a `.db`, not a `.sqlite`.
     ['knowledge-index', 'index.db'],
   ]);

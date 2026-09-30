@@ -33,6 +33,12 @@ import {
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import {
+  createNativeDeviceProofRuntime,
+  type NativeApplicationConnectorConfiguration,
+  type NativeDeviceProofRuntime,
+  nativeDeviceProofPilotEnabled,
+} from './native-device-proof-runtime.js';
 import { orchestrationUsageRefFor } from './orchestration-usage-ref.js';
 import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 /**
@@ -494,6 +500,8 @@ export interface StationRuntimeOptions {
   };
   /** Explicit self-hosted routing composition; requires virtualApplication. */
   selfHostedBrokerConnector?: {
+    /** Validated native application lane actually selected by the trusted connector factory. */
+    nativeApplication?: NativeApplicationConnectorConfiguration;
     create(application: VirtualApplication): {
       start(): Promise<void>;
       shutdown(): Promise<void>;
@@ -540,6 +548,12 @@ export class StationRuntime {
   private applicationSessions?: ReturnType<
     typeof createApplicationSessionRuntime
   >;
+  /**
+   * #2893 opt-in native Device request-proof pilot. Composed only behind an
+   * explicit opt-in AND a supported provider/session capability; any
+   * unsupported configuration fails closed at startup.
+   */
+  private nativeDeviceProofPilot?: NativeDeviceProofRuntime;
   private relayEnrollment?: Awaited<
     ReturnType<typeof createRelayEnrollmentRuntime>
   >;
@@ -3308,7 +3322,8 @@ export class StationRuntime {
         )
       : undefined;
     this.virtualApplication = virtualApplication;
-    const inFlight = this.runInitialize();
+    const nativeProofFlag = process.env.STATION_NATIVE_DEVICE_PROOF_PILOT;
+    const inFlight = this.runInitialize(nativeProofFlag);
     this.initializeInFlight = inFlight;
     try {
       await inFlight;
@@ -3332,14 +3347,39 @@ export class StationRuntime {
       }
     } catch (error) {
       virtualApplication?.stop();
-      try {
-        await this.retireSelfHostedBroker();
-      } catch (cleanupError) {
+      const cleanupErrors: unknown[] = [];
+      const retire = async (operation: () => void | Promise<void>) => {
+        try {
+          await operation();
+        } catch (cause) {
+          cleanupErrors.push(cause);
+        }
+      };
+      await retire(() => {
+        this.nativeDeviceProofPilot?.close();
+        this.nativeDeviceProofPilot = undefined;
+      });
+      if (nativeProofFlag !== undefined && nativeProofFlag !== '0') {
+        await retire(() => {
+          this.applicationSessions?.close();
+          this.applicationSessions = undefined;
+        });
+        await retire(async () => {
+          await this.deploymentAuthentication?.service.close();
+          this.deploymentAuthentication = undefined;
+          this.localAccounts = undefined;
+        });
+        await retire(() => {
+          this.projectMembership?.close();
+          this.projectMembership = undefined;
+        });
+      }
+      await retire(() => this.retireSelfHostedBroker());
+      if (cleanupErrors.length)
         throw new AggregateError(
-          [error, cleanupError],
+          [error, ...cleanupErrors],
           'Runtime startup cleanup was incomplete.',
         );
-      }
       throw error;
     } finally {
       if (this.initializeInFlight === inFlight) {
@@ -3348,7 +3388,14 @@ export class StationRuntime {
     }
   }
 
-  private async runInitialize(): Promise<void> {
+  private async runInitialize(
+    nativeProofFlag: string | undefined,
+  ): Promise<void> {
+    const nativeProofEnabled = nativeDeviceProofPilotEnabled(nativeProofFlag);
+    if (!nativeProofEnabled && this.nativeDeviceProofPilot) {
+      this.nativeDeviceProofPilot.close();
+      this.nativeDeviceProofPilot = undefined;
+    }
     // A failed attempt retains its exact readers until both owners prove
     // retirement. No replacement Orchestration or listener is constructed first.
     await this.retireFailedSearch();
@@ -3389,6 +3436,18 @@ export class StationRuntime {
         },
       );
     }
+    if (nativeProofEnabled && !this.nativeDeviceProofPilot) {
+      this.nativeDeviceProofPilot = createNativeDeviceProofRuntime({
+        flag: nativeProofFlag,
+        homeDir: this.configLoader.getProjectHomeDir(),
+        stationId: identity.environmentId,
+        authentication: this.deploymentAuthentication?.service,
+        virtualApplicationOrigin: this.virtualApplicationConfiguration?.origin,
+        nativeApplication:
+          this.selfHostedBrokerConfiguration?.nativeApplication,
+        pairing: this.environmentSecurityService.devicePairing,
+      });
+    }
     if (this.deploymentAuthentication && !this.applicationSessions) {
       this.applicationSessions = createApplicationSessionRuntime(
         this.configLoader.getProjectHomeDir(),
@@ -3426,6 +3485,13 @@ export class StationRuntime {
             ),
         },
         readVerifiedNativeVirtualApplicationRequest,
+        this.nativeDeviceProofPilot
+          ? (request: Request) => {
+              const current =
+                this.nativeDeviceProofPilot?.authority.resolveCurrent(request);
+              return current ? { device: current.device } : undefined;
+            }
+          : undefined,
       );
     }
     if (!this.relayEnrollment) {
@@ -4052,6 +4118,15 @@ export class StationRuntime {
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
+      ...(this.nativeDeviceProofPilot
+        ? {
+            nativeDeviceProofBindings: this.nativeDeviceProofPilot.bindings,
+            nativeDeviceProofPilot: {
+              ...this.nativeDeviceProofPilot.configuration,
+              authority: this.nativeDeviceProofPilot.authority,
+            },
+          }
+        : {}),
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
       applicationSessions: this.applicationSessions,
@@ -4558,6 +4633,8 @@ export class StationRuntime {
     void this.retireSelfHostedBroker();
     this.virtualApplicationLifetime?.abort();
     this.virtualApplication?.stop();
+    this.nativeDeviceProofPilot?.close();
+    this.nativeDeviceProofPilot = undefined;
 
     this.searchAdmissionStopped = true;
     this.runtimeSearch?.stop();

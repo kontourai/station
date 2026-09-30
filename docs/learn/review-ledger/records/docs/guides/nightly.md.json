@@ -122,7 +122,7 @@
 
     {"path":"src-desktop/Cargo.lock","digest":"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
     {"path":"src-desktop/tauri.linux-appimage.conf.json","digest":"c590f935a579a9cf6c14a6110587a7fb223b5c91e6def12c9d13e2082186a8ab","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
