@@ -3565,3 +3565,183 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
   expect(geometry.inViewport, JSON.stringify(geometry.debug)).toBe(true);
   expect(geometry.visibleContent).toBeGreaterThanOrEqual(geometry.twoLines - 1);
 });
+
+// The state the reviewer measured: a reload after a refused first send. The
+// failure banner, the restored attachment chips (they lost their bytes, so
+// they ask for the file again), their block line and a three-line draft all
+// compete for a 375x667 half dock. The controls row used to paint over the
+// draft (0px visible).
+test('after a reload with the failure banner, a 375x667 half dock keeps a two-line draft clear', async ({
+  page,
+}) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  const id = 'refused-first-send';
+  await mockRuntimeConversation(page, {
+    id,
+    agentSlug: 'station',
+    title: 'Refused send',
+    provider: 'station-agent',
+    model: 'model-selected',
+    projectSlug: 'default',
+    canContinue: true,
+    turns: () => [],
+  });
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            threadId: id,
+            provider: 'station-agent',
+            model: 'model-selected',
+            projectSlug: 'default',
+            assignedAgentSlug: 'station',
+            status: 'ready',
+            lifecycleState: 'idle',
+            blockedReason: 'Station refused the send before it started.',
+            terminalAttribution: {
+              kind: 'send_refused',
+              detail: 'Station refused the send before it started.',
+            },
+            createdAt: '2026-08-25T12:00:00.000Z',
+            updatedAt: '2026-08-25T12:00:01.000Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 1,
+          },
+        ],
+      }),
+    ),
+  );
+  await page.route(
+    `**/api/orchestration/conversations/${id}/event-window**`,
+    (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            protocolVersion: 1,
+            conversationId: id,
+            currentSessionId: id,
+            sessionLineage: [
+              {
+                sessionId: id,
+                agentSlug: 'station',
+                agentDisplayName: 'Station',
+              },
+            ],
+            handoffs: [],
+            contextBoundaries: [],
+            events: [],
+            hasMore: false,
+            watermark: 0,
+          },
+        }),
+      ),
+  );
+  await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            id,
+            title: 'Refused send',
+            agentSlug: 'station',
+            updatedAt: '2026-08-25T12:00:01.000Z',
+          },
+        ],
+      }),
+    ),
+  );
+  const stage = (name: string) => ({
+    clientAttachmentId: name,
+    name,
+    mimeType: 'image/png',
+    size: 3,
+    state: 'complete',
+    progress: 1,
+    delivery: 'staged',
+  });
+  await seedActiveChats(page, [
+    {
+      sessionId: id,
+      conversationId: id,
+      agentSlug: 'station',
+      projectSlug: 'default',
+      projectName: 'Default',
+      model: 'model-selected',
+      title: 'Refused send',
+      provider: 'bedrock',
+      orchestrationSessionStarted: true,
+      ephemeralMessages: [],
+      attachmentStages: [stage('shot-one.png'), stage('shot-two.png')],
+    },
+  ]);
+  await page.addInitScript((sessionId) => {
+    localStorage.setItem(
+      'station:chat-drafts:v1',
+      JSON.stringify({
+        sessions: {
+          [sessionId]: {
+            text: 'Terrible styling also after I accepted one the approval was still showing up.\nSecond line of the draft here.\nThird line should stay visible.',
+            updatedAt: Date.now(),
+          },
+        },
+        portable: [],
+      }),
+    );
+  }, id);
+
+  await page.goto(`/?dock=open&chat=${id}`);
+  await dismissSetupLauncher(page);
+  const textarea = page.locator('.chat-input textarea').last();
+  await expect(textarea).toHaveValue(/Third line should stay visible/);
+  await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
+  await expect(page.getByTestId('chat-dock-session-failure')).toHaveCount(1);
+  await expect(page.locator('.chat-input__attachment-error')).toBeVisible();
+
+  const geometry = await textarea.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const line =
+      Number.parseFloat(style.lineHeight) ||
+      Number.parseFloat(style.fontSize) * 1.2;
+    const chrome =
+      Number.parseFloat(style.paddingTop) +
+      Number.parseFloat(style.paddingBottom);
+    const overlapping = [
+      ...document.querySelectorAll(
+        '.composer-attachments__chip, .chat-input__attachment-error, .chat-controls-row, [data-testid="chat-dock-session-failure"], .chat-input__meta',
+      ),
+    ]
+      .filter((other) => {
+        const rect = other.getBoundingClientRect();
+        return (
+          rect.height > 0 &&
+          rect.top < box.bottom - 0.5 &&
+          rect.bottom > box.top + 0.5 &&
+          rect.left < box.right &&
+          rect.right > box.left
+        );
+      })
+      .map((other) => other.className);
+    return {
+      overlapping,
+      box: [box.top, box.bottom],
+      visibleContent: box.height - chrome,
+      twoLines: 2 * line,
+      inViewport: box.top >= 0 && box.bottom <= innerHeight,
+    };
+  });
+  expect(geometry.overlapping, JSON.stringify(geometry)).toEqual([]);
+  expect(geometry.inViewport, JSON.stringify(geometry)).toBe(true);
+  expect(
+    geometry.visibleContent,
+    JSON.stringify(geometry),
+  ).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+});
