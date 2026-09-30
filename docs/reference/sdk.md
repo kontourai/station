@@ -80,6 +80,25 @@ and default-Agent migration remain separately tracked by #1372.
 
 ---
 
+## Credential-profile device-code login
+
+The `@kontourai/station-sdk/device-code-login` subpath exports
+`useDeviceCodeLoginQuery(target, enabled)`, `useStartDeviceCodeLoginMutation()`
+and `useCancelDeviceCodeLoginMutation()`. A target contains `connectionId`,
+`profileRef` and an explicit `requestScope` (`apiBase`, `authorityKey`). Hooks
+use the authenticated transport and partition status by that authority and
+profile. A host Query Client and a matching current SDK transport authority
+are required.
+
+The status query treats an absent login as `null` and polls every two seconds
+only while starting, awaiting approval or verifying. Mutations are never
+retried automatically; after settlement they re-read status so an indeterminate
+request does not imply that nothing started. `DeviceCodeLoginRefusal` preserves
+the server's message, named outcome when present and HTTP status. Verification
+links must use HTTPS without embedded credentials. The device's `engine:login`
+grant is required by the server; hosts should observe current authority before
+offering the action. See [profile sign-in](../guides/connections.md#sign-an-engine-profile-in-from-a-device).
+
 ## Hooks
 
 Use hooks inside the host's React provider tree. Query hooks return a React
