@@ -88,7 +88,7 @@
     {
       "path": ".changeset/README.md",
       "documentDigest": "381524670e36ead2172f0bda86d439055458085dcb6401544c863056efbe2ab7",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checked the managed Changesets command, package discovery, retained-note validation, and ci:fast ordering.",
@@ -100,7 +100,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "90bec6ce50bfbdefdcb9e714d38754701212884ab4f31be2fe9417837ded19cc"
+          "digest": "24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e"
         },
         {
           "path": "scripts/check-changesets.mjs",
@@ -118,7 +118,8 @@
         "Reviewed landing deltas through 111744681: Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
         "Reviewed the run-ci-fast.mjs delta (five added static gates after gate:workflows); the changeset status check this README describes still runs in ci:fast.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -4139,7 +4140,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "341b56c5c212e14bc26ad727ce7a6f266ca34aa94f64d19dad3705078a1fb9be",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4339,7 +4340,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/__tests__/startup-readiness-static.test.ts",
@@ -5900,7 +5901,8 @@
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -5932,7 +5934,7 @@
     },
     {
       "path": "docs/conformance/tool-policy-delivery.md",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical. Follow-up (#2915/#2916): added the session-grant scope section (tool, edit-mode with its mode sync, read-folder/folder, none), traced from the shared toolRequestSessionGrant through the Claude adapter's canUseTool/respondToRequest and the toast, inline card and inbox card.",
@@ -5965,7 +5967,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/providers/__tests__/claude-adapter.test.ts",
@@ -6052,7 +6054,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -7610,7 +7613,7 @@
     {
       "path": "docs/design/conduit-runtime-integration.md",
       "documentDigest": "92b017dfab71e1bd1ed9c41545c8e5aab4373b8093c9246f80667d544a9f32f0",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete Station-engine hook projection against actual VoltAgent and Strands callers, before/after-tool and completion forwarding, public Conduit adapter, capability classification, lockfile identity and generated conformance report. Clarified what the host-bound label and portable probes establish.",
@@ -7626,7 +7629,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/generate-runtime-conformance.mjs",
@@ -7667,7 +7670,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read. | Cites station-runtime-conformance.json, whose only change is the station-strands hostVersion (1.15.0 to 1.18.0) from the #2599 dependency bump. Searched this page for 1.15.0, 1.18.0 and hostVersion and found none, and it states no capability or verdict that moved, so its statements still hold. Checked by search plus the generated diff, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -8087,7 +8091,7 @@
     {
       "path": "docs/design/inference-fleet.md",
       "documentDigest": "01a56a31c8549da9335caf67355dec6c35d928cd5c73e6bfd564f802d5a84d9e",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "design",
       "state": "classified",
       "summary": "Full chronological fleet record classified; current serving/admission/Dispatch/receipt owners linked, buffered behavior and nonlocal consumer refusal inspected, obsolete loopback bypass and blanket privacy claim corrected, dependency inventory explicitly historical.",
@@ -8103,7 +8107,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/routes/inference/fleet-inference.ts",
@@ -8148,7 +8152,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -9617,7 +9622,7 @@
     {
       "path": "docs/design/pnpm-workspace-installation.md",
       "documentDigest": "e1a144f23d106180bc3bbb6085fb6e889880faadf50f5d2bb78dc763bfba3439",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete implemented installation design and delivery checklist against managed phase ordering, exact manager pin, inert pnpm arguments/settings, lock and workspace parity, lifecycle allowlist/hooks/artifacts, guard retirement, dependency receipt identity, importer-specific installed-version preflight, advisory closure and production SBOM graph. Checklist remains required evidence rather than a claim all delivery probes ran; root advisory view explicitly includes all managed importers.",
@@ -9637,11 +9642,11 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "90bec6ce50bfbdefdcb9e714d38754701212884ab4f31be2fe9417837ded19cc"
+          "digest": "24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e"
         },
         {
           "path": "scripts/__tests__/dependency-lifecycle.test.ts",
@@ -9738,7 +9743,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); the lifecycle allowlist only drops entries for packages the new lock no longer materializes (Playwright's nested fsevents 2.3.2 and the per-workspace esbuild 0.28.1 copies); dependencies:check and dependencies:ci pass; pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -10522,7 +10528,7 @@
     {
       "path": "docs/design/survey-flow-review.md",
       "documentDigest": "85cc721ee00fca17ff7a5a6b19e83155f59ac5f256cf95123adcd30b638002aa",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete review-composition document against Project store envelope/binding, unique opaque-reference lookup, route schemas/statuses, cross-Project partial failures and public Flow Agents delegation. Separated Station checks from Survey/Flow-owned lifecycle validation and actual cross-harness continuation.",
@@ -10534,7 +10540,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/routes/evidence/__tests__/flow-runs.routes.test.ts",
@@ -10574,7 +10580,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -11400,7 +11407,7 @@
     {
       "path": "docs/guides/android-build.md",
       "documentDigest": "37d8dffe745a92d090cb31abdd509507d7666139868987c50cac217887a11d49",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Android build, generated-project ownership, provenance and verification boundaries. Full baseline read. Traced debug/release/Nightly workflow callers, managed bootstrap and app-directory selection, Kotlin geometry/native permissions, packaged provenance writer and Settings consumer, ELF/ZIP alignment owner, signing handoff and emulator checks. No builds or recipes executed.",
@@ -11476,7 +11483,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
@@ -11683,7 +11690,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -12875,7 +12883,7 @@
     {
       "path": "docs/guides/delegation-attempt-claims.md",
       "documentDigest": "34c8d048c03a6f1c6baf4382ccd8f45e30bcec42e8f82a32b503e86223e4e07d",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Opt-in receiver-side portable delegation duplicate suppression and lookup. Full57-line baseline read. Followed actual route schema/lookup currentness, SDK lookup, forwarding capability check, receiver reservation/dedup path and store capacity/state definitions; route fixtures passed.",
@@ -12935,7 +12943,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "90bec6ce50bfbdefdcb9e714d38754701212884ab4f31be2fe9417837ded19cc"
+          "digest": "24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -13082,13 +13090,14 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
       "path": "docs/guides/dependency-security.md",
-      "documentDigest": "3348ad71d919b973193e69af22e7681573fc64c86ec621f8180b0cbfa2366036",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "documentDigest": "e8c379ea43903adb6e834101925f7e70ef9b39c903e522c77c94f9b8c716f123",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete dependency-security guide against managed inert installation and exact hook admission, allowlist/artifact ownership, VoltAgent patch and real-framework regression, pnpm advisory normalization/reachability, exact exception/residual policy, event-based scope classification, scheduled issue lifecycle, legacy npm diagnostics, and protected-base CodeQL/dependency-review workflow. Clarified root workspace closure and structural SARIF validation versus producer provenance. Dated advisory matrices remain historical.",
@@ -13128,11 +13137,11 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "90bec6ce50bfbdefdcb9e714d38754701212884ab4f31be2fe9417837ded19cc"
+          "digest": "24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e"
         },
         {
           "path": "scripts/__tests__/codeql-sarif-policy.test.ts",
@@ -13249,13 +13258,14 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/security-analysis.yml); the lifecycle allowlist only drops entries for packages the new lock no longer materializes (Playwright's nested fsevents 2.3.2 and the per-workspace esbuild 0.28.1 copies); dependencies:check and dependencies:ci pass; pnpm-workspace.yaml only drops the fsevents@2.3.2 build permission that Playwright 1.63 no longer materializes; actionlint-gate.mjs only moves the pinned CodeQL init/analyze SHAs. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
       "path": "docs/guides/deployment-authentication.md",
       "documentDigest": "807e4c84220d4ae4f255f3b3728811f2736a101e608e369eef1729e6bcef84d2",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented authentication descriptor/dispatch, account-bound Device, member projection/administration, guarded shared-content delivery, browser continuation and proof-bound application-session contracts. Preserved the reviewed local-account/OIDC startup, verification, storage and recovery qualifications; clarified which credential the resource proof hashes.",
@@ -13275,7 +13285,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/routes/projects/project-shared-tasks.ts",
@@ -13421,7 +13431,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -13626,7 +13637,7 @@
     {
       "path": "docs/guides/desktop-build.md",
       "documentDigest": "86bb87f004892c11d9eca946680a914572d9078d43fbf82a68d6e80502e4cbb1",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop compile/update/CSP contract and bounded packaged Browser Preview fixture. Full baseline read. Traced clean-checkout status-entry verifier, update UI/native registration and capabilities, manifest/lock versions, CSP config and trusted registry caller. Independently probed actual fixture helpers/shared schema; traced earlier native profile-genesis refusal. No native launch or package build.",
@@ -13702,7 +13713,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
@@ -13917,13 +13928,14 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
       "path": "docs/guides/desktop-tray.md",
       "documentDigest": "65ed27eebefb1258681b81b175dd06c183fdaec0a3c3294e79215a4ba68acdc4",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop-owned service/sidecar tray health, controls, companion lifetime and logs. Full baseline read. Traced tray snapshot/action/destination decisions and ten-second health cadence, service-command identity arguments, Windows Task Scheduler implementation, companion caller after backend health, logging registration and pinned dependency rotation. Runtime/tray OS behavior remains unverified.",
@@ -13999,7 +14011,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
@@ -14223,7 +14235,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -14818,7 +14831,7 @@
     {
       "path": "docs/guides/home-transfer-controller.md",
       "documentDigest": "3e16288c9db5fe81570dc6f013ce0426096187c395c8e85002cc4f9f32fcc8d2",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented pairing/binding probes, external storage custody, preparation/advance outcomes, bounded admission journal, capability/replay/grant revision control sessions, room-write ordering and receipt reconciliation. Traced mounted versus private-only callers and confirmed transfer/resume flags remain false; current prose remains accurate.",
@@ -14882,7 +14895,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "90bec6ce50bfbdefdcb9e714d38754701212884ab4f31be2fe9417837ded19cc"
+          "digest": "24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -15091,7 +15104,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -16487,7 +16501,7 @@
     {
       "path": "docs/guides/monitoring.md",
       "documentDigest": "5b225dd4842009417c702a0552af67974e38eaa1b9e8d726a3a7a3389e1c1595",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide reviewed: local versus OTLP/usage paths, pinned resource defaults, async startup, retention, historical shadow evidence, recording populations/attributes, tokens/costs, dashboard queries, spans, schema/history and Insights. All 28 prior rendered anchors preserved.",
@@ -16495,7 +16509,7 @@
       "sources": [
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/generate-metric-reference.mjs",
@@ -16573,7 +16587,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-record.ts (outcome list made an as-const literal with comments (same members)); claims unaffected.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -17636,7 +17651,7 @@
     {
       "path": "docs/guides/private-runner-partition.md",
       "documentDigest": "3a71d00a2de396d6ec7ccf680c41e99d9e7afd1f07e0217bdef00f41042ce8b9",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Conditional operator plan for separating fleet listeners, with current routing context. Full59-line baseline read. Checked current hosted CI, persistent Linux container-smoke and Windows diagnostic/performance workflow labels, capacity step and actionlint routing policy.",
@@ -17696,7 +17711,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "90bec6ce50bfbdefdcb9e714d38754701212884ab4f31be2fe9417837ded19cc"
+          "digest": "24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -17843,13 +17858,14 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
       "path": "docs/guides/product-law-authoring.md",
       "documentDigest": "e73cd5b9a92cfe8795d643d6c583b120b486366eea57f015ff412f35524336c6",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Normative authoring and interpretation of selected executable product laws. Full29-line baseline read. Traced manifest bounds, path dispositions, exact structured observation and timeout/infrastructure result classification; focused owner tests passed.",
@@ -17909,7 +17925,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "90bec6ce50bfbdefdcb9e714d38754701212884ab4f31be2fe9417837ded19cc"
+          "digest": "24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -18057,13 +18073,14 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
       "path": "docs/guides/release-channel-ports.md",
       "documentDigest": "3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
@@ -18147,7 +18164,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
@@ -18372,7 +18389,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -18634,7 +18652,7 @@
     {
       "path": "docs/guides/repository-layout.md",
       "documentDigest": "9db07997f2440ee4cf5062fd805657beb7baffc40831f1f31625089695e7c021",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "policy",
       "state": "classified",
       "summary": "Repository navigation, ownership conventions and contributor routing. Full69-line baseline read. Current directories and links checked; root instructions and module-map routing retain their normative purpose. No stale text requiring edit found.",
@@ -18694,7 +18712,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "90bec6ce50bfbdefdcb9e714d38754701212884ab4f31be2fe9417837ded19cc"
+          "digest": "24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -18841,13 +18859,14 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "128f59277de30d01ae972cfffd3701d63995b52d",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18891,7 +18910,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/mobile-css-ratchet.mjs",
@@ -19015,7 +19034,8 @@
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
         "Bounded compact-card revision review: question tabs and progressive Other input replace always-visible instructions; review retains each header/answer with an accessible exact Edit action. Traversal returns to the first incomplete question before review; keyboard focus follows explicit navigation. SDK/wire, authority fencing and private draft semantics are unchanged. Updated agent guide and narrow-surface evidence; retained generic inspector captures remain outside this UI delta.",
         "Reviewed the #2042 responsive action inventory addition against the shared 44px/wrap/focus floor and mounted 390px dark/light browser evidence. The new credential sign-in row is covered; existing design and component ownership claims remain unchanged. Shared SkeletonBlock replaces the bespoke loading sentence.",
-        "Combined #3018/#3021 review: merged SDK prose keeps the scoped device-code hooks and exact question-answer batch API as separate actions; neither grants authority. Reviewed both new SDK sections against their existing callers and the two responsive inventory rows against retained 390px controlled-fixture evidence. Preserved both reviews and source bindings; updated only hashes of the actually merged SDK prose/inventory. No live vendor or physical-device qualification added."
+        "Combined #3018/#3021 review: merged SDK prose keeps the scoped device-code hooks and exact question-answer batch API as separate actions; neither grants authority. Reviewed both new SDK sections against their existing callers and the two responsive inventory rows against retained 390px controlled-fixture evidence. Preserved both reviews and source bindings; updated only hashes of the actually merged SDK prose/inventory. No live vendor or physical-device qualification added.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -20503,7 +20523,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "50273b47fb6784cf8cdbe654ad46dad2121b0ed9b0872582d6c2100b0caecc5c",
-      "sourceRevision": "128f59277de30d01ae972cfffd3701d63995b52d",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -20547,7 +20567,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/mobile-css-ratchet.mjs",
@@ -20689,7 +20709,8 @@
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
         "Bounded compact-card revision review: question tabs and progressive Other input replace always-visible instructions; review retains each header/answer with an accessible exact Edit action. Traversal returns to the first incomplete question before review; keyboard focus follows explicit navigation. SDK/wire, authority fencing and private draft semantics are unchanged. Updated agent guide and narrow-surface evidence; retained generic inspector captures remain outside this UI delta.",
         "Combined #3018/#3021 review: merged SDK prose keeps the scoped device-code hooks and exact question-answer batch API as separate actions; neither grants authority. Reviewed both new SDK sections against their existing callers and the two responsive inventory rows against retained 390px controlled-fixture evidence. Preserved both reviews and source bindings; updated only hashes of the actually merged SDK prose/inventory. No live vendor or physical-device qualification added.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -20863,7 +20884,7 @@
     {
       "path": "docs/guides/work-board-security.md",
       "documentDigest": "ec519bd0a32aefd4172f8fe3d20068ccc480ae9236d16fe9797eba4570fc7cc2",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Trusted Work Board rendering, Home eligibility and owner-resolved reference storage boundaries. Full16-line baseline read. Checked builtin registry/Pane frame React error boundary, actual plugin-only Home eligibility and granted-Home recovery, closed store/reference shape, request-bound resolved route and owner projection tests.",
@@ -20923,7 +20944,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "90bec6ce50bfbdefdcb9e714d38754701212884ab4f31be2fe9417837ded19cc"
+          "digest": "24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -21070,13 +21091,14 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
       "path": "docs/guides/workspace-packages.md",
       "documentDigest": "01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented AES envelope, Git snapshot/content/path/expansion limits, source rechecks, fresh destination and cleanup, read-only verification, and import-project durable intent/create/readback caller semantics. Current prose accurately distinguishes metadata verification from target filesystem and execution authority.",
@@ -21148,7 +21170,7 @@
         },
         {
           "path": "pnpm-workspace.yaml",
-          "digest": "90bec6ce50bfbdefdcb9e714d38754701212884ab4f31be2fe9417837ded19cc"
+          "digest": "24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e"
         },
         {
           "path": "scripts/actionlint-gate.mjs",
@@ -21300,7 +21322,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -21724,7 +21747,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "128f59277de30d01ae972cfffd3701d63995b52d",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -21768,7 +21791,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/mobile-css-ratchet.mjs",
@@ -21893,13 +21916,14 @@
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
         "Bounded compact-card revision review: question tabs and progressive Other input replace always-visible instructions; review retains each header/answer with an accessible exact Edit action. Traversal returns to the first incomplete question before review; keyboard focus follows explicit navigation. SDK/wire, authority fencing and private draft semantics are unchanged. Updated agent guide and narrow-surface evidence; retained generic inspector captures remain outside this UI delta.",
         "Reviewed the #2042 responsive inventory addition; it changes no backend ownership, transport or error contract. Preserved upstream disclosure review notes and source bindings during the main merge.",
-        "Combined #3018/#3021 review: merged SDK prose keeps the scoped device-code hooks and exact question-answer batch API as separate actions; neither grants authority. Reviewed both new SDK sections against their existing callers and the two responsive inventory rows against retained 390px controlled-fixture evidence. Preserved both reviews and source bindings; updated only hashes of the actually merged SDK prose/inventory. No live vendor or physical-device qualification added."
+        "Combined #3018/#3021 review: merged SDK prose keeps the scoped device-code hooks and exact question-answer batch API as separate actions; neither grants authority. Reviewed both new SDK sections against their existing callers and the two responsive inventory rows against retained 390px controlled-fixture evidence. Preserved both reviews and source bindings; updated only hashes of the actually merged SDK prose/inventory. No live vendor or physical-device qualification added.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "128f59277de30d01ae972cfffd3701d63995b52d",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21943,7 +21967,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/mobile-css-ratchet.mjs",
@@ -22072,7 +22096,8 @@
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
         "Bounded compact-card revision review: question tabs and progressive Other input replace always-visible instructions; review retains each header/answer with an accessible exact Edit action. Traversal returns to the first incomplete question before review; keyboard focus follows explicit navigation. SDK/wire, authority fencing and private draft semantics are unchanged. Updated agent guide and narrow-surface evidence; retained generic inspector captures remain outside this UI delta.",
         "Combined #3018/#3021 review: merged SDK prose keeps the scoped device-code hooks and exact question-answer batch API as separate actions; neither grants authority. Reviewed both new SDK sections against their existing callers and the two responsive inventory rows against retained 390px controlled-fixture evidence. Preserved both reviews and source bindings; updated only hashes of the actually merged SDK prose/inventory. No live vendor or physical-device qualification added.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -22186,7 +22211,7 @@
     {
       "path": "docs/privacy-policy.md",
       "documentDigest": "fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "generated",
       "state": "source-reviewed",
       "summary": "Reviewed the declared inventory, generated artifacts and stated operational boundaries, including OTel, identity and browser push gaps. Seven existing classification tuples remain unchanged; the page explicitly describes an incomplete, unapproved working inventory.",
@@ -22194,7 +22219,7 @@
       "sources": [
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/services/__tests__/privacy-inventory.test.ts",
@@ -22239,7 +22264,8 @@
         "Integration source review through e0314c727: telemetry.ts inlined and un-exported resolveOtelResourceAttributes and the injectable hash hook, keeping the same random installation hash and `os.type` attributes behind the same endpoint gate. The lockfile only dropped bearing/forage. The generated OTel and telemetry disclosures remain accurate. Source review is separate from executed test evidence.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -23676,7 +23702,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23701,7 +23727,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "schemas/agent.schema.json",
@@ -23963,7 +23989,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -24829,7 +24856,7 @@
     {
       "path": "docs/reference/play-data-safety.md",
       "documentDigest": "834366555f8bc88a09ba1905af7d3688e83ab0606d7e362bb81ee142663893e4",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "generated",
       "state": "source-reviewed",
       "summary": "Reviewed the declared inventory, generated artifacts and stated operational boundaries, including OTel, identity and browser push gaps. Seven existing classification tuples remain unchanged; the page explicitly describes an incomplete, unapproved working inventory.",
@@ -24837,7 +24864,7 @@
       "sources": [
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/services/__tests__/privacy-inventory.test.ts",
@@ -24882,7 +24909,8 @@
         "Integration source review through e0314c727: telemetry.ts inlined the OTel resource attributes unchanged (random installation hash, os.type, endpoint-gated start), and pnpm-lock removed only bearing/forage. The otel-observability tuple and disclosure remain accurate. Source review is separate from executed test evidence.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -25017,7 +25045,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "87b7b438cf0f881e850574ef6bbcffafe3d72a92",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25526,7 +25554,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/knowledge-store/adapters/shared/file-transactions.ts",
@@ -26041,7 +26069,8 @@
         "Combined #3018/#3021 review: merged SDK prose keeps the scoped device-code hooks and exact question-answer batch API as separate actions; neither grants authority. Reviewed both new SDK sections against their existing callers and the two responsive inventory rows against retained 390px controlled-fixture evidence. Preserved both reviews and source bindings; updated only hashes of the actually merged SDK prose/inventory. No live vendor or physical-device qualification added.",
         "Agent SDK boundary delta review: Read the additive /agent export, unchanged canonical client signatures, builder external allowlist and shared-runtime graph, plus affected authoring/SDK/example claims. Updated routes and exact external lists where needed. Agent types and HTTP/engine lifecycle owners remain unchanged. Focused host/build/bundle tests (28) and headless build/typecheck passed; React-leak mutation was caught then restored green. Existing installation, provider, release and authority limitations remain. Delta scope only, no live provider execution or package-publication proof.",
         "Integration delta review for main 1eaac9372: the SDK export map adds the separate device-code-login UI subpath and the SDK reference adds its authority-scoped hooks. Agent /agent remains explicit and React-free; neither that entry nor its canonical clients changed. Preserved both ledger histories/source additions. Agent authoring, headless source prerequisites, plugin admission and prior verification limits remain accurate; no fresh live-provider or release proof claimed.",
-        "Integration delta review for main a40474f4e: canonical respondToRequest input now optionally carries typed harness-question answers. /agent continues to re-export that same owner without a new schema, execution loop or UI import. Main documentation additions and both ledger histories/source additions are preserved. Existing Agent authoring/execution and request-authority claims remain accurate; no new provider or release proof is implied."
+        "Integration delta review for main a40474f4e: canonical respondToRequest input now optionally carries typed harness-question answers. /agent continues to re-export that same owner without a new schema, execution loop or UI import. Main documentation additions and both ledger histories/source additions are preserved. Existing Agent authoring/execution and request-authority claims remain accurate; no new provider or release proof is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -26239,7 +26268,7 @@
     },
     {
       "path": "docs/reference/shared.md",
-      "sourceRevision": "87b7b438cf0f881e850574ef6bbcffafe3d72a92",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review, including compatibility declarations, legacy JSON readers, integration copier admission/rollback, build externals/containment/preparation, host lazy namespace publication and actual CLI/install callers. Reused earlier MCP/notification review after inspecting the only source delta (two package export additions). Clarified unchecked JSON/path inputs, Agent parse failures, specific credential-key rejection, skipped nondirectories, and page-level shared-runtime readiness. API/config review supplies adjacent provider/status/Project producer boundaries. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -26388,7 +26417,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/routes/agents/invoke-agent.ts",
@@ -26476,7 +26505,8 @@
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
         "Agent SDK boundary delta review: Read the additive /agent export, unchanged canonical client signatures, builder external allowlist and shared-runtime graph, plus affected authoring/SDK/example claims. Updated routes and exact external lists where needed. Agent types and HTTP/engine lifecycle owners remain unchanged. Focused host/build/bundle tests (28) and headless build/typecheck passed; React-leak mutation was caught then restored green. Existing installation, provider, release and authority limitations remain. Delta scope only, no live provider execution or package-publication proof.",
-        "Integration delta review for main a40474f4e: canonical respondToRequest input now optionally carries typed harness-question answers. /agent continues to re-export that same owner without a new schema, execution loop or UI import. Main documentation additions and both ledger histories/source additions are preserved. Existing Agent authoring/execution and request-authority claims remain accurate; no new provider or release proof is implied."
+        "Integration delta review for main a40474f4e: canonical respondToRequest input now optionally carries typed harness-question answers. /agent continues to re-export that same owner without a new schema, execution loop or UI import. Main documentation additions and both ledger histories/source additions are preserved. Existing Agent authoring/execution and request-authority claims remain accurate; no new provider or release proof is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -26931,7 +26961,7 @@
     {
       "path": "docs/security/remote-access-threat-model.md",
       "documentDigest": "5545f52b980d2071732503351ddbd811e19d4c6e333c7e02b294db00a197a147",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented HTTP capability, proxy/Origin, scope, mutation budget, SSH host-key/probe, fleet, credential and recovery boundaries. Historical pairing probes remain explicitly historical. Corrected custom capability/query-token exceptions, unmapped-route refusal, retained loopback WS scope limits, and SSH handshake versus authenticated-session reachability.",
@@ -26959,7 +26989,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-desktop/src/lib.rs",
@@ -27171,7 +27201,8 @@
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence."
+        "Agent SDK boundary delta review: Compared root manifest to origin/main: only typecheck:examples gains the headless example compiler project; all existing script bodies, dependency versions, verification and release commands remain byte-identical. Checked the referenced commands and example coverage against the contributor-command and conformance gates. Existing claims remain accurate; this is a delta review, not fresh live deployment evidence.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -28345,7 +28376,7 @@
     {
       "path": "examples/builder-delivery-viewer/README.md",
       "documentDigest": "9088109235e5da8959933a643ca29acd2c273e26ba3a36927acad5d9f59b1df5",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through actual GET registrations, bounded descriptor reads, schema/public validator/report derivation, browser query/render and exact Flow run join; host server-module permission and lifecycle plus registry installation entry traced. Corrected workspace delivery companion path, artifact-only byte limits, unsorted discovery cap and filename-only seal meaning. Cache/transport and raw trusted server-code boundaries retained.",
@@ -28381,7 +28412,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/routes/plugins/plugin-lifecycle-routes.ts",
@@ -28427,7 +28458,8 @@
         "Re-read 'Builder Delivery Viewer' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (examples/builder-delivery-viewer/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -28784,7 +28816,7 @@
     {
       "path": "examples/fieldwork-review/README.md",
       "documentDigest": "10a3d19e9905edc792e68a545a59b73f3452db279d478d08489e89bf881387aa",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through launch/open/list/close/output routes, path and owned-storage checks, corruption preservation, lazy and short-lived published Fieldwork facades, browser frame and query/cleanup callers, and actual host acquire/quiesce/dispose/update/reload/shutdown wiring. Corrected browser-versus-owner data boundary, reviewed-output read/discard behavior, boolean error fallback, close-before-persist order, capacity checks and timers. No stronger global concurrency reservation or process sandbox claimed.",
@@ -28828,7 +28860,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/routes/plugins/plugin-lifecycle-routes.ts",
@@ -28874,7 +28906,8 @@
         "Re-read 'Fieldwork Review' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (examples/fieldwork-review/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -29136,7 +29169,7 @@
     {
       "path": "examples/mcp-ui-demo/README.md",
       "documentDigest": "edac8e8ab2aa5125990f11157af06392b96fb00b7e837be65c6feba746088f1a",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README and example-server claim review through stdio tool/resource registration, actual integration resolve/read routes and runtime mount, browser MCPToolUIFrame resolver/resource/bridge caller and shared CSP. Corrected web-only native refusal, default host enablement, script cwd prerequisite, credential requirement and require-versus-inherit approval behavior. Static demo sends no interactive messages; dedicated proxy versus opaque srcdoc boundary stated.",
@@ -29152,7 +29185,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/routes/agents/tools.ts",
@@ -29198,7 +29231,8 @@
         "Re-read 'MCP-UI demo server' against C2b: runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -30087,7 +30121,7 @@
     {
       "path": "examples/survey-review-workbench/README.md",
       "documentDigest": "d8551d4b9cfca89a35f9827dffff6b9c80bcff5af8f02e45e733b07a8b8b7efa",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through actual server registrations and browser mount/persistence/projection callbacks, build/manifest and host trusted server admission. Corrected lazy dependency claim, optional event-count mismatch check versus replacement writes/concurrent save transaction, partial resolved-item projection and nonexistent-workspace fallback. Documented pending-save projection and component-state context-switch limits. Actual disposable route probe demonstrates omitted count can replace prior history and wrong count returns409.",
@@ -30119,7 +30153,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "src-server/routes/plugins/plugin-lifecycle-routes.ts",
@@ -30165,7 +30199,8 @@
         "Re-read 'Survey Review Workbench' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
@@ -31072,7 +31107,7 @@
     {
       "path": "packaging/node-pty-prebuilds/README.md",
       "documentDigest": "fa89e2fa1c7c2487af76d52b2be36878de9021dfe3c50831e51158da95820dfb",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "390a624e73d6d9726117e9928e79e7c149607e7b",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current empty Linux prebuild channel, future admission and actual staging limits. Full baseline read; empty manifest/version and allowlist source-build paths, workflow/verifier, stageNodePtyPrebuild and pinned upstream install hook reviewed. Corrected false shipped-artifact and libc-fallback claims. Focused lifecycle tests passed; no actual Linux build or binary tested.",
@@ -31092,7 +31127,7 @@
         },
         {
           "path": "pnpm-lock.yaml",
-          "digest": "8b8ead11a7b2da5c43023e526097ef14d63c88e5edbcae1552a0706f98ea826f"
+          "digest": "2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03"
         },
         {
           "path": "scripts/__tests__/dependency-lifecycle.test.ts",
@@ -31120,7 +31155,8 @@
         "Integration source review through e0314c727: pnpm-lock.yaml removed only the @kontourai/bearing and @kontourai/forage importer entries, leaving node-pty resolution unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml); the lifecycle allowlist only drops entries for packages the new lock no longer materializes (Playwright's nested fsevents 2.3.2 and the per-workspace esbuild 0.28.1 copies); dependencies:check and dependencies:ci pass. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Axios advisory-floor delta review: pnpm workspace/lock override rises from ^1.18.1 to ^1.20.0, all Axios snapshots resolve 1.20.0 with the published integrity, and other package resolutions/build permissions/policy exceptions are unchanged. Reviewed actual transitive consumers and dated versus current version claims; added the bounded threat/disposition section to dependency-security while preserving its historical matrix. Managed install, lockfile parity and live root/SDK/Shared full+production advisory gate passed. Public toFormData probe reproduces inherited-maxDepth failure on 1.18.1 and normal serialization on 1.20.0. No remote Station exploit, grant change, deployment or publication proof is claimed."
       ]
     },
     {
