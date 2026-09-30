@@ -6428,8 +6428,8 @@
     },
     {
       "path": "docs/design/approval-posture-server-ordered.md",
-      "documentDigest": "4e28b164d3c0aff9892a2d5b8419199098f7d708eb35b1b99c74bf7d87429fa6",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "documentDigest": "a756515b3b04cf21d9c159c03c78e1853ac26344b124b9b27fd251c5fce6ee1d",
+      "sourceRevision": "9ed8cdffa9ba991c5bcd085b9a53c4368798fac2",
       "kind": "design",
       "state": "classified",
       "summary": "Accepted design with dated baseline, implementation history, authority decisions, and recorded tests.",
@@ -6453,7 +6453,8 @@
         "Reviewed integration deltas: Reviewed frozen upstream Default/full-access additions against runtime provider resolution, Agent write routes, orchestration pick checks and confinement callers. Existing dated design classification remains; removed obsolete unchanged-bytes claim. src-server/services/orchestration/approval-posture.ts: Effective-default resolution handles Project Default that reaches never/full-access on host, requiring the existing grant. Recorded Default still follows later Project default edits as the accepted residual; no assertion of immutable future policy. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/security/coding-authority.ts: Adds typed full_access_not_granted refusal with403 identity; no new authority or scope.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: #2904 adds grantor-bearing FullAccessGrant with UnattributedFullAccessGrantError (coding-authority), decision actor and threadId plus fullAccessDefaultSource (approval-posture), and resetFullAccessGrantedBy, live grantor re-confinement and the grantor-stamp respawn carry-forward (orchestration-service). Main's merged prose on the structured refusal, granting and revoking, and revocation reset matches the code, including: the reset outcomes; the unattributed host-start cap of 50 plus a total; sanitized titles (256 characters); resetFullAccess re-runs; and an idempotent DELETE on an already revoked device, since revokeDevice returns without error when revokedAt is already set. Prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "activity-list: removed the 'Delegated task coordinator' row — that component and its follow-up send were deleted with the Activity redesign; no send path replaces it in the list (the session-detail composer row remains)."
       ]
     },
     {
@@ -13987,7 +13988,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "0368881dcab562767c4127b5bee0ebb6356449f3",
+      "sourceRevision": "9ed8cdffa9ba991c5bcd085b9a53c4368798fac2",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14147,7 +14148,7 @@
         },
         {
           "path": "tests/task-first-home.spec.ts",
-          "digest": "1f1477627951d381d614b491191956dfe251f7e5a0d3984f806841830169458c"
+          "digest": "061a3f4436836fa56833d0e6596623e92470e4041c02e14f8b494ff5ff65633d"
         }
       ],
       "checks": [
@@ -14161,7 +14162,8 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): tests/e2e-manifest.mjs adds tests/branding-theme-boot.spec.ts to the product bucket (parallel-safe, surface Shell, tier full); PR_BROWSER_SMOKE_CONTRACT and suite runner behavior are unchanged. The matrix names no Shell/theming row and claims no exhaustive coverage. Prose accurate. Source review is separate from executed test evidence.",
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
-        "activity-list fix round: task-first-home now reaches Delegate subtask through the Activity row menu instead of the removed coordinator card; the matrix row (continuation, deep links, mobile geometry) is still accurate."
+        "activity-list fix round: task-first-home now reaches Delegate subtask through the Activity row menu instead of the removed coordinator card; the matrix row (continuation, deep links, mobile geometry) is still accurate.",
+        "activity-list: task-first-home's mobile delegate test was renamed to what it asserts (Delegate subtask from the row menu, touch targets, then detail); the matrix row is unchanged and accurate."
       ]
     },
     {
@@ -23292,7 +23294,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "9ed8cdffa9ba991c5bcd085b9a53c4368798fac2",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -23325,7 +23327,7 @@
         },
         {
           "path": "packages/contracts/src/child-work.ts",
-          "digest": "e93f1bc3b6089d4a118a62f59a75ba45f1980648b22a72176a2037fe1b92abd8"
+          "digest": "329d495e2344cd739eb4f47ec8329e424e2e1d37320acf5970d963d51b73dd35"
         },
         {
           "path": "packages/contracts/src/conversation-pull-request-links.ts",
@@ -23532,7 +23534,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "activity-list: child-work.ts changed only in a comment (the peer Stop rule now cites the Activity row menu instead of the deleted coordinator card); no contract change."
       ]
     },
     {
@@ -29480,7 +29483,7 @@
     },
     {
       "path": "packages/contracts/README.md",
-      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "sourceRevision": "9ed8cdffa9ba991c5bcd085b9a53c4368798fac2",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read. Corrected types-only/no-runtime wording to reflect existing pure parsers, reducers and page builders; checked source-only distribution, direct domain imports and the distinction between structural parsing and authorization.",
@@ -29493,7 +29496,7 @@
         },
         {
           "path": "packages/contracts/src/child-work.ts",
-          "digest": "e93f1bc3b6089d4a118a62f59a75ba45f1980648b22a72176a2037fe1b92abd8"
+          "digest": "329d495e2344cd739eb4f47ec8329e424e2e1d37320acf5970d963d51b73dd35"
         },
         {
           "path": "packages/contracts/src/index.ts",
@@ -29514,7 +29517,8 @@
         "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
         "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
         "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
-        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries.",
+        "activity-list: child-work.ts comment-only change (peer Stop rule reference); README claims unaffected."
       ]
     },
     {
