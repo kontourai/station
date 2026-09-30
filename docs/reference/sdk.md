@@ -3665,3 +3665,13 @@ uncertain dispatched mutation must not be retried automatically.
 The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
+
+## Harness question answers
+
+`respondToRequest` from `@kontourai/station-sdk/client` accepts a structured
+`answers` batch alongside `decision: 'accept'` and `expectedRequestEventId`.
+Capture the request's thread, request and opened-event IDs, and pass the
+current explicit `requestScope`; the server validates the exact pending
+question before forwarding it. See the [Session API](session-api.md#respondtorequest)
+for the wire shape and limits. Inspection preserves `requiresAnswers` for
+clients that must direct the user to the inline question card.

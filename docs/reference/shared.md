@@ -22,6 +22,15 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+## Harness question helpers
+
+`@kontourai/station-shared/harness-questions` owns the browser-safe
+`readHarnessQuestionnaire`, `validateHarnessQuestionAnswers` and
+`harnessAnswerTexts` helpers. They parse bounded descriptors, validate a
+complete answer batch and translate selected IDs to display labels/custom
+text. They do not authorize a reply or prove engine delivery. Stable types
+come from `@kontourai/station-contracts/harness-questions`.
+
 ---
 
 ## plugin types

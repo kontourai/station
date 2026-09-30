@@ -96,7 +96,8 @@
     "./portable-server-targets": "./src/portable-server-targets.mjs",
     "./release-manifest": "./src/release-manifest.mjs",
     "./prebuilt-archive": "./src/prebuilt-archive.ts",
-    "./service-launcher-protocol": "./src/service-launcher-protocol.ts"
+    "./service-launcher-protocol": "./src/service-launcher-protocol.ts",
+    "./harness-questions": "./src/harness-questions.ts"
   },
   "publishConfig": {
     "access": "public"

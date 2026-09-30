@@ -150,8 +150,21 @@ test('a reader follows a concept into its exact module, searches, and returns th
     '## StationInstanceReconciler',
   );
   expect(
-    await page.getByRole('article').getByRole('heading').allTextContents(),
+    await page
+      .getByRole('article')
+      .getByRole('heading', { level: 2 })
+      .allTextContents(),
   ).toEqual(['SessionCommandModule']);
+  await browserExpect(
+    page.getByRole('article').getByRole('heading', {
+      level: 3,
+      name: 'Harness question interaction',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await browserExpect(page.getByRole('article')).toContainText(
+    'requestUserInput',
+  );
   // The panel must render the module map's recorded review state. A merge-queue
   // candidate can legitimately carry a stale record another PR's change caused
   // (freshness is advisory there, #2923), so derive the expected label from
@@ -213,7 +226,7 @@ test('a reader follows a concept into its exact module, searches, and returns th
   ).toHaveText('Station shipped documentation');
   await page.goBack();
   await browserExpect(
-    page.getByRole('article').getByRole('heading'),
+    page.getByRole('article').getByRole('heading', { level: 2 }),
   ).toHaveText('SessionCommandModule');
   await page.getByRole('searchbox').fill('no-such-concept-84721');
   await browserExpect(page.getByRole('status')).toContainText(
@@ -372,7 +385,7 @@ test('narrow reading, keyboard disclosure, and section links preserve visible co
   await browserExpect(page.getByRole('article')).toContainText('indeterminate');
   await page.reload();
   await browserExpect(
-    page.getByRole('article').getByRole('heading'),
+    page.getByRole('article').getByRole('heading', { level: 2 }),
   ).toHaveText('SessionCommandModule');
   await page.goto(
     'http://atlas.test/#doc=docs%2Farchitecture.md&section=data-flow-chat-request',

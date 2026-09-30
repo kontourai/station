@@ -106,6 +106,10 @@ import {
 import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflow';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
+import {
+  readHarnessQuestionnaire,
+  validateHarnessQuestionAnswers,
+} from '@kontourai/station-shared/harness-questions';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
@@ -7188,6 +7192,33 @@ export class OrchestrationService {
             adapters: this.options.adapterRegistry.list(),
           });
           this.assertAdapterCurrent(adapter);
+          const currentQuestionRequest =
+            this.options.eventStore?.readCurrentRequestEvent(
+              command.threadId,
+              command.requestId,
+            );
+          const questionnaire = readHarnessQuestionnaire(
+            currentQuestionRequest?.state === 'found' &&
+              currentQuestionRequest.event.payload.method === 'request.opened'
+              ? currentQuestionRequest.event.payload.payload?.questionnaire
+              : undefined,
+          );
+          if (questionnaire || command.answers !== undefined) {
+            if (
+              !questionnaire ||
+              !command.expectedRequestEventId ||
+              command.decision === 'acceptForSession'
+            )
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'Inspect the current question before answering it.',
+              );
+            if (command.decision === 'accept')
+              validateHarnessQuestionAnswers(questionnaire, command.answers);
+            else if (command.answers !== undefined)
+              throw new Error('A cancelled question cannot carry answers.');
+          }
+
           if (command.expectedRequestEventId !== undefined) {
             if (context?.requestCurrent && !context.requestCurrent())
               throw new RequestEventGuardError(
@@ -7307,12 +7338,24 @@ export class OrchestrationService {
           // agent's ApprovalRegistry) attributes the approving device, as the
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
-          await (context?.clientOrigin
+          const requestContext =
+            questionnaire || context?.clientOrigin
+              ? {
+                  ...(context?.clientOrigin
+                    ? { clientOrigin: context.clientOrigin }
+                    : {}),
+                  ...(command.answers ? { answers: command.answers } : {}),
+                  ...(questionnaire && command.expectedRequestEventId
+                    ? { expectedRequestEventId: command.expectedRequestEventId }
+                    : {}),
+                }
+              : undefined;
+          await (requestContext
             ? adapter.respondToRequest(
                 command.threadId,
                 command.requestId,
                 decision,
-                { clientOrigin: context.clientOrigin },
+                requestContext,
               )
             : adapter.respondToRequest(
                 command.threadId,
