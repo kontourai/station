@@ -16866,7 +16866,7 @@
     {
       "path": "docs/guides/nightly.md",
       "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
-      "sourceRevision": "ce2b6c35d2cb46e08b3b0f162df6e2c581dd03a9",
+      "sourceRevision": "40584ad7bb41ce35ff315a9c26d2fe7bb748bc9f",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
@@ -17126,7 +17126,7 @@
         },
         {
           "path": "scripts/__tests__/portable-nightly-publish-workflow.test.ts",
-          "digest": "274e4c5b20f0e0c1a95715fd6c874767d72c1f7f1667966a0c038ca51f2a5c38"
+          "digest": "ee6af29d01182ebbb33709c3132a9f1efa31b4f70289dbe8049f25028b948db7"
         }
       ],
       "checks": [
@@ -17162,7 +17162,8 @@
         "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Carried forward after merging origin/main into #3013, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #3013, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Re-read against #3013's final delta: the re-verify retry now continues only while the rolling manifest is a validly signed OLDER Nightly (up to 5 minutes), and the workflow test gained staleness-decision cases and sorted imports. The page states only that the job re-fetches and re-verifies the rolling manifest last; still accurate."
       ]
     },
     {
