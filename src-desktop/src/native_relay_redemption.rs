@@ -319,6 +319,20 @@ fn with_locked_saved_relay_profile<T>(
         LockedTrustProfileSnapshot,
     ) -> RedemptionResult<T>,
 ) -> RedemptionResult<T> {
+    with_locked_saved_relay_profile_store(app, profile_name, |profile, locked_snapshot, _store| {
+        operation(profile, locked_snapshot)
+    })
+}
+
+fn with_locked_saved_relay_profile_store<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    operation: impl FnOnce(
+        NativeRelayProfileSnapshot,
+        LockedTrustProfileSnapshot,
+        &super::CredentialProfileStore,
+    ) -> RedemptionResult<T>,
+) -> RedemptionResult<T> {
     let path =
         super::station_profiles_path(app).map_err(|_| NativeRedemptionError::StaleProfile)?;
     let _profile_lock = super::lock_station_profiles_for_app(app, &path)
@@ -352,6 +366,7 @@ fn with_locked_saved_relay_profile<T>(
             binding,
             revision: profile.revision,
         },
+        &store,
     )
 }
 
@@ -3468,6 +3483,28 @@ mod tests {
     }
 
     #[test]
+    fn device_candidate_ipc_is_desktop_registered_and_keeps_the_main_window_guard() {
+        let lib = include_str!("lib.rs");
+        assert!(lib.contains("native_relay_redemption::station_native_device_binding_candidate,"));
+        let mobile_handlers = lib
+            .split("#[cfg(mobile)]\n    let builder = builder.invoke_handler")
+            .nth(1)
+            .expect("the mobile handler exists");
+        assert!(!mobile_handlers.contains("station_native_device_binding_candidate"));
+
+        let command_file = include_str!("native_relay_redemption.rs");
+        let command_start = command_file
+            .find("pub(crate) async fn station_native_device_binding_candidate(")
+            .expect("the candidate command is defined");
+        let command_body = &command_file[command_start..];
+        assert!(command_body
+            .split("\n#[tauri::command")
+            .next()
+            .expect("the command body is bounded")
+            .contains("require_main_app_window(&window, &app)"));
+    }
+
+    #[test]
     fn application_signaling_ipc_rejects_custody_and_route_fields() {
         // The application commands reuse the diagnostic input envelopes, so a
         // bearer, private key, broker URL, or project authority must fail
@@ -5633,6 +5670,97 @@ mod tests {
     }
 
     #[test]
+    fn candidate_producer_binds_the_current_profile_device_and_route_before_manager_custody() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let mut context = prepared.authority.0.lock().unwrap().clone();
+        let station_owner = NativeProofKeyOwner::new(
+            "io.kontourai.station",
+            NativeProofKeyChannel::Stable,
+            "88888888-8888-4888-8888-888888888888",
+        )
+        .unwrap();
+        let station_keys = crate::native_relay_proof_key::MemoryNativeRelayProofKeyVault::new();
+        let station_public = station_keys.create(&station_owner).unwrap();
+        context.station_trust.signing_key = station_public.jwk().clone();
+        let mut grant = sample_grant(&prepared, NOW + 3_600_000);
+        grant.station_signing_key_id = station_signing_key_id(station_public.jwk());
+        assert_ne!(grant.station_signing_key_id, grant.surface.key_thumbprint);
+        let identity = crate::native_device_custody::CurrentDeviceIdentity {
+            device_id: "55555555-5555-4555-8555-555555555555".into(),
+            device_kind: "device".into(),
+            binding_id: "66666666-6666-4666-8666-666666666666".into(),
+            profile_revision: 7,
+        };
+        let authority = device_candidate_authority_from_current_owners(
+            &context.profile,
+            &context.station_trust,
+            &identity,
+            "Paired Device Profile",
+            INSTANCE_ID,
+            &context.profile.station_endpoint,
+            STATION_ID,
+            &grant,
+        )
+        .unwrap();
+        let candidate_backend = crate::native_proof_key_core::MemorySecretBackend::default();
+        let manager =
+            crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager::new(
+                candidate_backend,
+            );
+        let keys = crate::native_device_proof_key::MemoryNativeDeviceProofKeyVault::new();
+        let candidate =
+            serde_json::to_value(manager.candidate(&authority, &keys).unwrap()).unwrap();
+        assert_eq!(candidate["stationId"], STATION_ID);
+        assert_eq!(candidate["deviceId"], identity.device_id);
+        assert_eq!(
+            candidate["surface"]["keyThumbprint"],
+            grant.surface.key_thumbprint
+        );
+        assert_eq!(candidate["surface"]["clientInstanceId"], INSTANCE_ID);
+
+        let mut transitioned = identity.clone();
+        transitioned.device_id = "77777777-7777-4777-8777-777777777777".into();
+        let next_authority = device_candidate_authority_from_current_owners(
+            &context.profile,
+            &context.station_trust,
+            &transitioned,
+            "Paired Device Profile",
+            INSTANCE_ID,
+            &context.profile.station_endpoint,
+            STATION_ID,
+            &grant,
+        )
+        .unwrap();
+        assert!(manager.candidate(&next_authority, &keys).is_err());
+
+        assert!(device_candidate_authority_from_current_owners(
+            &context.profile,
+            &context.station_trust,
+            &identity,
+            "Paired Device Profile",
+            INSTANCE_ID,
+            &context.profile.station_endpoint,
+            "99999999-9999-4999-8999-999999999999",
+            &grant,
+        )
+        .is_err());
+
+        let mut stale = identity;
+        stale.profile_revision += 1;
+        assert!(device_candidate_authority_from_current_owners(
+            &context.profile,
+            &context.station_trust,
+            &stale,
+            "Paired Device Profile",
+            INSTANCE_ID,
+            &context.profile.station_endpoint,
+            STATION_ID,
+            &grant,
+        )
+        .is_err());
+    }
+
+    #[test]
     fn profile_route_status_and_revoke_quarantine_survive_vault_restart() {
         let prepared = prepared("https://broker.example".to_owned(), 7);
         let backend = MemoryNativeGrantBackend::default();
@@ -6757,6 +6885,174 @@ pub(crate) async fn station_native_relay_grant_status(
     })
     .await
     .map_err(|_| "Station could not read native relay grant status.".to_owned())?
+}
+
+/// Creates or resumes one host-owned provisional Device binding candidate.
+/// The renderer selects only a saved profile and expected revision; all
+/// Station, Device, route, surface and key-owner fields come from current
+/// locked host snapshots. This command does no approval, receipt
+/// reconciliation, peer-session work, or signing.
+fn device_candidate_authority_from_current_owners(
+    profile: &NativeRelayProfileSnapshot,
+    station_trust: &ApprovedNativeStationTrust,
+    identity: &crate::native_device_custody::CurrentDeviceIdentity,
+    active_profile_name: &str,
+    client_instance_id: &str,
+    exact_origin: &str,
+    environment_id: &str,
+    grant: &NativeRelayClientGrantV2,
+) -> Result<crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority, String> {
+    if active_profile_name.is_empty()
+        || active_profile_name.len() > 256
+        || identity.profile_revision != profile.revision
+        || client_instance_id != profile.client_instance_id
+        || exact_origin != profile.station_endpoint
+        || environment_id != profile.station_id
+        || identity.device_kind != "device"
+        || station_trust.status != NativeStationTrustStatus::Approved
+        || station_trust.station_id != profile.station_id
+        || station_trust.enrollment_id != profile.enrollment_id
+        || station_trust.station_endpoint != profile.station_endpoint
+        || grant.broker_origin != profile.broker_origin
+        || grant.scope.station_id != profile.station_id
+        || grant.scope.enrollment_id != profile.enrollment_id
+        || grant.surface.kind != "station-native"
+        || grant.surface.app_identifier != profile.app_identifier
+        || grant.surface.channel != profile.channel.keyring_label()
+        || grant.surface.client_instance_id != profile.client_instance_id
+        || grant.station_signing_generation != station_trust.generation
+        || station_signing_key_id(&station_trust.signing_key) != grant.station_signing_key_id
+    {
+        return Err("The current Device candidate owners do not agree".into());
+    }
+    let route = native_route_for_grant(grant);
+    Ok(crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority::from_current_owners(
+        profile.profile_name.clone(),
+        profile.revision,
+        station_trust.revision,
+        identity.binding_id.clone(),
+        profile.app_identifier.clone(),
+        profile.channel,
+        profile.client_instance_id.clone(),
+        profile.station_id.clone(),
+        identity.device_id.clone(),
+        crate::native_device_binding_candidate::NativeDeviceBindingSurfaceV1::from_current_route(
+            grant.surface.kind.clone(),
+            grant.surface.app_identifier.clone(),
+            grant.surface.channel.clone(),
+            grant.surface.client_instance_id.clone(),
+            grant.surface.key_thumbprint.clone(),
+        ),
+        crate::native_device_binding_candidate::NativeDeviceBindingRouteV1::from_current_route(
+            route.broker_origin,
+            route.station_id,
+            route.enrollment_id,
+            route.routing_generation,
+            route.grant_id,
+        ),
+    ))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_device_binding_candidate(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+) -> Result<crate::native_device_binding_candidate::NativeDeviceBindingCandidateV1, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if profile_name.is_empty()
+        || profile_name.len() > 256
+        || expected_profile_revision == 0
+        || expected_profile_revision > JS_SAFE_INTEGER_MAX
+    {
+        return Err("The selected Device candidate profile is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        with_locked_saved_relay_profile_store(
+            &app,
+            &profile_name,
+            |profile, locked_snapshot, store| {
+                if profile.revision != expected_profile_revision {
+                    return Err(NativeRedemptionError::StaleProfile);
+                }
+                let mut trust_store = NativeStationTrustStore::system();
+                let approved = trust_store
+                    .approved_descriptor_for_locked_profile(&locked_snapshot)
+                    .map_err(|error| match error {
+                        CandidateError::TrustStore => {
+                            NativeRedemptionError::StationTrustUnavailable
+                        }
+                        _ => NativeRedemptionError::StationTrustRequired,
+                    })?;
+                let station_trust = approved_station_trust(&profile, approved)?;
+                let context = NativeRedemptionContext {
+                    profile: profile.clone(),
+                    station_trust: station_trust.clone(),
+                };
+                let relay_owner = NativeProofKeyOwner::new(
+                    &profile.app_identifier,
+                    profile.channel,
+                    &profile.client_instance_id,
+                )
+                .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                let grants = native_relay_grant_vault();
+                let grant = grants
+                    .load_request_grant(&relay_owner, &context, native_now_ms_or_zero(), false)?
+                    .grant;
+
+                let candidate = super::with_active_device_identity_in_locked_profile(
+                    &app,
+                    store,
+                    |identity, active_profile_name, client_instance_id, exact_origin, environment_id| {
+                        let authority = device_candidate_authority_from_current_owners(
+                            &profile,
+                            &station_trust,
+                            identity,
+                            active_profile_name,
+                            client_instance_id,
+                            exact_origin,
+                            environment_id,
+                            &grant,
+                        )?;
+                        let manager =
+                            crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager::system();
+                        let keys = crate::native_device_proof_key::NativeDeviceProofKeyVault::new();
+                        let candidate = manager
+                            .candidate(&authority, &keys)
+                            .map_err(|_| "Station could not create the Device candidate key".to_owned())?;
+                        let current_grant = grants
+                            .load_request_grant(
+                                &relay_owner,
+                                &context,
+                                native_now_ms_or_zero(),
+                                false,
+                            )
+                            .map_err(|_| "The approved route changed during Device candidate creation".to_owned())?
+                            .grant;
+                        if !same_native_grant(&current_grant, &grant) {
+                            return Err("The approved route changed during Device candidate creation".into());
+                        }
+                        let current_approved = NativeStationTrustStore::system()
+                            .approved_descriptor_for_locked_profile(&locked_snapshot)
+                            .map_err(|_| "Station trust changed during Device candidate creation".to_owned())?;
+                        if approved_station_trust(&profile, current_approved)
+                            .map_err(|_| "Station trust changed during Device candidate creation".to_owned())?
+                            != station_trust
+                        {
+                            return Err("Station trust changed during Device candidate creation".into());
+                        }
+                        Ok(candidate)
+                    },
+                )
+                .map_err(|_| NativeRedemptionError::StaleProfile)?;
+                Ok(candidate)
+            },
+        )
+        .map_err(|_| "Station could not create the Device binding candidate.".to_owned())
+    })
+    .await
+    .map_err(|_| "Station could not create the Device binding candidate.".to_owned())?
 }
 
 #[tauri::command(rename_all = "camelCase")]

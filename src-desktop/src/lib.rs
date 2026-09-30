@@ -24,8 +24,10 @@ mod notification_feed;
 #[cfg(not(mobile))]
 pub(crate) mod native_account_proof_key;
 // Desktop-only Device identity custody metadata (station#2893): the versioned
-// keyring companion for paired bearers and the Rust-internal current-identity
-// resolver. No IPC, no renderer capability; see the module's own docs.
+// keyring companion for paired credentials and the current-identity resolver
+// consumed by the narrow public candidate descriptor IPC.
+#[cfg(not(mobile))]
+pub(crate) mod native_device_binding_candidate;
 #[cfg(not(mobile))]
 pub(crate) mod native_device_custody;
 #[cfg(not(mobile))]
@@ -493,7 +495,7 @@ impl From<NativeCommandError> for String {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
-struct CredentialProfileStore {
+pub(crate) struct CredentialProfileStore {
     schema_version: u8,
     revision: u64,
     default_profile: Option<String>,
@@ -2432,14 +2434,12 @@ pub(crate) fn native_credential_for_origin(
 }
 
 /// Rust-internal current Device identity resolution for the host-authorized
-/// active Station (station#2893). This is the fail-closed seam a future
-/// Device proof binding consumes; this task deliberately registers no IPC
-/// command, candidate command, or renderer capability for it. A legacy
-/// credential with a missing or malformed companion yields the specific
-/// `MetadataMissing`/`MetadataMalformed` refusal for that future binding
-/// while ordinary HTTP credential use above keeps reading the bare bearer.
-/// The profile-lock discipline is the same store-read-before-mutex order the
-/// bearer-read boundary uses.
+/// active Station (station#2893). It never exposes identity through IPC. A
+/// legacy credential with a missing or malformed companion yields the
+/// specific `MetadataMissing`/`MetadataMalformed` refusal while ordinary
+/// HTTP credential use above keeps reading the bare bearer. The standalone
+/// resolver uses the same store-read-before-mutex order as bearer reads;
+/// candidate creation uses the already-locked variant below.
 #[cfg(not(mobile))]
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn resolve_current_device_identity_for_active_station(
@@ -2456,6 +2456,96 @@ pub(crate) fn resolve_current_device_identity_for_active_station(
         expected_revision,
         expected_epoch,
     )
+}
+
+/// Active host-authorized Device identity while a caller already owns the
+/// saved-profile file lock. The callback runs with the authority mutex held;
+/// callers must preserve the profile-file -> authority lock order. This lets
+/// a compound native operation reuse one parsed profile snapshot instead of
+/// recursively taking `profiles.json`'s lock.
+#[cfg(not(mobile))]
+pub(crate) fn with_active_device_identity_in_locked_profile<T>(
+    app: &AppHandle,
+    store: &CredentialProfileStore,
+    operation: impl FnOnce(
+        &native_device_custody::CurrentDeviceIdentity,
+        &str,
+        &str,
+        &str,
+        &str,
+    ) -> Result<T, String>,
+) -> Result<T, String> {
+    use native_device_custody::DeviceCustodyError;
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or_else(|| "Station native authority is unavailable".to_owned())?;
+    let state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable".to_owned())?;
+    let host = AppProfileWriteHost::new(app)
+        .map_err(|_| DeviceCustodyError::NotAuthorized("profile_unavailable".into()).to_string())?;
+    let context = authorized_profile_context_in_store(&state, store)
+        .map_err(|error| DeviceCustodyError::NotAuthorized(error.code.to_owned()).to_string())?;
+    if native_device_custody::has_active_retirement(
+        host.custody(),
+        &host.path().map_err(|error| error.to_string())?,
+        &context.reference,
+    )
+    .map_err(|_| DeviceCustodyError::MetadataStore.to_string())?
+    {
+        return Err(DeviceCustodyError::NotAuthorized("credential_retiring".into()).to_string());
+    }
+    struct Reader<'a>(&'a dyn native_device_custody::PairingCustodyWriter);
+    impl native_device_custody::CustodyMetadataStore for Reader<'_> {
+        fn read(&self, account: &str) -> Result<Option<String>, String> {
+            self.0.read_metadata(account)
+        }
+    }
+    let identity = native_device_custody::resolve_current_device_identity(
+        host.custody().owner(),
+        &state,
+        store,
+        |reference| {
+            host.custody()
+                .read_bearer(reference)?
+                .ok_or_else(|| "Station bearer is unavailable".into())
+        },
+        &Reader(host.custody()),
+    )
+    .map_err(|error| error.to_string())?;
+    let active_name = state
+        .active
+        .as_ref()
+        .map(|active| active.name.as_str())
+        .ok_or_else(|| "Station native authority is unavailable".to_owned())?;
+    let client_instance_id = context
+        .client_instance_id
+        .as_deref()
+        .ok_or_else(|| "Station native client instance is unavailable".to_owned())?;
+    let result = operation(
+        &identity,
+        active_name,
+        client_instance_id,
+        &context.exact_origin,
+        &context.environment_id,
+    )?;
+    let current = native_device_custody::resolve_current_device_identity(
+        host.custody().owner(),
+        &state,
+        store,
+        |reference| {
+            host.custody()
+                .read_bearer(reference)?
+                .ok_or_else(|| "Station bearer is unavailable".into())
+        },
+        &Reader(host.custody()),
+    )
+    .map_err(|error| error.to_string())?;
+    if current != identity {
+        return Err("Station Device identity changed during candidate creation".into());
+    }
+    Ok(result)
 }
 
 #[cfg(not(mobile))]
@@ -11445,6 +11535,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        native_relay_redemption::station_native_device_binding_candidate,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
