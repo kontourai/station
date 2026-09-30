@@ -1,6 +1,7 @@
 import type { SecretBindingView } from '@kontourai/station-contracts/secret-binding';
 import { envelopeError } from './api-error-message';
 import { authenticatedFetch } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export interface SecretBindingConsumerInput {
   integrationId: string;
@@ -55,6 +56,7 @@ async function request<T>(
   try {
     result = (await response.json()) as Envelope<T>;
   } catch (error) {
+    rethrowDeadline(error);
     // A non-JSON failure (a proxy's HTML 502) keeps its status (#2708); an
     // unreadable 2xx is a protocol failure and rethrows the parse error.
     if (!response.ok)

@@ -454,7 +454,7 @@ process.stdin.on('data', (chunk) => {
   /**
    * archive#1088. Measured on origin/main (1e5b45d2) with a stub ACP CLI that
    * logs its own `getcwd`: adding a connection with no `cwd` spawned it in
-   * `/Users/brian/dev/github/kontourai/station-worktrees/s1088-acp` — the
+   * the `station-worktrees/s1088-acp` worktree directory — the
    * Station checkout — and repeated on the 60s `probeTimer` with no chat
    * session in existence (`lsof -a -p <pid> -d cwd` on the live child agreed).
    */

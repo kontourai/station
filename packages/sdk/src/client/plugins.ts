@@ -13,6 +13,7 @@ import {
   mutateJson,
   StationHttpError,
 } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export type InstalledPluginRecord =
   | (PluginManifest & {
@@ -169,6 +170,7 @@ export async function listPlugins(
   try {
     result = (await response.json()) as typeof result;
   } catch (error) {
+    rethrowDeadline(error);
     // Unreadable, but answered: a failure keeps its status (#2708). An
     // unreadable 2xx is a protocol failure and rethrows the parse error.
     if (!response.ok)
@@ -304,6 +306,7 @@ export async function previewPluginRecovery(
   try {
     result = await response.json();
   } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) throw envelopeError(response, undefined, refused);
     throw error;
   }
@@ -335,6 +338,7 @@ export async function recoverPlugin(
   try {
     result = (await response.json()) as PluginRecoveryResult;
   } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) throw envelopeError(response, undefined, refused);
     throw error;
   }
