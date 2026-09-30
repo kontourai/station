@@ -19,8 +19,9 @@ mod login_shell;
 mod notification_feed;
 // Foundation only: this module owns native proof-key custody and signing but
 // is intentionally not registered as renderer IPC or wired to app traffic.
-// Host account proof-key custody. Separate keyring namespace from the relay
-// routing proof key; no Tauri IPC is registered for it yet.
+// Host account proof-key custody, distinct from routing and Device keys.
+#[cfg(not(mobile))]
+mod native_account_operations;
 #[cfg(not(mobile))]
 pub(crate) mod native_account_proof_key;
 #[cfg(not(mobile))]
@@ -11715,6 +11716,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         .manage(NativeStartupBootstrap::default())
         .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
         .manage(native_application_peer::NativeApplicationPeers::default())
+        .manage(native_account_operations::NativeAccountOperations::default())
         .manage(desktop_companion::DesktopCompanion::default())
         .menu(desktop_companion::desktop_menu)
         .on_menu_event(|app, event| {
@@ -11742,6 +11744,9 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_application_peer::station_native_application_peer_read,
         native_application_peer::station_native_application_peer_sign,
         native_application_peer::station_native_application_peer_close,
+        native_account_operations::station_native_account_challenge_prepare,
+        native_account_operations::station_native_account_exchange_prepare,
+        native_account_operations::station_native_account_request_headers,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
