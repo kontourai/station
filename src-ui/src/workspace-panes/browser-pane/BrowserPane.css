@@ -533,8 +533,8 @@
 .browser-pane__console-bar {
   align-items: center;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2, 8px);
+  flex-wrap: nowrap;
+  gap: 6px;
 }
 
 .browser-pane__console-bar h3 {
@@ -668,15 +668,22 @@
   flex: 0 0 auto;
 }
 
-/* The console's own controls follow the toolbar's size (compact on a fine
-   pointer, 44px on coarse or phone-width). */
-.browser-pane__console .browser-pane__select,
-.browser-pane__console .browser-pane__control {
-  font-size: var(--k-text-sm);
-  min-height: var(--browser-pane-control);
-  min-width: var(--browser-pane-control);
-}
-
+/* The console header is one slim row: label, a compact level filter (the
+   shared choice-trigger), and Clear as an icon button. Targets follow the
+   toolbar's size: compact on a fine pointer, 44px on touch or phone width. */
 .browser-pane__console-bar h3 {
   font-size: var(--k-text-sm);
+}
+
+.browser-pane__console-filter {
+  display: inline-flex;
+  position: relative;
+}
+
+.browser-pane__console-select {
+  appearance: none;
+  font-size: var(--k-text-xs);
+  height: var(--browser-pane-control);
+  min-height: 0;
+  padding: 0 calc(var(--k-space-3) + 14px) 0 var(--k-space-2);
 }

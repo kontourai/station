@@ -412,6 +412,9 @@ describe('the console drawer', () => {
     expect(
       within(filtered).getByText('TypeError: x is undefined'),
     ).toBeTruthy();
+    // Clear is an icon button; it hides what was logged so far.
+    fireEvent.click(screen.getByRole('button', { name: 'Clear console' }));
+    expect(await screen.findByText('No errors yet.')).toBeTruthy();
   });
 });
 

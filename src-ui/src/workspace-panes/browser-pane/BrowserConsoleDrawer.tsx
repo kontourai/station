@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
-import { ArrowDownGlyph } from '../../components/icons/Glyph';
+import { ArrowDownGlyph, DiscardGlyph } from '../../components/icons/Glyph';
 import {
   type BrowserPaneApi,
   browserPaneKeys,
@@ -237,11 +237,11 @@ export function BrowserConsoleDrawer({
     >
       <div className="browser-pane__console-bar">
         <h3>Console</h3>
-        <label className="browser-pane__viewport">
-          <span className="sr-only">Level</span>
+        <span className="browser-pane__console-filter">
           <select
-            className="choice-trigger browser-pane__select"
+            className="choice-trigger browser-pane__console-select"
             aria-label="Show console level"
+            title="Show console level"
             value={level}
             onChange={(event) => setLevel(event.target.value as LevelFilter)}
           >
@@ -252,14 +252,16 @@ export function BrowserConsoleDrawer({
             ))}
           </select>
           <ArrowDownGlyph className="choice-caret browser-pane__caret" />
-        </label>
+        </span>
         <Button
-          size="sm"
-          className="browser-pane__control"
+          variant="icon"
+          className="browser-pane__icon"
+          aria-label="Clear console"
+          title="Clear console"
           disabled={!data || data.entries.length === 0}
           onClick={() => setClearedThrough(data?.latestSeq ?? 0)}
         >
-          Clear
+          <DiscardGlyph />
         </Button>
       </div>
       {data && data.dropped > 0 ? (
