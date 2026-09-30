@@ -417,19 +417,24 @@ test.describe('Coding stack — the dock is left as the reader had it', () => {
     await expect(page.locator('#chat-dock')).toHaveClass(/is-collapsed/);
   });
 
-  test('the stack chords are text editing inside a field, not Back', async ({
+  test('in a plain field the stack chord is the stack’s Back, and the route is kept', async ({
     page,
   }) => {
+    const mac = await page.evaluate(() =>
+      navigator.platform.toUpperCase().includes('MAC'),
+    );
     await landOnChat(page);
     await openCodingView(page, 'Files');
     await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
     const search = page.locator('.file-tree-panel__search-input');
     await search.fill('two words');
-    await page.keyboard.press('Alt+ArrowLeft');
-    await page.keyboard.press('Meta+BracketLeft');
-    await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
-    await expect(page).toHaveURL(/[?&]pane=/);
-    await expect(search).toBeFocused();
+    // Off macOS Alt+← in a field would be the browser's Back and could leave
+    // the layout; the stack takes it and stays on the route. (Synthetic keys
+    // do not reach the browser's own accelerators, so this proves the stack's
+    // handling, not the browser's.)
+    await page.keyboard.press(mac ? 'Meta+BracketLeft' : 'Alt+ArrowLeft');
+    await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
+    expect(new URL(page.url()).pathname).toBe(ROUTE);
   });
 });
 
