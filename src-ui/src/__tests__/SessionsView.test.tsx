@@ -3713,9 +3713,9 @@ describe('SessionsView', () => {
     });
 
     /**
-     * The reason the lane exists. `DelegatedTaskCoordinator` renders
-     * `tasks[0]` only, so a SECOND delegated session waiting on the user had
-     * nowhere on this page to appear.
+     * The reason the lane exists. The (since removed) delegated-work card
+     * rendered `tasks[0]` only, so a SECOND delegated session waiting on the
+     * user had nowhere on this page to appear.
      */
     test('a second waiting delegated session is visible in the list, under Needs you', () => {
       sessions = [

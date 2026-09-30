@@ -862,8 +862,8 @@
   padding: 0 12px 12px;
 }
 
-/* #2312: "Discard draft" in a Drafts row's trailing slot. Same family as
-   `.session-evidence-button`, sized for a glyph rather than a word. */
+/* #2312: "Discard draft" in a Drafts row's trailing slot, beside the row's
+   "More actions" menu; sized for a glyph rather than a word. */
 .session-discard-draft {
   display: inline-flex;
   flex: 0 0 auto;

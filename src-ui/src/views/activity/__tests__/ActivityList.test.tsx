@@ -713,6 +713,43 @@ describe('Activity list', () => {
     expect(optionTexts(/^Project/)).toEqual(['All projects', 'beacon (1)']);
   });
 
+  test('a conversation that ran turns from two origins counts under both, as choosing either shows it', () => {
+    const origin = (surface: string) => ({
+      latest: {
+        actor: { kind: 'operator' },
+        reported: { surface, build: null },
+      },
+      hasOtherOrigins: true,
+    });
+    sessions = [
+      session('conv-mixed', {
+        displayTitle: 'Mixed chat',
+        conversationId: 'conv-mixed',
+        updatedAt: minutesAgo(9),
+        turnOrigin: origin('cli'),
+      }),
+      session('conv-mixed:session:2', {
+        displayTitle: 'Mixed chat',
+        conversationId: 'conv-mixed',
+        updatedAt: minutesAgo(4),
+        turnOrigin: origin('web'),
+      }),
+    ];
+    const { container } = renderView();
+    const startedFrom = screen.getByRole('combobox', {
+      name: /^Started from/,
+    }) as HTMLSelectElement;
+    expect(Array.from(startedFrom.options).map((o) => o.textContent)).toEqual([
+      'Anywhere',
+      'Operator · CLI (1)',
+      'Operator · Web browser (1)',
+    ]);
+    fireEvent.change(startedFrom, { target: { value: 'Operator · CLI' } });
+    expect(
+      container.querySelectorAll('.split-pane__item-name-text'),
+    ).toHaveLength(1);
+  });
+
   test('a run pulled into a higher lane by a subtask says so, and its board counts the subtasks', () => {
     sessions = [
       session('Plan the release', { lifecycleState: 'completed' }),

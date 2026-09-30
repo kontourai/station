@@ -62,7 +62,6 @@ import {
   activityRunningDetail,
   DATED_STREAM_ORDER,
   datedStreamBucket,
-  foldedActivityPopulation,
   matchesActivityKind,
   matchesActivityOrigin,
   NO_ACTIVITY_FILTERS,
@@ -518,30 +517,28 @@ export function SessionsView({
   const projectOptions = useMemo(
     () =>
       activityProjectOptions(
-        foldedActivityPopulation(
-          sessions.filter(
-            (s) =>
-              matchesActivityKind(s, filters.kind) &&
-              matchesActivityOrigin(s, filters.origin) &&
-              matchesSearch(s),
-          ),
+        sessions.filter(
+          (s) =>
+            matchesActivityKind(s, filters.kind) &&
+            matchesActivityOrigin(s, filters.origin) &&
+            matchesSearch(s),
         ),
+        selectedId,
       ),
-    [sessions, filters.kind, filters.origin, matchesSearch],
+    [sessions, filters.kind, filters.origin, matchesSearch, selectedId],
   );
   const originOptions = useMemo(
     () =>
       activityOriginOptions(
-        foldedActivityPopulation(
-          sessions.filter(
-            (s) =>
-              matchesActivityKind(s, filters.kind) &&
-              matchesProjectFilter(s, filters.project) &&
-              matchesSearch(s),
-          ),
+        sessions.filter(
+          (s) =>
+            matchesActivityKind(s, filters.kind) &&
+            matchesProjectFilter(s, filters.project) &&
+            matchesSearch(s),
         ),
+        selectedId,
       ),
-    [sessions, filters.kind, filters.project, matchesSearch],
+    [sessions, filters.kind, filters.project, matchesSearch, selectedId],
   );
   const clearSearchAndFilters = useCallback(() => {
     setSearch('');

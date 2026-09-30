@@ -1593,7 +1593,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       expect(geometry.gateOverflowWrap).toBe('anywhere');
     });
 
-    test('directs delegated work from the mobile session list before opening detail', async ({
+    test('offers Delegate subtask from the mobile row menu with touch-sized targets, then opens detail', async ({
       page,
     }) => {
       await mockTaskFirstHome(page);

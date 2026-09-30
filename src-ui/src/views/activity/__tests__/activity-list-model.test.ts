@@ -14,10 +14,10 @@ const HOUR = 60 * 60 * 1000;
 function summary(
   overrides: Partial<OrchestrationSessionSummary> = {},
 ): OrchestrationSessionSummary {
-  return {
+  const base: OrchestrationSessionSummary = {
     provider: 'claude',
     threadId: 'thread-1',
-    status: 'idle',
+    status: 'ready',
     controlMode: 'station-owned',
     answerability: { answerable: true },
     isLoaded: true,
@@ -25,8 +25,8 @@ function summary(
     eventCount: 1,
     createdAt: new Date(NOW).toISOString(),
     updatedAt: new Date(NOW).toISOString(),
-    ...overrides,
-  } as OrchestrationSessionSummary;
+  };
+  return { ...base, ...overrides };
 }
 
 describe('datedStreamBucket', () => {

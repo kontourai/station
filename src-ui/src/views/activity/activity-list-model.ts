@@ -6,7 +6,10 @@ import { relativeTime } from '../../utils/relativeTime';
 import { activeTurnProgress } from '../../utils/session-state';
 import { foldConversationTurns } from '../sessions/conversation-groups';
 import { groupDelegatedSessionRuns } from '../sessions/run-groups';
-import { sessionProjectKeys } from '../sessions/sessions-lane-model';
+import {
+  matchesProjectFilter,
+  sessionProjectKeys,
+} from '../sessions/sessions-lane-model';
 
 /**
  * Pure presentation helpers for the Activity list. None of these classify a
@@ -115,14 +118,16 @@ export function matchesActivityOrigin(
 /**
  * The sessions the list actually shows as rows: delegated runs kept whole,
  * sibling turn-sessions of one conversation folded to their representative
- * (`foldConversationTurns`). Lane headings count this population, so filter
- * option counts must too — a three-turn chat is one row, not three.
+ * (`foldConversationTurns`, with the list's own `pinnedThreadId`). Lane
+ * headings count this population, so filter option counts must too — a
+ * three-turn chat is one row, not three.
  */
 export function foldedActivityPopulation(
   sessions: readonly OrchestrationSessionSummary[],
+  pinnedThreadId: string | null = null,
 ): OrchestrationSessionSummary[] {
   return foldConversationTurns(groupDelegatedSessionRuns(sessions), {
-    pinnedThreadId: null,
+    pinnedThreadId,
   }).presentations.flatMap((presentation) =>
     presentation.kind === 'run'
       ? [...presentation.run.members]
@@ -137,35 +142,55 @@ export interface ActivityFilterOption {
 }
 
 /**
- * Options built from the data actually listed, each with its count, sorted
- * by name. A project an ambiguous session names is counted under each
- * candidate, the same rule `matchesProjectFilter` filters by.
+ * One option per value, counted the way the list would show it: the list
+ * filters SESSIONS by the option and then folds, so each count is
+ * `fold(sessions matching the option).length` — never "fold, then bucket the
+ * representatives", which files a conversation that ran turns from two
+ * origins under only its newest one and makes the other option vanish even
+ * though choosing it shows a row.
  */
+function countedOptions(
+  sessions: readonly OrchestrationSessionSummary[],
+  keysOf: (session: OrchestrationSessionSummary) => readonly string[],
+  matches: (session: OrchestrationSessionSummary, value: string) => boolean,
+  pinnedThreadId: string | null,
+): ActivityFilterOption[] {
+  const values = new Set(sessions.flatMap((session) => [...keysOf(session)]));
+  return [...values]
+    .map((value) => ({
+      value,
+      label: value,
+      count: foldedActivityPopulation(
+        sessions.filter((session) => matches(session, value)),
+        pinnedThreadId,
+      ).length,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** Project options, matched by the same predicate the Project filter uses. */
 export function activityProjectOptions(
   sessions: readonly OrchestrationSessionSummary[],
+  pinnedThreadId: string | null = null,
 ): ActivityFilterOption[] {
-  const counts = new Map<string, number>();
-  for (const session of sessions) {
-    for (const key of sessionProjectKeys(session)) {
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  }
-  return [...counts]
-    .map(([value, count]) => ({ value, label: value, count }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  return countedOptions(
+    sessions,
+    sessionProjectKeys,
+    (session, value) => matchesProjectFilter(session, value),
+    pinnedThreadId,
+  );
 }
 
 export function activityOriginOptions(
   sessions: readonly OrchestrationSessionSummary[],
+  pinnedThreadId: string | null = null,
 ): ActivityFilterOption[] {
-  const counts = new Map<string, number>();
-  for (const session of sessions) {
-    const key = activityOriginKey(session);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return [...counts]
-    .map(([value, count]) => ({ value, label: value, count }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  return countedOptions(
+    sessions,
+    (session) => [activityOriginKey(session)],
+    (session, value) => matchesActivityOrigin(session, value),
+    pinnedThreadId,
+  );
 }
 
 export type DatedStreamBucket =
