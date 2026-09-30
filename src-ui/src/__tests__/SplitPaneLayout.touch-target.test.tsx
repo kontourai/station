@@ -182,8 +182,13 @@ function fixtureHtml(): string {
       <div>detail</div>
     </SplitPaneLayout>,
   );
-  const minimalRail =
-    minimal.container.querySelector('.split-pane__left')?.outerHTML ?? '';
+  // The pane carries its persisted width inline (default 280px); a reader
+  // who dragged it to the minimum has exactly this inline width.
+  const minimalLeft =
+    minimal.container.querySelector<HTMLElement>('.split-pane__left');
+  if (!minimalLeft) throw new Error('the minimal rail did not render');
+  minimalLeft.style.width = `${SPLIT_PANE_MIN_WIDTH}px`;
+  const minimalRail = minimalLeft.outerHTML;
   minimal.unmount();
   const css = CSS_PATHS.map((path) => resolveCssImports(path)).join('\n');
   assertNoImportsSurvive(css);
