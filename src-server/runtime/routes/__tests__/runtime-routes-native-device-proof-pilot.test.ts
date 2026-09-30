@@ -47,6 +47,7 @@ import type {
 import {
   NATIVE_DEVICE_PROOF_HEADER,
   NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH,
+  NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
   type NativeDeviceProofSelfReceiptV1,
 } from '@kontourai/station-contracts/native-device-proof';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
@@ -1081,8 +1082,18 @@ describe('native Device request-proof pilot over the production composition', ()
     );
     expect(foreign.status).toBe(404);
     expect(absent.status).toBe(404);
-    expect(await foreign.json()).toEqual({ error: { code: 'not_found' } });
-    expect(await absent.json()).toEqual({ error: { code: 'not_found' } });
+    expect(await foreign.json()).toEqual({
+      error: {
+        version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+        code: 'not_found',
+      },
+    });
+    expect(await absent.json()).toEqual({
+      error: {
+        version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+        code: 'not_found',
+      },
+    });
 
     for (const method of ['POST', 'PUT', 'DELETE']) {
       const refused = await h.request(path, { method, headers: bearer });
@@ -1100,7 +1111,10 @@ describe('native Device request-proof pilot over the production composition', ()
     const operator = await h.request(path, h.ownerHeaders());
     expect(operator.status).toBe(403);
     expect(await operator.json()).toEqual({
-      error: { code: 'device_required' },
+      error: {
+        version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+        code: 'device_required',
+      },
     });
     const cookie = await h.request(path, {
       headers: { Cookie: `__Host-station-device=${paired.credential}` },
@@ -1144,7 +1158,10 @@ describe('native Device request-proof pilot over the production composition', ()
     });
     expect(plainCookie.status).toBe(403);
     expect(await plainCookie.json()).toEqual({
-      error: { code: 'device_required' },
+      error: {
+        version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+        code: 'device_required',
+      },
     });
     const offer = h.security.devicePairing.createOffer({
       endpoint: ORIGIN,
@@ -1170,7 +1187,10 @@ describe('native Device request-proof pilot over the production composition', ()
     });
     expect(delegation.status).toBe(403);
     expect(await delegation.json()).toEqual({
-      error: { code: 'device_required' },
+      error: {
+        version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+        code: 'device_required',
+      },
     });
     const approval = await h.request(
       `/api/pairing/native-device-bindings/${paired.binding.bindingId}/approve`,
@@ -1330,7 +1350,10 @@ describe('native Device request-proof pilot over the production composition', ()
       );
       expect(response.status).toBe(403);
       expect(await response.json()).toEqual({
-        error: { code: 'device_required' },
+        error: {
+          version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+          code: 'device_required',
+        },
       });
     },
   );
@@ -1350,7 +1373,12 @@ describe('native Device request-proof pilot over the production composition', ()
     );
     expect(response.status).toBe(503);
     expect(response.headers.get('Cache-Control')).toBe('no-store');
-    expect(await response.json()).toEqual({ error: { code: 'unavailable' } });
+    expect(await response.json()).toEqual({
+      error: {
+        version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+        code: 'unavailable',
+      },
+    });
   });
 
   test('bearer-free native challenge, exchange and permitted Project read over one admitted peer', async () => {

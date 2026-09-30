@@ -107,6 +107,18 @@ export const NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH =
   '/api/auth/native-device-bindings' as const;
 export const NATIVE_DEVICE_PROOF_SELF_RECEIPT_VERSION =
   'station-native-device-proof-self-receipt/v1' as const;
+export const NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION =
+  'station-native-device-proof-self-receipt-error/v1' as const;
+
+/** Distinguishes a binding observation error from an unrelated HTTP failure. */
+export interface NativeDeviceProofSelfReceiptErrorV1 {
+  readonly version: typeof NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION;
+  readonly code:
+    | 'not_found'
+    | 'device_required'
+    | 'invalid_request'
+    | 'unavailable';
+}
 
 /**
  * One historical binding observed by its owning, currently paired Device.

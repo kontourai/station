@@ -2560,6 +2560,10 @@ are not cached. Revoking the Device bearer removes self-read access, while
 binding revocation or replacement remains observable by its active owner.
 This read grants no account, Project or runtime authority and does not activate
 a native client or authorize provisional-key deletion after an unknown outcome.
+Endpoint errors include `error.version =
+station-native-device-proof-self-receipt-error/v1`. Only this versioned
+`not_found` response establishes a binding lookup absence; an unrelated route
+or proxy error is an unavailable observation.
 
 ## Bind a paired device to its verified person
 

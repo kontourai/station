@@ -1,4 +1,5 @@
 import {
+  NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
   NATIVE_DEVICE_PROOF_SELF_RECEIPT_VERSION,
   type NativeDeviceProofSelfReceiptV1,
 } from '@kontourai/station-contracts/native-device-proof';
@@ -51,18 +52,51 @@ export function createNativeDeviceProofSelfReceiptRoutes(
     try {
       const device = currentDevice(request, deps);
       if (!device)
-        return context.json({ error: { code: 'device_required' } }, 403);
+        return context.json(
+          {
+            error: {
+              version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+              code: 'device_required',
+            },
+          },
+          403,
+        );
       const bindingId = context.req.param('bindingId');
       if (typeof bindingId !== 'string' || !UUID_V4.test(bindingId))
-        return context.json({ error: { code: 'invalid_request' } }, 400);
+        return context.json(
+          {
+            error: {
+              version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+              code: 'invalid_request',
+            },
+          },
+          400,
+        );
       const receipt = deps.bindings.bindingReceiptForDevice({
         deviceId: device.id,
         bindingId,
       });
       const latest = currentDevice(request, deps);
       if (latest?.id !== device.id || latest.scope !== device.scope)
-        return context.json({ error: { code: 'device_required' } }, 403);
-      if (!receipt) return context.json({ error: { code: 'not_found' } }, 404);
+        return context.json(
+          {
+            error: {
+              version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+              code: 'device_required',
+            },
+          },
+          403,
+        );
+      if (!receipt)
+        return context.json(
+          {
+            error: {
+              version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+              code: 'not_found',
+            },
+          },
+          404,
+        );
       const { binding } = receipt;
       const data: NativeDeviceProofSelfReceiptV1 = {
         version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_VERSION,
@@ -87,7 +121,15 @@ export function createNativeDeviceProofSelfReceiptRoutes(
       };
       return context.json({ data });
     } catch {
-      return context.json({ error: { code: 'unavailable' } }, 503);
+      return context.json(
+        {
+          error: {
+            version: NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
+            code: 'unavailable',
+          },
+        },
+        503,
+      );
     }
   };
   app.get('/:bindingId/receipt', readReceipt);
