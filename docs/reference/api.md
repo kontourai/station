@@ -165,7 +165,10 @@ as stream outcomes.
 
 `start-step` and `finish-step` frames carry only their type. Provider request
 and response bodies, headers, metadata and nested errors are not sent in these
-frames. Text and tool frames keep their existing contracts.
+frames. Text and tool frames keep their existing contracts, except that a
+frame field holding a raw error object (for example a `tool-error` part's
+`error`) is sent as the fixed text "The response stream failed.", and a
+mid-stream `error` part ends the turn with a single outward error frame.
 
 The framework compatibility route `POST /agents/:slug/chat` remains behind
 Station authentication. Its HTTP 5xx responses contain fixed failure text and
