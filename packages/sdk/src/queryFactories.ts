@@ -18,6 +18,7 @@ import type { AgentEnvelope } from './client/agents';
 import type { ConversationInventoryPage } from './client/conversations';
 import type { ApiRequestScope } from './client/http';
 import { authenticatedFetch } from './client/http';
+import { unlessDeadline } from './client/request-deadline';
 import type {
   ConversationSummary,
   OrchestrationProviderSummary,
@@ -96,7 +97,7 @@ export const agentQueries = {
               ? body.error
               : undefined,
           )
-          .catch(() => undefined);
+          .catch(unlessDeadline(() => undefined));
         throw new AgentToolsRequestError(
           detail ??
             (response.status === 503

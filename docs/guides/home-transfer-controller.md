@@ -86,8 +86,9 @@ This is the server-side peer store. Client UI saved connections and native
 transport credentials do not populate it automatically. Registry mutations
 require current operator or verified internal authority, including after waiting
 for the file mutation lock. Historical `access:manage` device grants may still
-read permitted metadata, but cannot write this credential registry. Raw
-credential retrieval remains internal-only.
+read permitted metadata, but cannot write this credential registry. No route
+returns a stored credential, to any caller: Station reads it in-process only,
+to present it to the peer.
 
 ## Enroll a room mapping
 
