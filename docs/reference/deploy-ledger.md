@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-30T23:03:25Z | nightly-npm | 0.6.0-nightly.2464.36783703696 | `4dbf9ac` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36783703696) |
 | 2026-09-30T20:34:00Z | nightly-desktop | 0.1.11-nightly.2464.2 | `5ecd682` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36767826654) |
 | 2026-09-30T20:33:57Z | nightly-android | 0.1.11-nightly.2464.2 | `5ecd682` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36767826654) |
 | 2026-09-30T20:29:52Z | nightly-npm | 0.6.0-nightly.2464.36767826654 | `5ecd682` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36767826654) |
@@ -205,6 +206,21 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-30T23:03:25Z · nightly-npm · 0.6.0-nightly.2464.36783703696
+
+- Ship SHA: `4dbf9acbcab04c4695c8ca9799bc1422526cd382`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2464.36783703696 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `5ecd682` ([full sha](https://github.com/kontourai/station/commit/5ecd682d3dda93a00a126e31328fb563f3b427b8)):
+
+**Fixes**
+
+- [#2967](https://github.com/kontourai/station/pull/2967) fix(docs,ci): merge-friendly review ledger, PR/queue parity, and automation token
 
 ## 2026-09-30T20:34:00Z · nightly-desktop · 0.1.11-nightly.2464.2
 
