@@ -1587,7 +1587,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1611,7 +1611,7 @@
         },
         {
           "path": "docs/guides/nightly.md",
-          "digest": "1d2d768b4dddb1cfae5f123b0322621f5e70565918118fb8027d7e840041aba3"
+          "digest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a"
         },
         {
           "path": "docs/privacy-policy.md",
@@ -1659,7 +1659,7 @@
         },
         {
           "path": "docs/guides/release-channel-ports.md",
-          "digest": "b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156"
+          "digest": "3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d"
         }
       ],
       "checks": [
@@ -1682,8 +1682,7 @@
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed.",
-        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -11076,7 +11075,7 @@
     {
       "path": "docs/guides/android-build.md",
       "documentDigest": "37d8dffe745a92d090cb31abdd509507d7666139868987c50cac217887a11d49",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Android build, generated-project ownership, provenance and verification boundaries. Full baseline read. Traced debug/release/Nightly workflow callers, managed bootstrap and app-directory selection, Kotlin geometry/native permissions, packaged provenance writer and Settings consumer, ELF/ZIP alignment owner, signing handoff and emulator checks. No builds or recipes executed.",
@@ -11100,7 +11099,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -11352,7 +11351,10 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes fnv1a32 module-private in packages/cli/src/commands/dev-ports.ts without changing its behavior; prose accurate: the guide doesn't name or import that export. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2914) android-build-manifest.mjs un-exports ANDROID_PROJECT_DIR/ANDROID_ASSETS_DIR with unchanged values, channel-ports.mjs refactors generation with an optional outputRoot, tauri-context.mjs un-exports parseArgs; (#2881) install.sh/service changes do not touch Android build claims; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
@@ -13254,7 +13256,7 @@
     {
       "path": "docs/guides/desktop-build.md",
       "documentDigest": "86bb87f004892c11d9eca946680a914572d9078d43fbf82a68d6e80502e4cbb1",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop compile/update/CSP contract and bounded packaged Browser Preview fixture. Full baseline read. Traced clean-checkout status-entry verifier, update UI/native registration and capabilities, manifest/lock versions, CSP config and trusted registry caller. Independently probed actual fixture helpers/shared schema; traced earlier native profile-genesis refusal. No native launch or package build.",
@@ -13278,7 +13280,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -13538,13 +13540,16 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) un-exports fnv1a32 in packages/cli/src/commands/dev-ports.ts without changing port derivation; prose accurate: the guide makes no claim about that export. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2881 adds a stage-only mode and a service-launcher handoff to install.sh, launcher-link and liveness delegation to service-run.ts, and update status to service.ts. #2914 gives channel-ports sync/check an outputRoot option, makes tauri-context parseArgs and the android-build-manifest constants non-exported, and refactors the startup-readiness static test. The guide's desktop updater, 'Connected Station server' separation, clean-checkout, readiness and fixture claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Updated the reviewed @tauri-apps/cli range to ^2.11.5; Rust tauri 2.11.5, tauri-build 2.6.3 and @tauri-apps/api ^2.11.1 are unchanged (plugin-updater deliberately held at 2.11.0 to match its crate). | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Updated the reviewed @tauri-apps/cli range to ^2.11.5; Rust tauri 2.11.5, tauri-build 2.6.3 and @tauri-apps/api ^2.11.1 are unchanged (plugin-updater deliberately held at 2.11.0 to match its crate). | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
       "path": "docs/guides/desktop-tray.md",
       "documentDigest": "65ed27eebefb1258681b81b175dd06c183fdaec0a3c3294e79215a4ba68acdc4",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop-owned service/sidecar tray health, controls, companion lifetime and logs. Full baseline read. Traced tray snapshot/action/destination decisions and ten-second health cadence, service-command identity arguments, Windows Task Scheduler implementation, companion caller after backend health, logging registration and pinned dependency rotation. Runtime/tray OS behavior remains unverified.",
@@ -13568,7 +13573,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -13837,13 +13842,16 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) only makes fnv1a32 private in dev-ports.ts, and the hashing behavior is the same. Nothing in the tray health, controls, companion or logging claims depends on it. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881): `service install` now points an installer-owned archive unit on macOS/Linux at the fixed launcher <install-root>/runtime/station-launcher.mjs (service-command.ts runsLauncher, service.ts installServiceLauncher). It also adds the update-home action and the service status update line. #2914 changes to channel-ports, android-build-manifest and tauri-context are refactors or export narrowing only. src-desktop did not change, so the tray still finds no command paths for an archive manifest and refuses Start/Stop. Corrected the claim that an archive service runs `bin/station.mjs` so it also names the fixed launcher. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
       "path": "docs/guides/development.md",
       "documentDigest": "ec666bebf846549080f52a23b5d13a1f3fc7a87be01a72c78a1ce8cdf13a7a25",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checkout setup and contributor workflow, with normative boundaries routed to owners. Full 415-line baseline read. Dependency lifecycle, workspace/package contract, command ownership, verification paths and plugin workflow boundaries checked. No installs outside managed setup, plugin installation, runtime/service control, native build or publication performed.",
@@ -13879,7 +13887,7 @@
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
+          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
         },
         {
           "path": ".github/workflows/windows-pr-verification.yml",
@@ -13931,7 +13939,7 @@
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
-          "digest": "2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6"
+          "digest": "1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830"
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
@@ -13979,7 +13987,7 @@
         },
         {
           "path": "scripts/lib/portable-server-archive.mjs",
-          "digest": "5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d"
+          "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
         },
         {
           "path": "scripts/prepare-verify-static.mjs",
@@ -14061,8 +14069,7 @@
         "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
         "Reviewed the compileDocumentationReviews reportMissing passthrough and the guide wording change; this guide's claims are unchanged.",
         "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
       ]
     },
     {
@@ -14369,7 +14376,7 @@
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
+          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
         },
         {
           "path": "install.sh",
@@ -14389,11 +14396,11 @@
         },
         {
           "path": "packaging/manifest/README.md",
-          "digest": "54b625415596f5a8347a9b98caa705978def18f23ad22d69da3a27e12f641047"
+          "digest": "7922c9b16e0c0c9174a54e992ac9533e83c04c473f46ea274ca1c553da4f049b"
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
-          "digest": "2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6"
+          "digest": "1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830"
         },
         {
           "path": "scripts/ecosystem-manifest.mjs",
@@ -14409,7 +14416,7 @@
         },
         {
           "path": "scripts/install-script-generated.mjs",
-          "digest": "b6cc8658bf3390211a0601fbfcb7081c9553d1e1814bed5c479cf1df6915a9e4"
+          "digest": "2c40c48272518a9db1eb3c44903171385ce7c45ac694465b86ec4e0938a74cd6"
         }
       ],
       "checks": [
@@ -14420,11 +14427,10 @@
         "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
         "Landing review through d0d9d33f7: Installer input now triggers archive builds. Added missing documentation compiler and all four declared data inputs to both push/PR filters; the actual import/data coverage guard catches omissions. Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Retained v1-only cask behavior and clarified that current consumers refuse the former source-v2 shape. Updated current platform-v2 consumers, explicit former-v2 refusal and same-version cross-layout exception. Homebrew still requires v1 application artifacts. Golden vectors now also execute the real shell verifier with fixture keys and refused downloads; v1 source fallback and v2 platform semantics stay explicit. This is verifier evidence, not publication or installed runtime proof. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
         "Integration source review through e0314c727: install.sh now switches archive services that run the install root's current (stop, switch, restart, identity rollback), records and reuses install ports, and validates port values. The guide makes no service or port claim and sends upgrade, rollback and service limits to release-channel-ports.md, so its own prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds stage-only mode and the launcher-service handoff to install.sh. The guide's manifest-path selection, v1/v2 schema and host-archive selection claims still hold, and it defers upgrade and service limits to the archive install contract; prose accurate. Source review is separate from executed test evidence.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds stage-only mode and the launcher-service handoff to install.sh. The guide's manifest-path selection, v1/v2 schema and host-archive selection claims still hold, and it defers upgrade and service limits to the archive install contract; prose accurate. Source review is separate from executed test evidence."
       ],
-      "documentDigest": "e66f5793fee5134a95659ae766e2751206850bc2f2e5c3ad3de4f57a2da3dc76",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401"
+      "documentDigest": "3a9d120976213bfd9ade0d704be4862248d7212ef3a6187924fca1052bde54b3",
+      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
     },
     {
       "path": "docs/guides/home-transfer-controller.md",
@@ -15807,7 +15813,7 @@
     {
       "path": "docs/guides/mobile-release.md",
       "documentDigest": "e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all remaining documented claims through actual release/TestFlight and client callers: optional feed reads versus compile inclusion, pinned-origin fetch and HTTPS action validation, conditional writes/readback/compensation and ambiguous outcomes, container alias publication, three-profile/extension entitlement export checks, native credential persistence rejection and iOS accessibility, and pinned OIDC/Secret Manager action behavior. Corrected guarantees to the checks performed.",
@@ -15839,7 +15845,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -16053,7 +16059,10 @@
         "Integration source review through 5731eba07: 3ab09593d (#2914) native-update-feed.mjs removes the validateUpdateConfig alias (tests call resolveNativeUpdateAuthority), publish-mobile-feed-transaction tests drop helper-only fixture cases, install-macos.zsh adds `--` to print; (#2881) install.sh changes are archive-service only; publisher/wrapper behavior described is unchanged; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-cohort.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/publish-release.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Compared apple-actions/upload-testflight-build action.yml at the old v5.3.0 and new v5.4.0 SHAs: identical inputs (no team-id input) and the default backend is still appstore-api, so the API-key upload claims hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-cohort.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/publish-release.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Compared apple-actions/upload-testflight-build action.yml at the old v5.3.0 and new v5.4.0 SHAs: identical inputs (no team-id input) and the default backend is still appstore-api, so the API-key upload claims hold.",
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
@@ -16148,8 +16157,8 @@
     },
     {
       "path": "docs/guides/native-releases.md",
-      "documentDigest": "6bc6841cc8f88ecb931415c3f0166c6742152358ac5977d1359ee8da9c4400b0",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "documentDigest": "0b2728e32cb46904ceb2c4738d4c45c6ec6f3deb690681753eb2b1104e01a8c6",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed detailed cohort admission/fence/ledger/partial-provider protocols, mobile and desktop compensation boundaries, macOS notarization overlap, Windows installer/payload proof limits and portable host-target staging. Actual AppImage entrypoint callers checked against Cargo.lock-verified tauri-utils resource resolution; source/config mismatch documented without claiming an executed Linux failure. Frozen Windows/shared-runtime-pruning changes traced through callers.",
@@ -16177,7 +16186,7 @@
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
+          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
         },
         {
           "path": ".github/workflows/publish-release.yml",
@@ -16185,7 +16194,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -16289,7 +16298,7 @@
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
-          "digest": "2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6"
+          "digest": "1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830"
         },
         {
           "path": "scripts/__tests__/release-workflow.test.ts",
@@ -16369,7 +16378,7 @@
         },
         {
           "path": "scripts/lib/portable-server-archive.mjs",
-          "digest": "5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d"
+          "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
         },
         {
           "path": "scripts/lib/portable-smoke-diagnostics.mjs",
@@ -16466,6 +16475,10 @@
         {
           "path": "src-ui/src/components/CoreUpdateLaunchCheck.tsx",
           "digest": "97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e"
+        },
+        {
+          "path": "scripts/release-admit-producer-assets.mjs",
+          "digest": "04fd408eba2f6cca5e14a5567bd2a7c2d13adf5f5b6e21cc944a0027482e5587"
         }
       ],
       "checks": [
@@ -16500,7 +16513,9 @@
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-cohort.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/publish-release.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "#2977: added the draft-assembly producer admission paragraph, checked against scripts/release-admit-producer-assets.mjs (allowlist, stable-only iOS sources, missing/empty/nested/duplicate refusals) and the release.yml assemble-draft step. The #2783 readFileSync blocker paragraph was re-checked and remains true on this tree.",
+        "#2977 review round: the admission script now also refuses a symlinked artifact directory (checked per level with lstat) and unknown, repeated or valueless CLI options, printing one message line and exiting 1. Updated the admission paragraph to name symlink refusal. Correction to the earlier #2977 note: the replaced find did not match nothing; it copied nothing from single-path producer uploads but matched the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, twice, including the beta IPA on preview tags.",
+        "Merge of origin/main into the #2977 branch: re-read the admission paragraph (rewrapped only) against scripts/release-admit-producer-assets.mjs and the merged release.yml, which is main's file plus only the #2977 admission change; #2599's action-pin moves are already reviewed above and touch no admission claim."
       ]
     },
     {
@@ -16690,8 +16705,8 @@
     },
     {
       "path": "docs/guides/nightly.md",
-      "documentDigest": "1d2d768b4dddb1cfae5f123b0322621f5e70565918118fb8027d7e840041aba3",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
@@ -16723,7 +16738,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -16863,7 +16878,7 @@
         },
         {
           "path": "scripts/lib/portable-server-archive.mjs",
-          "digest": "5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d"
+          "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
         },
         {
           "path": "scripts/lib/portable-smoke-diagnostics.mjs",
@@ -16983,7 +16998,9 @@
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-cohort.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/publish-release.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
@@ -17589,8 +17606,8 @@
     },
     {
       "path": "docs/guides/release-channel-ports.md",
-      "documentDigest": "b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "documentDigest": "3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
@@ -17614,7 +17631,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -17846,7 +17863,7 @@
         },
         {
           "path": "scripts/install-script-generated.mjs",
-          "digest": "b6cc8658bf3390211a0601fbfcb7081c9553d1e1814bed5c479cf1df6915a9e4"
+          "digest": "2c40c48272518a9db1eb3c44903171385ce7c45ac694465b86ec4e0938a74cd6"
         },
         {
           "path": "packages/shared/src/portable-server-targets.mjs",
@@ -17893,13 +17910,15 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/android-test.yml, .github/workflows/build-android.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
       "path": "docs/guides/release-rings.md",
       "documentDigest": "75d72fe29216dca1d8443e8c502cda5d7fc03aa2d88d74fee939a688c9ee62eb",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Portable release trust, exact-commit promotion and recovery requirements. Full143-line baseline read. Traced install.sh default attestation and optional pinned-key public manifest branches, token lifetime, explicit channel mapping, downgrade/freshness limits, restore failure handling and publish authority. Corrected exact preview-commit promotion and routine destructive cleanup recipe.",
@@ -17927,7 +17946,7 @@
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
+          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
         },
         {
           "path": ".github/workflows/publish-release.yml",
@@ -17935,7 +17954,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -17975,7 +17994,7 @@
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
-          "digest": "2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6"
+          "digest": "1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830"
         },
         {
           "path": "scripts/__tests__/release-workflow.test.ts",
@@ -18027,7 +18046,7 @@
         },
         {
           "path": "scripts/lib/portable-server-archive.mjs",
-          "digest": "5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d"
+          "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
         },
         {
           "path": "scripts/lib/release-artifacts.mjs",
@@ -18078,7 +18097,9 @@
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-cohort.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/publish-release.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
@@ -19317,7 +19338,7 @@
     {
       "path": "docs/guides/store-entry.md",
       "documentDigest": "147cfd2465d9fa280eda3d75b7a7d5fc963bafe32d7593d196e4fdeb629e06e8",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed owner-setup, API key, workload identity, channel profile, upload/reconciliation and bounded group-assignment claims through declared workflows, pinned action inputs and primary provider documentation. Intended names and privacy/ads answers marked as owner decisions, not observed account facts.",
@@ -19349,7 +19370,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -19538,13 +19559,16 @@
         "Integration source review through 5731eba07: #2881 adds the install.sh launcher handoff and stage-only mode. #2914 adds `print --` in install-macos.zsh, removes the validateUpdateConfig alias in favor of resolveNativeUpdateAuthority, and drops runBoundedFixture tests. None touches TestFlight/Play authority, secrets, tagging or the out-of-scope list; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-cohort.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/publish-release.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-cohort.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/publish-release.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
       "path": "docs/guides/store-listing.md",
       "documentDigest": "e232df90ff2b65b81e24c84bd160b17719d25a054828ab64da8fa98870ce4057",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Completed all draft copy and capture claims. Channel identity and mobile client ownership checked; seller, ads, age, privacy and tracking assertions made proposed owner-reviewed declarations. Screenshot content plan separated from current primary-provider specifications. Unpublished draft remains a design artifact.",
@@ -19576,7 +19600,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -19707,13 +19731,16 @@
         "Integration source review through 5731eba07: 3ab09593d install.sh wraps itself in a brace group and adds archive-service staging and hand-off (#2881); install-macos.zsh only adds `--` to print (#2914); neither touches store-listing claims; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
         "Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-cohort.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/publish-release.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-cohort.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/publish-release.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "d462e697c9e3938f163df25ea737edbfe0f015de47f8ec51a3d73ac202120a07",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -19889,11 +19916,11 @@
         },
         {
           "path": "scripts/__tests__/portable-server-archive.test.ts",
-          "digest": "f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181"
+          "digest": "080cf7aa36c4680b1a4e296ae8aa96b83ee57a84c71c61c225a074e9e3468b4a"
         },
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
+          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
         },
         {
           "path": "scripts/run-changed-verification.mjs",
@@ -19958,8 +19985,7 @@
         "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes.",
         "2026-09-28 follow-up: run-changed-verification.mjs changed only by forwarding runChangedVerification's paths from the representative narrow-diff fixture (its summary had always printed 0 changed paths); changed-verification.test.ts asserts that count and records the measured basis for the existing 120s CLI liveness limit. Claims unaffected. Source review only; no new executed evidence beyond the focused suite.",
         "Rechecked the repo-scan and path-read-pin guidance: adding the SDK body-read scan to REPO_SCAN_SUITES and UNREPORTED_PATH_READING_SUITES follows the rules the guide describes; no count or list in the guide changes.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph; ci-workflow-contract.test.ts only updates two comments naming the Playwright version. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The gallery section's lockstep rule and digest rationale are unchanged; both workflow images now pin v1.63.0 and the contract test compares the image version to the locked @playwright/test 1.63.0.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph; ci-workflow-contract.test.ts only updates two comments naming the Playwright version. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The gallery section's lockstep rule and digest rationale are unchanged; both workflow images now pin v1.63.0 and the contract test compares the image version to the locked @playwright/test 1.63.0."
       ]
     },
     {
@@ -21498,8 +21524,8 @@
     },
     {
       "path": "docs/plans/README.md",
-      "documentDigest": "6311e5c790e0c100693980b6046333f5ee340859d5e45e21e6a91920d17f5a59",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "documentDigest": "1e1a653709872835b0d084b269508496def9a73ddf22bb1b45b78825664d54bc",
+      "sourceRevision": "e5efef30008198db7198fe9dac38f3ad632c6621",
       "kind": "generated",
       "state": "classified",
       "summary": "Reviewed the navigation and generated index boundaries; individual records retain their own purpose and evidence.",
@@ -21511,8 +21537,7 @@
         }
       ],
       "checks": [
-        "Integration source review through d1e0facc2: Directory list is now private; generated index behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Integration source review through d1e0facc2: Directory list is now private; generated index behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -22661,7 +22686,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22673,7 +22698,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": "install.sh",
@@ -23025,7 +23050,7 @@
         },
         {
           "path": "scripts/lib/portable-server-archive.mjs",
-          "digest": "5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d"
+          "digest": "1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21"
         }
       ],
       "checks": [
@@ -23053,7 +23078,9 @@
         "Rechecked the delegate command's route list (GET /delegations and POST /delegations/options are still the routes) and the SDK request-deadline section: a body that stalls now also reports the deadline, which the section's wording already covers.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/cli/package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/publish-release.yml, .github/workflows/release.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
@@ -27125,7 +27152,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -27294,7 +27321,7 @@
         },
         {
           "path": "docs/guides/release-channel-ports.md",
-          "digest": "b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156"
+          "digest": "3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d"
         }
       ],
       "checks": [
@@ -27326,8 +27353,7 @@
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
         "Own edit: only the archive-install guide's link target changed, from the repo-relative ../guides/release-channel-ports.md to the absolute repository blob URL for the same file and the same #prebuilt-archives-and-source-releases anchor, so the published Start Here page no longer links to an ungenerated target. The surrounding claims (STATION_INSTALL_PUBLIC_MANIFEST_URL, the signed platform-v2 prebuilt archive, bundled Node.js, and the published-manifest requirement) are untouched. Verified docs:links:check re-resolves the blob URL as a local link and validates the anchor in 423 Markdown files.",
         "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the getting-started captures and steps are unchanged, so the page holds.",
-        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
       ]
     },
     {
@@ -30098,7 +30124,7 @@
     },
     {
       "path": "packaging/homebrew/README.md",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Actual CLI cask still admits schema-v1/macOS only. Platform-array v2 is accepted for verify/create but refused for cask; older installer-shape v2 is a separate contract. Renderer/template and explicit-key fixture boundary remain. Workflow source delta only expands tracked triggers; no Homebrew or publish proof.",
@@ -30123,7 +30149,7 @@
         },
         {
           "path": "packaging/manifest/README.md",
-          "digest": "54b625415596f5a8347a9b98caa705978def18f23ad22d69da3a27e12f641047"
+          "digest": "7922c9b16e0c0c9174a54e992ac9533e83c04c473f46ea274ca1c553da4f049b"
         },
         {
           "path": "scripts/ecosystem-manifest.mjs",
@@ -30145,22 +30171,21 @@
         "2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
         "Landing review through d0d9d33f7: Updated current platform-v2 consumers, explicit former-v2 refusal and same-version cross-layout exception. Homebrew still requires v1 application artifacts. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained.",
         "Integration source review through c8bae67da: packaging/manifest/README.md added that only the Linux prebuilt-installer smoke leg covers a systemd service. The linked #formats-and-consumers section and the cask claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 2ef40ae83: packaging/manifest/README.md changed only its Linux smoke description (a launcher trial and commit hand-off). The linked #formats-and-consumers section and the cask claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Integration source review through 2ef40ae83: packaging/manifest/README.md changed only its Linux smoke description (a launcher trial and commit hand-off). The linked #formats-and-consumers section and the cask claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
       "path": "packaging/manifest/README.md",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Updated producer/consumer table from actual CLI/shared verifier and exact inline install.sh parser. Controlled signed platform payload: CLI accepts, installer parser rejects; signed old installer v2: inverse. Workflow uploads server CI archives/descriptors; no production URL connects assembler output to shell installer. Existing ring/source archive staging manifests are distinct evidence, not signed public ecosystem envelopes.",
       "limits": "install.sh was read, not executed. No release/attestation download, actual installation/upgrade, profile operation, live distribution or production signing-custody proof. The manifest/cask CLI fixture does not establish installer/platform behavior.",
-      "documentDigest": "54b625415596f5a8347a9b98caa705978def18f23ad22d69da3a27e12f641047",
+      "documentDigest": "7922c9b16e0c0c9174a54e992ac9533e83c04c473f46ea274ca1c553da4f049b",
       "sources": [
         {
           "path": ".github/workflows/portable-server-archives.yml",
-          "digest": "c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924"
+          "digest": "bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3"
         },
         {
           "path": "config/release-manifest-keys.json",
@@ -30180,7 +30205,7 @@
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
-          "digest": "2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6"
+          "digest": "1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830"
         },
         {
           "path": "scripts/ecosystem-manifest.mjs",
@@ -30200,7 +30225,7 @@
         },
         {
           "path": ".github/workflows/install-smoke.yml",
-          "digest": "27f5dc7306a32d86680d949858bf694e9fbc112dafc530d50666d2e8f14ddec8"
+          "digest": "c9b62d21dfa9827d6fba11e3f4168da91c32202021c82d169c22604968cf2fd0"
         },
         {
           "path": ".github/workflows/portable-nightly-publish.yml",
@@ -30220,8 +30245,7 @@
         "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified.",
         "Landing review through d0d9d33f7: Installer input now triggers archive builds. Added missing documentation compiler and all four declared data inputs to both push/PR filters; the actual import/data coverage guard catches omissions. Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Golden vectors now also execute the real shell verifier with fixture keys and refused downloads; v1 source fallback and v2 platform semantics stay explicit. This is verifier evidence, not publication or installed runtime proof. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
         "Integration source review through e0314c727: #2867 extended install.sh (archive service restart and rollback, recorded ports, uninstall refusal) and the prebuilt-archive smoke. The Linux leg now builds a second archive from an empty local commit and installs a systemd user service, requiring it to restart as archive 2 across `station upgrade`; macOS skips the service path. Added that Linux-only service coverage to the smoke description. Manifest format and consumer table claims remain accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) changes smoke-install-prebuilt-archive.sh so the systemd unit runs the fixed launcher and `station upgrade` hands the second archive to it. The launcher trials and commits (runtime/service-state.json), and install.sh gains that handoff. Corrected 'checks that it restarts on the upgraded archive' to describe the launcher trial and commit handoff. Source review is separate from executed test evidence.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) changes smoke-install-prebuilt-archive.sh so the systemd unit runs the fixed launcher and `station upgrade` hands the second archive to it. The launcher trials and commits (runtime/service-state.json), and install.sh gains that handoff. Corrected 'checks that it restarts on the upgraded archive' to describe the launcher trial and commit handoff. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -30368,7 +30392,7 @@
     },
     {
       "path": "scripts/AGENTS.md",
-      "sourceRevision": "332b227345684d098aaaf3191ac0e9d927ac9401",
+      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
       "kind": "policy",
       "state": "classified",
       "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
@@ -30397,7 +30421,7 @@
         },
         {
           "path": "scripts/vitest-resource-manifest.mjs",
-          "digest": "b3c6131e5c013ae4148da49c9a894db60f66a55f1714911311bddfa0112be6d4"
+          "digest": "4865db647553662b695e2d32f4a818a6ced563c3ee594d63a9b6c0371f7a6d4f"
         }
       ],
       "checks": [
@@ -30420,7 +30444,7 @@
         "Reviewed the vitest-resource-manifest delta (documentation-freshness.test.ts classified as a bounded child-process file) and code-quality.md freshness wording; the routed rules here are unchanged.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Carried forward after merging origin/main into #2974 (W1 install.ps1, stage-only), whose ledger conflicted: this page's review against #2974's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "#2977 added one test entry to the child-process group of scripts/vitest-resource-manifest.mjs; the instruction that new child-process tests must be classified there is unchanged and still accurate."
       ]
     },
     {
@@ -30651,7 +30675,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -30667,7 +30691,7 @@
         },
         {
           "path": ".github/workflows/release.yml",
-          "digest": "e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b"
+          "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88"
         },
         {
           "path": ".github/workflows/testflight-delivery.yml",
@@ -30724,7 +30748,10 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Icon generation only.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Neither side's claims in this document concern the approval card or the action-role tokens it reads; main's and #2917's earlier notes both still hold. No prose change.",
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. The raster channel icons and the favicon-dev swap under is-dev-build are unchanged; the CSS brand stays an amber/indigo/violet shade per channel.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-stage.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
+        "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
       ]
     },
     {
