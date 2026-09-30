@@ -1901,7 +1901,7 @@ origins on an `origins` line.
 | --- | --- | --- | --- |
 | macOS | LaunchAgent in `~/Library/LaunchAgents/` | after reboot and login | `<STATION_HOME>/logs/*-service.{out,err}.log` |
 | Linux | systemd user unit in `~/.config/systemd/user/` | user-manager startup, including reboot without login | `journalctl --user -u station-<instance>.service` |
-| Windows | Task Scheduler task, `ONLOGON`, `LIMITED` | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
+| Windows | Task Scheduler task, `ONLOGON`, `LIMITED`, no time limit, restart on failure | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
 | No service manager (container, or Linux without a systemd user session) | none — supervise `station service run` yourself | whenever its supervisor starts it | the supervisor's own stdout/stderr |
 
 `service status` reports the OS unit, lifecycle instance/processes, and both
@@ -1946,6 +1946,18 @@ disappear before bootstrap. On Linux they use `systemctl --user start|stop`.
 On Windows Station verifies the scheduled task owner, wrapper command, and
 limited run level before start, stop, replacement, or deletion; a conflicting
 task fails closed.
+
+`schtasks /Create` leaves a task that Task Scheduler stops after 72 hours and
+never restarts after a failure. Like the macOS (`KeepAlive`) and Linux
+(`Restart=always`) units, the Windows task must restart the service. Install
+therefore sets, through `Set-ScheduledTask`, priority 5, no execution time
+limit (`PT0S`), and restart on failure every minute (the scheduler's shortest
+interval) up to 255 times. It reads all four back and refuses the install,
+restoring the previous registration or removing the new one, if any of them
+did not persist.
+`service status` (and `station upgrade`) read the same four values on a
+`scheduling` line: a task registered by an earlier version reports `stale`
+with the reinstall command, and `healthy` is false until it is reinstalled.
 
 On Linux, installation requires a working systemd user manager and verified
 linger. Station runs `loginctl enable-linger <uid>` when needed and fails the
