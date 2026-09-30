@@ -2541,7 +2541,8 @@ readback does not establish cancellation of an ambiguous approval request.
 See [deployment authentication](../guides/deployment-authentication.md)
 for the pilot's scope and remaining native-client limitations.
 
-The same opt-in composition mounts a separate protected Device self-read:
+The same opt-in composition mounts a separate
+[protected Device self-read](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts):
 
 ```http
 GET /api/auth/native-device-bindings/:bindingId/receipt
