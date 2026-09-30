@@ -18,13 +18,13 @@ import {
   compareNightlyVersions,
   createDryRunKeys,
   DRY_RUN_SIGNING_KEY_ID,
+  isStaleRollingManifest,
+  ManifestMismatchError,
   NIGHTLY_MANIFEST_ASSET,
   portableNightlyVersion,
   publicationLocations,
   ROLLING_NIGHTLY_TAG,
   verifyExpectedManifest,
-  isStaleRollingManifest,
-  ManifestMismatchError,
   verifyPublishedAssets,
 } from '../portable-nightly-publication.mjs';
 import { platformPayload } from './fixtures/release-manifest-v2';
