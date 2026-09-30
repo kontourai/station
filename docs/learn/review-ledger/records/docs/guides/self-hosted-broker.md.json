@@ -124,7 +124,7 @@
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3","revision":"c75bec0547019930c54180d793516d033641ff0a"},
 
     {"path":"src-desktop/src/native_application_peer.rs","digest":"c0f98feb2a760e041cad809551611526f6acdb324ec679702993bb06d7453991","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 

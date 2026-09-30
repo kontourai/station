@@ -9,7 +9,7 @@
 
   "limits": "Bounded native pilot source review and inspected debug macOS frozen-harness receipt; not a complete signaling/encryption/key/trust/rotation/cookie/cancellation audit, release qualification, fresh relay-only enrollment, remote deployment or external-provider proof.",
 
-  "document": {"digest":"9cfbc1f0fdaafd55b6db99fb243a677dfcc2a46fd06284e5ff28aeb3125a2dc3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+  "document": {"digest":"9cfbc1f0fdaafd55b6db99fb243a677dfcc2a46fd06284e5ff28aeb3125a2dc3","revision":"45908f13f44905eefcd3df30e96f91b0c3a9d797"},
 
   "sources": [
     {"path":"packages/connect/src/core/brokerRouteEnrollment.ts","digest":"93c9f2a2d3a4dc37fd6de925b090db8e704780902d923e61ddbc7e3c74275824","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
@@ -72,7 +72,7 @@
 
     {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"}
+    {"path":"docs/guides/native-shell-verification.md","digest":"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3","revision":"c75bec0547019930c54180d793516d033641ff0a"}
   ],
 
   "checks": [

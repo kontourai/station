@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"972c582ae97bded24fbf5d6171e47d81c9fcf587fea25d94041e6fbb83719cd4","revision":"8830f573323af6fa13853fbc00d48ea511da42ad"},
+  "document": {"digest":"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -126,7 +126,7 @@
 
     {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3","revision":"c75bec0547019930c54180d793516d033641ff0a"},
 
     {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 

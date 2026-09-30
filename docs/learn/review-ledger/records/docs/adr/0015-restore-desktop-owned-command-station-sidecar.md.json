@@ -9,12 +9,12 @@
 
   "limits": "Addendum claims rest on the author's unpublished run logs, re-checked by an independent verifier on macOS (artifact identity, signing, source constants, one clean-home launch). Single runs: no Finder/Dock or Explorer launch proof, no real reboot, no Windows service, tray, or observed UI, and no MSI, Linux, or AppImage artifact. The Windows installer was unsigned. Historic review counts and behavioral receipts are retained, not re-proven.",
 
-  "document": {"digest":"ae630ad46482a84ef322e83bf470c9936219e5ba452eeff3a7e45ecc047d43d4","revision":"e9e828f46c92819a2e8d56397494839d09a115e4"},
+  "document": {"digest":"ae630ad46482a84ef322e83bf470c9936219e5ba452eeff3a7e45ecc047d43d4","revision":"e8dc2e2202e955216046d761958cd37f17bf4000"},
 
   "sources": [
     {"path":"docs/design/instance-registry.md","digest":"6478fdadd409526952d53a3ca9604ea0c9741a0411025c2faed3fdf02d5242bf","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"fe1034b2694b02df597aeb6dcc6c705e87e3e9eeb7ac5516985ceb64077a9512","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3","revision":"c75bec0547019930c54180d793516d033641ff0a"},
 
     {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
