@@ -54,8 +54,12 @@ function isChatErrorMarkerMessage(message: UIMessage): boolean {
   if ((message as { role?: string }).role !== 'user') {
     return false;
   }
-  return messageTextParts(message).some((text) =>
-    text.startsWith(CHAT_ERROR_MARKER),
+  // The same shapes the served-transcript scrubber reads: text parts, and a
+  // legacy `content` string.
+  const content = (message as { content?: unknown }).content;
+  return (
+    (typeof content === 'string' && content.startsWith(CHAT_ERROR_MARKER)) ||
+    messageTextParts(message).some((text) => text.startsWith(CHAT_ERROR_MARKER))
   );
 }
 
