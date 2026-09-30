@@ -86,6 +86,16 @@ export interface AccountBoundDeviceGateDeps {
       ): PrincipalRef | undefined;
     };
   };
+  /**
+   * #2893 pilot: the shared native current-Device resolver. When a request
+   * carries a proven native Device authority, its (account-bound) Device
+   * binding replaces the credential lookup as this gate's binding source.
+   */
+  resolveNativeDevice?: (request: Request) =>
+    | {
+        device: { principalBinding?: DevicePrincipalBinding };
+      }
+    | undefined;
 }
 
 /**
@@ -155,8 +165,10 @@ export function installAccountBoundDeviceGate(
   app.use('*', async (c, next) => {
     const account = deps.deploymentAuthentication?.service.current(c.req.raw);
     const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
-    const binding =
-      runtimePrincipal?.authority === 'device-credential'
+    const nativeDevice = deps.resolveNativeDevice?.(c.req.raw);
+    const binding = nativeDevice
+      ? nativeDevice.device.principalBinding
+      : runtimePrincipal?.authority === 'device-credential'
         ? deps.identifyDevice(runtimePrincipal.credential)?.principalBinding
         : undefined;
     const accountBinding =

@@ -350,6 +350,7 @@ import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhoo
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
+import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
 import { isDefinitelyOffBox } from '../../security/off-box-peer.js';
 import {
   PairingFailureLimiter,
@@ -709,6 +710,17 @@ export async function pullRequestSessionForReader<
 
 export interface ConfigureRuntimeRoutesContext {
   projectMembership?: ProjectMembershipService;
+  /**
+   * #2893 opt-in native Device request-proof pilot. Composed only behind an
+   * explicit opt-in with a supported provider/session capability; absent
+   * means every presented Device proof header refuses closed.
+   */
+  nativeDeviceProofPilot?: {
+    binding: import('../../security/native-device-request-authority.js').NativeDeviceProofBindingLookup;
+    pairing: import('../../security/native-device-request-authority.js').NativeDeviceProofPairingLookup;
+    replayStore: import('../../services/identity/native-device-proof-verifier.js').NativeDeviceProofReplayStore;
+    nowSeconds?: () => number;
+  };
   projectSharedTasks?: ProjectSharedTaskStore;
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
@@ -1174,7 +1186,23 @@ export function configureRuntimeRoutes(
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
   let browserProjectAuthorizer: BrowserProjectAuthorizer | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
+  // #2893: the one native Device request authority for this runtime. Absent
+  // unless the pilot was explicitly composed; proof headers then refuse closed.
+  const nativeDeviceProofAuthority = context.nativeDeviceProofPilot
+    ? new NativeDeviceRequestAuthority(context.nativeDeviceProofPilot)
+    : undefined;
+  const resolveNativeDeviceBinding = nativeDeviceProofAuthority
+    ? (request: Request) => {
+        const current = nativeDeviceProofAuthority.resolveCurrent(request);
+        return current ? { device: current.device } : undefined;
+      }
+    : undefined;
   const runtimeSecurity = {
+    // #2893: native Device proof admission exists only when the pilot was
+    // explicitly composed; otherwise proof headers refuse closed.
+    ...(nativeDeviceProofAuthority
+      ? { nativeDeviceProof: nativeDeviceProofAuthority }
+      : {}),
     deploymentAuthentication: context.deploymentAuthentication?.service,
     verifyCredential: (
       credential: string,
@@ -1476,6 +1504,17 @@ export function configureRuntimeRoutes(
       environmentSecurityService: context.environmentSecurityService,
       deploymentAuthentication: context.deploymentAuthentication?.service,
       hostedTenantRegistry,
+      ...(resolveNativeDeviceBinding
+        ? {
+            resolveNativeDevice: (request: Request) => {
+              const current =
+                nativeDeviceProofAuthority!.resolveCurrent(request);
+              return current
+                ? { accountBinding: current.accountBinding }
+                : undefined;
+            },
+          }
+        : {}),
     });
   const conversationReadAuthorityForContext = (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
@@ -1624,6 +1663,9 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.identifyDevice(credential),
     identifyIngress,
     deploymentAuthentication: context.deploymentAuthentication,
+    ...(resolveNativeDeviceBinding
+      ? { resolveNativeDevice: resolveNativeDeviceBinding }
+      : {}),
   });
   // Station #90 lane D (station #122): a station-control tool's verified caller
   // names a session; the principal it acts for, its project and its
@@ -4069,26 +4111,32 @@ export function configureRuntimeRoutes(
     request: Request,
   ): ProjectMembershipAuthority => ({
     async current() {
-      if (
-        !isRuntimeRequestPrincipalCurrent(
-          request,
-          context.environmentSecurityService,
-        )
-      )
-        throw new ProjectMembershipRefusal('forbidden');
+      // #2893: a proven native Device keeps a pilot-specific currentness
+      // path — the shared resolver re-reads binding, paired Device and
+      // account binding; it never rides the credential principal check.
+      const nativeDevice =
+        nativeDeviceProofAuthority?.resolveCurrent(request) ?? undefined;
+      const principalCurrent = nativeDevice
+        ? nativeDeviceProofAuthority!.resolveCurrent(request) !== undefined
+        : isRuntimeRequestPrincipalCurrent(
+            request,
+            context.environmentSecurityService,
+          );
+      if (!principalCurrent) throw new ProjectMembershipRefusal('forbidden');
       const account =
         await context.deploymentAuthentication?.service.authenticate(request);
-      if (
-        !isRuntimeRequestPrincipalCurrent(
-          request,
-          context.environmentSecurityService,
-        )
-      )
-        throw new ProjectMembershipRefusal('forbidden');
+      const stillCurrent = nativeDevice
+        ? nativeDeviceProofAuthority!.resolveCurrent(request) !== undefined
+        : isRuntimeRequestPrincipalCurrent(
+            request,
+            context.environmentSecurityService,
+          );
+      if (!stillCurrent) throw new ProjectMembershipRefusal('forbidden');
       if (account?.kind === 'authenticated') {
         const runtime = getRuntimeAuthenticatedRequestPrincipal(request);
-        const binding =
-          runtime?.authority === 'device-credential'
+        const binding = nativeDevice
+          ? nativeDevice.accountBinding
+          : runtime?.authority === 'device-credential'
             ? context.environmentSecurityService.identifyDevice(
                 runtime.credential,
               )?.principalBinding

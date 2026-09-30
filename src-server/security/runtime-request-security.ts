@@ -445,6 +445,15 @@ export interface RuntimeHttpSecurityOptions {
   mutationWindowMs?: number;
   /** LRU bound on distinct principal keys tracked in the rate Map. */
   maxBudgetPrincipals?: number;
+  /**
+   * #2893 opt-in native Device request-proof admission. Present only when
+   * the runtime composed the pilot; absent means a presented
+   * `X-Station-Native-Device-Proof` header refuses closed.
+   */
+  nativeDeviceProof?: Pick<
+    import('./native-device-request-authority.js').NativeDeviceRequestAuthority,
+    'admit' | 'resolveCurrent'
+  >;
 }
 
 function isPublicRuntimeRoute(method: string, path: string): boolean {
@@ -1009,7 +1018,11 @@ function pathMatchesRoutePattern(path: string, pattern: string): boolean {
 }
 
 /** Budget principal source — which verified credential mode derived the key. */
-export type BudgetPrincipalSource = 'bearer' | 'session' | 'loopback';
+export type BudgetPrincipalSource =
+  | 'bearer'
+  | 'session'
+  | 'loopback'
+  | 'native-device';
 
 export const BUDGET_PRINCIPAL_VAR = 'stationBudgetPrincipal';
 
@@ -1065,6 +1078,25 @@ export function setBudgetPrincipal(
   principal: BudgetPrincipal,
 ): void {
   store.set(BUDGET_PRINCIPAL_VAR, principal);
+}
+
+/**
+ * #2893 native Device budget source. The key is derived from the private
+ * peer's verified Station identity and the server-verified Device identity
+ * — never a synthetic credential string, a rotating binding ID or a one-use
+ * JTI — so one proven Device holds one budget however often it re-proves.
+ */
+export function deriveNativeDeviceBudgetPrincipal(
+  stationId: string,
+  deviceId: string,
+): BudgetPrincipal {
+  const digest = createHash('sha256')
+    .update(`${stationId}\n${deviceId}`)
+    .digest('hex');
+  return {
+    key: `native-device:${digest.slice(0, 16)}`,
+    source: 'native-device',
+  };
 }
 
 export function getBudgetPrincipal(store: {

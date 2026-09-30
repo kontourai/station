@@ -2,6 +2,7 @@ import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-c
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import {
   type LoadedDeploymentAuthentication,
@@ -14,6 +15,7 @@ import {
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
+import { NativeDeviceProofReplayStoreSqlite } from '../../services/identity/native-device-replay-store.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import {
@@ -31,6 +33,7 @@ import {
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
+import { NativeDeviceProofBindingService } from '../../services/ssh/native-device-proof-binding-service.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { orchestrationUsageRefFor } from './orchestration-usage-ref.js';
@@ -540,6 +543,19 @@ export class StationRuntime {
   private applicationSessions?: ReturnType<
     typeof createApplicationSessionRuntime
   >;
+  /**
+   * #2893 opt-in native Device request-proof pilot. Composed only behind an
+   * explicit opt-in AND a supported provider/session capability; any
+   * unsupported configuration fails closed at startup.
+   */
+  private nativeDeviceProofPilot?: {
+    binding: import('../../security/native-device-request-authority.js').NativeDeviceProofBindingLookup;
+    pairing: import('../../security/native-device-request-authority.js').NativeDeviceProofPairingLookup;
+    replayStore: import('../../services/identity/native-device-proof-verifier.js').NativeDeviceProofReplayStore;
+    nowSeconds?: () => number;
+  };
+  private nativeDeviceProofAuthority?: import('../../security/native-device-request-authority.js').NativeDeviceRequestAuthority;
+  private nativeDeviceProofReplayStore?: import('../../services/identity/native-device-replay-store.js').NativeDeviceProofReplayStoreSqlite;
   private relayEnrollment?: Awaited<
     ReturnType<typeof createRelayEnrollmentRuntime>
   >;
@@ -3389,6 +3405,51 @@ export class StationRuntime {
         },
       );
     }
+    if (this.deploymentAuthentication && !this.nativeDeviceProofPilot) {
+      // #2893 opt-in native Device request-proof pilot. Source opt-in only;
+      // supported provider/session capability required; anything else
+      // refuses to boot rather than degrading the proof boundary.
+      if (process.env.STATION_NATIVE_DEVICE_PROOF_PILOT === '1') {
+        const capabilities =
+          this.deploymentAuthentication.service.sessionReferenceCapabilities();
+        if (!capabilities.verify || !capabilities.login)
+          throw new Error(
+            'STATION_NATIVE_DEVICE_PROOF_PILOT requires an authentication module with session reference verify and login capabilities.',
+          );
+        const replayStore = new NativeDeviceProofReplayStoreSqlite(
+          join(
+            this.configLoader.getProjectHomeDir(),
+            'security',
+            'native-device-proof-replay.sqlite',
+          ),
+          identity.environmentId,
+        );
+        const bindingService = new NativeDeviceProofBindingService({
+          homeDir: this.configLoader.getProjectHomeDir(),
+          pairing: {
+            environmentId: () =>
+              this.stationEnvironmentId ?? identity.environmentId,
+            listDevices: () =>
+              this.environmentSecurityService.devicePairing.listDevices(),
+          },
+        });
+        this.nativeDeviceProofReplayStore = replayStore;
+        this.nativeDeviceProofPilot = {
+          binding: bindingService,
+          pairing: {
+            activeDevice: (deviceId) =>
+              this.environmentSecurityService.devicePairing
+                .listDevices()
+                .find((device) => device.id === deviceId),
+          },
+          replayStore,
+        };
+        this.nativeDeviceProofAuthority = new NativeDeviceRequestAuthority(
+          this.nativeDeviceProofPilot,
+        );
+      } else if (process.env.STATION_NATIVE_DEVICE_PROOF_PILOT !== undefined)
+        throw new Error('STATION_NATIVE_DEVICE_PROOF_PILOT must be 0 or 1.');
+    }
     if (this.deploymentAuthentication && !this.applicationSessions) {
       this.applicationSessions = createApplicationSessionRuntime(
         this.configLoader.getProjectHomeDir(),
@@ -3426,6 +3487,13 @@ export class StationRuntime {
             ),
         },
         readVerifiedNativeVirtualApplicationRequest,
+        this.nativeDeviceProofAuthority
+          ? (request: Request) => {
+              const current =
+                this.nativeDeviceProofAuthority!.resolveCurrent(request);
+              return current ? { device: current.device } : undefined;
+            }
+          : undefined,
       );
     }
     if (!this.relayEnrollment) {
@@ -4052,6 +4120,9 @@ export class StationRuntime {
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
+      ...(this.nativeDeviceProofPilot
+        ? { nativeDeviceProofPilot: this.nativeDeviceProofPilot }
+        : {}),
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
       applicationSessions: this.applicationSessions,
@@ -4558,6 +4629,16 @@ export class StationRuntime {
     void this.retireSelfHostedBroker();
     this.virtualApplicationLifetime?.abort();
     this.virtualApplication?.stop();
+    // #2893: the pilot's replay store joins this home's retirement; it is
+    // owned by this station home and never outlives it.
+    try {
+      this.nativeDeviceProofReplayStore?.close();
+    } catch {
+      // Retirement is best-effort; the private database never leaves the home.
+    }
+    this.nativeDeviceProofReplayStore = undefined;
+    this.nativeDeviceProofAuthority = undefined;
+    this.nativeDeviceProofPilot = undefined;
 
     this.searchAdmissionStopped = true;
     this.runtimeSearch?.stop();

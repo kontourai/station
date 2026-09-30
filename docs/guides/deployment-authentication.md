@@ -580,3 +580,38 @@ existing approved-Device cookie exchange and proof-bound continuation. No
 DataChannel cookie handling or native handoff is implied. Tests with a free
 local HTTP issuer are diagnostic evidence, not production Google/Kontour,
 physical-device or independent-person acceptance.
+
+## Opt-in native Device request-proof pilot (#2893)
+
+An approved account-bound Device can address a narrow protected surface
+without any bearer or cookie by presenting a short-lived, one-use native
+Device request proof over the encrypted application channel. The pilot is
+source opt-in only — `STATION_NATIVE_DEVICE_PROOF_PILOT=1` with an
+authentication module that supports session-reference verify AND login;
+unsupported configuration refuses to boot. Ordinary product UI is not
+auto-enabled.
+
+Preconditions, all owned by existing stores: an active paired `kind: 'device'`
+Device with an account principal binding, an operator-approved native proof
+binding (exact surface, Device proof key distinct from the route key) in the
+private binding sidecar, and a current admitted native Pion peer whose private
+facts (offer nonce, Station identity, surface) carry the request. The replay
+store lives at `<home>/security/native-device-proof-replay.sqlite`.
+
+The admitted routes are exactly the native account-continuation
+challenge/exchange POSTs plus `GET/HEAD /api/projects` and
+`/api/projects/:slug`. Everything else — pairing, consent, terminal, plugin,
+operator and admin surfaces — refuses proof authority even for a broadly
+scoped Device. Each request re-proves: the JWS is verified against the exact
+received bytes and private peer provenance, the JTI is consumed once, and the
+binding, paired Device and account binding are re-read at every seam,
+including before and after each provider await. Revoking the Device, its
+binding, its account session or its Project membership stops protected bytes
+mid-delivery. A presented proof never falls back to a bearer or cookie, and a
+proof-bearing request can never read as the local operator.
+
+Limits: this is not packaged-Tauri, physical-device or production-identity
+evidence; the host signing IPC and operator approval route remain unbuilt.
+See [the broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)
+for the protocol and the production-composition test for the exercised
+boundary.

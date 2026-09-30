@@ -515,10 +515,41 @@ The current foundations are the [Device binding service](../../src-server/servic
 and the credential-free Request principal in [runtime request security](../../src-server/security/runtime-request-security.ts).
 The binding service requires an exact approved app, channel, client instance and
 route-key thumbprint, with a separate Device key. Private Pion Request facts
-carry the offer nonce through bounded-body replacement. These components have
-no production admission caller yet. The approval-context factory does not
-authenticate an operator; the operator route and host signing IPC still need
-to establish and consume the reviewed binding.
+carry the offer nonce through bounded-body replacement.
+
+**Pilot composition (source opt-in; not product UI).** `configureRuntimeHttp`
+now admits a presented Device proof BEFORE deployment-account authentication:
+cheap private peer/route/rate checks, a bounded exact-body read (16 KiB) whose
+bytes build the final Request and carry the private peer provenance at that one
+byte-copy owner, then Device JWS/JTI admission, then Device scope against the
+central route declaration, then the native account continuation
+(challenge/exchange) or a required current account session. A proof attempt
+never falls back to a bearer or cookie; a conflicting credential, missing
+private Pion provenance, unsupported configuration or non-pilot route refuses
+closed. The pilot allowlist is exactly the native challenge/exchange POSTs and
+`GET/HEAD /api/projects` and `/api/projects/:slug`; privileged, terminal,
+plugin, pairing, consent and operator routes refuse proof authority even when
+the proven Device holds broad scopes. The one [native Device request
+authority](../../src-server/security/native-device-request-authority.ts) mints
+the credential-free principal on the final Request, and every later seam
+(account-bound gate, orchestration principal, Project membership authority,
+native account continuation) re-reads binding, paired Device and account
+binding through it — including before and after each provider await — never
+carrying identity from headers. Station-runtime composes binding, replay and
+admission only behind `STATION_NATIVE_DEVICE_PROOF_PILOT=1` with a supported
+provider/session capability; anything else fails closed at startup. The
+exchange attempt limiter is keyed by the verified Device identity, not the
+absent-Authorization bucket.
+
+**Evidence boundaries.** The production-composition suite
+([runtime-routes native pilot](../../src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts))
+drives the real HTTP admission, real application channel and Pion adapter with
+a faked broker transport, real pairing/binding/replay/membership stores and a
+fixture provider module. It does not prove a packaged Tauri host, the
+host-signing IPC, physical devices or a production identity provider. The
+approval-context factory still does not authenticate an operator; the operator
+route and host signing IPC still need to establish and consume the reviewed
+binding.
 
 ### Transport qualification
 

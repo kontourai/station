@@ -44,6 +44,17 @@ export interface NativeDeviceProofBindingView {
   readonly deviceProofKey?: NativeDeviceProofPublicKeyJwk;
 }
 
+/**
+ * Validated `deviceId`/`bindingId` selectors parsed from the proof's
+ * claims and handed to `authority.binding` for state lookup. They are lookup
+ * HINTS only: signature, full binding and peer checks — not these selectors —
+ * establish authority, and the same selectors are passed on every recheck.
+ */
+export interface NativeDeviceProofAuthoritySelectors {
+  readonly deviceId: string;
+  readonly bindingId: string;
+}
+
 /** Caller-supplied private verified native peer fact. */
 export interface NativeDeviceProofPeerView {
   readonly status: NativeDeviceProofPeerStatus;
@@ -92,7 +103,7 @@ export type NativeDeviceProofRejectionReason =
   | 'signature_invalid'
   | 'replay_store_unavailable';
 
-class NativeDeviceProofRejectedError extends Error {
+export class NativeDeviceProofRejectedError extends Error {
   readonly reason: NativeDeviceProofRejectionReason;
 
   constructor(
@@ -549,7 +560,9 @@ export async function verifyNativeDeviceRequestProof(
   proof: string,
   request: NativeDeviceProofRequestInput,
   authority: {
-    binding: () => Promise<NativeDeviceProofBindingView>;
+    binding: (
+      selectors: NativeDeviceProofAuthoritySelectors,
+    ) => Promise<NativeDeviceProofBindingView>;
     peer: () => Promise<NativeDeviceProofPeerView>;
   },
   deps: NativeDeviceProofVerifierDeps,
@@ -569,7 +582,11 @@ export async function verifyNativeDeviceRequestProof(
   const { claims, signedInput, signature } = decodeProof(proof);
   const validated = validateClaims(claims, clock);
 
-  const initialBinding = await authority.binding();
+  const selectors: NativeDeviceProofAuthoritySelectors = {
+    deviceId: validated.deviceId,
+    bindingId: validated.bindingId,
+  };
+  const initialBinding = await authority.binding(selectors);
   if (
     initialBinding.status !== 'approved' ||
     !initialBinding.snapshot ||
@@ -702,7 +719,7 @@ export async function verifyNativeDeviceRequestProof(
     );
 
   // Recheck the caller-supplied current state after asynchronous work.
-  const recheckedBinding = await authority.binding();
+  const recheckedBinding = await authority.binding(selectors);
   if (
     recheckedBinding.status !== 'approved' ||
     !recheckedBinding.snapshot ||
@@ -736,7 +753,7 @@ export async function verifyNativeDeviceRequestProof(
     );
   }
 
-  const finalBinding = await authority.binding();
+  const finalBinding = await authority.binding(selectors);
   const finalPeer = await authority.peer();
   if (
     finalBinding.status !== 'approved' ||
