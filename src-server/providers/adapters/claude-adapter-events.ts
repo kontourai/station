@@ -1504,10 +1504,11 @@ export function withdrawnSubagentPermissionResult(): PermissionResult {
 /**
  * #2932: the ask flags the Claude CLI sends on `can_use_tool`
  * (`suppress_always_allow_rule`, `default_to_no`,
- * `requires_user_interaction`). Agent SDK 0.3.261, the pinned one, does not
- * forward them to `canUseTool`; 0.3.284 does, under these names. Each is
- * copied only when it is `true`, so a later SDK bump is read with no change
- * here and the request payload stays as it was until then.
+ * `requires_user_interaction`). Agent SDK 0.3.278, the one the lockfile
+ * resolves, forwards and types `suppressAlwaysAllowRule` and `defaultToNo`
+ * but still drops `requires_user_interaction`; it is read here under the
+ * name the other two follow, so an SDK that forwards it needs no change.
+ * Each is copied only when it is `true`.
  */
 export function claudeAskFlags(options: object): {
   suppressAlwaysAllowRule?: true;

@@ -165,9 +165,9 @@ names the host in its title, so every new host prompts; a call with
 `dangerouslyDisableSandbox: true`; a request whose `decisionReason` is
 exactly `dangerouslyDisableSandbox`, `requiresUserInteraction` or `Your
 organization requires approval for this tool`; and a request flagged
-`suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`. The
-pinned Agent SDK 0.3.261 does not forward those three flags, so they apply
-only once a later SDK does. `request.opened` carries the sanitised `decisionReason` and any
+`suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`. Agent
+SDK 0.3.278 forwards the first two; `requiresUserInteraction` applies once an
+SDK forwards it. `request.opened` carries the sanitised `decisionReason` and any
 of the flags that are set. Not covered yet: a Bash safety check and a plain
 `permissions.ask` rule reach Station with no signal the SDK forwards, so a
 Bash tool grant or pattern can still answer them. A session answer never

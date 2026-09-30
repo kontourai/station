@@ -292,8 +292,9 @@ export type ToolRequestGrantInput = {
   /** Claude's `canUseTool` `decisionReason` text, matched only exactly. */
   decisionReason?: unknown;
   /**
-   * Ask flags the Claude CLI sends and Agent SDK 0.3.284 forwards to
-   * `canUseTool` (0.3.261, the pinned one, drops them). Read when present.
+   * Ask flags the Claude CLI sends on `can_use_tool`. Agent SDK 0.3.278
+   * forwards `suppressAlwaysAllowRule` and `defaultToNo` to `canUseTool`
+   * and still drops `requiresUserInteraction`. Read when present.
    */
   suppressAlwaysAllowRule?: unknown;
   defaultToNo?: unknown;
@@ -311,7 +312,8 @@ const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
   'sandboxnetworkaccess',
 ]);
 /**
- * #2932: `decisionReason` texts Claude Code 2.1.261 sends verbatim for an ask
+ * #2932: `decisionReason` texts Claude Code sends verbatim (read in 2.1.261,
+ * byte-identical in 2.1.278) for an ask
  * that is an escalation or a policy floor, not a plain call: the sandbox
  * override, a tool whose approval card is the user's interaction surface,
  * and the MCP organization ceiling (`effectiveMaxPermission: 'ask'`). The

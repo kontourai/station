@@ -13,3 +13,5 @@ payload. A request escalates, so neither a tool grant nor
 ceiling, or any of the three flags is true. A `SandboxNetworkAccess` request,
 and one flagged `suppressAlwaysAllowRule`, offers no session grant. Bash safety
 checks and plain ask rules still carry no signal and are not covered.
+Agent SDK 0.3.278 forwards `suppressAlwaysAllowRule` and `defaultToNo`, so
+those two apply now; `requiresUserInteraction` applies once an SDK forwards it.

@@ -2960,7 +2960,8 @@ describe('ClaudeAdapter', () => {
     describe('#2932: engine escalation signals always reach a person', () => {
       const everything = { slug: 'engine-lab', autoApprove: ['*'] };
       /**
-       * The sandbox network ask exactly as Claude Code 2.1.261 sends it
+       * The sandbox network ask exactly as Claude Code 2.1.278 (as 2.1.261)
+       * sends it
        * (`createSandboxAskCallback`): tool `SandboxNetworkAccess`, input
        * `{host}`, a `WebFetch(domain:<host>)` allow rule suggested for
        * `localSettings`, the description, and no title or reason.
@@ -3218,7 +3219,7 @@ describe('ClaudeAdapter', () => {
         ['defaultToNo'],
         ['requiresUserInteraction'],
       ])(
-        'an ask flagged %s by a later SDK prompts under a Bash grant and carries the flag',
+        'an ask flagged %s by the engine prompts under a Bash grant and carries the flag',
         async (flag) => {
           const threadId = `thread-flag-${flag}`;
           const { adapter, ask } = await grantHarness(threadId);

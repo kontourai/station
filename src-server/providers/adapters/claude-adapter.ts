@@ -2749,8 +2749,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       }),
       canUseTool: async (toolName, toolInput, options) => {
         const record = this.requireSession(input.threadId);
-        // #2932: the ask flags a later Agent SDK forwards (0.3.284); the
-        // pinned 0.3.261 drops them, so they are read only when present.
+        // #2932: the engine's ask flags. Agent SDK 0.3.278 forwards
+        // suppressAlwaysAllowRule and defaultToNo; requiresUserInteraction is
+        // read when an SDK forwards it.
         const askFlags = claudeAskFlags(options);
         // #2932: the reason is sanitised once, and that one value is both
         // matched here and published, so the surfaces compute the same
