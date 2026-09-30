@@ -18541,7 +18541,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "c4923c1e6c244cd423b6c6b1852606e77a49957e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18549,7 +18549,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "77ccf0d0028d07d837c1091299dbe83327967841e137a9cc228fd1b5ad8c471d"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -18703,7 +18703,8 @@
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
         "Re-read 'Responsive UI contracts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
-        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour."
+        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
+        "Reviewed the #2042 responsive action inventory addition against the shared 44px/wrap/focus floor and mounted 390px dark/light browser evidence. The new credential sign-in row is covered; existing design and component ownership claims remain unchanged. Shared SkeletonBlock replaces the bespoke loading sentence."
       ]
     },
     {
@@ -20182,7 +20183,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "50273b47fb6784cf8cdbe654ad46dad2121b0ed9b0872582d6c2100b0caecc5c",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "c4923c1e6c244cd423b6c6b1852606e77a49957e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -20190,7 +20191,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "77ccf0d0028d07d837c1091299dbe83327967841e137a9cc228fd1b5ad8c471d"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -20360,7 +20361,8 @@
         "#2905: channel brand values are text-safe per mode (brand, action and focus share one shade per channel mode; dark modes pair it with dark text); the Readiness/Trust panel links read --k-action with a --k-brand fallback; the dock resize grip uses --text-primary on hover/focus. Documented the brand-as-text surfaces and channel-text-contrast.test.tsx, which measures rendered text (4.5:1) and the dock grips (3:1) on their real backdrops. Ran branding-role-cascade and channel-text-contrast in Chromium.",
         "Re-read 'Station theming' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new white-label branding section and channel interaction-role text; they describe the UI's theme validation and cascade, not the SDK's deadline handling or pairing scopes.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
-        "Updated for the ui 1.16.0 bump and the focus fix. The installed tokens define the roles, so the --k-brand fallback beside --k-action no longer applies. The focus-visible outline reads --k-focus only under data-brand-focus (applyBrandingTheme sets it while the applied theme supplies --k-focus for the current mode) or on a Dev, Beta or Nightly build, and --accent-primary otherwise, so a device accent recolours the ring again; checked against index.css, branding-theme.ts writeMode and branding-role-cascade.test.ts (device accent, theme focus and channel cases). The white-label section names validateBrandOverride from @kontourai/ui/contrast, the flat-key shape and Station's two stricter text rules, matching branding-theme.ts; #2944's channel brand-as-text paragraph is kept. Added that a mode setting only the brand also gets it as its action role, because the installed tokens define --k-action; checked against expandModes in branding-theme.ts and the brand-only cascade case in branding-role-cascade.test.ts (button fill, accent and focus follow the brand). The focus-ring and stricter-rule statements are unchanged."
+        "Updated for the ui 1.16.0 bump and the focus fix. The installed tokens define the roles, so the --k-brand fallback beside --k-action no longer applies. The focus-visible outline reads --k-focus only under data-brand-focus (applyBrandingTheme sets it while the applied theme supplies --k-focus for the current mode) or on a Dev, Beta or Nightly build, and --accent-primary otherwise, so a device accent recolours the ring again; checked against index.css, branding-theme.ts writeMode and branding-role-cascade.test.ts (device accent, theme focus and channel cases). The white-label section names validateBrandOverride from @kontourai/ui/contrast, the flat-key shape and Station's two stricter text rules, matching branding-theme.ts; #2944's channel brand-as-text paragraph is kept. Added that a mode setting only the brand also gets it as its action role, because the installed tokens define --k-action; checked against expandModes in branding-theme.ts and the brand-only cascade case in branding-role-cascade.test.ts (button fill, accent and focus follow the brand). The focus-ring and stricter-rule statements are unchanged.",
+        "Reviewed the #2042 responsive action inventory addition against the shared 44px/wrap/focus floor and mounted 390px dark/light browser evidence. The new credential sign-in row is covered; existing design and component ownership claims remain unchanged. Shared SkeletonBlock replaces the bespoke loading sentence."
       ]
     },
     {
