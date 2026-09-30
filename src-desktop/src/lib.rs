@@ -582,7 +582,7 @@ struct NativeCredentialBinding {
 #[derive(Clone, Default)]
 struct NativeProfileAuthority(std::sync::Arc<std::sync::Mutex<NativeProfileAuthorityState>>);
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 struct NativeProfileAuthorityState {
     active: Option<AuthorizedProfile>,
     /// Credential references are the native authority identity. Profile names
@@ -659,7 +659,7 @@ struct NativePairingExchangeSuccess {
     credential_ref: NativeCredentialReference,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NativePairingPublicDeviceResponse {
     id: String,
@@ -1156,6 +1156,7 @@ fn invalidate_active_profile_receipt_after_store_write(
     }
 }
 
+#[cfg(any(mobile, test))]
 fn invalidate_active_profile_receipt_after_credential_delete(
     authority: &mut NativeProfileAuthorityState,
     reference: &NativeCredentialReference,
@@ -1347,77 +1348,35 @@ fn credential_vault_delete_blocking(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<(), String> {
-    let reference = authorized_credential_reference(app, authority)?;
-    credential_vault_delete_reference(authority, &reference)
-}
-
-/// Retires the active credential. On desktop the custody metadata companion
-/// is retired WITH the bearer (station#2893); both cleanup attempts always
-/// run, so a partial failure never strands a half-retired custody pair and a
-/// retry completes it. The authorization epoch is invalidated exactly as
-/// before.
-fn credential_vault_delete_reference(
-    authority: &NativeProfileAuthority,
-    reference: &NativeCredentialReference,
-) -> Result<(), String> {
     #[cfg(not(mobile))]
     {
-        credential_vault_delete_reference_with_custody(
-            authority,
-            reference,
-            &native_device_custody::DesktopPairingCustody,
-        )
+        credential_vault_delete_with_host(&AppProfileWriteHost::new(app)?, authority, None)
     }
     #[cfg(mobile)]
     {
-        let bearer = match credential_entry(reference)?.delete_credential() {
-            Ok(()) => Ok(()),
-            Err(error) if is_missing_credential(&error) => Ok(()),
-            Err(error) => Err(format!("delete OS credential: {error}")),
-        };
-        let mut state = authority
-            .0
-            .lock()
-            .map_err(|_| "Station native authority is unavailable".to_string())?;
-        invalidate_active_profile_receipt_after_credential_delete(&mut state, reference);
-        bearer
-    }
-}
-
-#[cfg(not(mobile))]
-fn credential_vault_delete_reference_with_custody(
-    authority: &NativeProfileAuthority,
-    reference: &NativeCredentialReference,
-    custody: &dyn native_device_custody::PairingCustodyWriter,
-) -> Result<(), String> {
-    let bearer = custody.delete_bearer(reference);
-    // Both attempts always run: a bearer-side failure must not strand the
-    // companion, and vice versa.
-    let metadata = custody.delete_metadata(reference);
-    let invalidated = authority
-        .0
-        .lock()
-        .map_err(|_| "Station native authority is unavailable".to_string())
-        .map(|mut state| {
-            invalidate_active_profile_receipt_after_credential_delete(&mut state, reference)
-        });
-    match (bearer, metadata, invalidated) {
-        (Ok(()), Ok(()), Ok(())) => Ok(()),
-        (bearer, metadata, invalidated) => {
-            let mut errors = Vec::new();
-            for error in [bearer.err(), metadata.err(), invalidated.err()] {
-                if let Some(error) = error {
-                    errors.push(error);
-                }
+        let reference = authorized_credential_reference(app, authority)?;
+        match credential_entry(&reference)?.delete_credential() {
+            Ok(()) => {
+                let mut state = authority
+                    .0
+                    .lock()
+                    .map_err(|_| "Station native authority is unavailable".to_string())?;
+                invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
+                Ok(())
             }
-            Err(errors.join("; "))
+            Err(error) if is_missing_credential(&error) => {
+                let mut state = authority
+                    .0
+                    .lock()
+                    .map_err(|_| "Station native authority is unavailable".to_string())?;
+                invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
+                Ok(())
+            }
+            Err(error) => Err(format!("delete OS credential: {error}")),
         }
     }
 }
 
-/// A retired reference may be supplied only after the host proves no profile
-/// still owns it. This supports key rotation without reopening arbitrary
-/// read/write/delete access to every keyring account.
 #[tauri::command]
 async fn credential_vault_delete_unreferenced(
     app: AppHandle,
@@ -1433,39 +1392,26 @@ fn credential_vault_delete_unreferenced_blocking(
     app: &AppHandle,
     reference: NativeCredentialReference,
 ) -> Result<(), String> {
-    credential_reference_key(&reference)?;
-    let contents = read_station_profile_contents(app)?;
-    let store = parse_station_profile_store(&contents)?;
-    credential_vault_delete_unreferenced_in_store(&store, &reference)
-}
-
-/// Desktop retirement of an unreferenced credential: the same
-/// referenced-credential refusal as before, then both-attempt cleanup of the
-/// bearer and its custody metadata companion (station#2893).
-fn credential_vault_delete_unreferenced_in_store(
-    store: &CredentialProfileStore,
-    reference: &NativeCredentialReference,
-) -> Result<(), String> {
-    if store.profiles.iter().any(|profile| {
-        profile
-            .credential_ref
-            .as_ref()
-            .is_some_and(|owned| owned.kind == reference.kind && owned.id == reference.id)
-    }) {
-        return Err("refusing to delete a credential still owned by a saved Station".to_string());
-    }
     #[cfg(not(mobile))]
     {
-        credential_vault_delete_unreferenced_with_custody(
-            reference,
-            &native_device_custody::DesktopPairingCustody,
+        credential_vault_delete_with_host(
+            &AppProfileWriteHost::new(app)?,
+            &NativeProfileAuthority::default(),
+            Some(&reference),
         )
     }
     #[cfg(mobile)]
     {
-        // Mobile keeps its bearer-only retirement: no companion record exists
-        // there.
-        match credential_entry(reference)?.delete_credential() {
+        credential_reference_key(&reference)?;
+        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+        if store
+            .profiles
+            .iter()
+            .any(|profile| profile.credential_ref.as_ref() == Some(&reference))
+        {
+            return Err("refusing to delete a credential still owned by a saved Station".into());
+        }
+        match credential_entry(&reference)?.delete_credential() {
             Ok(()) => Ok(()),
             Err(error) if is_missing_credential(&error) => Ok(()),
             Err(error) => Err(format!("delete OS credential: {error}")),
@@ -1473,28 +1419,58 @@ fn credential_vault_delete_unreferenced_in_store(
     }
 }
 
-/// Both cleanup attempts always run: a bearer-side failure must not strand
-/// the companion, and vice versa. A missing record on either side is already
-/// retired and is success, so a retry after a partial failure completes it.
 #[cfg(not(mobile))]
-fn credential_vault_delete_unreferenced_with_custody(
-    reference: &NativeCredentialReference,
-    custody: &dyn native_device_custody::PairingCustodyWriter,
+fn credential_vault_delete_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    unreferenced: Option<&NativeCredentialReference>,
 ) -> Result<(), String> {
-    let bearer = custody.delete_bearer(reference);
-    let metadata = custody.delete_metadata(reference);
-    match (bearer, metadata) {
-        (Ok(()), Ok(())) => Ok(()),
-        (bearer, metadata) => {
-            let mut errors = Vec::new();
-            for error in [bearer.err(), metadata.err()] {
-                if let Some(error) = error {
-                    errors.push(error);
-                }
-            }
-            Err(errors.join("; "))
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "Station profile store is unavailable")?,
+    )?;
+    let mut state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable")?;
+    if let Some(reference) = unreferenced {
+        credential_reference_key(reference)?;
+        if store
+            .profiles
+            .iter()
+            .any(|profile| profile.credential_ref.as_ref() == Some(reference))
+        {
+            return Err("refusing to delete a credential still owned by a saved Station".into());
         }
+        // New callers can retire legacy unreferenced credentials; published CAS
+        // removals already carry a durable intent, so cold recovery needs no renderer reference.
+        native_device_custody::stage_unreferenced_retirement(host.custody(), &path, reference)?;
+    } else if state.active.is_some() {
+        native_device_custody::stage_active_retirement(host.custody(), &path, &store, &state)?;
+        state.active = None;
+    } else if !native_device_custody::has_pending_retirements(host.custody(), &path)? {
+        return Err("Station has no active credential or pending retirement".into());
     }
+    native_device_custody::retry_retirements(host.custody(), &path, &store, &state, unreferenced)
+}
+
+#[cfg(not(mobile))]
+fn retry_device_custody_retirements_for_app(app: &AppHandle) -> Result<(), String> {
+    let host = AppProfileWriteHost::new(app)?;
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or("Station native authority is unavailable")?;
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "Station profile store is unavailable")?,
+    )?;
+    let state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable")?;
+    native_device_custody::retry_retirements(host.custody(), &path, &store, &state, None)
 }
 
 /// The native host records the selected Station/reference after validating the full
@@ -1510,13 +1486,21 @@ fn station_profile_authorize_active_internal(
     authority: &NativeProfileAuthority,
     profile_name: &str,
 ) -> Result<NativeProfileAuthorizationReceipt, String> {
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-    let mut state = authority
-        .0
-        .lock()
-        .map_err(|_| "Station native authority is unavailable".to_string())?;
-    let receipt = authorize_active_profile_in_state(&mut state, &store, profile_name)?;
-    drop(state);
+    #[cfg(not(mobile))]
+    let receipt = station_profile_authorize_with_host(
+        &AppProfileWriteHost::new(app)?,
+        authority,
+        profile_name,
+    )?;
+    #[cfg(mobile)]
+    let receipt = {
+        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+        let mut state = authority
+            .0
+            .lock()
+            .map_err(|_| "Station native authority is unavailable".to_string())?;
+        authorize_active_profile_in_state(&mut state, &store, profile_name)?
+    };
     // The renderer may have attempted its bounded readiness proof before the
     // active credential was available. Reuse its mounted retry subscription
     // once the host has committed the selected profile.
@@ -1525,6 +1509,31 @@ fn station_profile_authorize_active_internal(
     #[cfg(mobile)]
     let _ = app.emit("station://startup-readiness-retry", ());
     Ok(receipt)
+}
+
+#[cfg(not(mobile))]
+fn station_profile_authorize_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    profile_name: &str,
+) -> Result<NativeProfileAuthorizationReceipt, String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "Station profile store is unavailable")?,
+    )?;
+    let profile = selected_profile_from_store(&store, profile_name)?;
+    if profile.credential_ref.as_ref().is_some_and(|reference| {
+        native_device_custody::has_active_retirement(host.custody(), &path, reference)
+            .unwrap_or(true)
+    }) {
+        return Err("Station credential retirement is pending".into());
+    }
+    let mut state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable")?;
+    authorize_active_profile_in_state(&mut state, &store, profile_name)
 }
 
 fn authorize_active_profile_in_state(
@@ -2370,6 +2379,7 @@ fn authorized_profile_context_in_store(
     })
 }
 
+#[cfg(mobile)]
 fn authorized_credential_reference(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
@@ -2433,26 +2443,75 @@ pub(crate) fn native_credential_for_origin(
 pub(crate) fn resolve_current_device_identity_for_active_station(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
+    expected_revision: u64,
+    expected_epoch: &str,
 ) -> Result<native_device_custody::CurrentDeviceIdentity, native_device_custody::DeviceCustodyError>
 {
-    let contents = read_station_profile_contents(app)
-        .map_err(native_device_custody::DeviceCustodyError::NotAuthorized)?;
-    let store = parse_station_profile_store(&contents)
-        .map_err(native_device_custody::DeviceCustodyError::NotAuthorized)?;
-    let state = authority.0.lock().map_err(|_| {
-        native_device_custody::DeviceCustodyError::NotAuthorized(
-            "authority_unavailable".to_string(),
-        )
-    })?;
+    resolve_current_device_identity_with_host(
+        &AppProfileWriteHost::new(app)
+            .map_err(native_device_custody::DeviceCustodyError::NotAuthorized)?,
+        authority,
+        expected_revision,
+        expected_epoch,
+    )
+}
+
+#[cfg(not(mobile))]
+fn resolve_current_device_identity_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    expected_revision: u64,
+    expected_epoch: &str,
+) -> Result<native_device_custody::CurrentDeviceIdentity, native_device_custody::DeviceCustodyError>
+{
+    use native_device_custody::DeviceCustodyError;
+    let denied = |_| DeviceCustodyError::NotAuthorized("profile_stale".into());
+    let path = host.path().map_err(denied)?;
+    let _lock = host.lock(&path).map_err(denied)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path)
+            .map_err(|_| DeviceCustodyError::NotAuthorized("profile_unavailable".into()))?,
+    )
+    .map_err(denied)?;
+    let state = authority
+        .0
+        .lock()
+        .map_err(|_| DeviceCustodyError::NotAuthorized("authority_unavailable".into()))?;
+    if store.revision != expected_revision
+        || state
+            .active
+            .as_ref()
+            .map(|active| active.binding_id.as_str())
+            != Some(expected_epoch)
+    {
+        return Err(DeviceCustodyError::NotAuthorized("profile_stale".into()));
+    }
+    let custody = host.custody();
+    let context = authorized_profile_context_in_store(&state, &store)
+        .map_err(|_| DeviceCustodyError::NotAuthorized("profile_stale".into()))?;
+    if native_device_custody::has_active_retirement(custody, &path, &context.reference)
+        .map_err(|_| DeviceCustodyError::MetadataStore)?
+    {
+        return Err(DeviceCustodyError::NotAuthorized(
+            "credential_retiring".into(),
+        ));
+    }
+    struct Reader<'a>(&'a dyn native_device_custody::PairingCustodyWriter);
+    impl native_device_custody::CustodyMetadataStore for Reader<'_> {
+        fn read(&self, account: &str) -> Result<Option<String>, String> {
+            self.0.read_metadata(account)
+        }
+    }
     native_device_custody::resolve_current_device_identity(
+        custody.owner(),
         &state,
         &store,
         |reference| {
-            credential_entry(reference)?
-                .get_password()
-                .map_err(|error| format!("read OS credential store: {error}"))
+            custody
+                .read_bearer(reference)?
+                .ok_or_else(|| "Station bearer is unavailable".into())
         },
-        &native_device_custody::DesktopCustodyMetadataStore,
+        &Reader(custody),
     )
 }
 
@@ -4545,13 +4604,11 @@ fn credential_vault_commit_pairing_internal(
     // `profiles.json.lock` (mobile) while it takes this mutex.
     #[cfg(not(mobile))]
     {
-        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-        credential_vault_commit_pairing_with_custody(
+        credential_vault_commit_pairing_with_host(
+            &AppProfileWriteHost::new(app)?,
             authority,
             pending,
             handle,
-            &store,
-            &native_device_custody::DesktopPairingCustody,
         )
     }
     #[cfg(mobile)]
@@ -4595,6 +4652,21 @@ fn credential_vault_commit_pairing_internal(
         entry.phase = NativePairingPhase::KeyringWritten { profile_name };
         Ok(())
     }
+}
+
+#[cfg(not(mobile))]
+fn credential_vault_commit_pairing_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    pending: &NativePendingPairingCredentials,
+    handle: &str,
+) -> Result<(), String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "Station profile store is unavailable")?,
+    )?;
+    credential_vault_commit_pairing_with_custody(authority, pending, handle, &store, host.custody())
 }
 
 /// Desktop commit core (station#2893). The custody writer owns both the
@@ -4644,6 +4716,7 @@ fn credential_vault_commit_pairing_with_custody(
     // device id/kind were captured from the authenticated pairing exchange —
     // never from the renderer-visible device projection.
     let custody_metadata = native_device_custody::NativeDeviceCustodyMetadata::for_pairing(
+        custody.owner(),
         &entry.reference,
         &entry.credential,
         &entry.exact_origin,
@@ -4653,7 +4726,7 @@ fn credential_vault_commit_pairing_with_custody(
         &entry.device_kind,
     );
     let metadata = match custody_metadata {
-        Ok(metadata) => Some(metadata),
+        Ok(metadata) => metadata,
         Err(error) => {
             if entry.expires_at > SystemTime::now() {
                 entry.phase = NativePairingPhase::RequiresAuthPersisted { profile_name };
@@ -4667,7 +4740,7 @@ fn credential_vault_commit_pairing_with_custody(
         }
         return Err(error);
     }
-    if let Err(error) = custody.write_metadata(metadata.as_ref().expect("validated above")) {
+    if let Err(error) = custody.write_metadata(&metadata) {
         // The bearer may already be in place; the retry below rewrites both.
         // Until this phase reaches KeyringWritten nothing publishes, so the
         // partial state cannot become proof-eligible.
@@ -5587,26 +5660,58 @@ fn station_profile_store_read_blocking(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<String, String> {
-    let path = station_profiles_path(app)?;
-    validate_station_profile_store(&path)?;
+    #[cfg(not(mobile))]
+    {
+        station_profile_store_read_with_host(&AppProfileWriteHost::new(app)?, authority)
+    }
+    #[cfg(mobile)]
+    {
+        let path = station_profiles_path(app)?;
+        validate_station_profile_store(&path)?;
+        match read_station_profile_store(&path) {
+            Ok(contents) => {
+                let store = parse_station_profile_store(&contents)?;
+                let mut state = authority
+                    .0
+                    .lock()
+                    .map_err(|_| "Station native authority is unavailable".to_string())?;
+                profile_bindings_are_authorized(&state, &store)?;
+                // A read is the only trust-on-first-observation path. It accepts
+                // externally configured CLI profiles, but never promotes a
+                // crash-left `requires-auth` record into native authority.
+                observe_configured_profile_bindings(&mut state, &store)?;
+                Ok(contents)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                Ok(EMPTY_STATION_PROFILE_STORE.to_string())
+            }
+            Err(error) => Err(format!("read saved Station metadata: {error}")),
+        }
+    }
+}
+
+#[cfg(not(mobile))]
+fn station_profile_store_read_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+) -> Result<String, String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
     match read_station_profile_store(&path) {
         Ok(contents) => {
             let store = parse_station_profile_store(&contents)?;
             let mut state = authority
                 .0
                 .lock()
-                .map_err(|_| "Station native authority is unavailable".to_string())?;
+                .map_err(|_| "Station native authority is unavailable")?;
             profile_bindings_are_authorized(&state, &store)?;
-            // A read is the only trust-on-first-observation path. It accepts
-            // externally configured CLI profiles, but never promotes a
-            // crash-left `requires-auth` record into native authority.
             observe_configured_profile_bindings(&mut state, &store)?;
             Ok(contents)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(EMPTY_STATION_PROFILE_STORE.to_string())
+            Ok(EMPTY_STATION_PROFILE_STORE.into())
         }
-        Err(error) => Err(format!("read saved Station metadata: {error}")),
+        Err(_) => Err("Station profile store is unavailable".into()),
     }
 }
 
@@ -5627,7 +5732,7 @@ fn station_profile_store_write_internal(
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
     let result = station_profile_store_write_with_host(
-        &AppProfileWriteHost(app),
+        &AppProfileWriteHost::new(app)?,
         authority,
         pending,
         contents,
@@ -5638,6 +5743,9 @@ fn station_profile_store_write_internal(
     {
         let app = app.clone();
         let _ = tauri::async_runtime::spawn_blocking(move || {
+            if retry_device_custody_retirements_for_app(&app).is_err() {
+                log::warn!("native credential retirement remains pending");
+            }
             if let Err(error) = native_relay_redemption::retry_pending_cleanup_for_app(&app) {
                 log::warn!(
                     "could not resume native relay grant cleanup after profile write: {error:?}"
@@ -5659,6 +5767,8 @@ trait ProfileWriteHost {
         current: &CredentialProfileStore,
         next: &CredentialProfileStore,
     ) -> Result<(), String>;
+    #[cfg(not(mobile))]
+    fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter;
     fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String>;
     fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
         generated
@@ -5666,16 +5776,30 @@ trait ProfileWriteHost {
     fn notify(&self) {}
 }
 
-struct AppProfileWriteHost<'a>(&'a AppHandle);
+struct AppProfileWriteHost<'a> {
+    app: &'a AppHandle,
+    #[cfg(not(mobile))]
+    custody: native_device_custody::DesktopPairingCustody,
+}
+
+impl<'a> AppProfileWriteHost<'a> {
+    fn new(app: &'a AppHandle) -> Result<Self, String> {
+        Ok(Self {
+            app,
+            #[cfg(not(mobile))]
+            custody: native_device_custody::DesktopPairingCustody::for_app(app)?,
+        })
+    }
+}
 
 impl ProfileWriteHost for AppProfileWriteHost<'_> {
     fn path(&self) -> Result<std::path::PathBuf, String> {
-        station_profiles_path(self.0)
+        station_profiles_path(self.app)
     }
     fn genesis(&self, root: &std::path::Path) -> Result<(), String> {
         #[cfg(not(mobile))]
         {
-            ensure_station_profile_store_genesis(self.0, root)
+            ensure_station_profile_store_genesis(self.app, root)
         }
         #[cfg(mobile)]
         {
@@ -5684,7 +5808,7 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
         }
     }
     fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> {
-        lock_station_profiles_for_app(self.0, path)
+        lock_station_profiles_for_app(self.app, path)
     }
     fn invalidate_removed_routes(
         &self,
@@ -5693,8 +5817,8 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
     ) -> Result<(), String> {
         #[cfg(not(mobile))]
         {
-            relay_grant_vault::invalidate_removed_routes(self.0, current, next)?;
-            native_relay_redemption::stage_removed_profile_routes(self.0, current, next)
+            relay_grant_vault::invalidate_removed_routes(self.app, current, next)?;
+            native_relay_redemption::stage_removed_profile_routes(self.app, current, next)
         }
         #[cfg(mobile)]
         {
@@ -5702,12 +5826,16 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
             Ok(())
         }
     }
+    #[cfg(not(mobile))]
+    fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter {
+        &self.custody
+    }
     fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
         crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)])
     }
     fn notify(&self) {
         #[cfg(not(mobile))]
-        notify_startup_readiness_if_waiting(self.0);
+        notify_startup_readiness_if_waiting(self.app);
     }
 }
 
@@ -5858,6 +5986,13 @@ fn station_profile_store_write_with_host(
         // Post-transition prepublication errors must reach the rollback below.
         // Grant invalidation still precedes profile publication: a failed
         // later write must never revive a revoked grant.
+        #[cfg(not(mobile))]
+        native_device_custody::stage_removed_credentials(
+            host.custody(),
+            &path,
+            &current_store,
+            &next_store,
+        )?;
         host.invalidate_removed_routes(&current_store, &next_store)?;
         let generated_staged = path.with_extension(format!(
             "{}.{}.tmp",
@@ -11369,6 +11504,7 @@ If a stable instance is running, this launch will focus its window and exit.",
             {
                 let app = app.handle().clone();
                 let _ = tauri::async_runtime::spawn_blocking(move || {
+                    if retry_device_custody_retirements_for_app(&app).is_err() { log::warn!("native credential retirement remains pending"); }
                     if let Err(error) =
                         native_relay_redemption::retry_pending_cleanup_for_app(&app)
                     {
@@ -11632,6 +11768,7 @@ mod tests {
 
     #[cfg(not(mobile))]
     struct WriterTestHost {
+        custody: MemoryCustodyWriter,
         path: std::path::PathBuf,
         staged_path: Option<std::path::PathBuf>,
         fail_invalidation: bool,
@@ -11660,6 +11797,9 @@ mod tests {
             } else {
                 Ok(())
             }
+        }
+        fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter {
+            &self.custody
         }
         fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
             if self.fail_postpublication_trust {
@@ -11715,6 +11855,7 @@ mod tests {
         );
         let contents = r#"{"schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"pending","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"test-host-allocated"},"environmentId":"environment-one","clientInstanceId":"11111111-1111-4111-8111-111111111111","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#.to_string();
         let host = WriterTestHost {
+            custody: MemoryCustodyWriter::default(),
             path: path.clone(),
             staged_path: None,
             fail_invalidation: false,
@@ -12111,81 +12252,95 @@ mod tests {
     }
 
     // ---- Device identity custody metadata (station#2893) ----
-
-    /// In-memory custody writer standing in for the desktop OS keyring: the
-    /// bearer and companion records land in test-owned maps, and each
-    /// operation can be made to fail to exercise the commit and retirement
-    /// recovery paths. The companion record is serialized exactly as the
-    /// production writer would, under the same derived account, so the
-    /// resolver reads the real format at the real owner.
     #[cfg(not(mobile))]
     struct MemoryCustodyWriter {
+        owner: native_device_custody::NativeDeviceCustodyOwner,
         bearer: std::sync::Mutex<std::collections::HashMap<String, String>>,
         metadata: native_device_custody::MemoryCustodyMetadataStore,
-        fail_bearer: bool,
         fail_metadata: bool,
-        fail_delete_bearer: bool,
         fail_delete_metadata: bool,
+        fail_journal: bool,
+        unreadable_refs: std::collections::HashSet<String>,
     }
 
     #[cfg(not(mobile))]
     impl Default for MemoryCustodyWriter {
         fn default() -> Self {
             Self {
-                bearer: std::sync::Mutex::new(std::collections::HashMap::new()),
-                metadata: native_device_custody::MemoryCustodyMetadataStore::default(),
-                fail_bearer: false,
+                owner: native_device_custody::NativeDeviceCustodyOwner::fixture(),
+                bearer: Default::default(),
+                metadata: Default::default(),
                 fail_metadata: false,
-                fail_delete_bearer: false,
                 fail_delete_metadata: false,
+                fail_journal: false,
+                unreadable_refs: Default::default(),
             }
         }
     }
 
     #[cfg(not(mobile))]
     impl native_device_custody::PairingCustodyWriter for MemoryCustodyWriter {
+        fn owner(&self) -> &native_device_custody::NativeDeviceCustodyOwner {
+            &self.owner
+        }
+        fn read_bearer(
+            &self,
+            reference: &NativeCredentialReference,
+        ) -> Result<Option<String>, String> {
+            if self.unreadable_refs.contains(&reference.id) {
+                return Err("injected unreadable legacy credential".into());
+            }
+            Ok(self.bearer.lock().unwrap().get(&reference.id).cloned())
+        }
+        fn read_metadata(&self, account: &str) -> Result<Option<String>, String> {
+            Ok(self.metadata.lock().get(account).cloned())
+        }
+        fn write_journal(&self, account: &str, value: &str) -> Result<(), String> {
+            if self.fail_journal {
+                return Err("injected retirement journal failure".into());
+            }
+            self.metadata.lock().insert(account.into(), value.into());
+            Ok(())
+        }
         fn write_bearer(
             &self,
             reference: &NativeCredentialReference,
             password: &str,
         ) -> Result<(), String> {
-            if self.fail_bearer {
-                return Err("injected bearer write failure".to_string());
-            }
             self.bearer
                 .lock()
                 .unwrap()
-                .insert(reference.id.clone(), password.to_owned());
+                .insert(reference.id.clone(), password.into());
             Ok(())
         }
-
         fn write_metadata(
             &self,
             metadata: &native_device_custody::NativeDeviceCustodyMetadata,
         ) -> Result<(), String> {
             if self.fail_metadata {
-                return Err("injected custody metadata write failure".to_string());
+                return Err("injected metadata failure".into());
             }
-            let account = native_device_custody::metadata_account(&metadata.reference).unwrap();
-            let raw = serde_json::to_string(metadata).unwrap();
-            self.metadata.lock().insert(account, raw);
+            let account =
+                native_device_custody::metadata_account(&self.owner, &metadata.reference)?;
+            self.metadata
+                .lock()
+                .insert(account, serde_json::to_string(metadata).unwrap());
             Ok(())
         }
-
         fn delete_bearer(&self, reference: &NativeCredentialReference) -> Result<(), String> {
-            if self.fail_delete_bearer {
-                return Err("injected bearer delete failure".to_string());
-            }
             self.bearer.lock().unwrap().remove(&reference.id);
             Ok(())
         }
-
         fn delete_metadata(&self, reference: &NativeCredentialReference) -> Result<(), String> {
             if self.fail_delete_metadata {
-                return Err("injected custody metadata delete failure".to_string());
+                return Err("injected metadata deletion failure".into());
             }
-            let account = native_device_custody::metadata_account(reference).unwrap();
-            self.metadata.lock().remove(&account);
+            self.metadata
+                .lock()
+                .remove(&native_device_custody::metadata_account(
+                    &self.owner,
+                    reference,
+                )?);
             Ok(())
         }
     }
@@ -12193,69 +12348,21 @@ mod tests {
     #[cfg(not(mobile))]
     const CUSTODY_DEVICE_ID: &str = "77777777-7777-4777-8777-777777777777";
     #[cfg(not(mobile))]
-    const CUSTODY_BEARER: &str = "custody-fixture-bearer";
-
-    /// A requires-auth pairing target plus the authority mid-transition:
-    /// exactly the state `credential_vault_commit_pairing` runs under.
+    const CUSTODY_STATION_ID: &str = "11111111-1111-4111-8111-111111111111";
     #[cfg(not(mobile))]
-    fn custody_commit_fixture() -> (
+    const CUSTODY_CLIENT_ID: &str = "33333333-3333-4333-8333-333333333333";
+    #[cfg(not(mobile))]
+    const CUSTODY_BEARER: &str = "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+
+    #[cfg(not(mobile))]
+    fn custody_pairing_fixture() -> (
+        tempfile::TempDir,
+        WriterTestHost,
         NativeProfileAuthority,
         NativePendingPairingCredentials,
-        String,
-        CredentialProfileStore,
-        MemoryCustodyWriter,
+        NativePairingExchangeSuccess,
     ) {
-        let store = parse_station_profile_store(
-            r#"{"schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"pending","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"custody-allocated"},"environmentId":"environment-one","clientInstanceId":"11111111-1111-4111-8111-111111111111","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#,
-        )
-        .unwrap();
-        let authority = NativeProfileAuthority::default();
-        let pending = NativePendingPairingCredentials::default();
-        let handle = "custody-handle".to_string();
-        pending.0.lock().unwrap().insert(
-            handle.clone(),
-            PendingPairingCredential {
-                credential: CUSTODY_BEARER.into(),
-                reference: NativeCredentialReference {
-                    kind: "station-bearer".into(),
-                    id: "custody-allocated".into(),
-                },
-                exact_origin: "https://one.example".into(),
-                environment_id: "environment-one".into(),
-                client_instance_id: "11111111-1111-4111-8111-111111111111".into(),
-                device_id: CUSTODY_DEVICE_ID.into(),
-                device_kind: "device".into(),
-                expires_at: SystemTime::now() + Duration::from_secs(120),
-                phase: NativePairingPhase::RequiresAuthPersisted {
-                    profile_name: "pending".into(),
-                },
-            },
-        );
-        authority
-            .0
-            .lock()
-            .unwrap()
-            .transitioning
-            .insert("station-bearer:custody-allocated".to_string());
-        (
-            authority,
-            pending,
-            handle,
-            store,
-            MemoryCustodyWriter::default(),
-        )
-    }
-
-    /// Drives the real pairing write for the custody fixture's handle: the
-    /// first CAS publishes requires-auth, the second (after the keyring
-    /// commit) publishes configured and consumes the handle.
-    #[cfg(not(mobile))]
-    fn custody_writer_host() -> (
-        tempfile::TempDir,
-        std::path::PathBuf,
-        WriterTestHost,
-        CredentialProfileStore,
-    ) {
+        use std::io::{Read, Write};
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         ensure_station_profile_store_root(root).unwrap();
@@ -12263,571 +12370,452 @@ mod tests {
         write_profile_store_genesis_marker(root).unwrap();
         let path = root.join("config/profiles.json");
         write_empty_station_profile_store(&path).unwrap();
-        let store =
-            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
         let host = WriterTestHost {
-            path: path.clone(),
+            path,
+            custody: Default::default(),
             staged_path: None,
             fail_invalidation: false,
             fail_postpublication_trust: false,
         };
-        (directory, path, host, store)
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            loop {
+                let mut bytes = [0; 2048];
+                let count = stream.read(&mut bytes).unwrap();
+                assert!(count > 0);
+                request.extend_from_slice(&bytes[..count]);
+                if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..end]);
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|value| value.trim().parse().unwrap())
+                        })
+                        .unwrap();
+                    if request.len() >= end + 4 + length {
+                        let body: serde_json::Value =
+                            serde_json::from_slice(&request[end + 4..end + 4 + length]).unwrap();
+                        assert_eq!(body["clientInstanceId"], CUSTODY_CLIENT_ID);
+                        break;
+                    }
+                }
+            }
+            let body = serde_json::json!({ "environmentId": CUSTODY_STATION_ID, "credential": CUSTODY_BEARER, "device": { "id": CUSTODY_DEVICE_ID, "name": "Owner laptop", "scope": "orchestration:read", "kind": "device", "createdAt": 1.0, "lastUsedAt": null, "revokedAt": null }}).to_string();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        });
+        let pending = NativePendingPairingCredentials::default();
+        let request = NativePairingExchangeRequest {
+            endpoint: origin.clone(),
+            development_http_origin: None,
+            offer_id: "offer".into(),
+            proof: "proof".into(),
+            request_id: "request".into(),
+            client_instance_id: CUSTODY_CLIENT_ID.into(),
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            browser_session: false,
+        };
+        let origin = validate_native_pairing_exchange_request(&request).unwrap();
+        let result = station_native_pairing_exchange_blocking(
+            pending.clone(),
+            request,
+            origin,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .unwrap();
+        server.join().unwrap();
+        let NativePairingExchangeResult::Success(success) = result else {
+            panic!("pairing failed")
+        };
+        (
+            directory,
+            host,
+            NativeProfileAuthority::default(),
+            pending,
+            success,
+        )
     }
 
-    /// Publishes the custody fixture's requires-auth profile through the real
-    /// writer (CAS 1), leaving the entry mid-transition exactly as the real
-    /// flow does before the keyring commit.
     #[cfg(not(mobile))]
-    fn custody_drive_first_cas(
+    fn custody_first_cas(
         host: &WriterTestHost,
         authority: &NativeProfileAuthority,
         pending: &NativePendingPairingCredentials,
-        handle: &str,
-        target: &CredentialProfile,
+        success: &NativePairingExchangeSuccess,
     ) -> CredentialProfileStore {
-        pending.0.lock().unwrap().get_mut(handle).unwrap().phase =
-            NativePairingPhase::AwaitingRequiresAuth;
-        authority.0.lock().unwrap().transitioning.clear();
-        let mut requires_auth =
-            parse_station_profile_store(&read_station_profile_store(&host.path).unwrap()).unwrap();
-        requires_auth.revision = 1;
-        requires_auth.profiles.push(target.clone());
+        let origin = pending
+            .0
+            .lock()
+            .unwrap()
+            .get(&success.credential_handle)
+            .unwrap()
+            .exact_origin
+            .clone();
+        let current = parse_station_profile_store(
+            &station_profile_store_read_with_host(host, authority).unwrap(),
+        )
+        .unwrap();
+        let contents = serde_json::json!({ "schemaVersion": 1, "revision": current.revision + 1, "defaultProfile": null, "projectProfiles": {}, "profiles": [{ "schemaVersion": 1, "name": "paired", "endpoint": origin, "credentialRef": success.credential_ref, "environmentId": success.environment_id, "clientInstanceId": CUSTODY_CLIENT_ID, "setupSource": "paired", "configurationState": "requires-auth", "createdAt": 1, "updatedAt": 1 }] }).to_string();
         station_profile_store_write_with_host(
             host,
             authority,
             pending,
-            serde_json::to_string(&requires_auth).unwrap(),
-            0,
-            Some(handle.to_string()),
+            contents.clone(),
+            current.revision,
+            Some(success.credential_handle.clone()),
         )
         .unwrap();
-        requires_auth
+        parse_station_profile_store(&contents).unwrap()
     }
 
     #[cfg(not(mobile))]
-    fn custody_committed(
+    fn custody_second_cas(
+        host: &WriterTestHost,
         authority: &NativeProfileAuthority,
         pending: &NativePendingPairingCredentials,
-        handle: &str,
-        store: &CredentialProfileStore,
-        custody: &MemoryCustodyWriter,
-    ) {
-        credential_vault_commit_pairing_with_custody(authority, pending, handle, store, custody)
-            .unwrap();
-        assert!(matches!(
-            pending.0.lock().unwrap().get(handle).unwrap().phase,
-            NativePairingPhase::KeyringWritten { .. }
-        ));
-    }
-
-    /// The custody companion must record the id captured from the
-    /// AUTHENTICATED pairing response, never the renderer-visible device
-    /// projection the exchange success reports.
-    #[cfg(not(mobile))]
-    #[test]
-    fn commit_captures_authenticated_device_id_not_the_renderer_projection() {
-        let (authority, pending, handle, store, custody) = custody_commit_fixture();
-        // The authenticated response device, validated through the real
-        // pairing-response path, is what the pending entry captures.
-        let authenticated = native_pairing_device_response(NativePairingPublicDevice {
-            id: CUSTODY_DEVICE_ID.into(),
-            name: "Owner laptop".into(),
-            scope: "station".into(),
-            kind: "device".into(),
-            created_at: 1.0,
-            last_used_at: None,
-            revoked_at: None,
-        })
-        .unwrap();
-        assert_eq!(
-            pending.0.lock().unwrap().get(&handle).unwrap().device_id,
-            authenticated.id
-        );
-        // The projection the renderer sees is freely alterable and is never
-        // re-read at commit time.
-        let mut renderer_projection = authenticated.clone();
-        renderer_projection.id = "99999999-9999-4999-8999-999999999999".to_string();
-        assert_ne!(renderer_projection.id, authenticated.id);
-        custody_committed(&authority, &pending, &handle, &store, &custody);
-        let reference = NativeCredentialReference {
-            kind: "station-bearer".into(),
-            id: "custody-allocated".into(),
-        };
-        let account = native_device_custody::metadata_account(&reference).unwrap();
-        let raw = custody.metadata.lock().get(&account).cloned().unwrap();
-        let record: native_device_custody::NativeDeviceCustodyMetadata =
-            serde_json::from_str(&raw).unwrap();
-        assert_eq!(record.device_id, CUSTODY_DEVICE_ID);
-        assert_ne!(record.device_id, renderer_projection.id);
-        assert_eq!(record.device_kind, "device");
-    }
-
-    /// A companion write failure must leave the pairing at requires-auth with
-    /// the authority still transitioning, so the profile publication — and
-    /// with it any future proof eligibility — cannot proceed.
-    #[cfg(not(mobile))]
-    #[test]
-    fn partial_metadata_write_failure_cannot_publish_proof_eligibility() {
-        let (authority, pending, handle, store, mut custody) = custody_commit_fixture();
-        custody.fail_metadata = true;
-        let error = credential_vault_commit_pairing_with_custody(
-            &authority, &pending, &handle, &store, &custody,
-        )
-        .unwrap_err();
-        assert!(error.contains("injected custody metadata write failure"));
-        assert!(matches!(
-            pending.0.lock().unwrap().get(&handle).unwrap().phase,
-            NativePairingPhase::RequiresAuthPersisted { .. }
-        ));
-        let state = authority.0.lock().unwrap();
-        assert!(state
-            .transitioning
-            .contains("station-bearer:custody-allocated"));
-        assert!(!state
-            .bindings
-            .contains_key("station-bearer:custody-allocated"));
-        drop(state);
-        // The publication CAS refuses the handle: the phase never reached
-        // KeyringWritten, so no configured profile can publish.
-        let (_dir, path, host, _current) = custody_writer_host();
-        let requires_auth =
-            custody_drive_first_cas(&host, &authority, &pending, &handle, &store.profiles[0]);
-        let mut configured = requires_auth.clone();
-        configured.revision = 2;
-        configured.profiles[0].configuration_state = "configured".to_string();
-        let refusal = station_profile_store_write_with_host(
-            &host,
-            &authority,
-            &pending,
-            serde_json::to_string(&configured).unwrap(),
-            1,
-            Some(handle.clone()),
-        )
-        .unwrap_err();
-        assert!(refusal.contains("not ready for this saved Station write"));
-        assert_eq!(stored_revision(&path), 1);
-    }
-
-    /// The SAME pending handle retries against the same host-held tuple and
-    /// repairs the partial write: both records land and the phase advances.
-    #[cfg(not(mobile))]
-    #[test]
-    fn same_pending_retry_repairs_partial_metadata_write() {
-        let (authority, pending, handle, store, mut custody) = custody_commit_fixture();
-        custody.fail_metadata = true;
-        assert!(credential_vault_commit_pairing_with_custody(
-            &authority, &pending, &handle, &store, &custody
-        )
-        .is_err());
-        custody.fail_metadata = false;
-        custody_committed(&authority, &pending, &handle, &store, &custody);
-        // The bearer was already written by the failed attempt; the retry
-        // rewrote it and the companion is now present.
-        assert_eq!(
-            custody
-                .bearer
-                .lock()
-                .unwrap()
-                .get("custody-allocated")
-                .unwrap(),
-            CUSTODY_BEARER
-        );
-        let account = native_device_custody::metadata_account(&NativeCredentialReference {
-            kind: "station-bearer".into(),
-            id: "custody-allocated".into(),
-        })
-        .unwrap();
-        assert!(custody.metadata.lock().contains_key(&account));
-    }
-
-    /// After a successful commit, a FAILED profile publication must not
-    /// discard the committed credential or metadata; a retry (here under a
-    /// fresh authority, standing in for a host restart) restores the durable
-    /// state and consumes the handle exactly once.
-    #[cfg(not(mobile))]
-    #[test]
-    fn publication_failure_keeps_committed_credential_and_restart_retry_restores() {
-        let (authority, pending, handle, store, custody) = custody_commit_fixture();
-        custody_committed(&authority, &pending, &handle, &store, &custody);
-
-        let (_dir, path, mut host, _current) = custody_writer_host();
-        // Drive the first CAS from the pre-commit state, exactly as the real
-        // sequence does: AwaitingRequiresAuth publishes requires-auth and
-        // enters the transition.
-        let requires_auth =
-            custody_drive_first_cas(&host, &authority, &pending, &handle, &store.profiles[0]);
-        // The keyring commit already ran; force its phase back to
-        // KeyringWritten the way the real sequence has it, then fail the
-        // configured publication before it publishes.
-        pending.0.lock().unwrap().get_mut(&handle).unwrap().phase =
-            NativePairingPhase::KeyringWritten {
-                profile_name: "pending".into(),
-            };
-        host.fail_invalidation = true;
-        let mut configured = requires_auth.clone();
-        configured.revision = 2;
-        configured.profiles[0].configuration_state = "configured".to_string();
-        assert!(station_profile_store_write_with_host(
-            &host,
-            &authority,
-            &pending,
-            serde_json::to_string(&configured).unwrap(),
-            1,
-            Some(handle.clone()),
-        )
-        .is_err());
-        assert_eq!(
-            stored_revision(&path),
-            1,
-            "failed publication must not publish"
-        );
-        // Nothing was cleaned up: the handle, bearer, and companion all
-        // survive the failed publication.
-        assert!(pending.0.lock().unwrap().contains_key(&handle));
-        assert!(custody
-            .bearer
-            .lock()
-            .unwrap()
-            .contains_key("custody-allocated"));
-
-        // In-process recovery: the same-handle configured write retries with
-        // the transitioning state intact and consumes the handle.
-        host.fail_invalidation = false;
+        success: &NativePairingExchangeSuccess,
+        mut store: CredentialProfileStore,
+    ) -> Result<(), String> {
+        let expected_revision = store.revision;
+        store.revision += 1;
+        store.profiles[0].configuration_state = "configured".into();
         station_profile_store_write_with_host(
+            host,
+            authority,
+            pending,
+            serde_json::to_string(&store).unwrap(),
+            expected_revision,
+            Some(success.credential_handle.clone()),
+        )
+    }
+
+    #[cfg(not(mobile))]
+    fn custody_published_fixture() -> (
+        tempfile::TempDir,
+        WriterTestHost,
+        NativeProfileAuthority,
+        NativeCredentialReference,
+    ) {
+        let (directory, host, authority, pending, success) = custody_pairing_fixture();
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        credential_vault_commit_pairing_with_host(
             &host,
             &authority,
             &pending,
-            serde_json::to_string(&configured).unwrap(),
-            1,
-            Some(handle.clone()),
+            &success.credential_handle,
         )
         .unwrap();
-        assert_eq!(stored_revision(&path), 2);
-        assert!(!pending.0.lock().unwrap().contains_key(&handle));
-        // Restart restore: the committed credential and companion survive in
-        // the keyring while the published configured store is re-observed by
-        // a fresh authority — exactly the resolver fixture's state.
-        let restarted = NativeProfileAuthority::default();
-        let written =
-            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
-        observe_configured_profile_bindings(&mut restarted.0.lock().unwrap(), &written).unwrap();
-        assert!(restarted
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+        (directory, host, authority, success.credential_ref)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_exchange_commit_publication_and_cold_identity_are_owner_bound() {
+        let (_directory, host, authority, pending, success) = custody_pairing_fixture();
+        let mut projection = serde_json::to_value(&success).unwrap();
+        assert!(!projection.to_string().contains(CUSTODY_BEARER));
+        projection["device"]["id"] = serde_json::json!(uuid::Uuid::new_v4().to_string());
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
+        )
+        .unwrap();
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+        assert!(!pending
             .0
             .lock()
             .unwrap()
-            .bindings
-            .contains_key("station-bearer:custody-allocated"));
-        assert!(custody
-            .bearer
-            .lock()
-            .unwrap()
-            .contains_key("custody-allocated"));
-        let account = native_device_custody::metadata_account(&NativeCredentialReference {
-            kind: "station-bearer".into(),
-            id: "custody-allocated".into(),
-        })
-        .unwrap();
-        assert!(custody.metadata.lock().contains_key(&account));
-    }
-
-    /// Resolver fixture: the committed end state — configured profile,
-    /// host-observed binding, active authorization — plus the custody writer
-    /// holding the committed bearer and companion.
-    #[cfg(not(mobile))]
-    fn custody_resolver_fixture() -> (
-        CredentialProfileStore,
-        NativeProfileAuthorityState,
-        MemoryCustodyWriter,
-    ) {
-        let contents = r#"{"schemaVersion":1,"revision":7,"defaultProfile":"pending","projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"pending","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"custody-allocated"},"environmentId":"environment-one","clientInstanceId":"11111111-1111-4111-8111-111111111111","setupSource":"paired","configurationState":"configured","createdAt":1,"updatedAt":2}]}"#;
-        let store = parse_station_profile_store(contents).unwrap();
-        let mut state = NativeProfileAuthorityState::default();
-        observe_configured_profile_bindings(&mut state, &store).unwrap();
-        state.active = Some(AuthorizedProfile {
-            name: "pending".into(),
-            reference: NativeCredentialReference {
-                kind: "station-bearer".into(),
-                id: "custody-allocated".into(),
-            },
-            binding_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
-        });
-        let custody = MemoryCustodyWriter::default();
-        custody
-            .bearer
-            .lock()
-            .unwrap()
-            .insert("custody-allocated".to_string(), CUSTODY_BEARER.into());
-        let metadata = native_device_custody::NativeDeviceCustodyMetadata::for_pairing(
-            &NativeCredentialReference {
-                kind: "station-bearer".into(),
-                id: "custody-allocated".into(),
-            },
-            CUSTODY_BEARER,
-            "https://one.example",
-            "environment-one",
-            "11111111-1111-4111-8111-111111111111",
-            CUSTODY_DEVICE_ID,
-            "device",
-        )
-        .unwrap();
-        custody.write_metadata(&metadata).unwrap();
-        (store, state, custody)
-    }
-
-    #[cfg(not(mobile))]
-    fn resolve_identity(
-        store: &CredentialProfileStore,
-        state: &NativeProfileAuthorityState,
-        custody: &MemoryCustodyWriter,
-    ) -> Result<
-        native_device_custody::CurrentDeviceIdentity,
-        native_device_custody::DeviceCustodyError,
-    > {
-        native_device_custody::resolve_current_device_identity(
-            state,
-            store,
-            |reference| {
-                custody
-                    .bearer
-                    .lock()
-                    .unwrap()
-                    .get(&reference.id)
-                    .cloned()
-                    .ok_or_else(|| "missing".to_string())
-            },
-            &custody.metadata,
-        )
-    }
-
-    /// A legacy credential (or a replaced token under the SAME reference)
-    /// keeps ordinary HTTP credential use: the bearer is readable through the
-    /// authorized context. The new-proof seam refuses fail-closed with the
-    /// specific missing-metadata result, never an inferred identity.
-    #[cfg(not(mobile))]
-    #[test]
-    fn legacy_credential_reads_http_but_refuses_new_proof_metadata() {
-        let (store, state, custody) = custody_resolver_fixture();
-        let reference = NativeCredentialReference {
-            kind: "station-bearer".into(),
-            id: "custody-allocated".into(),
-        };
-        // Ordinary HTTP credential use: the authorized discipline plus a bare
-        // keyring read, with no companion involved.
-        let context = authorized_profile_context_in_store(&state, &store).unwrap();
-        assert_eq!(context.reference, reference);
-        assert_eq!(
-            custody.bearer.lock().unwrap().get(&reference.id).unwrap(),
-            CUSTODY_BEARER
+            .contains_key(&success.credential_handle));
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &cold, "paired").unwrap();
+        let identity =
+            resolve_current_device_identity_with_host(&host, &cold, 2, &receipt.binding_id)
+                .unwrap();
+        assert_eq!(identity.device_id, CUSTODY_DEVICE_ID);
+        assert_ne!(
+            serde_json::json!(identity.device_id),
+            projection["device"]["id"]
         );
-        // New-proof binding: specific missing-metadata refusal.
-        let metadata = native_device_custody::MemoryCustodyMetadataStore::default();
-        assert_eq!(
-            native_device_custody::resolve_current_device_identity(
-                &state,
-                &store,
-                |_| Ok(CUSTODY_BEARER.to_string()),
-                &metadata,
-            )
-            .unwrap_err(),
-            native_device_custody::DeviceCustodyError::MetadataMissing
-        );
-        // Malformed companion: fail closed, no identity inferred.
-        let account = native_device_custody::metadata_account(&reference).unwrap();
-        metadata.lock().insert(account, "not json".to_string());
-        assert_eq!(
-            native_device_custody::resolve_current_device_identity(
-                &state,
-                &store,
-                |_| Ok(CUSTODY_BEARER.to_string()),
-                &metadata,
-            )
-            .unwrap_err(),
-            native_device_custody::DeviceCustodyError::MetadataMalformed
-        );
-    }
-
-    /// Overwriting the bearer under the SAME reference (token replacement)
-    /// must reject the companion: the recorded digest no longer matches.
-    #[cfg(not(mobile))]
-    #[test]
-    fn same_reference_token_replacement_rejects_metadata() {
-        let (store, state, custody) = custody_resolver_fixture();
-        resolve_identity(&store, &state, &custody).unwrap();
-        custody
-            .bearer
-            .lock()
-            .unwrap()
-            .insert("custody-allocated".to_string(), "rotated-token".into());
-        assert_eq!(
-            resolve_identity(&store, &state, &custody).unwrap_err(),
-            native_device_custody::DeviceCustodyError::MetadataMismatch("bearer digest")
-        );
-    }
-
-    /// Every custody tuple disagreement refuses: Station environment, client
-    /// instance, Device kind, and a stale authorization epoch. The returned
-    /// epoch tracks the CURRENT authorization, so a re-authorization (fresh
-    /// binding id) changes what the resolver reports.
-    #[cfg(not(mobile))]
-    #[test]
-    fn identity_resolution_refuses_station_client_and_epoch_mismatch() {
-        let (mut store, state, custody) = custody_resolver_fixture();
-        let resolved = resolve_identity(&store, &state, &custody).unwrap();
-        assert_eq!(resolved.device_id, CUSTODY_DEVICE_ID);
-        assert_eq!(resolved.binding_id, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-
-        // The Station environment moves in BOTH the profile and the
-        // host-observed binding, so the authorization discipline still
-        // passes and the companion disagreement is what refuses.
-        let mut station_moved = store.clone();
-        let mut station_moved_state = state.clone();
-        station_moved.profiles[0]._environment_id = Some("environment-other".into());
-        station_moved_state
-            .bindings
-            .get_mut("station-bearer:custody-allocated")
-            .unwrap()
-            .environment_id = "environment-other".into();
-        assert_eq!(
-            resolve_identity(&station_moved, &station_moved_state, &custody).unwrap_err(),
-            native_device_custody::DeviceCustodyError::MetadataMismatch("Station environment")
-        );
-
-        let mut client_moved = store.clone();
-        client_moved.profiles[0].client_instance_id =
-            Some("22222222-2222-4222-8222-222222222222".into());
-        assert_eq!(
-            resolve_identity(&client_moved, &state, &custody).unwrap_err(),
-            native_device_custody::DeviceCustodyError::MetadataMismatch("client instance")
-        );
-
-        let mut wrong_kind = store.clone();
-        let account = native_device_custody::metadata_account(&NativeCredentialReference {
-            kind: "station-bearer".into(),
-            id: "custody-allocated".into(),
-        })
-        .unwrap();
-        let mut record: native_device_custody::NativeDeviceCustodyMetadata =
-            serde_json::from_str(&custody.metadata.lock().get(&account).unwrap()).unwrap();
-        record.device_kind = "delegation".to_string();
-        wrong_kind.profiles[0].client_instance_id =
-            Some("11111111-1111-4111-8111-111111111111".into());
-        custody
-            .metadata
-            .lock()
-            .insert(account.clone(), serde_json::to_string(&record).unwrap());
-        assert_eq!(
-            resolve_identity(&wrong_kind, &state, &custody).unwrap_err(),
-            native_device_custody::DeviceCustodyError::MetadataMismatch("device kind")
-        );
-        // Restore the good companion before the epoch sub-case.
-        let good = native_device_custody::NativeDeviceCustodyMetadata::for_pairing(
-            &NativeCredentialReference {
-                kind: "station-bearer".into(),
-                id: "custody-allocated".into(),
-            },
-            CUSTODY_BEARER,
-            "https://one.example",
-            "environment-one",
-            "11111111-1111-4111-8111-111111111111",
-            CUSTODY_DEVICE_ID,
-            "device",
-        )
-        .unwrap();
-        custody
-            .metadata
-            .lock()
-            .insert(account, serde_json::to_string(&good).unwrap());
-
-        // A fresh authorization epoch (re-selecting the Station) mints a new
-        // binding id; the resolver reports the CURRENT epoch per operation.
-        let mut state2 = state;
-        state2.active.as_mut().unwrap().binding_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".into();
-        let resolved2 = resolve_identity(&store, &state2, &custody).unwrap();
-        assert_ne!(resolved.binding_id, resolved2.binding_id);
-        assert_eq!(resolved2.binding_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
-    }
-
-    /// The saved-profile revision is re-read per operation: advancing the
-    /// profile document (never the custody tuple) keeps resolution working.
-    /// Commit-time revision equality is never a resolution requirement.
-    #[cfg(not(mobile))]
-    #[test]
-    fn identity_resolution_reads_revision_per_operation_not_commit_equality() {
-        let (mut store, state, custody) = custody_resolver_fixture();
-        assert_eq!(
-            resolve_identity(&store, &state, &custody)
-                .unwrap()
-                .profile_revision,
-            7
-        );
-        store.revision = 8;
-        store.profiles[0].updated_at = 3.0;
-        assert_eq!(
-            resolve_identity(&store, &state, &custody)
-                .unwrap()
-                .profile_revision,
-            8
-        );
-    }
-
-    /// Referenced credentials are never deletable through the unreferenced
-    /// retirement path, and an actual retirement takes the companion with the
-    /// bearer — both attempts run on partial failure, and a retry completes.
-    #[cfg(not(mobile))]
-    #[test]
-    fn delete_retires_metadata_with_bearer_and_refuses_referenced() {
-        let (store, _state, mut custody) = custody_resolver_fixture();
-        let reference = NativeCredentialReference {
-            kind: "station-bearer".into(),
-            id: "custody-allocated".into(),
-        };
         assert!(
-            credential_vault_delete_unreferenced_in_store(&store, &reference)
-                .unwrap_err()
-                .contains("refusing to delete a credential still owned by a saved Station")
+            resolve_current_device_identity_with_host(&host, &cold, 1, &receipt.binding_id)
+                .is_err()
         );
-        assert!(custody
-            .bearer
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &success.credential_ref)
+                .unwrap();
+        let mut record: serde_json::Value =
+            serde_json::from_str(host.custody.metadata.lock().get(&account).unwrap()).unwrap();
+        let original_record = record.clone();
+        for (field, value) in [
+            ("appIdentifier", "io.kontourai.station.other"),
+            ("channel", "stable"),
+        ] {
+            record = original_record.clone();
+            record["owner"][field] = serde_json::json!(value);
+            let other: native_device_custody::NativeDeviceCustodyOwner =
+                serde_json::from_value(record["owner"].clone()).unwrap();
+            assert_ne!(
+                native_device_custody::metadata_account(&other, &success.credential_ref).unwrap(),
+                account
+            );
+            host.custody
+                .metadata
+                .lock()
+                .insert(account.clone(), record.to_string());
+            assert!(matches!(
+                resolve_current_device_identity_with_host(&host, &cold, 2, &receipt.binding_id),
+                Err(native_device_custody::DeviceCustodyError::MetadataMismatch(
+                    "native owner"
+                ))
+            ));
+        }
+        record = original_record;
+        record["deviceId"] = serde_json::json!("");
+        host.custody
+            .metadata
             .lock()
-            .unwrap()
-            .contains_key("custody-allocated"));
-        let account = native_device_custody::metadata_account(&reference).unwrap();
-        assert!(custody.metadata.lock().contains_key(&account));
+            .insert(account, record.to_string());
+        assert!(matches!(
+            resolve_current_device_identity_with_host(&host, &cold, 2, &receipt.binding_id),
+            Err(native_device_custody::DeviceCustodyError::MetadataMalformed)
+        ));
+    }
 
-        let mut unreferenced = store.clone();
-        unreferenced.profiles.clear();
-        custody.fail_delete_metadata = true;
-        let error =
-            credential_vault_delete_unreferenced_with_custody(&reference, &custody).unwrap_err();
-        assert!(error.contains("injected custody metadata delete failure"));
-        // The bearer side still ran: the partial failure must not strand the
-        // pair on the bearer side.
-        assert!(!custody
-            .bearer
-            .lock()
-            .unwrap()
-            .contains_key("custody-allocated"));
-        assert!(custody.metadata.lock().contains_key(&account));
-        // Retry completes both.
-        custody.fail_delete_metadata = false;
-        credential_vault_delete_unreferenced_with_custody(&reference, &custody).unwrap();
-        assert!(!custody.metadata.lock().contains_key(&account));
-
-        // The ACTIVE credential delete retires both and clears the epoch.
-        let (_store2, state2, custody2) = custody_resolver_fixture();
-        let authority = NativeProfileAuthority(std::sync::Arc::new(std::sync::Mutex::new(state2)));
-        credential_vault_delete_reference_with_custody(
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_partial_write_blocks_publication_and_same_handle_repairs_it() {
+        let (_directory, mut host, authority, pending, success) = custody_pairing_fixture();
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        host.custody.fail_metadata = true;
+        assert!(credential_vault_commit_pairing_with_host(
+            &host,
             &authority,
-            &NativeCredentialReference {
-                kind: "station-bearer".into(),
-                id: "custody-allocated".into(),
-            },
-            &custody2,
+            &pending,
+            &success.credential_handle
+        )
+        .is_err());
+        assert!(custody_second_cas(&host, &authority, &pending, &success, store.clone()).is_err());
+        assert_eq!(stored_revision(&host.path), 1);
+        host.custody.fail_metadata = false;
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
         )
         .unwrap();
+        host.fail_invalidation = true;
+        assert!(custody_second_cas(&host, &authority, &pending, &success, store.clone()).is_err());
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        assert!(station_profile_authorize_with_host(&host, &cold, "paired").is_err());
+        host.fail_invalidation = false;
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_active_delete_retries_after_failure_and_cold_reload_without_reauthorizing() {
+        let (_directory, mut host, authority, reference) = custody_published_fixture();
+        station_profile_authorize_with_host(&host, &authority, "paired").unwrap();
+        host.custody.fail_delete_metadata = true;
+        assert!(credential_vault_delete_with_host(&host, &authority, None).is_err());
         assert!(authority.0.lock().unwrap().active.is_none());
-        assert!(custody2.bearer.lock().unwrap().is_empty());
-        assert!(custody2.metadata.lock().is_empty());
+        assert!(station_profile_authorize_with_host(&host, &authority, "paired").is_err());
+        host.custody.fail_delete_metadata = false;
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        credential_vault_delete_with_host(&host, &cold, None).unwrap();
+        assert!(cold.0.lock().unwrap().active.is_none());
+        assert!(host.custody.read_bearer(&reference).unwrap().is_none());
+        assert!(
+            !native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_removal_records_intent_before_ack_and_cold_cleanup_refuses_replacement() {
+        let (_directory, mut host, authority, reference) = custody_published_fixture();
+        let store = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &authority).unwrap(),
+        )
+        .unwrap();
+        let mut removed = store.clone();
+        removed.revision += 1;
+        removed.profiles.clear();
+        host.custody.fail_journal = true;
+        assert!(station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&removed).unwrap(),
+            2,
+            None
+        )
+        .is_err());
+        assert_eq!(stored_revision(&host.path), 2);
+        host.custody.fail_journal = false;
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&removed).unwrap(),
+            2,
+            None,
+        )
+        .unwrap();
+        assert!(
+            native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(reference.id.clone(), "replacement".into());
+        let cold = NativeProfileAuthority::default();
+        assert!(credential_vault_delete_with_host(&host, &cold, None).is_err());
+        assert_eq!(
+            host.custody.read_bearer(&reference).unwrap().as_deref(),
+            Some("replacement")
+        );
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(reference.id.clone(), CUSTODY_BEARER.into());
+        credential_vault_delete_with_host(&host, &cold, None).unwrap();
+        assert!(host.custody.read_bearer(&reference).unwrap().is_none());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_republished_active_reference_cannot_be_deleted_by_old_retirement() {
+        let (_directory, mut host, authority, reference) = custody_published_fixture();
+        station_profile_authorize_with_host(&host, &authority, "paired").unwrap();
+        host.custody.fail_delete_metadata = true;
+        assert!(credential_vault_delete_with_host(&host, &authority, None).is_err());
+        host.custody.fail_delete_metadata = false;
+        let mut republished = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &authority).unwrap(),
+        )
+        .unwrap();
+        republished.revision = 3;
+        republished.profiles[0].updated_at = 3.0;
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&republished).unwrap(),
+            2,
+            None,
+        )
+        .unwrap();
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        assert!(credential_vault_delete_with_host(&host, &cold, None).is_err());
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &reference).unwrap();
+        assert!(host.custody.metadata.lock().contains_key(&account));
+        republished.revision = 4;
+        republished.profiles.clear();
+        station_profile_store_write_with_host(
+            &host,
+            &cold,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&republished).unwrap(),
+            3,
+            None,
+        )
+        .unwrap();
+        credential_vault_delete_with_host(&host, &cold, Some(&reference)).unwrap();
+        assert!(!host.custody.metadata.lock().contains_key(&account));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_unreadable_legacy_replacement_is_published_with_manual_quarantine() {
+        let (_directory, mut host, authority, original) = custody_published_fixture();
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &original).unwrap();
+        host.custody.metadata.lock().remove(&account);
+        host.custody.unreadable_refs.insert(original.id.clone());
+        let (_other_directory, _other_host, _other_authority, pending, success) =
+            custody_pairing_fixture();
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
+        )
+        .unwrap();
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+        assert_eq!(stored_revision(&host.path), 4);
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &cold, "paired").unwrap();
+        assert_eq!(
+            resolve_current_device_identity_with_host(&host, &cold, 4, &receipt.binding_id)
+                .unwrap()
+                .device_id,
+            CUSTODY_DEVICE_ID
+        );
+        assert!(credential_vault_delete_with_host(&host, &cold, Some(&original)).is_err());
+        assert!(host
+            .custody
+            .bearer
+            .lock()
+            .unwrap()
+            .contains_key(&original.id));
+        assert!(
+            native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_legacy_bearer_stays_available_while_missing_metadata_refuses_identity() {
+        let (_directory, host, authority, reference) = custody_published_fixture();
+        let receipt = station_profile_authorize_with_host(&host, &authority, "paired").unwrap();
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &reference).unwrap();
+        host.custody.metadata.lock().remove(&account);
+        assert_eq!(
+            host.custody.read_bearer(&reference).unwrap().as_deref(),
+            Some(CUSTODY_BEARER)
+        );
+        assert!(matches!(
+            resolve_current_device_identity_with_host(&host, &authority, 2, &receipt.binding_id),
+            Err(native_device_custody::DeviceCustodyError::MetadataMissing)
+        ));
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(reference.id.clone(), "replaced".into());
+        assert_eq!(
+            host.custody.read_bearer(&reference).unwrap().as_deref(),
+            Some("replaced")
+        );
     }
 
     #[cfg(not(mobile))]
