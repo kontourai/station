@@ -1,3 +1,4 @@
+import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
 import {
   toolRequestDisplayName,
   toolRequestFromPayload,
@@ -18,6 +19,8 @@ export function handleRequestOpenedEvent(
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 
+  if (event.blocking === false) return;
+
   const pendingApprovals = [...(chat.pendingApprovals || [])];
   if (!pendingApprovals.includes(event.requestId)) {
     pendingApprovals.push(event.requestId);
@@ -26,6 +29,8 @@ export function handleRequestOpenedEvent(
     pendingApprovals,
     orchestrationStatus: 'awaiting-approval',
   });
+
+  if (readHarnessQuestionnaire(event.payload?.questionnaire)) return;
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
   // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an
@@ -235,7 +240,11 @@ export function handleRequestResolvedEvent(
   activeChatsStore.updateChat(event.threadId, {
     pendingApprovals,
     approvalToasts,
-    orchestrationStatus:
-      pendingApprovals.length > 0 ? 'awaiting-approval' : 'running',
+    ...(event.blocking === false
+      ? {}
+      : {
+          orchestrationStatus:
+            pendingApprovals.length > 0 ? 'awaiting-approval' : 'running',
+        }),
   });
 }
